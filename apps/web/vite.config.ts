@@ -23,7 +23,7 @@ export default defineConfig({
       manifest: {
         name: 'Orki',
         short_name: 'Orki',
-        description: 'Inventario y cuidado de tu colección de orquídeas.',
+        description: 'Inventario de tu colección de orquídeas.',
         lang: 'es',
         start_url: '/',
         scope: '/',
