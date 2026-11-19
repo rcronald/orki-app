@@ -15,6 +15,10 @@ dist-ssr/
 .env.*
 !.env.example
 
+# Supabase (estado local de la CLI)
+supabase/.temp/
+supabase/.branches/
+
 # Python
 __pycache__/
 *.py[cod]
