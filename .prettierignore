@@ -1,0 +1,11 @@
+# Generados
+dist/
+coverage/
+*.tsbuildinfo
+
+# Dependencias (un solo lockfile, mantenido por npm)
+node_modules/
+package-lock.json
+
+# Documentación de producto: se edita a mano y sus tablas Markdown no se realinean
+docs/

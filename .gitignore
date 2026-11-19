@@ -1,0 +1,36 @@
+# Node
+node_modules/
+npm-debug.log*
+.npm/
+*.tsbuildinfo
+
+# Vite
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editores
+.idea/
+.vscode/*
+!.vscode/extensions.json
