@@ -1,0 +1,15 @@
+# Configuración de la CLI de Supabase para Orki.
+#
+# Orki no usa el entorno local de Supabase con Docker: los ambientes son dos proyectos
+# remotos (desarrollo y producción). Por eso este archivo solo guarda lo que la CLI necesita
+# para gestionar las migraciones de supabase/migrations. La configuración de autenticación,
+# almacenamiento y demás servicios se gestiona en cada proyecto, no aquí.
+#
+# Referencia completa: https://supabase.com/docs/guides/local-development/cli/config
+
+# Nombre del proyecto para la CLI. No es el identificador (ref) de ningún proyecto remoto.
+project_id = "orki-app"
+
+[db]
+# Versión mayor de Postgres de los proyectos remotos.
+major_version = 17

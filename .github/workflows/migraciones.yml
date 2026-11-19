@@ -1,0 +1,73 @@
+name: Migraciones
+
+# Aplica las migraciones pendientes de supabase/migrations en un proyecto de Supabase.
+# - Automático: en producción, al llegar a main un cambio en supabase/migrations.
+# - Manual: desde la pestaña Actions, eligiendo el ambiente (dev o prod).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente donde aplicar las migraciones
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+
+# Una sola ejecución a la vez por ambiente. No se cancela una migración en curso: la
+# siguiente espera a que termine.
+concurrency:
+  group: migraciones-${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  migrar:
+    name: Aplicar migraciones (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+    env:
+      AMBIENTE: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+    steps:
+      - name: Comprobar que producción solo se migra desde main
+        if: env.AMBIENTE == 'prod' && github.ref != 'refs/heads/main'
+        env:
+          RAMA: ${{ github.ref_name }}
+        run: |
+          echo "::error::Las migraciones de producción solo se aplican desde main (se lanzó desde ${RAMA})."
+          exit 1
+
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node desde .nvmrc
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Aplicar migraciones pendientes
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: npm run db:push -- --yes
+
+      - name: Estado de las migraciones
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: npm run db:status

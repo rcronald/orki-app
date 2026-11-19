@@ -6,7 +6,7 @@ La especificación completa de la Fase 1 está en [docs/specification.md](docs/s
 
 ## Estado actual
 
-El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. Todavía no hay base de datos, autenticación, despliegue ni variables de entorno; Supabase, Vercel y la autenticación llegan en issues posteriores. Para levantar el proyecto en local no hace falta ninguna cuenta ni configuración adicional.
+El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. Todavía no hay autenticación; llega en un issue posterior.
 
 ## Requisitos
 
@@ -23,10 +23,11 @@ git clone https://github.com/rcronald/orki-app.git
 cd orki-app
 nvm install    # opcional, solo si usas nvm
 npm ci
+cp apps/web/.env.example apps/web/.env.local   # y completa los valores
 npm run dev
 ```
 
-`npm ci` instala las dependencias de todo el monorepo a partir del único `package-lock.json`, que está en la raíz. `npm run dev` levanta el servidor de desarrollo de Vite en <http://localhost:5173>.
+`npm ci` instala las dependencias de todo el monorepo a partir del único `package-lock.json`, que está en la raíz. `npm run dev` levanta el servidor de desarrollo de Vite en <http://localhost:5173>. Antes de `npm run dev` hay que preparar `apps/web/.env.local` con los datos del proyecto de Supabase de desarrollo, como se explica en [Variables de entorno de la app](#variables-de-entorno-de-la-app); sin ese archivo la app arranca, pero muestra una pantalla de error que dice qué variables faltan. Las pruebas y el build no necesitan ninguna variable.
 
 Para abrir la app desde el celular en la misma red, expón el servidor en la red local:
 
@@ -59,6 +60,9 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run format:check` | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                     |
 | `npm test`             | Ejecuta las pruebas de la app web una vez (Vitest).                                                          |
 | `npm run test:watch`   | Ejecuta las pruebas de la app web en modo observación.                                                       |
+| `npm run db:new`       | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                         |
+| `npm run db:status`    | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                    |
+| `npm run db:push`      | Aplica las migraciones pendientes en el proyecto de desarrollo.                                              |
 
 La app web tiene además un script propio para regenerar los iconos provisionales de la PWA en `apps/web/public`:
 
@@ -70,26 +74,180 @@ npm run icons --workspace=apps/web
 
 ```text
 orki-app/
-├── .github/workflows/ci.yml   Integración continua
+├── .github/workflows/
+│   ├── ci.yml                 Integración continua
+│   └── migraciones.yml        Aplicación de migraciones en Supabase
 ├── apps/
 │   └── web/                   App web (React, Vite, TypeScript, Tailwind CSS, PWA)
 │       ├── public/            Iconos y archivos estáticos
 │       ├── scripts/           Utilidades de la app (generación de iconos)
-│       └── src/               Código fuente y pruebas
+│       ├── src/               Código fuente y pruebas
+│       │   ├── config/        Lectura y validación de las variables de entorno
+│       │   └── lib/           Cliente de Supabase
+│       ├── .env.example       Plantilla de las variables de entorno de la app
+│       └── vercel.json        Configuración del despliegue en Vercel
 ├── docs/
 │   └── specification.md       Especificación de la Fase 1
 ├── scripts/
-│   └── catalog-import/        Importación del catálogo de especies (pendiente)
-├── supabase/                  Configuración de Supabase (pendiente)
+│   ├── catalog-import/        Importación del catálogo de especies (pendiente)
+│   └── supabase-db.mjs        Scripts de migraciones (db:new, db:status, db:push)
+├── supabase/
+│   ├── config.toml            Configuración de la CLI de Supabase
+│   ├── migrations/            Migraciones SQL
+│   └── .env.example           Plantilla de credenciales del proyecto de desarrollo
 ├── eslint.config.js           Configuración de ESLint para todo el repositorio
 ├── .prettierrc.json           Configuración de Prettier
 ├── .nvmrc                     Versión de Node
 └── package.json               Workspaces y scripts de la raíz
 ```
 
-Las dependencias se declaran en el `package.json` de cada workspace y se instalan desde la raíz. Las herramientas comunes (ESLint, Prettier) viven en el `package.json` de la raíz.
+Las dependencias se declaran en el `package.json` de cada workspace y se instalan desde la raíz. Las herramientas comunes (ESLint, Prettier, la CLI de Supabase) viven en el `package.json` de la raíz.
 
 Hay dos versiones de TypeScript a propósito. La app compila y comprueba tipos con TypeScript 7 (`apps/web`). La raíz instala TypeScript 6 solo para ESLint, porque `typescript-eslint` todavía no soporta TypeScript 7. Cuando lo soporte, se elimina el TypeScript de la raíz.
+
+## Variables de entorno de la app
+
+La app web lee tres variables de entorno. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
+
+| Variable                        | Qué es                                                        | Dónde se obtiene                                                                                   |
+| ------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | URL del proyecto de Supabase, con `https`.                    | En el panel de Supabase, botón Connect o Project Settings > Data API (Project URL).                |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Clave publicable del proyecto. Empieza por `sb_publishable_`. | En Project Settings > API Keys. No uses nunca una clave secreta (`sb_secret_`); la app la rechaza. |
+| `VITE_APP_ENV`                  | Ambiente al que apunta la app: `dev` o `prod`.                | Lo decide quien configura el ambiente. Coincide con los nombres de los environments de GitHub.     |
+
+La URL y la clave publicable no son secretas, pero tampoco se versionan, porque cambian de un ambiente a otro.
+
+### Preparar el `.env` local
+
+En tu máquina la app apunta siempre al proyecto de Supabase de desarrollo. Copia la plantilla y completa los valores:
+
+```sh
+cp apps/web/.env.example apps/web/.env.local
+```
+
+`apps/web/.env.local` está ignorado por git. Pon en él la URL y la clave publicable del proyecto de desarrollo y deja `VITE_APP_ENV=dev`. Si cambias el archivo con el servidor en marcha, reinicia `npm run dev`.
+
+No lo confundas con `supabase/.env`: ese archivo es para la CLI de Supabase y contiene credenciales secretas (ver [Credenciales](#credenciales)); `apps/web/.env.local` es para la app y no lleva ningún secreto.
+
+### Validación al arrancar
+
+Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clave no está vacía (y no es una clave secreta) y que el ambiente es `dev` o `prod`. Si algo falla, en lugar de la app aparece una pantalla de error que nombra cada variable con problemas y el motivo, sin mostrar nunca sus valores; la consola del navegador muestra también los nombres.
+
+Fuera de producción, la app muestra en la esquina inferior izquierda una etiqueta pequeña con el ambiente ("Desarrollo"), para comprobar a simple vista a qué ambiente apunta una vista previa o el servidor local. Con `VITE_APP_ENV=prod` no aparece.
+
+El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada. No guarda sesión de Supabase Auth: la autenticación llegará con Clerk.
+
+Las pruebas no leen estas variables (la validación se prueba con objetos de entorno de ejemplo), así que `npm test` y `npm run build` funcionan sin ningún `.env`, también en la integración continua.
+
+## Base de datos y migraciones
+
+Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.
+
+El esquema de la base de datos se define con migraciones SQL versionadas en `supabase/migrations`. La CLI de Supabase está instalada como dependencia de desarrollo (paquete `supabase`), así que no hace falta instalarla aparte: `npm ci` la deja lista y se puede usar directamente con `npx supabase`. Los scripts `db:*` la envuelven para el flujo habitual.
+
+### Credenciales
+
+Los scripts y el workflow usan las mismas tres variables:
+
+| Variable                | Qué es                                             | Dónde se obtiene                                                                                     |
+| ----------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `SUPABASE_ACCESS_TOKEN` | Token de acceso a la API de gestión de Supabase.   | En el panel de Supabase, Account > Access Tokens.                                                    |
+| `SUPABASE_DB_PASSWORD`  | Contraseña de la base de datos del proyecto.       | Se define al crear el proyecto; se puede restablecer en Project Settings > Database.                 |
+| `SUPABASE_PROJECT_REF`  | Identificador del proyecto (20 letras minúsculas). | En Project Settings > General (Project ID); también es el subdominio de `https://<ref>.supabase.co`. |
+
+El token puede ser de alcance limitado a los dos proyectos de Orki. Necesita, como mínimo, lectura del proyecto y lectura de la configuración del pooler de conexiones (`database_pooling_config_read`).
+
+El segundo permiso hace falta porque la conexión directa a la base de datos solo funciona por IPv6, que no está disponible en muchas redes ni en los ejecutores de GitHub Actions. Los scripts enlazan el proyecto antes de cada comando (`supabase link`), y el enlace guarda la dirección del pooler, que sí funciona por IPv4, en `supabase/.temp` (ignorado por git). Sin ese permiso el enlace no guarda la dirección y la CLI falla con "IPv6 is not supported on your current network".
+
+En tu máquina, las credenciales son siempre las del proyecto de desarrollo. Cópialas en `supabase/.env` a partir de la plantilla:
+
+```sh
+cp supabase/.env.example supabase/.env
+```
+
+`supabase/.env` está ignorado por git y es solo para la CLI de Supabase; no lo confundas con las variables de la app web, que viven en `apps/web`. Si una variable ya está definida en el entorno de la terminal, se usa esa en lugar de la del archivo. Las credenciales de producción no se guardan en ninguna máquina: solo están en GitHub.
+
+### Crear una migración
+
+```sh
+npm run db:new -- crear_tabla_plantas
+```
+
+Crea un archivo vacío `supabase/migrations/<fecha y hora>_crear_tabla_plantas.sql` donde se escribe el SQL. No necesita credenciales. Usa nombres descriptivos en minúsculas y con guiones bajos.
+
+Una migración que ya está en `main` no se edita ni se borra, porque ya se aplicó en producción: para cambiar algo, se crea otra migración.
+
+### Aplicar migraciones en desarrollo
+
+```sh
+npm run db:status   # qué migraciones están aplicadas y cuáles pendientes
+npm run db:push     # aplica las pendientes
+```
+
+`db:push` muestra las migraciones pendientes y, en una terminal interactiva, pide confirmación antes de aplicarlas. Para saltar la confirmación (por ejemplo, fuera de una terminal interactiva) se usa `npm run db:push -- --yes`, y para ver qué se aplicaría sin aplicar nada, `npm run db:push -- --dry-run`. Si no hay migraciones pendientes, no hace nada. Si falta alguna de las tres variables, los dos scripts terminan con un error que dice cuál.
+
+Lo habitual es aplicar y probar la migración en desarrollo antes de abrir el pull request.
+
+### Producción
+
+Las migraciones nunca se aplican en producción desde una máquina local. El workflow `.github/workflows/migraciones.yml` las aplica:
+
+- Automáticamente, cuando llega a `main` un cambio en `supabase/migrations/` (al fusionar un pull request). Usa el environment `prod` de GitHub.
+- A mano, desde la pestaña Actions de GitHub con "Run workflow", eligiendo el environment `dev` o `prod`. Producción solo se puede lanzar desde `main`; desarrollo se puede lanzar desde cualquier rama.
+
+El workflow instala las dependencias, ejecuta `npm run db:push -- --yes` y después `npm run db:status` para dejar el estado en el registro. Solo aplica las migraciones que faltan en ese ambiente; si no falta ninguna, termina sin cambios. Nunca corren dos ejecuciones a la vez sobre el mismo ambiente: la siguiente espera a que termine la que está en curso.
+
+Las credenciales están registradas en GitHub (Settings > Secrets and variables > Actions, y Settings > Environments):
+
+- `SUPABASE_ACCESS_TOKEN`: secreto del repositorio, compartido por los dos ambientes.
+- `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
+- `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
+
+## Despliegue en Vercel
+
+La app web se despliega en Vercel, conectado al repositorio de GitHub:
+
+- Cada pull request genera un despliegue de vista previa (ambiente Preview de Vercel) con su propia URL, y Vercel la publica como comentario en el pull request. Cada commit nuevo en el pull request genera una vista previa nueva. Las vistas previas apuntan al proyecto de Supabase de desarrollo.
+- Cada push a `main` (al fusionar un pull request) despliega en producción (ambiente Production de Vercel), que apunta al proyecto de Supabase de producción.
+
+Vercel solo construye y publica. Lint, formato, typecheck y pruebas los ejecuta la [integración continua](#integración-continua) de GitHub, que es la que tiene que pasar antes de fusionar; Vercel no los repite. Las migraciones de la base de datos tampoco pasan por Vercel: las aplica su propio workflow (ver [Producción](#producción)).
+
+### Configuración versionada
+
+La configuración vive en `apps/web/vercel.json`, porque Vercel lee ese archivo en el directorio raíz del proyecto de Vercel, que es `apps/web`. Define:
+
+- Instalación: `npm ci --workspace=@orki/web`. Vercel ejecuta los comandos dentro de `apps/web`; npm detecta que es un workspace, usa el único `package-lock.json` de la raíz del repositorio y deja las dependencias en el `node_modules` de la raíz. Solo instala las dependencias de la app, no las herramientas de la raíz (ESLint, Prettier, la CLI de Supabase), que el build no necesita.
+- Build: `npm run build`, el mismo script `tsc -b && vite build` que ejecuta la integración continua (allí se lanza desde la raíz con `npm run build`, que delega en este).
+- Carpeta de salida: `dist`, es decir, `apps/web/dist`.
+- Reescritura: cualquier ruta que no corresponda a un archivo del build responde con `index.html`, para que la app de una sola página funcione al abrir o recargar cualquier URL. Vercel sirve primero los archivos que existen, así que la reescritura nunca tapa `sw.js`, el manifest, los iconos ni los archivos de `assets/`. Las rutas bajo `assets/` y los `workbox-*.js` que no existen devuelven 404 en lugar de `index.html`, para que un archivo con hash que falta no se sirva como HTML.
+- Caché: los archivos con hash en el nombre (`assets/*` y `workbox-*.js`) se guardan un año como inmutables (`public, max-age=31536000, immutable`). Todo lo demás, en particular `index.html`, `sw.js`, `registerSW.js` y `manifest.webmanifest`, se revalida en cada visita (`public, max-age=0, must-revalidate`), para que una versión nueva llegue en cuanto se despliega.
+
+La versión de Node también está fijada en el repositorio. Vercel toma la versión del campo `engines.node` del `package.json` del directorio raíz del proyecto (`apps/web/package.json`), no del de la raíz del repositorio, y sin ese campo usaría la versión elegida en el panel (por defecto, la más reciente). Por eso `apps/web/package.json` repite el mismo rango que la raíz, `>=24.15.0 <25`, con el que Vercel usa Node 24. Si cambia el rango de la raíz, hay que cambiarlo también en `apps/web/package.json` y en `.nvmrc`. Vercel solo permite elegir la versión mayor y actualiza la menor por su cuenta.
+
+### Crear el proyecto en Vercel
+
+Se hace una sola vez, desde el panel de Vercel (Add New > Project, importando el repositorio `rcronald/orki-app`):
+
+| Ajuste                                                                     | Valor                                                                                                                                     |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Root Directory                                                             | `apps/web`                                                                                                                                |
+| Include files outside the root directory in the Build Step                 | Activado (es el valor por defecto). Hace falta porque el `package-lock.json` y el `node_modules` están en la raíz del repositorio.        |
+| Framework Preset                                                           | Vite (Vercel lo detecta; `vercel.json` también lo fija).                                                                                  |
+| Build Command, Output Directory, Install Command                           | Sin override: los valores salen de `vercel.json`. Si el panel muestra un override activado, desactívalo para que no haya dos fuentes.     |
+| Node.js Version (Settings > Build and Deployment)                          | 24.x. Es solo para que el panel coincida con el repositorio: `engines` de `apps/web/package.json` manda y, si no coinciden, Vercel avisa. |
+| Production Branch (Settings > Environments > Production > Branch Tracking) | `main` (Vercel elige `main` por defecto al importar; basta comprobarlo)                                                                   |
+
+### Variables por ambiente
+
+Las tres variables de la app (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)) se definen en Settings > Environment Variables, con un valor distinto según el ambiente de Vercel:
+
+| Ambiente de Vercel | `VITE_SUPABASE_URL`            | `VITE_SUPABASE_PUBLISHABLE_KEY`             | `VITE_APP_ENV` |
+| ------------------ | ------------------------------ | ------------------------------------------- | -------------- |
+| Production         | URL del proyecto de producción | Clave publicable del proyecto de producción | `prod`         |
+| Preview            | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          |
+| Development        | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          |
+
+Vite escribe estos valores en el JavaScript durante el build, así que un cambio de variable solo se aplica en el siguiente despliegue: después de cambiarla hay que volver a desplegar (Redeploy). Si falta alguna, el build termina bien, pero la app muestra la pantalla de error de configuración. El ambiente Development de Vercel solo se usa con la CLI de Vercel (`vercel env pull`, `vercel dev`), que este proyecto no necesita; se rellena igual para que los tres ambientes estén completos. Ninguna de estas variables es secreta: al crearlas se elige el tipo Config, no Secret, para que sus valores sigan siendo legibles en el panel.
 
 ## Flujo de ramas
 
