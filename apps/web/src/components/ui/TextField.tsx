@@ -10,8 +10,8 @@ export type TextFieldProps = Omit<
   /** Ayuda opcional bajo el campo. */
   hint?: ReactNode
   /**
-   * Mensaje de error (añadido de la app, estilos en bundle-extra.css). Marca el
-   * campo con aria-invalid y va con el icono triangle-alert.
+   * Mensaje de error. Marca el campo con aria-invalid y va con el icono
+   * triangle-alert.
    */
   error?: ReactNode
   /** Clase adicional del contenedor orki-field. */

@@ -6,6 +6,8 @@
 .orki-btn--primary:hover, .orki-btn--primary.is-hover { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-neutral-900); }
 .orki-btn--secondary { background: transparent; border-color: var(--color-secondary); color: var(--color-secondary); }
 .orki-btn--secondary:hover, .orki-btn--secondary.is-hover { background: var(--color-neutral-50); }
+.orki-btn--danger { background: var(--color-danger); color: var(--color-neutral-0); }
+.orki-btn--danger:hover:not(:disabled, [aria-disabled="true"]), .orki-btn--danger.is-hover { background: var(--color-danger-soft); border-color: var(--color-danger); color: var(--color-neutral-900); }
 .orki-btn:disabled, .orki-btn[aria-disabled="true"] { background: var(--color-neutral-50); border-color: transparent; color: var(--color-neutral-700); cursor: not-allowed; }
 
 .orki-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; padding: var(--space-2) var(--space-4); border: 1.5px solid transparent; border-radius: var(--radius-pill); background: var(--color-neutral-50); color: var(--color-neutral-900); font: 400 14px/20px var(--font-body); cursor: pointer; box-sizing: border-box; }
@@ -19,6 +21,9 @@
 .orki-field__input { padding: var(--space-3); border: 1.5px solid var(--color-secondary); border-radius: var(--radius-md); background: var(--color-neutral-0); color: var(--color-neutral-900); font: 400 16px/24px var(--font-body); box-sizing: border-box; width: 100%; }
 .orki-field__input::placeholder { color: var(--color-neutral-700); opacity: 1; }
 .orki-field__hint { font: 400 12px/16px var(--font-body); color: var(--color-neutral-700); }
+.orki-field__input[aria-invalid="true"] { border-color: var(--color-danger); }
+.orki-field__error { display: flex; align-items: center; gap: var(--space-1); font: 600 14px/20px var(--font-body); color: var(--color-danger); }
+.orki-field__error svg { width: 16px; height: 16px; flex: none; }
 
 .orki-badge { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font: 600 12px/16px var(--font-body); }
 .orki-badge svg { width: 14px; height: 14px; flex: none; }
@@ -31,6 +36,7 @@
 .orki-card__name { margin: 0; font: italic 400 18px/26px var(--font-display); color: var(--color-neutral-900); }
 .orki-card__common { margin: 0; font: 400 14px/20px var(--font-body); color: var(--color-neutral-700); }
 .orki-card__meta { margin: var(--space-1) 0 0; font: 400 12px/16px var(--font-body); color: var(--color-neutral-700); }
+.orki-card__name, .orki-card__common, .orki-card__meta { overflow-wrap: anywhere; }
 
 .orki-answer { display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-5); background: var(--color-neutral-50); border-radius: var(--radius-lg); }
 .orki-answer__icon { display: grid; place-items: center; flex: none; width: 48px; height: 48px; border: 1.5px solid var(--color-neutral-700); border-radius: var(--radius-pill); background: var(--color-neutral-0); color: var(--color-neutral-700); box-sizing: border-box; }
@@ -41,4 +47,29 @@
 .orki-answer--yes .orki-answer__icon { border-color: var(--color-success); background: var(--color-success); color: var(--color-neutral-0); }
 .orki-answer--yes .orki-answer__title { color: var(--color-success); }
 
-.orki-btn:focus-visible, .orki-chip:focus-visible, .orki-field__input:focus-visible, .orki-field__input.is-focus, .orki-card:focus-visible { outline: 2px solid var(--color-secondary); outline-offset: 2px; }
+.orki-autocomplete { position: relative; }
+.orki-autocomplete__control { position: relative; }
+.orki-autocomplete__icon { position: absolute; top: 50%; left: var(--space-3); width: 20px; height: 20px; transform: translateY(-50%); color: var(--color-neutral-700); pointer-events: none; }
+.orki-autocomplete__input { padding-left: calc(var(--space-3) + 20px + var(--space-2)); }
+.orki-autocomplete__popup { position: absolute; top: calc(100% + var(--space-1)); right: 0; left: 0; z-index: 10; max-height: 50dvh; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-1); border: 1.5px solid var(--color-secondary); border-radius: var(--radius-md); background: var(--color-neutral-0); box-sizing: border-box; }
+.orki-autocomplete__popup[hidden], .orki-autocomplete__listbox[hidden], .orki-collapsible__content[hidden] { display: none; }
+.orki-autocomplete__message { margin: 0; padding: var(--space-3); font: 400 14px/20px var(--font-body); color: var(--color-neutral-700); }
+.orki-autocomplete__listbox { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.orki-autocomplete__option { display: flex; flex-direction: column; justify-content: center; min-height: 48px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); color: var(--color-neutral-900); cursor: pointer; overflow-wrap: anywhere; box-sizing: border-box; }
+.orki-autocomplete__option:hover, .orki-autocomplete__option.is-hover { background: var(--color-neutral-50); }
+.orki-autocomplete__option[aria-selected="true"] { background: var(--color-primary-soft); outline: 2px solid var(--color-secondary); outline-offset: -2px; }
+.orki-autocomplete__label { font: 400 16px/24px var(--font-body); }
+.orki-autocomplete__label--scientific { font: italic 400 18px/26px var(--font-display); }
+.orki-autocomplete__secondary { font: 400 14px/20px var(--font-body); color: var(--color-neutral-700); }
+.orki-autocomplete__action { flex-direction: row; align-items: center; justify-content: flex-start; gap: var(--space-2); font: 600 16px/24px var(--font-body); color: var(--color-secondary); }
+.orki-autocomplete__option + .orki-autocomplete__action { border-top: 1.5px solid var(--color-neutral-50); }
+.orki-autocomplete__action-icon { flex: none; width: 20px; height: 20px; }
+
+.orki-collapsible__heading { margin: 0; }
+.orki-collapsible__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: 48px; padding: var(--space-3); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-secondary); font: 600 16px/24px var(--font-body); text-align: left; cursor: pointer; box-sizing: border-box; }
+.orki-collapsible__header:hover, .orki-collapsible__header.is-hover { background: var(--color-neutral-50); }
+.orki-collapsible__icon { flex: none; width: 20px; height: 20px; }
+.orki-collapsible__header[aria-expanded="true"] .orki-collapsible__icon { transform: rotate(180deg); }
+.orki-collapsible__content { padding: var(--space-2) var(--space-3) var(--space-3); }
+
+.orki-btn:focus-visible, .orki-chip:focus-visible, .orki-field__input:focus-visible, .orki-field__input.is-focus, .orki-card:focus-visible, .orki-collapsible__header:focus-visible { outline: 2px solid var(--color-secondary); outline-offset: 2px; }

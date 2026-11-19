@@ -118,19 +118,11 @@ La fuente de verdad del diseño es el [design system de Orki](https://claude.ai/
 
 Los tokens viven en `apps/web/src/styles/tokens.css`, que es la única fuente de sus valores dentro de la app. Cada token es una variable CSS con el mismo nombre que en el design system (`var(--color-primary)`, `var(--space-4)`, `var(--radius-md)`) y, a la vez, forma parte del tema de Tailwind. La prueba de contraste (`src/styles/contrast.test.ts`) y la página de muestra leen ese archivo, así que un cambio de valor se hace solo ahí.
 
-Hay tres cambios que la app aplica antes de devolverlos al design system: `color-primary` pasa a `#D52E66` y se añaden `color-danger` (`#A8281C`) y `color-danger-soft` (`#FBE9E7`).
-
 ### Hojas de estilos
 
-`apps/web/src/index.css` importa Tailwind, las fuentes (`styles/fonts.css`, servidas desde la app para que funcionen sin conexión), los tokens y tres hojas de estilos de componentes, todas en la capa `components` de Tailwind:
+`apps/web/src/index.css` importa Tailwind, las fuentes (`styles/fonts.css`, servidas desde la app para que funcionen sin conexión), los tokens y una sola hoja de estilos de componentes, `styles/bundle.css`, en la capa `components` de Tailwind.
 
-| Archivo                         | Qué es                                                                                                                                                              |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `styles/bundle.css`             | Copia literal de `components/bundle.css` del design system, con las clases `orki-`. No se edita ni se formatea, para poder compararla con el original.              |
-| `styles/bundle-extra.css`       | Lo que la app añade a esos componentes y el sistema aún no tiene: botón destructivo, error de campo y el ajuste de la tarjeta para que un nombre largo no se corte. |
-| `styles/components-pending.css` | Estilos de los componentes que el sistema todavía no define: el buscador con autocompletado y la sección plegable.                                                  |
-
-Lo de `bundle-extra.css` y `components-pending.css` se devuelve al design system en el issue #46. Las dos hojas usan solo variables de `tokens.css`.
+`styles/bundle.css` es una copia literal de `components/bundle.css` del design system, con las clases `orki-`. No se edita ni se formatea, para poder compararla con el original. Un cambio de estilo de un componente se hace primero en el design system y después se vuelve a copiar aquí.
 
 ### Utilidades de Tailwind
 
