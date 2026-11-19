@@ -72,6 +72,10 @@ const PAIRS: readonly Pair[] = [
   ui('color-danger', 'color-danger-soft'),
   // Borde del campo con error (bundle-extra.css).
   ui('color-danger', 'color-neutral-0'),
+  // Sugerencia activa del buscador (components-pending.css): texto secundario
+  // y acción final sobre color-primary-soft, con el anillo color-secondary.
+  text('color-neutral-700', 'color-primary-soft'),
+  ui('color-secondary', 'color-primary-soft'),
 ]
 
 function readColorTokens(css: string): Map<string, string> {
