@@ -5,7 +5,8 @@
  * archivo.
  *
  * Cambios aún no devueltos al design system (issue #3): color-primary pasa de
- * #D83B6F a #D52E66 y se añaden color-danger y color-danger-soft.
+ * #D83B6F a #D52E66, color-success de #2E7D4F a #2D7B4E, y se añaden
+ * color-danger y color-danger-soft.
  *
  * Se vacían los espacios de nombres por defecto de Tailwind (paleta, tamaños de
  * texto, pesos, interlineados, radios, sombras, familias y escala numérica de
@@ -33,7 +34,7 @@
   --color-primary: #d52e66;
   --color-primary-soft: #fce4ec;
   --color-secondary: #336049;
-  --color-success: #2e7d4f;
+  --color-success: #2d7b4e;
   --color-warning: #d9a441;
   --color-danger: #a8281c;
   --color-danger-soft: #fbe9e7;

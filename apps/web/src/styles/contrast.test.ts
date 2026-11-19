@@ -34,7 +34,7 @@ describe('contraste de los tokens de color', () => {
     ).toBeCloseTo(4.65, 2)
     expect(
       contrastRatio(color('color-success'), color('color-neutral-50')),
-    ).toBeCloseTo(4.48, 2)
+    ).toBeCloseTo(4.6, 2)
   })
 
   it.each(CONTRAST_PAIRS)(

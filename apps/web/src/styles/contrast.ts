@@ -35,9 +35,7 @@ const ui = (foreground: string, background: string): ContrastPair => ({
   min: UI,
 })
 
-// color-success sobre color-neutral-50 (4.48:1) no está: el sistema solo lo
-// permite en negrita o como relleno, nunca como texto normal. Tampoco
-// color-warning como texto ni color-primary como texto sobre
+// No están color-warning como texto ni color-primary como texto sobre
 // color-primary-soft, que el sistema prohíbe.
 export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text('color-neutral-0', 'color-primary'),
@@ -52,6 +50,7 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text('color-neutral-0', 'color-secondary'),
   text('color-neutral-0', 'color-success'),
   text('color-success', 'color-neutral-0'),
+  text('color-success', 'color-neutral-50'),
   text('color-neutral-900', 'color-warning'),
   text('color-neutral-0', 'color-danger'),
   text('color-danger', 'color-neutral-0'),
