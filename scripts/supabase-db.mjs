@@ -10,9 +10,11 @@
 // necesitan además SUPABASE_ACCESS_TOKEN y SUPABASE_DB_PASSWORD. Se leen del entorno y,
 // si no están ahí, del archivo supabase/.env (ignorado por git). El entorno tiene prioridad.
 //
-// La CLI no se enlaza con `supabase link`: el identificador del proyecto se le pasa en
-// SUPABASE_PROJECT_ID, que la CLI trata como proyecto enlazado, y así lee la contraseña
-// de SUPABASE_DB_PASSWORD sin que aparezca en la línea de comandos.
+// Antes de cada comando se enlaza el proyecto con `supabase link`. El enlace guarda en
+// supabase/.temp (ignorado por git) la URL del pooler de conexiones, que la CLI necesita
+// para conectarse por IPv4: la conexión directa a la base de datos solo funciona por IPv6,
+// que no está disponible en muchas redes ni en los ejecutores de GitHub Actions. La
+// contraseña se lee de SUPABASE_DB_PASSWORD y nunca aparece en la línea de comandos.
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -65,8 +67,8 @@ function entornoConCredenciales() {
     )
   }
 
-  // La CLI toma SUPABASE_PROJECT_ID como el proyecto enlazado.
-  entorno.SUPABASE_PROJECT_ID = entorno.SUPABASE_PROJECT_REF.trim()
+  // Si estuviera definida, la CLI la usaría como proyecto y pasaría por alto el enlace.
+  delete entorno.SUPABASE_PROJECT_ID
   return entorno
 }
 
@@ -80,7 +82,17 @@ function ejecutarCli(argumentos, entorno = process.env) {
   })
   if (resultado.error)
     fallar(`no se pudo ejecutar la CLI de Supabase: ${resultado.error.message}`)
-  process.exit(resultado.status ?? 1)
+  return resultado.status ?? 1
+}
+
+function ejecutarEnProyecto(argumentos) {
+  const entorno = entornoConCredenciales()
+  const enlace = ejecutarCli(
+    ['link', entorno.SUPABASE_PROJECT_REF.trim()],
+    entorno,
+  )
+  if (enlace !== 0) process.exit(enlace)
+  process.exit(ejecutarCli(argumentos, entorno))
 }
 
 const [accion, ...resto] = process.argv.slice(2)
@@ -93,17 +105,14 @@ switch (accion) {
         'indica un único nombre para la migración, por ejemplo: npm run db:new -- crear_tabla_plantas',
       )
     }
-    ejecutarCli(['migration', 'new', nombre])
+    process.exit(ejecutarCli(['migration', 'new', nombre]))
     break
   }
   case 'estado':
-    ejecutarCli(
-      ['migration', 'list', '--remote', ...resto],
-      entornoConCredenciales(),
-    )
+    ejecutarEnProyecto(['migration', 'list', '--remote', ...resto])
     break
   case 'aplicar':
-    ejecutarCli(['db', 'push', '--remote', ...resto], entornoConCredenciales())
+    ejecutarEnProyecto(['db', 'push', '--remote', ...resto])
     break
   default:
     fallar(
