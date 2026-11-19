@@ -9,3 +9,7 @@ package-lock.json
 
 # Documentación de producto: se edita a mano y sus tablas Markdown no se realinean
 docs/
+
+# Copia literal de components/bundle.css del design system: no se reformatea
+# para poder compararla con diff contra el original.
+apps/web/src/styles/bundle.css

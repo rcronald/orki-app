@@ -68,8 +68,10 @@ const PAIRS: readonly Pair[] = [
   // Bordes de campos y anillo de foco en color-secondary.
   ui('color-secondary', 'color-neutral-0'),
   ui('color-secondary', 'color-neutral-50'),
-  // Borde de los mensajes de error.
+  // Borde de los mensajes de error y del botón destructivo en hover.
   ui('color-danger', 'color-danger-soft'),
+  // Borde del campo con error (bundle-extra.css).
+  ui('color-danger', 'color-neutral-0'),
 ]
 
 function readColorTokens(css: string): Map<string, string> {

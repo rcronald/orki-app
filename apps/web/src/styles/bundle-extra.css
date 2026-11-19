@@ -1,0 +1,45 @@
+/*
+ * Añadidos de la app que el design system todavía no tiene (issue #3). Van
+ * aparte de bundle.css, que es una copia literal del sistema, y se devuelven a
+ * él en #46. Solo usan tokens de tokens.css.
+ *
+ * El rojo de error se parece en tono al rosa de marca: un error nunca se
+ * comunica solo con color, siempre lleva el icono triangle-alert y un texto.
+ */
+
+/* Botón destructivo, para acciones como borrar. */
+.orki-btn--danger {
+  background: var(--color-danger);
+  color: var(--color-neutral-0);
+}
+
+/* Hover como el del primario: fondo suave, borde y texto oscuro. */
+.orki-btn--danger:hover:not(:disabled, [aria-disabled='true']),
+.orki-btn--danger.is-hover {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+  color: var(--color-neutral-900);
+}
+
+/* Campo con error: el borde cambia y aria-invalid lo anuncia. */
+.orki-field__input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+/* Mensaje de error: icono triangle-alert de 16 px y texto. */
+.orki-field__error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+}
+
+.orki-field__error svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}

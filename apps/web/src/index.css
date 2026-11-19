@@ -1,6 +1,14 @@
 @import 'tailwindcss';
 @import './styles/fonts.css';
 @import './styles/tokens.css';
+/*
+ * Estilos de los componentes: bundle.css es copia literal del design system y
+ * bundle-extra.css lo que la app añade y el sistema aún no tiene. Van en la
+ * capa components, así las utilidades de Tailwind que se pasen en className
+ * (márgenes, ancho) se aplican por encima sin reescribir estos estilos.
+ */
+@import './styles/bundle.css' layer(components);
+@import './styles/bundle-extra.css' layer(components);
 
 @layer base {
   html {
