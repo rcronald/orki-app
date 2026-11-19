@@ -28,7 +28,7 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        theme_color: '#D83B6F',
+        theme_color: '#D52E66',
         background_color: '#FFFCF7',
         icons: [
           {
@@ -52,9 +52,11 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // JS, CSS y HTML del build; los iconos y el manifest los añade el plugin
-        // (includeAssets e iconos del manifest), así no se duplican en el precache.
-        globPatterns: ['**/*.{js,css,html}'],
+        // JS, CSS, HTML y fuentes (woff2) del build; los iconos y el manifest los
+        // añade el plugin (includeAssets e iconos del manifest), así no se
+        // duplican en el precache. Las fuentes van precacheadas para que la app
+        // se vea con su tipografía sin conexión.
+        globPatterns: ['**/*.{js,css,html,woff2}'],
         // Cualquier navegación sin coincidencia en caché responde con index.html.
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,

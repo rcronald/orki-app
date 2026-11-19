@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { deflateSync } from 'node:zlib'
 
-const BRAND = [0xd8, 0x3b, 0x6f]
+const BRAND = [0xd5, 0x2e, 0x66]
 const WHITE = [0xff, 0xff, 0xff]
 const SAMPLES = 4 // supermuestreo SAMPLES x SAMPLES por píxel
 
@@ -128,7 +128,7 @@ const ANY = { cornerRadius: 0.22, letterScale: 1 }
 const FULL_BLEED = { cornerRadius: 0, letterScale: 0.9 }
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="22" fill="#D83B6F"/>
+  <rect width="100" height="100" rx="22" fill="#D52E66"/>
   <ellipse cx="50" cy="50" rx="${(LETTER.rx - LETTER.stroke / 2) * 100}" ry="${(LETTER.ry - LETTER.stroke / 2) * 100}" fill="none" stroke="#FFFFFF" stroke-width="${LETTER.stroke * 100}"/>
 </svg>
 `

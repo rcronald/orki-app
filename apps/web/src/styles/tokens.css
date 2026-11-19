@@ -1,0 +1,122 @@
+/*
+ * Tokens del design system de Orki (tokens.json) como variables CSS con sus
+ * mismos nombres. Es la única fuente de sus valores dentro de la app: Tailwind
+ * genera las utilidades a partir de aquí y la prueba de contraste lee este
+ * archivo.
+ *
+ * Cambios aún no devueltos al design system (issue #3): color-primary pasa de
+ * #D83B6F a #D52E66, color-success de #2E7D4F a #2D7B4E, y se añaden
+ * color-danger y color-danger-soft.
+ *
+ * Se vacían los espacios de nombres por defecto de Tailwind (paleta, tamaños de
+ * texto, pesos, interlineados, radios, sombras, familias y escala numérica de
+ * espaciado) para que solo existan utilidades con valores del sistema.
+ */
+
+@theme static {
+  /* Sin valores por defecto de Tailwind en estos espacios de nombres. */
+  --color-*: initial;
+  --font-*: initial;
+  --font-weight-*: initial;
+  --text-*: initial;
+  --leading-*: initial;
+  --radius-*: initial;
+  --radius: initial;
+  --shadow-*: initial;
+  --shadow: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --drop-shadow: initial;
+  --spacing-*: initial;
+  --spacing: initial;
+
+  /* Color */
+  --color-primary: #d52e66;
+  --color-primary-soft: #fce4ec;
+  --color-secondary: #336049;
+  --color-success: #2d7b4e;
+  --color-warning: #d9a441;
+  --color-danger: #a8281c;
+  --color-danger-soft: #fbe9e7;
+  --color-neutral-0: #fffcf7;
+  --color-neutral-50: #f6f1e8;
+  --color-neutral-700: #545454;
+  --color-neutral-900: #1f1f1f;
+  --overlay-genus: rgba(255, 252, 247, 0.85);
+
+  /* Familias */
+  --font-display: 'Playfair Display', Lora, Georgia, serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --default-font-family: var(--font-body);
+  --default-mono-font-family: var(--font-body);
+
+  /* Pesos usados por los estilos de texto */
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+
+  /*
+   * Estilos de texto: tamaño, interlineado y peso. text-display y text-xl van
+   * con font-display; el resto con font-body. scientific-name está más abajo.
+   */
+  --text-display: 32px;
+  --text-display--line-height: 40px;
+  --text-display--font-weight: 600;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
+  --text-xl--font-weight: 600;
+  --text-lg: 18px;
+  --text-lg--line-height: 26px;
+  --text-lg--font-weight: 400;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-md--font-weight: 400;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-sm--font-weight: 400;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-xs--font-weight: 400;
+
+  /* Espaciado */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Radios */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Sombra */
+  --shadow-card: 0 2px 8px rgba(31, 31, 31, 0.08);
+
+  /* Movimiento */
+  --motion-bg: 300ms ease-in-out;
+}
+
+/*
+ * Espaciado en Tailwind: las utilidades llevan el nombre del token
+ * (p-space-4, gap-space-2, mt-space-6) y no existe la escala numérica (p-5 no
+ * genera nada), así space-5 (24 px) no se confunde con el paso 5 de Tailwind.
+ */
+@theme inline {
+  --spacing-space-1: var(--space-1);
+  --spacing-space-2: var(--space-2);
+  --spacing-space-3: var(--space-3);
+  --spacing-space-4: var(--space-4);
+  --spacing-space-5: var(--space-5);
+  --spacing-space-6: var(--space-6);
+}
+
+/* Nombre científico: siempre font-display en cursiva; por defecto a 18/26. */
+@utility scientific-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: var(--font-weight-normal);
+  font-size: var(--text-lg);
+  line-height: var(--text-lg--line-height);
+}

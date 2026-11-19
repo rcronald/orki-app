@@ -15,6 +15,9 @@ dist-ssr/
 .env.*
 !.env.example
 
+# Copias de trabajo temporales de los agentes
+.claude/worktrees/
+
 # Supabase (estado local de la CLI)
 supabase/.temp/
 supabase/.branches/

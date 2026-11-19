@@ -6,7 +6,7 @@ La especificación completa de la Fase 1 está en [docs/specification.md](docs/s
 
 ## Estado actual
 
-El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. Todavía no hay autenticación; llega en un issue posterior.
+El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. La app ya tiene los tokens y los componentes base del design system de Orki, con una página interna de muestra fuera de producción (ver [Design system en la app](#design-system-en-la-app)), aunque todavía no hay pantallas reales ni enrutamiento. Todavía no hay autenticación; llega en un issue posterior.
 
 ## Requisitos
 
@@ -82,8 +82,13 @@ orki-app/
 │       ├── public/            Iconos y archivos estáticos
 │       ├── scripts/           Utilidades de la app (generación de iconos)
 │       ├── src/               Código fuente y pruebas
+│       │   ├── assets/        Marcador sin-foto.svg del design system
+│       │   ├── components/    Componentes de la app
+│       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
-│       │   └── lib/           Cliente de Supabase
+│       │   ├── lib/           Cliente de Supabase
+│       │   ├── showcase/      Página interna de muestra (solo fuera de producción)
+│       │   └── styles/        Tokens, fuentes y hojas de estilos de los componentes
 │       ├── .env.example       Plantilla de las variables de entorno de la app
 │       └── vercel.json        Configuración del despliegue en Vercel
 ├── docs/
@@ -104,6 +109,65 @@ orki-app/
 Las dependencias se declaran en el `package.json` de cada workspace y se instalan desde la raíz. Las herramientas comunes (ESLint, Prettier, la CLI de Supabase) viven en el `package.json` de la raíz.
 
 Hay dos versiones de TypeScript a propósito. La app compila y comprueba tipos con TypeScript 7 (`apps/web`). La raíz instala TypeScript 6 solo para ESLint, porque `typescript-eslint` todavía no soporta TypeScript 7. Cuando lo soporte, se elimina el TypeScript de la raíz.
+
+## Design system en la app
+
+La fuente de verdad del diseño es el [design system de Orki](https://claude.ai/artifact/BCQrAtoNqdjgkxEBfLpoaK): sus tokens, sus reglas de color, tipografía, iconos y voz, y los estilos de sus componentes. La app los lleva a código sin cambiarles el nombre; si algo difiere, manda el design system y la app se ajusta.
+
+### Tokens
+
+Los tokens viven en `apps/web/src/styles/tokens.css`, que es la única fuente de sus valores dentro de la app. Cada token es una variable CSS con el mismo nombre que en el design system (`var(--color-primary)`, `var(--space-4)`, `var(--radius-md)`) y, a la vez, forma parte del tema de Tailwind. La prueba de contraste (`src/styles/contrast.test.ts`) y la página de muestra leen ese archivo, así que un cambio de valor se hace solo ahí.
+
+Hay tres cambios que la app aplica antes de devolverlos al design system: `color-primary` pasa a `#D52E66` y se añaden `color-danger` (`#A8281C`) y `color-danger-soft` (`#FBE9E7`).
+
+### Hojas de estilos
+
+`apps/web/src/index.css` importa Tailwind, las fuentes (`styles/fonts.css`, servidas desde la app para que funcionen sin conexión), los tokens y tres hojas de estilos de componentes, todas en la capa `components` de Tailwind:
+
+| Archivo                         | Qué es                                                                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `styles/bundle.css`             | Copia literal de `components/bundle.css` del design system, con las clases `orki-`. No se edita ni se formatea, para poder compararla con el original.              |
+| `styles/bundle-extra.css`       | Lo que la app añade a esos componentes y el sistema aún no tiene: botón destructivo, error de campo y el ajuste de la tarjeta para que un nombre largo no se corte. |
+| `styles/components-pending.css` | Estilos de los componentes que el sistema todavía no define: el buscador con autocompletado y la sección plegable.                                                  |
+
+Lo de `bundle-extra.css` y `components-pending.css` se devuelve al design system en el issue #46. Las dos hojas usan solo variables de `tokens.css`.
+
+### Utilidades de Tailwind
+
+Los valores por defecto de Tailwind están vaciados: solo existen utilidades con valores del sistema. `bg-white`, `text-base`, `rounded`, `font-bold` o `p-5` no generan nada. Se usan los nombres de los tokens:
+
+- Color: `bg-neutral-0`, `bg-neutral-50`, `text-neutral-900`, `text-neutral-700`, `text-secondary`, `border-secondary`, `bg-primary`, `bg-danger-soft`.
+- Texto: `text-display`, `text-xl`, `text-lg`, `text-md`, `text-sm` y `text-xs` (cada uno con su interlineado y peso), `font-display`, `font-body`, `font-normal`, `font-semibold` y la utilidad `scientific-name` para los nombres científicos (font-display en cursiva).
+- Espaciado: las utilidades llevan el nombre del token, `p-space-4`, `gap-space-2`, `mt-space-6`, `w-space-6`. No existe la escala numérica, así `space-5` (24 px) no se confunde con el paso 5 de Tailwind.
+- Radios y sombra: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-pill` y `shadow-card` (solo en tarjetas).
+
+Los componentes usan las clases `orki-` de las hojas de estilos; Tailwind queda para componer las pantallas. Un `className` con utilidades de Tailwind (por ejemplo un margen) se aplica por encima de los estilos del componente sin reescribirlos.
+
+### Componentes
+
+Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo de índice: se importa cada uno desde su archivo.
+
+| Componente        | Para qué                                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `Button`          | Acciones. Variantes `primary` (una por pantalla), `secondary` y `danger`; ancho completo con `block`.                 |
+| `Chip`            | Filtros y opciones cortas; botón de alternar con `selected`.                                                          |
+| `ChipGroup`       | Fila de chips con su nombre para el lector de pantalla.                                                               |
+| `TextField`       | Campo de texto con etiqueta visible, ayuda y error.                                                                   |
+| `StatusBadge`     | Validación del nombre: "Validada" o "Nombre por validar".                                                             |
+| `SpecimenCard`    | Tarjeta de un ejemplar; sin foto usa el marcador `sin-foto.svg`.                                                      |
+| `OwnershipAnswer` | Respuesta de "¿Ya la tengo?".                                                                                         |
+| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados y una acción final opcional.                          |
+| `Collapsible`     | Sección plegable.                                                                                                     |
+| `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`. |
+
+### Página de muestra
+
+Fuera de producción, la ruta `/muestra` enseña todos los tokens (cada color con su valor y la razón de contraste de sus pares válidos, los estilos de texto, el espaciado, los radios y la sombra) y todos los componentes con sus variantes y estados. Para abrirla, con `npm run dev` en marcha, ve a <http://localhost:5173/muestra>; en una vista previa de Vercel, añade `/muestra` a la URL.
+
+- Solo existe cuando `VITE_APP_ENV` no es `prod`. Con `prod`, la ruta muestra la app normal y el código de la página no entra en el build: `main.tsx` la carga de forma diferida detrás de una comparación con `import.meta.env.VITE_APP_ENV`, que Vite resuelve al construir, y el import desaparece. Además, al arrancar se comprueba otra vez el ambiente ya validado.
+- No hay enrutador: `main.tsx` mira `location.pathname` al arrancar. Abrir o recargar `/muestra` funciona porque Vercel y el service worker responden cualquier ruta con `index.html`.
+- Los nombres y valores que muestra se leen de `tokens.css`, y los contrastes usan la misma lista de pares y el mismo cálculo que la prueba de contraste (`src/styles/contrast.ts`), así la página no se desactualiza.
+- `src/showcase/ShowcasePage.test.tsx` pasa [axe-core](https://github.com/dequelabs/axe-core) sobre la página (al cargar y con el buscador y la sección plegable abiertos) y falla ante cualquier incumplimiento de nivel A o AA de WCAG. jsdom no calcula colores, así que esa revisión no mide el contraste: lo cubre `contrast.test.ts`.
 
 ## Variables de entorno de la app
 

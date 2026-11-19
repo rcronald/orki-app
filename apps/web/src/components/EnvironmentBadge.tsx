@@ -14,7 +14,7 @@ export function EnvironmentBadge({ env }: EnvironmentBadgeProps) {
   if (env === 'prod') return null
 
   return (
-    <p className="pointer-events-none fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-[max(0.5rem,env(safe-area-inset-left))] z-50 rounded-full border border-amber-700 bg-amber-100/90 px-2 py-0.5 text-xs font-semibold text-amber-900">
+    <p className="pointer-events-none fixed bottom-[max(var(--space-2),env(safe-area-inset-bottom))] left-[max(var(--space-2),env(safe-area-inset-left))] z-50 rounded-sm bg-warning px-space-2 py-space-1 text-xs font-semibold text-neutral-900">
       <span className="sr-only">Ambiente: </span>
       {LABELS[env]}
     </p>
