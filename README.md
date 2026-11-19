@@ -105,6 +105,40 @@ Las dependencias se declaran en el `package.json` de cada workspace y se instala
 
 Hay dos versiones de TypeScript a propósito. La app compila y comprueba tipos con TypeScript 7 (`apps/web`). La raíz instala TypeScript 6 solo para ESLint, porque `typescript-eslint` todavía no soporta TypeScript 7. Cuando lo soporte, se elimina el TypeScript de la raíz.
 
+## Variables de entorno de la app
+
+La app web lee tres variables de entorno. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
+
+| Variable                        | Qué es                                                        | Dónde se obtiene                                                                                   |
+| ------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | URL del proyecto de Supabase, con `https`.                    | En el panel de Supabase, botón Connect o Project Settings > Data API (Project URL).                |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Clave publicable del proyecto. Empieza por `sb_publishable_`. | En Project Settings > API Keys. No uses nunca una clave secreta (`sb_secret_`); la app la rechaza. |
+| `VITE_APP_ENV`                  | Ambiente al que apunta la app: `dev` o `prod`.                | Lo decide quien configura el ambiente. Coincide con los nombres de los environments de GitHub.     |
+
+La URL y la clave publicable no son secretas, pero tampoco se versionan, porque cambian de un ambiente a otro.
+
+### Preparar el `.env` local
+
+En tu máquina la app apunta siempre al proyecto de Supabase de desarrollo. Copia la plantilla y completa los valores:
+
+```sh
+cp apps/web/.env.example apps/web/.env.local
+```
+
+`apps/web/.env.local` está ignorado por git. Pon en él la URL y la clave publicable del proyecto de desarrollo y deja `VITE_APP_ENV=dev`. Si cambias el archivo con el servidor en marcha, reinicia `npm run dev`.
+
+No lo confundas con `supabase/.env`: ese archivo es para la CLI de Supabase y contiene credenciales secretas (ver [Credenciales](#credenciales)); `apps/web/.env.local` es para la app y no lleva ningún secreto.
+
+### Validación al arrancar
+
+Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clave no está vacía (y no es una clave secreta) y que el ambiente es `dev` o `prod`. Si algo falla, en lugar de la app aparece una pantalla de error que nombra cada variable con problemas y el motivo, sin mostrar nunca sus valores; la consola del navegador muestra también los nombres.
+
+Fuera de producción, la app muestra en la esquina inferior izquierda una etiqueta pequeña con el ambiente ("Desarrollo"), para comprobar a simple vista a qué ambiente apunta una vista previa o el servidor local. Con `VITE_APP_ENV=prod` no aparece.
+
+El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada. No guarda sesión de Supabase Auth: la autenticación llegará con Clerk.
+
+Las pruebas no leen estas variables (la validación se prueba con objetos de entorno de ejemplo), así que `npm test` y `npm run build` funcionan sin ningún `.env`, también en la integración continua.
+
 ## Base de datos y migraciones
 
 Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.
