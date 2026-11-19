@@ -19,6 +19,8 @@ describe('ConfigError', () => {
         name: 'La app no está bien configurada',
       }),
     ).toBeInTheDocument()
+    // El error no se comunica solo con color.
+    expect(screen.getByText('Error de configuración')).toBeInTheDocument()
     expect(screen.getByText('VITE_SUPABASE_URL')).toBeInTheDocument()
     expect(
       screen.getByText('VITE_SUPABASE_PUBLISHABLE_KEY'),
