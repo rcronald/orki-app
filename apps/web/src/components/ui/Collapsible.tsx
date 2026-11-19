@@ -1,10 +1,10 @@
-import { ChevronDown } from 'lucide-react'
 import {
   useId,
   useState,
   type ComponentPropsWithRef,
   type ReactNode,
 } from 'react'
+import { Icon } from './Icon.tsx'
 
 type HeadingLevel = 2 | 3 | 4 | 5 | 6
 
@@ -62,7 +62,7 @@ export function Collapsible({
       onClick={toggle}
     >
       <span>{title}</span>
-      <ChevronDown className="orki-collapsible__icon" aria-hidden="true" />
+      <Icon name="chevron-down" className="orki-collapsible__icon" />
     </button>
   )
 

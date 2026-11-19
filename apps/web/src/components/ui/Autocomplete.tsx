@@ -1,4 +1,3 @@
-import { Plus, Search } from 'lucide-react'
 import {
   useEffect,
   useId,
@@ -8,6 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
+import { Icon } from './Icon.tsx'
 
 export interface AutocompleteOption {
   /** Identificador estable; sirve para la clave y el id de la opción. */
@@ -241,7 +241,7 @@ export function Autocomplete({
         {label}
       </label>
       <div className="orki-autocomplete__control">
-        <Search className="orki-autocomplete__icon" aria-hidden="true" />
+        <Icon name="search" className="orki-autocomplete__icon" />
         <input
           {...inputProps}
           id={inputId}
@@ -329,10 +329,7 @@ export function Autocomplete({
                 className="orki-autocomplete__option orki-autocomplete__action"
                 onClick={() => choose(options.length)}
               >
-                <Plus
-                  className="orki-autocomplete__action-icon"
-                  aria-hidden="true"
-                />
+                <Icon name="plus" className="orki-autocomplete__action-icon" />
                 <span>{action.label}</span>
               </li>
             )}

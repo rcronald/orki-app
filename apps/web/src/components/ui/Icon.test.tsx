@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Icon, type IconName } from './Icon.tsx'
+import { ICON_NAMES } from './icons.ts'
 
 // Subconjunto del design system (design-system.json, assetGroups.Icons).
 const SYSTEM_ICONS: readonly IconName[] = [
@@ -27,6 +28,10 @@ const SYSTEM_ICONS: readonly IconName[] = [
 ]
 
 describe('Icon', () => {
+  it('ICON_NAMES lista exactamente el subconjunto del sistema', () => {
+    expect([...ICON_NAMES].sort()).toEqual([...SYSTEM_ICONS].sort())
+  })
+
   it.each(SYSTEM_ICONS)(
     '%s: SVG en línea con currentColor y trazo de 2 px, oculto',
     (name) => {
