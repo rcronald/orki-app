@@ -20,6 +20,7 @@ Las tablas viven en el esquema `public` y sus identificadores están en inglés:
 - Inventario: `profiles` (perfil de cada usuario de Clerk) y `plants` (ejemplares). El usuario es el id de Clerk, de tipo texto, y por defecto se toma del claim `sub` del token de sesión. Con sesión (`authenticated`), cada usuario lee, crea, actualiza y borra solo su perfil y sus plantas: las políticas comparan con `(select public.requesting_user_id())`, no dejan crear una planta a nombre de otro ni cambiar su dueño, y no dan más acceso al administrador de catálogo. `authenticated` puede escribir todas las columnas de `plants` menos `validation`, que solo ajustan el disparador de sincronización, `service_role` y las futuras funciones de administrador; así un usuario no puede marcar sus plantas como "no identificable" ni validarlas sin especie. Una columna nueva de `plants` hay que concedérsela explícitamente a `authenticated`. Sin sesión (`anon`) no hay ningún acceso.
 - Identidad: `public.requesting_user_id()` devuelve el id de usuario de Clerk de la petición (`auth.jwt()->>'sub'`), o `null` sin sesión. Es `stable`, `security invoker` y con `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role` (la API la expone en `/rest/v1/rpc/requesting_user_id`) y no lee ninguna tabla. La usan el panel de diagnóstico de la app y las políticas RLS de perfiles y plantas (#64).
 - Rol de administrador: `public.is_catalog_admin()` es verdadera solo si el claim de primer nivel `app_role` del token vale exactamente `catalog_admin` (falsa sin sesión, sin el claim, con otro valor o con el rol en otro claim); nunca devuelve `null`. Mismas propiedades y permisos que `requesting_user_id()`. No hay columna de rol en la base de datos: el rol vive en Clerk (ver [Rol de administrador del catálogo](../README.md#rol-de-administrador-del-catálogo)). El guardián `private.require_catalog_admin()` lanza el error `42501` si la petición no es de un administrador; lo usan las [funciones de administrador](#funciones-de-administrador).
+- Búsqueda: `public.search_species(query, max_results)` busca especies por nombre científico, sinónimo o nombre común, tolerando errores de tipeo, tildes, mayúsculas y espacios de más. Se puede llamar sin sesión. Ver [Búsqueda de especies](#búsqueda-de-especies).
 - Disparadores, con sus funciones en el esquema `private` (no expuesto en la API): al enlazar una planta a una especie, la planta toma el género y el tipo de la especie y queda validada; al desenlazarla vuelve a "por validar"; si cambian el género o el tipo de una especie, se propagan a sus plantas; y `updated_at` se actualiza solo en todas las tablas.
 
 Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` solo puede leer el catálogo; `authenticated` lee el catálogo, lo escribe solo si es administrador (lo deciden las políticas) y gestiona su propio perfil y sus plantas; y `service_role` puede leer y escribir todo.
@@ -52,6 +53,7 @@ Las pruebas están organizadas por tema, un archivo por tema:
 | `politicas_plantas_y_perfiles.sql` | Políticas y permisos de `profiles` y `plants`: cada usuario solo lo suyo, sin cambiar el dueño ni escribir `validation`; el administrador no ve más; `anon` cerrado. |
 | `politicas_catalogo.sql`           | Escritura del catálogo: anónimo, usuario sin rol y administrador; tokens que no dan el rol; `is_catalog_admin()`.                                                    |
 | `funciones_administrador.sql`      | El guardián `private.require_catalog_admin()` y el patrón de las funciones de administrador, con ejemplos que la regla general acepta y rechaza.                     |
+| `busqueda_especies.sql`            | Normalización, índices de trigramas y `search_species()`: errores de tipeo, tildes, prefijos, sinónimos, orden, límites, permisos y que el plan usa los índices.     |
 | `datos_ejemplo.sql`                | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario.                                         |
 | `seguridad_general.sql`            | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.                                                 |
 
@@ -90,6 +92,45 @@ select pruebas.debe_fallar(
 3. Si la migración crea una tabla, añádela a la lista de `esquema.sql`. Las comprobaciones de `seguridad_general.sql` ya la cubren sin tocarlas.
 4. Ejecuta `npm run db:test` (o `npm run db:test -- <tema>` mientras trabajas). Comprueba también que la prueba nueva falla si quitas de la migración lo que prueba: una prueba que nunca falla no protege nada.
 5. Ejecuta `npm run db:types` para regenerar los tipos de TypeScript y versiona el archivo que cambie.
+
+## Búsqueda de especies
+
+La búsqueda del autocompletado del registro (#7) es una función de la API, `public.search_species`, definida en la migración `20261120190000_busqueda_de_especies.sql`, donde están explicadas todas las decisiones.
+
+```ts
+const { data, error } = await supabase.rpc('search_species', {
+  query: 'phal amab',
+  max_results: 10,
+})
+```
+
+Por HTTP es `POST /rest/v1/rpc/search_species` con `{"query": "phal amab", "max_results": 10}`, con o sin sesión. Devuelve una fila por especie, como mucho una vez cada una:
+
+| Columna             | Qué es                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `id`                | Id de la especie.                                                                                    |
+| `scientific_name`   | Nombre científico aceptado.                                                                          |
+| `genus_id`          | Id del género de la especie (el de la especie aceptada, aunque coincida un sinónimo de otro género). |
+| `genus_name`        | Nombre del género.                                                                                   |
+| `type`              | `species` o `hybrid`.                                                                                |
+| `status`            | `imported`, `validated` u `observed`: se incluyen todos, también las observadas.                     |
+| `matched_name`      | El nombre por el que coincidió, tal como está en el catálogo (con sus tildes y mayúsculas).          |
+| `matched_name_type` | Tipo de ese nombre (enumerado `species_match_type`): `scientific`, `synonym` o `common`.             |
+
+Cómo busca:
+
+- La consulta y los nombres se comparan normalizados con `public.normalize_search_text()`: minúsculas, sin tildes y con los espacios unificados. Es `immutable` y la usan también los índices; la búsqueda de géneros (#69) la reutilizará.
+- Un nombre coincide si se parece a la consulta (`word_similarity` de `pg_trgm` de al menos 0,3, fijado en la función) o si la consulta es su prefijo por palabras (`phal amab` es prefijo de `Phalaenopsis amabilis`).
+- Orden: primero las especies cuyo nombre científico empieza por la consulta; después, de mayor a menor similitud; a igualdad, el nombre científico gana a los sinónimos y estos a los nombres comunes; y al final, por nombre científico.
+- Los índices GIN de trigramas `species_scientific_name_trgm_idx`, `species_names_name_trgm_idx` y `genera_name_trgm_idx` están sobre `public.normalize_search_text(columna)`. Una consulta nueva los usa solo si escribe esa misma expresión con un operador de `extensions.gin_trgm_ops` (`operator(extensions.%>)`, `like`...).
+- Postgres calcula esos índices con los permisos de quien escribe la fila: un rol que inserte o actualice en `species`, `species_names` o `genera` necesita ejecutar `normalize_search_text()` y `usage` sobre el esquema `extensions`. `postgres`, `service_role` y `authenticated` ya los tienen; un rol nuevo que escriba el catálogo tendrá que recibirlos.
+
+Límites, porque es pública (fuera de ellos devuelve vacío, sin error):
+
+- Consulta nula, de más de 100 caracteres (antes de normalizar), o que normalizada tiene menos de 2 caracteres o ninguna letra ni número.
+- `max_results`: 10 por defecto y 20 como máximo; si es nulo, cero o negativo se usan 10.
+
+Es `security invoker`, `stable` y con `search_path` vacío: lee el catálogo con los permisos de quien llama, que ya es de lectura pública, y no toca perfiles ni plantas. La pueden ejecutar `anon`, `authenticated` y `service_role`, igual que `normalize_search_text()`, que no lee ninguna tabla.
 
 ## Funciones de administrador
 
