@@ -16,7 +16,7 @@ select pruebas.iguales(
 -- prueba: los enumerados tienen los valores acordados, en orden
 select pruebas.iguales('species_type', enum_range(null::public.species_type)::text, '{species,hybrid}');
 select pruebas.iguales('species_status', enum_range(null::public.species_status)::text, '{imported,validated,observed}');
-select pruebas.iguales('species_source', enum_range(null::public.species_source)::text, '{gbif,curated,user_proposal}');
+select pruebas.iguales('species_source', enum_range(null::public.species_source)::text, '{gbif,curated,user_proposal,col}');
 select pruebas.iguales('species_name_type', enum_range(null::public.species_name_type)::text, '{synonym,common}');
 select pruebas.iguales('species_match_type', enum_range(null::public.species_match_type)::text, '{scientific,synonym,common}');
 select pruebas.iguales('plant_type', enum_range(null::public.plant_type)::text, '{species,hybrid,unknown}');

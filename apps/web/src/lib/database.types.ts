@@ -298,7 +298,7 @@ export type Database = {
       plant_validation: 'pending' | 'validated' | 'unidentifiable'
       species_match_type: 'scientific' | 'synonym' | 'common'
       species_name_type: 'synonym' | 'common'
-      species_source: 'gbif' | 'curated' | 'user_proposal'
+      species_source: 'gbif' | 'curated' | 'user_proposal' | 'col'
       species_status: 'imported' | 'validated' | 'observed'
       species_type: 'species' | 'hybrid'
     }
@@ -431,7 +431,7 @@ export const Constants = {
       plant_validation: ['pending', 'validated', 'unidentifiable'],
       species_match_type: ['scientific', 'synonym', 'common'],
       species_name_type: ['synonym', 'common'],
-      species_source: ['gbif', 'curated', 'user_proposal'],
+      species_source: ['gbif', 'curated', 'user_proposal', 'col'],
       species_status: ['imported', 'validated', 'observed'],
       species_type: ['species', 'hybrid'],
     },

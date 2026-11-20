@@ -1,8 +1,12 @@
-"""CLI de solo lectura: lee la exportación, normaliza y resume. No se conecta a ninguna base.
+"""CLI ``orki-catalogo``: normaliza la exportación y, con ``cargar``, la carga en la base.
 
 Uso::
 
+    # Solo lectura: lee, normaliza y resume. No se conecta a ninguna base.
     uv run orki-catalogo RUTA/export.zip [--salida catalogo.json]
+
+    # Carga (simulación por defecto). La URL de la base va en ORKI_CATALOG_DB_URL.
+    uv run orki-catalogo cargar RUTA/export.zip --ambiente local|dev|prod [--escribir]
 """
 
 from __future__ import annotations
@@ -74,11 +78,17 @@ def write_output(catalog: Catalog, summary: dict[str, Any], destination: Path) -
 
 
 def main(argv: list[str] | None = None) -> int:
+    args_list = sys.argv[1:] if argv is None else argv
+    if args_list[:1] == ['cargar']:
+        from .load_cli import main as load_main
+
+        return load_main(args_list[1:])
     parser = argparse.ArgumentParser(
         prog='orki-catalogo',
         description=(
             'Lee la exportación de ChecklistBank (zip o TSV), filtra Orchidaceae, normaliza '
-            'y muestra un resumen. Solo lectura: no se conecta a ninguna base de datos.'
+            'y muestra un resumen. Solo lectura: no se conecta a ninguna base de datos. '
+            'Para cargar el catálogo en la base: orki-catalogo cargar --help.'
         ),
     )
     parser.add_argument('archivo', type=Path, help='export.zip de ChecklistBank o su TSV.')
@@ -87,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help='Archivo JSON donde volcar la salida normalizada y las incidencias.',
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(args_list)
     if not args.archivo.is_file():
         parser.error(f'No existe el archivo {args.archivo}.')
     try:

@@ -31,6 +31,10 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Reportes de la carga del catálogo (scripts/catalog-import): pueden ser grandes y se
+# revisan, no se versionan.
+reporte-carga-*.csv
+
 # macOS
 .DS_Store
 .AppleDouble

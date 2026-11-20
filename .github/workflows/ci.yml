@@ -54,6 +54,26 @@ jobs:
     defaults:
       run:
         working-directory: scripts/catalog-import
+    # Postgres desechable para las pruebas de integración de la carga, igual que el del job
+    # de base de datos: las pruebas crean en él una base plantilla con lo mínimo de Supabase y
+    # todas las migraciones, y una copia por prueba. La contraseña no es un secreto: el
+    # contenedor solo vive mientras dura el job.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: desechable
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ORKI_TEST_DB_URL: postgresql://supabase_admin:desechable@127.0.0.1:5432/postgres
     steps:
       - name: Obtener el código
         uses: actions/checkout@v7
@@ -77,7 +97,9 @@ jobs:
       - name: Verificar formato
         run: uv run --locked ruff format --check
 
-      # Las pruebas usan la muestra versionada y bloquean cualquier conexión de red.
+      # Las pruebas usan la muestra versionada y bloquean cualquier conexión de red; las de
+      # la carga se conectan además al Postgres local del servicio (sin él fallarían, porque
+      # en el CI no se pueden saltar).
       - name: Pruebas
         run: uv run --locked pytest
 

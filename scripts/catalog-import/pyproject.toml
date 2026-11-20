@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "Importación del catálogo de orquídeas de Orki desde el Catalogue of Life."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
-# Sin dependencias de ejecución: la lectura, el filtrado y la normalización usan solo la
-# biblioteca estándar.
-dependencies = []
+# La lectura, el filtrado y la normalización usan solo la biblioteca estándar. La carga en la
+# base de datos usa psycopg 3; el extra «binary» trae libpq compilada, así que no hace falta
+# tener instalado el cliente de PostgreSQL.
+dependencies = [
+    "psycopg[binary]==3.3.8",
+]
 
 [project.scripts]
 orki-catalogo = "catalog_import.cli:main"

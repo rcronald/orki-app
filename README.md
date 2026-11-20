@@ -45,7 +45,7 @@ npm test
 npm run build
 ```
 
-El CI ejecuta además el lint, el formato y las pruebas del proyecto de Python de `scripts/catalog-import/` (con [uv](https://docs.astral.sh/uv/)); cómo instalarlo y ejecutarlos en local está en [su README](scripts/catalog-import/README.md).
+El CI ejecuta además el lint, el formato y las pruebas del proyecto de Python de `scripts/catalog-import/` (con [uv](https://docs.astral.sh/uv/)), incluidas las de la carga del catálogo contra un Postgres 17 desechable; cómo instalarlo y ejecutarlos en local está en [su README](scripts/catalog-import/README.md).
 
 ## Scripts
 
@@ -106,7 +106,7 @@ orki-app/
 ├── docs/
 │   └── specification.md       Especificación de la Fase 1
 ├── scripts/
-│   ├── catalog-import/        Importación del catálogo de especies (Python; lectura y normalización)
+│   ├── catalog-import/        Importación del catálogo de especies (Python; normalización y carga)
 │   ├── db-desechable/         Base Postgres desechable con el esquema aplicado
 │   ├── db-test.mjs            Pruebas de base de datos (db:test)
 │   ├── db-types.mjs           Tipos de TypeScript del esquema (db:types, db:types:check)
