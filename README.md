@@ -63,6 +63,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run db:new`         | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                         |
 | `npm run db:status`      | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                    |
 | `npm run db:push`        | Aplica las migraciones pendientes en el proyecto de desarrollo.                                              |
+| `npm run db:seed:dev`    | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.   |
 | `npm run db:test`        | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.    |
 | `npm run db:types`       | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.   |
 | `npm run db:types:check` | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.         |
@@ -101,9 +102,10 @@ orki-app/
 │   ├── db-desechable/         Base Postgres desechable con el esquema aplicado
 │   ├── db-test.mjs            Pruebas de base de datos (db:test)
 │   ├── db-types.mjs           Tipos de TypeScript del esquema (db:types, db:types:check)
-│   └── supabase-db.mjs        Scripts de migraciones (db:new, db:status, db:push)
+│   └── supabase-db.mjs        Scripts de migraciones y datos de ejemplo (db:new, db:status, db:push, db:seed:dev)
 ├── supabase/
 │   ├── config.toml            Configuración de la CLI de Supabase
+│   ├── datos-ejemplo/         Datos de ejemplo del catálogo, solo para desarrollo (db:seed:dev)
 │   ├── migrations/            Migraciones SQL
 │   ├── tests/                 Pruebas de base de datos en SQL
 │   └── .env.example           Plantilla de credenciales del proyecto de desarrollo
@@ -250,6 +252,18 @@ npm run db:push     # aplica las pendientes
 `db:push` muestra las migraciones pendientes y, en una terminal interactiva, pide confirmación antes de aplicarlas. Para saltar la confirmación (por ejemplo, fuera de una terminal interactiva) se usa `npm run db:push -- --yes`, y para ver qué se aplicaría sin aplicar nada, `npm run db:push -- --dry-run`. Si no hay migraciones pendientes, no hace nada. Si falta alguna de las tres variables, los dos scripts terminan con un error que dice cuál.
 
 Lo habitual es pasar las pruebas de base de datos (`npm run db:test`, ver la sección siguiente) y después aplicar y probar la migración en desarrollo antes de abrir el pull request.
+
+### Datos de ejemplo en desarrollo
+
+```sh
+npm run db:seed:dev
+```
+
+Carga en el proyecto de desarrollo unas pocas especies e híbridos reales del catálogo, con sinónimos y nombres comunes, para probar el registro y el autocompletado sin esperar al catálogo real, que llega con la importación del issue #8. El SQL está en `supabase/datos-ejemplo/catalogo.sql`: 40 especies e híbridos de los cinco géneros de acceso rápido y de tres géneros más (Guarianthe, Paphiopedilum y Brassia, con sus abreviaturas de la RHS), 10 sinónimos (varios de un género distinto del aceptado, como _Cattleya skinneri_ para _Guarianthe skinneri_) y 12 nombres comunes, con tildes y eñes.
+
+**Es solo para desarrollo.** No es una migración ni el `seed.sql` de la CLI, así que `db:push` y el workflow de producción no lo aplican nunca. Además, el comando se niega a ejecutarse si `SUPABASE_PROJECT_REF` no es el proyecto de desarrollo (`xaitolsnmjlpyptntfwi`), y lo dice expresamente si es el de producción. Usa las mismas credenciales que `db:push` (ver [Credenciales](#credenciales)): enlaza el proyecto, ejecuta el archivo con `supabase db query --remote --yes` y muestra un resumen de lo que hay en el catálogo.
+
+Se puede repetir: todas las inserciones usan `on conflict ... do nothing` sobre las claves únicas del esquema, así que volver a cargarlo no duplica nada ni cambia lo que ya existe (tampoco las especies editadas a mano; si cambias en el archivo el género o el tipo de una especie ya cargada, ese cambio no se aplica). Todo va en un único bloque `do`, de modo que o se carga entero o no se carga nada. No toca `plants` ni `profiles`. Las pruebas de base de datos (`supabase/tests/datos_ejemplo.sql`) lo cargan sobre la base desechable y comprueban los recuentos, que una segunda carga no cambia nada y que no toca el inventario.
 
 ### Pruebas de la base de datos
 
