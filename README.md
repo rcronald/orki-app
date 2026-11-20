@@ -154,18 +154,19 @@ Los componentes usan las clases `orki-` de las hojas de estilos; Tailwind queda 
 
 Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo de índice: se importa cada uno desde su archivo.
 
-| Componente        | Para qué                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `Button`          | Acciones. Variantes `primary` (una por pantalla), `secondary` y `danger`; ancho completo con `block`.                 |
-| `Chip`            | Filtros y opciones cortas; botón de alternar con `selected`.                                                          |
-| `ChipGroup`       | Fila de chips con su nombre para el lector de pantalla.                                                               |
-| `TextField`       | Campo de texto con etiqueta visible, ayuda y error.                                                                   |
-| `StatusBadge`     | Validación del nombre: "Validada" o "Nombre por validar".                                                             |
-| `SpecimenCard`    | Tarjeta de un ejemplar; sin foto usa el marcador `sin-foto.svg`.                                                      |
-| `OwnershipAnswer` | Respuesta de "¿Ya la tengo?".                                                                                         |
-| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados y una acción final opcional.                          |
-| `Collapsible`     | Sección plegable.                                                                                                     |
-| `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`. |
+| Componente        | Para qué                                                                                                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`          | Acciones. Variantes `primary` (una por pantalla), `secondary` y `danger`; ancho completo con `block`.                                                                                                           |
+| `Chip`            | Filtros y opciones cortas; botón de alternar con `selected`.                                                                                                                                                    |
+| `ChipGroup`       | Fila de chips con su nombre para el lector de pantalla.                                                                                                                                                         |
+| `TextField`       | Campo de texto con etiqueta visible, ayuda y error.                                                                                                                                                             |
+| `StatusBadge`     | Validación del nombre: "Validada" o "Nombre por validar".                                                                                                                                                       |
+| `SpecimenCard`    | Tarjeta de un ejemplar; sin foto usa el marcador `sin-foto.svg`. `layout="row"` para listas, `nameStyle="plain"` para un nombre por validar y `renderName` para envolver el nombre (por ejemplo, en un enlace). |
+| `ScientificName`  | Nombre científico con cada tramo en cursiva o en redonda según la nomenclatura (ver abajo).                                                                                                                     |
+| `OwnershipAnswer` | Respuesta de "¿Ya la tengo?".                                                                                                                                                                                   |
+| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados y una acción final opcional.                                                                                                                    |
+| `Collapsible`     | Sección plegable.                                                                                                                                                                                               |
+| `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`.                                                                                           |
 
 ### Página de muestra
 
@@ -378,6 +379,19 @@ const visibles = plants ? filterByText(plants, query) : []
 - **Lectura en Supabase** (`supabase-source.ts`): una consulta a `plants` con la especie y el género embebidos, filtrada por el usuario activo y paginada por id de 1 000 en 1 000 (el tope de filas de la API).
 
 Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `CollectionSource` (`source.ts`), cuyo `load({ userId, signal, provide })` devuelve todas las plantas del usuario o rechaza con un `CollectionLoadError` con su motivo. `provide(plantas)` entrega un resultado provisional (la copia del dispositivo) antes del definitivo. Pásala a `<CollectionProvider source={miFuente}>`; puede envolver a `supabaseCollectionSource`. En las pruebas, `src/test/collection-source.ts` tiene una fuente controlada a mano.
+
+### Pantalla de inventario
+
+`/coleccion` (`src/pages/CollectionPage.tsx`) conecta `useCollection()` con `InventoryView` (`src/inventory/`), que no carga datos: recibe la colección y la pinta. La página de muestra (`/muestra`, sección "Pantalla de inventario") usa la misma vista con datos fijos (`src/showcase/inventory-data.ts`), también con 300 plantas.
+
+- **Solo plantas activas**, en los contadores de cabecera (orquídeas y géneros, en singular o plural) y en la lista.
+- **Lista o cuadrícula.** Lista: una tarjeta por fila con la miniatura a la izquierda (`SpecimenCard` con `layout="row"`). Cuadrícula: dos por fila en el celular, tres desde 640 px y cuatro desde 1024 px.
+- **Agrupar por género** o no. Agrupada: un encabezado por género con su contador ("Phalaenopsis, 3 orquídeas" para el lector de pantalla), los géneros y las plantas en orden alfabético sin tener en cuenta el signo "×". Sin agrupar: las más recientes primero (por fecha de alta).
+- **Cada tarjeta** lleva el nombre mostrado, el apodo, el género y la insignia de validación ("Nombre por validar" también para las no identificables). Sin foto, el marcador neutro: la miniatura llegará con el #10 por `plantThumbnail()` (`src/inventory/plant-display.ts`), que hoy no devuelve nada. Para el detalle (#16), la tarjeta se convierte en enlace pasando `renderName` a `SpecimenCard` en `PlantCard.tsx`.
+- **Registrar orquídea:** enlace a `/coleccion/nueva`; en el celular queda fijo abajo, al alcance del pulgar.
+- **Preferencias del dispositivo:** la vista y la agrupación se guardan en `localStorage` con la clave `orki:inventario:preferencias:v1` (`src/inventory/preferences.ts`). Si el almacenamiento no existe o falla, funcionan igual y duran lo que la pantalla.
+
+**Cursiva de los nombres** (`src/components/ui/scientific-name.ts`): solo va en cursiva un nombre del catálogo (`displayNameIsScientific`); el nombre que ingresó la persona para una planta por validar va en redonda y en la fuente de cuerpo. Dentro del nombre científico, el género y los epítetos van en cursiva y en redonda el signo "×" (también una "x" suelta), las abreviaturas de rango ("var.") y, desde la primera palabra con mayúscula o comilla después del género, el grex y el cultivar: _Phalaenopsis_ Sogo Yukidian, × _Rhyncholaeliocattleya_ Memoria Anna Balmores, _Phalaenopsis_ × _intermedia_. Los tramos en redonda van en la fuente de cuerpo, porque de Playfair Display solo se cargan la cursiva 400 y la redonda 600. El nombre se muestra tal como está guardado. Los géneros como etiqueta (encabezados de grupo, línea de la tarjeta) van sin cursiva, como en los chips del sistema.
 
 ## Base de datos y migraciones
 

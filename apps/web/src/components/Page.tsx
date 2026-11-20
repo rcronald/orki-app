@@ -6,19 +6,31 @@ interface PageProps {
   title: string
   /** Título de la pestaña si difiere; null deja solo "Orki". */
   tabTitle?: string | null
+  /**
+   * Ancho máximo: narrow (por defecto, 512 px) para textos y formularios;
+   * wide (1024 px) para listas y cuadrículas que aprovechan el escritorio.
+   */
+  width?: 'narrow' | 'wide'
   children?: ReactNode
 }
 
 // Contenido de una página dentro de AppShell: pone el título de la pestaña y
 // el h1, que recibe el foco al llegar navegando (tabIndex -1 lo hace enfocable
 // por código sin meterlo en el orden del tabulador).
-export function Page({ title, tabTitle = title, children }: PageProps) {
+export function Page({
+  title,
+  tabTitle = title,
+  width = 'narrow',
+  children,
+}: PageProps) {
   const headingRef = useRef<HTMLHeadingElement>(null)
   usePageTitle(tabTitle)
   useFocusOnNavigation(headingRef)
 
   return (
-    <div className="flex w-full max-w-lg flex-col gap-space-3">
+    <div
+      className={`flex w-full flex-col gap-space-3 ${width === 'wide' ? 'max-w-5xl' : 'max-w-lg'}`}
+    >
       <h1
         ref={headingRef}
         tabIndex={-1}

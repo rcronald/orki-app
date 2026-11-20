@@ -233,6 +233,58 @@ function CardSection() {
           />
         </div>
       </Example>
+      <Example
+        title="Híbridos y nombre por validar"
+        description='El signo "×", el grex y el cultivar van en redonda; el resto del nombre científico, en cursiva. Con nameStyle="plain", el nombre ingresado va sin cursiva.'
+      >
+        <div className="grid grid-cols-2 gap-space-3 md:grid-cols-4">
+          <SpecimenCard
+            headingLevel={4}
+            scientificName="× Rhyncholaeliocattleya Memoria Anna Balmores"
+            status="validated"
+            meta="× Rhyncholaeliocattleya"
+          />
+          <SpecimenCard
+            headingLevel={4}
+            scientificName="Phalaenopsis × intermedia"
+            status="validated"
+            meta="Phalaenopsis"
+          />
+          <SpecimenCard
+            headingLevel={4}
+            scientificName="la naranja del mercado"
+            nameStyle="plain"
+            status="pending"
+            meta="Masdevallia"
+          />
+        </div>
+      </Example>
+      <Example
+        title="En fila"
+        description='layout="row": miniatura cuadrada a la izquierda, para las listas.'
+      >
+        <div className="grid grid-cols-1 gap-space-3 md:grid-cols-2">
+          <SpecimenCard
+            headingLevel={4}
+            layout="row"
+            scientificName="Cattleya maxima"
+            commonName="Flor de mayo"
+            status="validated"
+            meta="Cattleya"
+          />
+          <SpecimenCard
+            headingLevel={4}
+            layout="row"
+            scientificName="Phalaenopsis Sogo Yukidian"
+            status="validated"
+            meta="Phalaenopsis"
+            photo={{
+              src: samplePhoto,
+              alt: 'Imagen de muestra: Phalaenopsis en floración',
+            }}
+          />
+        </div>
+      </Example>
     </Section>
   )
 }
