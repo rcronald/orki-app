@@ -4,6 +4,7 @@ Esta carpeta contiene lo que la CLI de Supabase necesita para gestionar la base 
 
 - `config.toml`: configuración mínima de la CLI. Orki no usa el entorno local de Supabase con Docker, así que aquí no se configuran servicios locales; la configuración de autenticación, almacenamiento y demás servicios vive en cada proyecto remoto.
 - `migrations/`: las migraciones SQL, en orden. Cada archivo se aplica una sola vez en cada ambiente y la CLI registra cuáles ya se aplicaron.
+- `tests/`: las pruebas de base de datos, en SQL, que ejecuta `npm run db:test` (ver [Pruebas de base de datos](#pruebas-de-base-de-datos)).
 - `.env.example`: plantilla de las credenciales del proyecto de desarrollo. Se copia a `supabase/.env`, que git ignora.
 
 Hay dos ambientes, cada uno con su proyecto de Supabase: desarrollo y producción. Las migraciones se crean y se prueban en desarrollo desde tu máquina, y llegan a producción a través de un workflow de GitHub Actions al fusionar en `main`.
@@ -26,3 +27,55 @@ Todas las tablas tienen Row Level Security activada y privilegios explícitos: `
 - Escribe migraciones que se puedan aplicar sin intervención manual y, cuando sea razonable, idempotentes (`if not exists`, `create or replace`).
 - Las extensiones se instalan en el esquema `extensions`, no en `public`, siguiendo la convención de Supabase.
 - No pongas datos personales ni secretos en las migraciones.
+- Cada migración llega con sus pruebas en `tests/`, y `npm run db:test` debe pasar antes de abrir el pull request.
+
+## Pruebas de base de datos
+
+`npm run db:test` aplica todas las migraciones en una base Postgres desechable, con lo mínimo de Supabase simulado, y ejecuta las pruebas de esta carpeta. Cómo se ejecuta (en local y en el CI), qué simula de Supabase y qué no cubre está en la sección [Pruebas de la base de datos](../README.md#pruebas-de-la-base-de-datos) del README principal.
+
+Las pruebas están organizadas por tema, un archivo por tema:
+
+| Archivo                  | Qué comprueba                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `esquema.sql`            | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.       |
+| `datos_referencia.sql`   | Los cinco géneros de acceso rápido con su abreviatura, y que las migraciones no cargan perfiles ni plantas.            |
+| `catalogo_unicidad.sql`  | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.      |
+| `borrados.sql`           | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                   |
+| `plantas_y_perfiles.sql` | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto. |
+| `sincronizacion.sql`     | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.            |
+| `acceso_por_rol.sql`     | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.        |
+| `seguridad_general.sql`  | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.   |
+
+`seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon` o deja una función de `private` ejecutable desde la API.
+
+### Formato de un archivo de pruebas
+
+Cada prueba empieza con una línea `-- prueba: <qué comprueba>` y llega hasta la siguiente. Lo que haya antes de la primera prueba son los datos de partida del archivo, que se ejecutan al comienzo de cada prueba.
+
+Cada prueba corre en su propia sesión, dentro de una transacción que se revierte al terminar, con el rol `postgres` (el dueño de las tablas). Por eso las pruebas son independientes entre sí y no dejan datos, y pueden usar `set local role anon` (o `authenticated`, `service_role`) y `set local request.jwt.claims = '{"sub": "user_a"}'` para actuar como una petición de la API. Una prueba no puede abrir, confirmar ni revertir transacciones (`begin`, `commit`, `rollback`); el comando la rechaza.
+
+Una prueba falla en cuanto una sentencia da error. Para comprobar resultados se usan las funciones del esquema `pruebas` (`tests/soporte/ayudantes.sql`), que solo existen en la base desechable:
+
+- `pruebas.iguales(descripcion, obtenido, esperado)`: falla mostrando los dos valores si son distintos.
+- `pruebas.comprobar(descripcion, condicion)`: falla si la condición no es verdadera.
+- `pruebas.debe_fallar(descripcion, sentencia, codigo, restriccion)`: ejecuta la sentencia (texto, normalmente entre `$$`) y falla si no da el error con ese código SQLSTATE (por ejemplo `23505` para un duplicado, `23514` para un `check`, `23503` para una clave foránea o `42501` para un permiso denegado). La restricción es opcional; si se indica, exige que el error venga de esa restricción o índice único.
+- `pruebas.debe_funcionar(descripcion, sentencia)`: ejecuta la sentencia y falla mostrando el error si lo da.
+- `pruebas.genero(nombre)` y `pruebas.especie(nombre)`: devuelven el id de un género o una especie por su nombre.
+
+Por ejemplo:
+
+```sql
+-- prueba: géneros: no se repite un nombre con otras mayúsculas
+select pruebas.debe_fallar(
+  'PHALAENOPSIS ya existe como Phalaenopsis',
+  $$insert into public.genera (name) values ('PHALAENOPSIS')$$,
+  '23505', 'genera_name_key'
+);
+```
+
+### Añadir pruebas al escribir una migración
+
+1. Escribe la migración con `npm run db:new -- <nombre>`.
+2. Añade sus pruebas al archivo del tema que corresponda, o crea uno nuevo en `tests/` (cualquier `.sql` de la carpeta se ejecuta, en orden alfabético). Prueba lo que la migración promete: cada restricción con un caso que la cumple y otro que la incumple (con el nombre de la restricción en `pruebas.debe_fallar`), cada disparador con su efecto, y el acceso por rol de cada tabla nueva.
+3. Si la migración crea una tabla, añádela a la lista de `esquema.sql`. Las comprobaciones de `seguridad_general.sql` ya la cubren sin tocarlas.
+4. Ejecuta `npm run db:test` (o `npm run db:test -- <tema>` mientras trabajas). Comprueba también que la prueba nueva falla si quitas de la migración lo que prueba: una prueba que nunca falla no protege nada.

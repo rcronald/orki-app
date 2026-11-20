@@ -20,7 +20,8 @@
     "test:watch": "npm run test:watch --workspace=apps/web --",
     "db:new": "node scripts/supabase-db.mjs nueva",
     "db:status": "node scripts/supabase-db.mjs estado",
-    "db:push": "node scripts/supabase-db.mjs aplicar"
+    "db:push": "node scripts/supabase-db.mjs aplicar",
+    "db:test": "node scripts/db-test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
