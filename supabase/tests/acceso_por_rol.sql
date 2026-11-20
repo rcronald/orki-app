@@ -3,7 +3,8 @@
 -- PostgREST ejecuta cada petición con el rol del token (anon sin sesión, authenticated con
 -- sesión de Clerk, service_role con la clave de servicio) y deja las claims del token en
 -- request.jwt.claims. Aquí se reproduce con "set local role" y "set local request.jwt.claims".
--- Hasta el issue #6, el catálogo es de solo lectura y perfiles y plantas están cerrados.
+-- El catálogo es de solo lectura; perfiles y plantas están cerrados para anon, y lo que puede
+-- hacer authenticated con ellos se prueba en politicas_plantas_y_perfiles.sql.
 
 -- Datos de partida: una especie con un nombre, un perfil y una planta de user_a.
 insert into public.species (scientific_name, genus_id, type, status, source)
@@ -69,12 +70,12 @@ begin
 end;
 $$;
 
--- prueba: ni anon ni authenticated pueden leer ni escribir profiles ni plants
+-- prueba: anon no puede leer ni escribir profiles ni plants
 do $$
 declare
   rol text;
 begin
-  foreach rol in array array['anon', 'authenticated'] loop
+  foreach rol in array array['anon'] loop
     execute format('set local role %I', rol);
     perform set_config('request.jwt.claims', '{"sub": "user_a", "role": "' || rol || '"}', true);
     perform pruebas.debe_fallar(rol || ' lee profiles', 'select * from public.profiles', '42501');
@@ -93,28 +94,6 @@ begin
   end loop;
 end;
 $$;
-
--- prueba: aunque authenticated tuviera privilegios, RLS sin políticas no le deja ver ni escribir el inventario
--- Defensa en profundidad: si una migración futura concede privilegios sin escribir las
--- políticas (issue #6), RLS sigue cerrando perfiles y plantas.
-grant select, insert, update, delete on public.profiles, public.plants to authenticated;
-set local role authenticated;
-set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
-select pruebas.iguales('perfiles visibles', (select count(*) from public.profiles), 0::bigint);
-select pruebas.iguales('plantas visibles', (select count(*) from public.plants), 0::bigint);
-select pruebas.debe_fallar(
-  'crear su planta',
-  $$insert into public.plants (entered_name, genus_id, type) values ('x', pruebas.genero('Vanda'), 'unknown')$$,
-  '42501'
-);
-select pruebas.debe_fallar('crear su perfil', $$insert into public.profiles (id) values ('user_nuevo')$$, '42501');
-update public.plants set nickname = 'cambiada';
-set local role postgres;
-select pruebas.iguales(
-  'apodo de la planta tras el update de authenticated',
-  (select coalesce(nickname, 'sin apodo') from public.plants where entered_name = 'Mi labiata'),
-  'sin apodo'
-);
 
 -- prueba: service_role lee y escribe el catálogo, los perfiles y las plantas
 set local role service_role;

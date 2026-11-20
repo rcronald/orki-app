@@ -54,21 +54,22 @@ select pruebas.iguales(
   's definer=false search_path="" text postgres'
 );
 
--- prueba: no abre ningún acceso nuevo a perfiles ni plantas
+-- prueba: no abre a anon ningún acceso a perfiles ni plantas, aunque el token traiga un sub
+-- Lo que authenticated puede hacer con ellos lo deciden las políticas del issue #64
+-- (politicas_plantas_y_perfiles.sql).
 select pruebas.iguales(
-  'privilegios de anon y authenticated sobre profiles y plants',
-  (select string_agg(r.rol || ':' || t.tabla || ':' || has_table_privilege(r.rol, 'public.' || t.tabla, 'select,insert,update,delete,truncate'), ', ' order by r.rol, t.tabla)
-     from (values ('anon'), ('authenticated')) r (rol)
-     cross join (values ('plants'), ('profiles')) t (tabla)),
-  'anon:plants:false, anon:profiles:false, authenticated:plants:false, authenticated:profiles:false'
+  'privilegios de anon sobre profiles y plants',
+  (select string_agg(t.tabla || ':' || has_table_privilege('anon', 'public.' || t.tabla, 'select,insert,update,delete,truncate'), ', ' order by t.tabla)
+     from (values ('plants'), ('profiles')) t (tabla)),
+  'plants:false, profiles:false'
 );
-set local role authenticated;
-set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
+set local role anon;
+set local request.jwt.claims = '{"sub": "user_a", "role": "anon"}';
 select pruebas.iguales('el usuario de la petición es user_a', public.requesting_user_id(), 'user_a');
-select pruebas.debe_fallar('user_a lee profiles', 'select * from public.profiles', '42501');
-select pruebas.debe_fallar('user_a lee plants', 'select * from public.plants', '42501');
+select pruebas.debe_fallar('anon con sub lee profiles', 'select * from public.profiles', '42501');
+select pruebas.debe_fallar('anon con sub lee plants', 'select * from public.plants', '42501');
 select pruebas.debe_fallar(
-  'user_a lee sus plantas filtrando por la función',
+  'anon con sub lee plantas filtrando por la función',
   'select * from public.plants where user_id = public.requesting_user_id()',
   '42501'
 );

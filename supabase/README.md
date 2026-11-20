@@ -17,11 +17,11 @@ El flujo completo (crear una migración, aplicarla en desarrollo, qué pasa en p
 Las tablas viven en el esquema `public` y sus identificadores están en inglés:
 
 - Catálogo, de lectura pública (también sin sesión): `genera` (géneros, con la marca de acceso rápido), `genus_abbreviations` (abreviaturas de género, como Phal.), `species` (especies e híbridos, con su estado, su fuente y la referencia externa de la fuente) y `species_names` (sinónimos y nombres comunes). La migración del catálogo carga los cinco géneros de acceso rápido y sus abreviaturas estándar de la RHS.
-- Inventario: `profiles` (perfil de cada usuario de Clerk) y `plants` (ejemplares). El usuario es el id de Clerk, de tipo texto, y por defecto se toma del claim `sub` del token de sesión. Tienen Row Level Security activada y todavía no tienen políticas, así que no se pueden leer ni escribir desde la API.
-- Identidad: `public.requesting_user_id()` devuelve el id de usuario de Clerk de la petición (`auth.jwt()->>'sub'`), o `null` sin sesión. Es `stable`, `security invoker` y con `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role` (la API la expone en `/rest/v1/rpc/requesting_user_id`) y no lee ninguna tabla. La usa el panel de diagnóstico de la app y la usarán las políticas RLS de perfiles y plantas (#6).
+- Inventario: `profiles` (perfil de cada usuario de Clerk) y `plants` (ejemplares). El usuario es el id de Clerk, de tipo texto, y por defecto se toma del claim `sub` del token de sesión. Con sesión (`authenticated`), cada usuario lee, crea, actualiza y borra solo su perfil y sus plantas: las políticas comparan con `(select public.requesting_user_id())`, no dejan crear una planta a nombre de otro ni cambiar su dueño, y no dan más acceso al administrador de catálogo. `authenticated` puede escribir todas las columnas de `plants` menos `validation`, que solo ajustan el disparador de sincronización, `service_role` y las futuras funciones de administrador; así un usuario no puede marcar sus plantas como "no identificable" ni validarlas sin especie. Una columna nueva de `plants` hay que concedérsela explícitamente a `authenticated`. Sin sesión (`anon`) no hay ningún acceso.
+- Identidad: `public.requesting_user_id()` devuelve el id de usuario de Clerk de la petición (`auth.jwt()->>'sub'`), o `null` sin sesión. Es `stable`, `security invoker` y con `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role` (la API la expone en `/rest/v1/rpc/requesting_user_id`) y no lee ninguna tabla. La usan el panel de diagnóstico de la app y las políticas RLS de perfiles y plantas (#64).
 - Disparadores, con sus funciones en el esquema `private` (no expuesto en la API): al enlazar una planta a una especie, la planta toma el género y el tipo de la especie y queda validada; al desenlazarla vuelve a "por validar"; si cambian el género o el tipo de una especie, se propagan a sus plantas; y `updated_at` se actualiza solo en todas las tablas.
 
-Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` y `authenticated` solo pueden leer el catálogo, y `service_role` puede leer y escribir todo.
+Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` solo puede leer el catálogo; `authenticated` lee el catálogo y gestiona su propio perfil y sus plantas; y `service_role` puede leer y escribir todo.
 
 ## Reglas para las migraciones
 
@@ -38,18 +38,19 @@ Todas las tablas tienen Row Level Security activada y privilegios explícitos: `
 
 Las pruebas están organizadas por tema, un archivo por tema:
 
-| Archivo                  | Qué comprueba                                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `esquema.sql`            | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.             |
-| `datos_referencia.sql`   | Los cinco géneros de acceso rápido con su abreviatura, y que las migraciones no cargan perfiles ni plantas.                  |
-| `catalogo_unicidad.sql`  | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.            |
-| `borrados.sql`           | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                         |
-| `plantas_y_perfiles.sql` | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto.       |
-| `sincronizacion.sql`     | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                  |
-| `acceso_por_rol.sql`     | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.              |
-| `identidad.sql`          | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas. |
-| `datos_ejemplo.sql`      | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario. |
-| `seguridad_general.sql`  | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.         |
+| Archivo                            | Qué comprueba                                                                                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `esquema.sql`                      | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.                                                     |
+| `datos_referencia.sql`             | Los cinco géneros de acceso rápido con su abreviatura, y que las migraciones no cargan perfiles ni plantas.                                                          |
+| `catalogo_unicidad.sql`            | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.                                                    |
+| `borrados.sql`                     | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                                                                 |
+| `plantas_y_perfiles.sql`           | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto.                                               |
+| `sincronizacion.sql`               | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                                                          |
+| `acceso_por_rol.sql`               | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.                                                      |
+| `identidad.sql`                    | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas a `anon`.                                |
+| `politicas_plantas_y_perfiles.sql` | Políticas y permisos de `profiles` y `plants`: cada usuario solo lo suyo, sin cambiar el dueño ni escribir `validation`; el administrador no ve más; `anon` cerrado. |
+| `datos_ejemplo.sql`                | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario.                                         |
+| `seguridad_general.sql`            | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.                                                 |
 
 `seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon` o deja una función de `private` ejecutable desde la API.
 
