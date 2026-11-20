@@ -1,8 +1,9 @@
 import { ClerkProvider } from '@clerk/react'
 import { esMX } from '@clerk/localizations/es-MX'
-import type { ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
+import { useNavigate } from 'react-router'
+import { internalPathOf, PATHS } from '../routes/paths.ts'
 import { clerkAppearance } from './appearance.ts'
-import { SIGN_IN_PATH, SIGN_UP_PATH } from './paths.ts'
 
 interface AuthProviderProps {
   /** Clave publicable de Clerk ya validada por parseEnv. */
@@ -19,17 +20,49 @@ interface AuthProviderProps {
 // Clerk carga en segundo plano su script desde su CDN. Mientras tanto, y si no
 // llega a cargar (sin conexión), la app pública se sigue viendo; ver
 // useAuthAvailability.ts.
+//
+// Va dentro del enrutador: routerPush y routerReplace hacen que Clerk navegue
+// con React Router (pasos de <SignIn>/<SignUp>, vuelta tras entrar, salida)
+// sin recargar la página. Un destino de otro origen se abre con una carga
+// normal.
+// https://clerk.com/docs/react/guides/development/declarative-mode
 export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
+  const navigate = useNavigate()
+  const routerPush = useCallback(
+    (to: string) => navigateTo(navigate, to, false),
+    [navigate],
+  )
+  const routerReplace = useCallback(
+    (to: string) => navigateTo(navigate, to, true),
+    [navigate],
+  )
+
   return (
     <ClerkProvider
       publishableKey={publishableKey}
       localization={esMX}
       appearance={clerkAppearance}
-      signInUrl={SIGN_IN_PATH}
-      signUpUrl={SIGN_UP_PATH}
-      afterSignOutUrl="/"
+      signInUrl={PATHS.signIn}
+      signUpUrl={PATHS.signUp}
+      afterSignOutUrl={PATHS.home}
+      routerPush={routerPush}
+      routerReplace={routerReplace}
     >
       {children}
     </ClerkProvider>
   )
+}
+
+function navigateTo(
+  navigate: ReturnType<typeof useNavigate>,
+  to: string,
+  replace: boolean,
+) {
+  const path = internalPathOf(to)
+  if (path === null) {
+    if (replace) window.location.replace(to)
+    else window.location.assign(to)
+    return
+  }
+  return navigate(path, { replace })
 }

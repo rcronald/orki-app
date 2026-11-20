@@ -57,7 +57,11 @@ export default defineConfig({
         // duplican en el precache. Las fuentes van precacheadas para que la app
         // se vea con su tipografía sin conexión.
         globPatterns: ['**/*.{js,css,html,woff2}'],
-        // Cualquier navegación sin coincidencia en caché responde con index.html.
+        // Cualquier navegación sin coincidencia en caché responde con index.html,
+        // así que todas las rutas de la app (src/routes/paths.ts, incluidas las
+        // subrutas de Clerk como /iniciar-sesion/sso-callback) se abren y se
+        // recargan con la app instalada; el enrutador decide la pantalla. En
+        // Vercel lo mismo lo hace la reescritura de vercel.json.
         //
         // Autenticación (Clerk y Google): a propósito no hay runtimeCaching, así
         // que el service worker solo responde a los archivos precacheados y a
@@ -65,8 +69,8 @@ export default defineConfig({
         // y su API, en el dominio de Frontend API de cada instancia) y a Google
         // son de otro origen y van siempre a la red, sin guardarse. Las
         // redirecciones de inicio de sesión ocurren en esos dominios y, a la
-        // vuelta, llegan a rutas de la app (/iniciar-sesion con los pasos en el
-        // hash, o la raíz con parámetros de Clerk en la URL), que deben recibir
+        // vuelta, llegan a rutas de la app (subrutas de /iniciar-sesion o de
+        // /registro, o la página pedida con parámetros de Clerk), que deben recibir
         // index.html para que Clerk termine el proceso en el navegador. Por eso
         // no hace falta navigateFallbackDenylist: Clerk no tiene rutas propias
         // en este dominio. Haría falta si algún día se usa el proxy de Clerk

@@ -1,5 +1,6 @@
 import { esMX } from '@clerk/localizations/es-MX'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { lastProviderProps, resetFakeClerk } from '../test/clerk-mock.tsx'
 import { clerkAppearance } from './appearance.ts'
@@ -14,9 +15,11 @@ beforeEach(() => {
 describe('AuthProvider', () => {
   it('configura Clerk con la clave, el español y el design system', () => {
     render(
-      <AuthProvider publishableKey="pk_test_clave_de_prueba">
-        <p>Contenido</p>
-      </AuthProvider>,
+      <MemoryRouter>
+        <AuthProvider publishableKey="pk_test_clave_de_prueba">
+          <p>Contenido</p>
+        </AuthProvider>
+      </MemoryRouter>,
     )
 
     // Pinta los hijos sin esperar a que Clerk cargue.
@@ -28,6 +31,9 @@ describe('AuthProvider', () => {
       signInUrl: '/iniciar-sesion',
       signUpUrl: '/registro',
       afterSignOutUrl: '/',
+      // Clerk navega con el enrutador (ver AppRouter.test.tsx).
+      routerPush: expect.any(Function) as unknown,
+      routerReplace: expect.any(Function) as unknown,
     })
   })
 })

@@ -1,11 +1,17 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk, signOut } from '../test/clerk-mock.tsx'
 import { AccountControls } from './AccountControls.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
+
+function renderInRouter(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>)
+}
 
 beforeEach(() => {
   resetFakeClerk()
@@ -16,7 +22,7 @@ beforeEach(() => {
 
 describe('AccountControls', () => {
   it('sin sesión: enlaces a iniciar sesión y crear cuenta', async () => {
-    render(<AccountControls />)
+    renderInRouter(<AccountControls />)
 
     expect(
       screen.getByRole('link', { name: 'Iniciar sesión' }),
@@ -34,7 +40,7 @@ describe('AccountControls', () => {
   it('con sesión: acceso a la cuenta y botón para salir', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true })
-    render(<AccountControls />)
+    renderInRouter(<AccountControls />)
 
     expect(
       screen.getByRole('button', { name: 'Abrir menú de la cuenta' }),
@@ -50,7 +56,7 @@ describe('AccountControls', () => {
 
   it('mientras Clerk carga: estado de carga, sin controles', () => {
     setFakeClerk({ status: 'loading', signedIn: true })
-    render(<AccountControls />)
+    renderInRouter(<AccountControls />)
 
     expect(screen.getByRole('status')).toHaveTextContent('Cargando el acceso…')
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
@@ -58,7 +64,7 @@ describe('AccountControls', () => {
 
   it('si Clerk falla: aviso breve, sin controles', async () => {
     setFakeClerk({ status: 'error' })
-    render(<AccountControls />)
+    renderInRouter(<AccountControls />)
 
     expect(screen.getByRole('status')).toHaveTextContent(
       'El acceso a tu cuenta no está disponible ahora.',

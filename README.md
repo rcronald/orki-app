@@ -6,7 +6,7 @@ La especificación completa de la Fase 1 está en [docs/specification.md](docs/s
 
 ## Estado actual
 
-El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase, con pruebas que se ejecutan en un Postgres desechable (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. La app ya tiene los tokens y los componentes base del design system de Orki, con una página interna de muestra fuera de producción (ver [Design system en la app](#design-system-en-la-app)), aunque todavía no hay pantallas reales ni enrutamiento. La app usa Clerk para la autenticación, con las pantallas de inicio de sesión y de registro de Clerk en español y con la apariencia del design system (ver [Autenticación](#autenticación)); la conexión con Supabase y las rutas protegidas llegan en issues posteriores.
+El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase, con pruebas que se ejecutan en un Postgres desechable (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. La app ya tiene los tokens y los componentes base del design system de Orki, con una página interna de muestra fuera de producción (ver [Design system en la app](#design-system-en-la-app)), aunque todavía no hay pantallas reales. La app usa Clerk para la autenticación, con las pantallas de inicio de sesión y de registro de Clerk en español y con la apariencia del design system, y React Router con el mapa de rutas de la Fase 1 (páginas provisionales), rutas que exigen sesión y una ruta solo para administradores del catálogo (ver [Autenticación](#autenticación)); la conexión con Supabase llega en un issue posterior.
 
 ## Requisitos
 
@@ -86,12 +86,13 @@ orki-app/
 │       ├── scripts/           Utilidades de la app (generación de iconos)
 │       ├── src/               Código fuente y pruebas
 │       │   ├── assets/        Marcador sin-foto.svg del design system
-│       │   ├── auth/          Proveedor de Clerk, apariencia, estados y controles de cuenta
-│       │   ├── components/    Componentes de la app
+│       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol y rutas protegidas
+│       │   ├── components/    Componentes de la app (estructura con la navegación, página)
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
 │       │   ├── lib/           Cliente de Supabase y tipos del esquema
-│       │   ├── pages/         Pantallas (inicio, inicio de sesión y registro)
+│       │   ├── pages/         Pantallas (provisionales salvo las de acceso)
+│       │   ├── routes/        Rutas de la app, enrutador de primer nivel, foco y título por página
 │       │   ├── showcase/      Página interna de muestra (solo fuera de producción)
 │       │   ├── styles/        Tokens, fuentes y hojas de estilos de los componentes
 │       │   └── test/          Utilidades de las pruebas (axe, Clerk simulado)
@@ -174,8 +175,8 @@ Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo 
 
 Fuera de producción, la ruta `/muestra` enseña todos los tokens (cada color con su valor y la razón de contraste de sus pares válidos, los estilos de texto, el espaciado, los radios y la sombra) y todos los componentes con sus variantes y estados. Para abrirla, con `npm run dev` en marcha, ve a <http://localhost:5173/muestra>; en una vista previa de Vercel, añade `/muestra` a la URL.
 
-- Solo existe cuando `VITE_APP_ENV` no es `prod`. Con `prod`, la ruta muestra la app normal y el código de la página no entra en el build: `main.tsx` la carga de forma diferida detrás de una comparación con `import.meta.env.VITE_APP_ENV`, que Vite resuelve al construir, y el import desaparece. Además, al arrancar se comprueba otra vez el ambiente ya validado.
-- No hay enrutador: `main.tsx` mira `location.pathname` al arrancar. Abrir o recargar `/muestra` funciona porque Vercel y el service worker responden cualquier ruta con `index.html`.
+- Solo existe cuando `VITE_APP_ENV` no es `prod`. Con `prod`, la ruta da "Página no encontrada" y el código de la página no entra en el build: `src/routes/AppRouter.tsx` la carga de forma diferida detrás de una comparación con `import.meta.env.VITE_APP_ENV`, que Vite resuelve al construir, y el import desaparece. Además, la ruta solo se registra si el ambiente ya validado no es `prod`.
+- Es una ruta de React Router de primer nivel, fuera de `<ClerkProvider>`: no necesita sesión, no descarga el script de Clerk y se ve aunque Clerk falle o no haya conexión. Abrir o recargar `/muestra` funciona porque Vercel y el service worker responden cualquier ruta con `index.html`.
 - Los nombres y valores que muestra se leen de `tokens.css`, y los contrastes usan la misma lista de pares y el mismo cálculo que la prueba de contraste (`src/styles/contrast.ts`), así la página no se desactualiza.
 - `src/showcase/ShowcasePage.test.tsx` pasa [axe-core](https://github.com/dequelabs/axe-core) sobre la página (al cargar y con el buscador y la sección plegable abiertos) y falla ante cualquier incumplimiento de nivel A o AA de WCAG. jsdom no calcula colores, así que esa revisión no mide el contraste: lo cubre `contrast.test.ts`.
 
@@ -220,12 +221,49 @@ La autenticación es de [Clerk](https://clerk.com/docs), con su SDK de React vig
 
 ### Cómo está montada
 
-- `src/auth/AuthProvider.tsx` envuelve la app con [`<ClerkProvider>`](https://clerk.com/docs/react/reference/components/clerk-provider) y le pasa la clave validada, los textos en español ([`@clerk/localizations`](https://clerk.com/docs/guides/customizing-clerk/localization), variante `es-MX`, la de vocabulario latinoamericano), la apariencia del design system, las rutas de las pantallas de acceso y `afterSignOutUrl="/"`. La página de muestra queda fuera del proveedor.
-- Pantallas: `src/pages/SignInPage.tsx` (`/iniciar-sesion`) y `src/pages/SignUpPage.tsx` (`/registro`) montan [`<SignIn />`](https://clerk.com/docs/react/reference/components/authentication/sign-in) y [`<SignUp />`](https://clerk.com/docs/react/reference/components/authentication/sign-up) dentro de un envoltorio propio (`AuthPageLayout`). Sin enrutador, Clerk lleva sus pasos internos en el hash de la URL (`routing="hash"`).
-- Enrutamiento provisional: `App.tsx` mira `location.pathname` al arrancar (como `main.tsx` con `/muestra`) y elige la pantalla; las rutas están en `src/auth/paths.ts`. Lo sustituye el enrutador del issue #57.
-- Cuenta: en la cabecera del inicio, `src/auth/AccountControls.tsx` muestra, con sesión, el [`<UserButton />`](https://clerk.com/docs/react/reference/components/user/user-button) de Clerk (avatar con el menú para administrar la cuenta) y un botón "Cerrar sesión" ([`<SignOutButton>`](https://clerk.com/docs/react/reference/components/unstyled/sign-out-button) con el `Button` del sistema); sin sesión, enlaces a "Iniciar sesión" y "Crear cuenta". La sesión se distingue con [`<Show when="signed-in">`](https://clerk.com/docs/react/reference/components/control/show), que en Core 3 sustituye a `<SignedIn>` y `<SignedOut>`.
+- `src/auth/AuthProvider.tsx` envuelve la app con [`<ClerkProvider>`](https://clerk.com/docs/react/reference/components/clerk-provider) y le pasa la clave validada, los textos en español ([`@clerk/localizations`](https://clerk.com/docs/guides/customizing-clerk/localization), variante `es-MX`, la de vocabulario latinoamericano), la apariencia del design system, las rutas de las pantallas de acceso, `afterSignOutUrl="/"` y `routerPush`/`routerReplace` con el `navigate` de React Router, para que Clerk navegue sin recargar la página ([React Router en modo declarativo](https://clerk.com/docs/react/guides/development/declarative-mode)). Un destino de otro origen se abre con una carga normal. La página de muestra queda fuera del proveedor.
+- Pantallas: `src/pages/SignInPage.tsx` (`/iniciar-sesion`) y `src/pages/SignUpPage.tsx` (`/registro`) montan [`<SignIn />`](https://clerk.com/docs/react/reference/components/authentication/sign-in) y [`<SignUp />`](https://clerk.com/docs/react/reference/components/authentication/sign-up) dentro de un envoltorio propio (`AuthPageLayout`), con `routing="path"` y su `path`: Clerk lleva sus pasos internos como subrutas (`/iniciar-sesion/factor-one`, `/iniciar-sesion/sso-callback`), por eso esas rutas aceptan `/*`.
+- Cuenta: en la cabecera de la app, `src/auth/AccountControls.tsx` muestra, con sesión, el [`<UserButton />`](https://clerk.com/docs/react/reference/components/user/user-button) de Clerk (avatar con el menú para administrar la cuenta) y un botón "Cerrar sesión" ([`<SignOutButton>`](https://clerk.com/docs/react/reference/components/unstyled/sign-out-button) con el `Button` del sistema); sin sesión, enlaces a "Iniciar sesión" y "Crear cuenta". La sesión se distingue con [`<Show when="signed-in">`](https://clerk.com/docs/react/reference/components/control/show), que en Core 3 sustituye a `<SignedIn>` y `<SignedOut>`.
 - Apariencia: `src/auth/appearance.ts` define el prop [`appearance`](https://clerk.com/docs/react/guides/customizing-clerk/appearance-prop/overview) con [`variables`](https://clerk.com/docs/react/guides/customizing-clerk/appearance-prop/variables) y `elements`, y cada valor es una variable de `tokens.css` (`var(--color-primary)`, `var(--font-body)`, `var(--radius-md)`...). `appearance.test.ts` falla si aparece un valor suelto o una variable que no existe en `tokens.css`. Clerk calcula sus tonos con `color-mix()` y color relativo, que con variables CSS piden Safari 16.4+ (el mismo mínimo que ya exige Tailwind 4).
-- Pruebas: ninguna carga Clerk ni necesita clave. `src/test/clerk-mock.tsx` sustituye a `@clerk/react` (`vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))`) y permite fijar el estado: cargando, listo, fallo de carga, con o sin sesión. Las pantallas propias (envoltorio, estados de carga y de error, controles de cuenta) pasan axe con el helper `src/test/axe.ts`.
+- Pruebas: ninguna carga Clerk ni necesita clave. `src/test/clerk-mock.tsx` sustituye a `@clerk/react` (`vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))`) y permite fijar el estado: cargando, listo, fallo de carga, con o sin sesión y con o sin el claim `app_role`. Las rutas se prueban con `MemoryRouter` en `src/routes/AppRouter.test.tsx`. Las pantallas propias pasan axe con el helper `src/test/axe.ts`.
+
+### Rutas
+
+El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (`<BrowserRouter>`, `<Routes>`, `<Route>`), sin el modo framework. Todas las rutas están en `src/routes/paths.ts` (`PATHS`); el mapa está en `src/App.tsx`, y la muestra, en `src/routes/AppRouter.tsx`. Van en español y sin acentos. "Registro" a secas es el de la cuenta; el de una planta cuelga de la colección.
+
+| Ruta                       | Pantalla                                  | Acceso                     |
+| -------------------------- | ----------------------------------------- | -------------------------- |
+| `/`                        | Inicio                                    | Pública                    |
+| `/catalogo`                | Catálogo (provisional)                    | Pública                    |
+| `/coleccion`               | Mi colección (provisional)                | Con sesión                 |
+| `/coleccion/nueva`         | Registrar una planta (provisional)        | Con sesión                 |
+| `/administracion/catalogo` | Administración del catálogo (provisional) | Con sesión y rol de admin. |
+| `/iniciar-sesion/*`        | Inicio de sesión (Clerk)                  | Pública                    |
+| `/registro/*`              | Crear cuenta (Clerk)                      | Pública                    |
+| `/muestra`                 | Muestra del design system                 | Solo fuera de producción   |
+| Cualquier otra             | Página no encontrada                      | Pública                    |
+
+- Navegación: `src/components/AppShell.tsx` pinta la cabecera, un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. El enlace "Administración" solo aparece con el rol de administrador.
+- Cada página pone el título de la pestaña ("Catálogo · Orki") y, al llegar navegando dentro de la app (no al cargarla), el foco va a su título (`h1` con `tabIndex={-1}`) para que el lector de pantalla anuncie la página nueva; en las pantallas de acceso, al contenido principal. Ver `src/routes/navigation.ts`.
+- Recargar cualquier ruta funciona: en Vercel, la reescritura de `vercel.json` responde con `index.html` todo lo que no es `assets/` ni `workbox-`; con la app instalada, el `navigateFallback` del service worker hace lo mismo con cualquier navegación.
+- Carga: `src/routes/AppRouter.tsx` carga `App.tsx` (Clerk, su localización y las páginas) de forma diferida, en un chunk aparte del inicial. El service worker precachea todos los chunks, así que sin conexión también carga.
+
+### Rutas protegidas y vuelta tras iniciar sesión
+
+`src/auth/RouteGuards.tsx` tiene dos rutas de diseño (layout routes):
+
+- `RequireAuth`: sin sesión, redirige a `/iniciar-sesion?redirect_url=<página pedida>` (ruta, búsqueda y hash). Mientras Clerk carga, "Cargando el acceso…"; si Clerk no está disponible (sin conexión o fallo, ver [Sin conexión](#sin-conexión)), la alerta con "Volver a intentar", sin redirigir.
+- `RequireCatalogAdmin`, dentro de la anterior: sin el rol, la pantalla "No tienes acceso" en la misma dirección (no un "no encontrado" ni una redirección).
+
+Las pantallas de acceso leen `redirect_url` (`src/auth/useAuthRedirectDestination.ts`), lo validan con `safeRedirectPath` y lo pasan a Clerk como `forceRedirectUrl` (y `signUpForceRedirectUrl` o `signInForceRedirectUrl` para el enlace entre ambas). Según la [documentación de Clerk](https://clerk.com/docs/guides/development/customize-redirect-urls), el destino forzado tiene prioridad sobre `redirect_url`, así que manda la ruta ya validada. Solo vale una ruta interna: que empiece por una sola barra, o una URL absoluta del mismo origen; nunca `//otro.sitio`, `/\otro.sitio`, otro origen, `javascript:` ni las propias pantallas de acceso. Un destino no válido lleva al inicio. Clerk, por su parte, también descarta destinos fuera de `allowedRedirectOrigins` (por defecto, el origen de la app y el dominio de la instancia).
+
+### Rol de administrador del catálogo
+
+- El rol viaja en el claim **`app_role`** del token de sesión de Clerk, no en `role` (lo reserva Supabase y debe valer `authenticated`).
+- El valor de administrador es **`catalog_admin`** (`CATALOG_ADMIN_ROLE` en `src/auth/roles.ts`). Es el mismo que se pone en Clerk (#55) y el que comprueban las políticas RLS (#6); si cambia, cambia en los tres sitios.
+- Configuración en el panel de Clerk (#55): en el usuario, metadatos públicos `{ "role": "catalog_admin" }`; en Sessions > Customize session token, el claim `{ "app_role": "{{user.public_metadata.role}}" }`. Los metadatos públicos solo se cambian desde el panel o el backend, no desde el navegador.
+- La app lo lee de `sessionClaims` de [`useAuth()`](https://clerk.com/docs/react/reference/hooks/use-auth), sin peticiones extra (`useIsCatalogAdmin`). Un cambio de rol llega con el siguiente token de sesión, no al instante.
+- Ocultar el enlace y la pantalla es **solo comodidad de la interfaz**: el token está en el navegador y la interfaz se puede manipular. La protección real son las políticas RLS de la base de datos (#6), que leen el mismo claim del token que verifica Supabase.
 
 ### Sin conexión
 
@@ -244,9 +282,9 @@ Qué hace Clerk sin red. **Verificado en la documentación de Clerk:**
 
 Cómo arranca la app, en consecuencia (`src/auth/useAuthAvailability.ts`):
 
-- Mientras Clerk carga, las pantallas de acceso muestran "Cargando el acceso…" (`role="status"`) y la cabecera del inicio, el mismo texto en lugar de los controles de cuenta.
+- Mientras Clerk carga, las pantallas de acceso y las rutas que exigen sesión muestran "Cargando el acceso…" (`role="status"`) y la cabecera de la app, el mismo texto en lugar de los controles de cuenta.
 - Si el navegador dice que no hay red (`navigator.onLine === false`), no se espera: se muestra enseguida "Sin conexión".
-- Si Clerk falla (`status: error`) o tarda más de 10 s (`AUTH_LOAD_TIMEOUT_MS`), se da el acceso por no disponible. Las pantallas de acceso muestran una alerta (`role="alert"`) con "Volver a intentar", que recarga la página; el inicio muestra un aviso breve (`role="status"`) y se sigue viendo entero.
+- Si Clerk falla (`status: error`) o tarda más de 10 s (`AUTH_LOAD_TIMEOUT_MS`), se da el acceso por no disponible. Las pantallas de acceso y las rutas que exigen sesión muestran una alerta (`role="alert"`) con "Volver a intentar", que recarga la página, en lugar de redirigir; las páginas públicas muestran un aviso breve en la cabecera (`role="status"`) y se siguen viendo enteras.
 - Si Clerk termina cargando más tarde, todo pasa al estado normal sin recargar.
 
 Qué haría falta para el modo de solo lectura del issue #18 (colección visible sin conexión con la sesión iniciada):
@@ -257,7 +295,7 @@ Qué haría falta para el modo de solo lectura del issue #18 (colección visible
 
 ### Service worker y autenticación
 
-El service worker (configuración en `apps/web/vite.config.ts`) no tiene `runtimeCaching`: solo responde a los archivos del precache y a las navegaciones dentro de la app. Las peticiones a Clerk (script y API, en su dominio de Frontend API) y a Google son de otro origen y van siempre a la red, sin guardarse. Las redirecciones de inicio de sesión ocurren en esos dominios; a la vuelta llegan a rutas de la app, que reciben `index.html` para que Clerk termine en el navegador. Clerk no tiene rutas propias en el dominio de la app, así que no hace falta `navigateFallbackDenylist`; haría falta si algún día se usara el proxy de Clerk (`proxyUrl`).
+El service worker (configuración en `apps/web/vite.config.ts`) no tiene `runtimeCaching`: solo responde a los archivos del precache y a las navegaciones dentro de la app. Las peticiones a Clerk (script y API, en su dominio de Frontend API) y a Google son de otro origen y van siempre a la red, sin guardarse. Las redirecciones de inicio de sesión ocurren en esos dominios; a la vuelta llegan a rutas de la app (subrutas de `/iniciar-sesion` o `/registro`, o la página pedida), que reciben `index.html` para que Clerk termine en el navegador. Clerk no tiene rutas propias en el dominio de la app, así que no hace falta `navigateFallbackDenylist`; haría falta si algún día se usara el proxy de Clerk (`proxyUrl`).
 
 ## Base de datos y migraciones
 

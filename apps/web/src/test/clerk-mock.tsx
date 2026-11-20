@@ -16,9 +16,15 @@ export type FakeClerkStatus = 'loading' | 'ready' | 'degraded' | 'error'
 interface FakeClerkState {
   status: FakeClerkStatus
   signedIn: boolean
+  /** Valor del claim app_role del token de sesión; null si no lo trae. */
+  appRole: string | null
 }
 
-export const fakeClerk: FakeClerkState = { status: 'ready', signedIn: false }
+export const fakeClerk: FakeClerkState = {
+  status: 'ready',
+  signedIn: false,
+  appRole: null,
+}
 
 /** Llamadas a cerrar sesión desde <SignOutButton>. */
 export const signOut = vi.fn()
@@ -26,14 +32,23 @@ export const signOut = vi.fn()
 /** Props con las que se pintó <ClerkProvider> por última vez. */
 export let lastProviderProps: Record<string, unknown> | undefined
 
+// Recibe las props de cada pintado de <SignIn> o <SignUp>.
+const authComponentRendered = vi.fn<(props: Record<string, unknown>) => void>()
+
+/** Props con las que se pintó <SignIn> o <SignUp> por última vez. */
+export function lastAuthComponentProps(): Record<string, unknown> | undefined {
+  return authComponentRendered.mock.lastCall?.[0]
+}
+
 export function setFakeClerk(next: Partial<FakeClerkState>) {
   Object.assign(fakeClerk, next)
 }
 
 export function resetFakeClerk() {
-  setFakeClerk({ status: 'ready', signedIn: false })
+  setFakeClerk({ status: 'ready', signedIn: false, appRole: null })
   signOut.mockReset()
   lastProviderProps = undefined
+  authComponentRendered.mockReset()
 }
 
 function isLoaded() {
@@ -55,6 +70,21 @@ export function useClerk() {
   return { status: fakeClerk.status }
 }
 
+// Como el real (tabla de valores de la documentación de useAuth): mientras
+// carga, isLoaded false e isSignedIn y sessionClaims undefined; sin sesión,
+// false y null; con sesión, los claims del token.
+export function useAuth() {
+  if (!isLoaded()) {
+    return { isLoaded: false, isSignedIn: undefined, sessionClaims: undefined }
+  }
+  if (!fakeClerk.signedIn) {
+    return { isLoaded: true, isSignedIn: false, sessionClaims: null }
+  }
+  const sessionClaims: Record<string, unknown> = { sub: 'user_prueba' }
+  if (fakeClerk.appRole !== null) sessionClaims.app_role = fakeClerk.appRole
+  return { isLoaded: true, isSignedIn: true, sessionClaims }
+}
+
 // Como el real: no pinta nada hasta que Clerk ha cargado.
 export function Show({
   when,
@@ -71,12 +101,14 @@ export function Show({
   return visible ? children : fallback
 }
 
-export function SignIn({ routing }: { routing?: string }) {
-  return <div data-testid="clerk-sign-in" data-routing={routing} />
+export function SignIn(props: { routing?: string; [prop: string]: unknown }) {
+  authComponentRendered(props)
+  return <div data-testid="clerk-sign-in" data-routing={props.routing} />
 }
 
-export function SignUp({ routing }: { routing?: string }) {
-  return <div data-testid="clerk-sign-up" data-routing={routing} />
+export function SignUp(props: { routing?: string; [prop: string]: unknown }) {
+  authComponentRendered(props)
+  return <div data-testid="clerk-sign-up" data-routing={props.routing} />
 }
 
 export function UserButton() {

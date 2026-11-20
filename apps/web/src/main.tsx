@@ -1,23 +1,12 @@
-import { lazy, StrictMode, Suspense } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router'
 import './index.css'
-import App from './App.tsx'
-import { AuthProvider } from './auth/AuthProvider.tsx'
 import { ConfigError } from './components/ConfigError.tsx'
 import { EnvironmentBadge } from './components/EnvironmentBadge.tsx'
 import { parseEnv } from './config/env.ts'
 import { initSupabase } from './lib/supabase.ts'
-import { isShowcaseRoute } from './showcase/route.ts'
-
-// Página interna de muestra del design system (/muestra), solo fuera de
-// producción. La comparación con import.meta.env.VITE_APP_ENV es estática: en
-// un build con VITE_APP_ENV=prod Vite la sustituye por false, el import
-// dinámico desaparece y el código de la muestra no entra en el bundle. Además,
-// isShowcaseRoute vuelve a comprobar el ambiente ya validado.
-const ShowcasePage =
-  import.meta.env.VITE_APP_ENV === 'prod'
-    ? null
-    : lazy(() => import('./showcase/ShowcasePage.tsx'))
+import { AppRouter } from './routes/AppRouter.tsx'
 
 const env = parseEnv(import.meta.env)
 const root = createRoot(document.getElementById('root')!)
@@ -26,18 +15,12 @@ if (env.ok) {
   initSupabase(env.config)
   root.render(
     <StrictMode>
-      {ShowcasePage &&
-      isShowcaseRoute(window.location.pathname, env.config.appEnv) ? (
-        <Suspense fallback={null}>
-          <ShowcasePage />
-        </Suspense>
-      ) : (
-        // La muestra queda fuera de Clerk: no necesita sesión ni cargar su
-        // script.
-        <AuthProvider publishableKey={env.config.clerkPublishableKey}>
-          <App />
-        </AuthProvider>
-      )}
+      <BrowserRouter>
+        <AppRouter
+          appEnv={env.config.appEnv}
+          clerkPublishableKey={env.config.clerkPublishableKey}
+        />
+      </BrowserRouter>
       <EnvironmentBadge env={env.config.appEnv} />
     </StrictMode>,
   )

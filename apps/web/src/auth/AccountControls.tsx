@@ -1,7 +1,8 @@
 import { Show, SignOutButton, UserButton } from '@clerk/react'
+import { Link } from 'react-router'
 import { Button } from '../components/ui/Button.tsx'
+import { PATHS } from '../routes/paths.ts'
 import { AuthLoading, AuthNotice } from './AuthStatus.tsx'
-import { SIGN_IN_PATH, SIGN_UP_PATH } from './paths.ts'
 import { useAuthAvailability } from './useAuthAvailability.ts'
 
 // Controles de cuenta de la cabecera. Con sesión: el botón de usuario de Clerk
@@ -26,12 +27,12 @@ export function AccountControls() {
       </Show>
       <Show when="signed-out">
         <div className="flex flex-wrap items-center gap-space-2">
-          <a href={SIGN_IN_PATH} className="orki-btn orki-btn--secondary">
+          <Link to={PATHS.signIn} className="orki-btn orki-btn--secondary">
             Iniciar sesión
-          </a>
-          <a href={SIGN_UP_PATH} className="orki-btn orki-btn--primary">
+          </Link>
+          <Link to={PATHS.signUp} className="orki-btn orki-btn--primary">
             Crear cuenta
-          </a>
+          </Link>
         </div>
       </Show>
     </>

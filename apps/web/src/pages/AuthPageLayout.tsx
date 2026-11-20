@@ -1,4 +1,7 @@
-import { useEffect, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
+import { Link } from 'react-router'
+import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
+import { PATHS } from '../routes/paths.ts'
 
 interface AuthPageLayoutProps {
   /** Título de la pestaña, sin el nombre de la app. */
@@ -7,28 +10,31 @@ interface AuthPageLayoutProps {
 }
 
 // Envoltorio de las pantallas de inicio de sesión y de registro: la marca con
-// un enlace al inicio y el contenido centrado. El título visible lo pone el
-// componente de Clerk; aquí solo se cambia el de la pestaña.
+// un enlace al inicio y el contenido centrado. El título visible (h1) lo pone
+// el componente de Clerk; aquí se cambia el de la pestaña y, al llegar
+// navegando, el foco va al contenido principal (con su nombre accesible) para
+// que el lector de pantalla anuncie la pantalla nueva.
 export function AuthPageLayout({ title, children }: AuthPageLayoutProps) {
-  useEffect(() => {
-    const previous = document.title
-    document.title = `${title} · Orki`
-    return () => {
-      document.title = previous
-    }
-  }, [title])
+  const mainRef = useRef<HTMLElement>(null)
+  usePageTitle(title)
+  useFocusOnNavigation(mainRef)
 
   return (
     <div className="flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
       <header className="px-space-4 py-space-3">
-        <a
-          href="/"
+        <Link
+          to={PATHS.home}
           className="font-display text-xl font-semibold text-neutral-900"
         >
           <span className="sr-only">Volver al inicio de</span> Orki
-        </a>
+        </Link>
       </header>
-      <main className="flex flex-1 flex-col items-center px-space-4 pb-space-6">
+      <main
+        ref={mainRef}
+        tabIndex={-1}
+        aria-label={title}
+        className="flex flex-1 flex-col items-center px-space-4 pb-space-6"
+      >
         <div className="flex w-full max-w-md flex-col items-center gap-space-4">
           {children}
         </div>

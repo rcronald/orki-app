@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -19,14 +20,23 @@ beforeEach(() => {
 describe.each([
   ['SignInPage', SignInPage, 'Iniciar sesión · Orki', 'clerk-sign-in'],
   ['SignUpPage', SignUpPage, 'Crear cuenta · Orki', 'clerk-sign-up'],
-] as const)('%s', (_name, Page, title, clerkTestId) => {
-  it('con Clerk listo: muestra su componente con rutas en el hash', async () => {
+] as const)('%s', (_name, AuthPage, title, clerkTestId) => {
+  // Las pantallas usan enlaces y parámetros del enrutador.
+  function Page() {
+    return (
+      <MemoryRouter>
+        <AuthPage />
+      </MemoryRouter>
+    )
+  }
+
+  it('con Clerk listo: muestra su componente con rutas del enrutador', async () => {
     render(<Page />)
 
     expect(document.title).toBe(title)
     expect(screen.getByTestId(clerkTestId)).toHaveAttribute(
       'data-routing',
-      'hash',
+      'path',
     )
     expect(
       screen.getByRole('link', { name: 'Volver al inicio de Orki' }),
