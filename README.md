@@ -163,7 +163,7 @@ Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo 
 | `StatusBadge`     | Validación del nombre: "Validada" o "Nombre por validar".                                                             |
 | `SpecimenCard`    | Tarjeta de un ejemplar; sin foto usa el marcador `sin-foto.svg`.                                                      |
 | `OwnershipAnswer` | Respuesta de "¿Ya la tengo?".                                                                                         |
-| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados y una acción final opcional.                          |
+| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados, error y una acción final opcional.                   |
 | `Collapsible`     | Sección plegable.                                                                                                     |
 | `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`. |
 
@@ -174,7 +174,18 @@ Fuera de producción, la ruta `/muestra` enseña todos los tokens (cada color co
 - Solo existe cuando `VITE_APP_ENV` no es `prod`. Con `prod`, la ruta da "Página no encontrada" y el código de la página no entra en el build: `src/routes/AppRouter.tsx` la carga de forma diferida detrás de una comparación con `import.meta.env.VITE_APP_ENV`, que Vite resuelve al construir, y el import desaparece. Además, la ruta solo se registra si el ambiente ya validado no es `prod`.
 - Es una ruta de React Router de primer nivel, fuera de `<ClerkProvider>`: no necesita sesión, no descarga el script de Clerk y se ve aunque Clerk falle o no haya conexión. Abrir o recargar `/muestra` funciona porque Vercel y el service worker responden cualquier ruta con `index.html`.
 - Los nombres y valores que muestra se leen de `tokens.css`, y los contrastes usan la misma lista de pares y el mismo cálculo que la prueba de contraste (`src/styles/contrast.ts`), así la página no se desactualiza.
+- Con la configuración de Supabase (en la app siempre la hay), los buscadores "Nombre científico" y "Otro género" buscan en el catálogo real con la búsqueda de la app (ver [Búsqueda en el catálogo](#búsqueda-en-el-catálogo)), sin sesión: bajo cada especie se ve si coincidió por un sinónimo o un nombre común, y bajo cada género, la abreviatura. Sin conexión o con un fallo del servidor se ve un aviso en la lista. Sin configuración (en las pruebas) usan los datos fijos de `src/showcase/data.ts`; `src/showcase/ShowcaseLiveSearch.test.tsx` prueba la versión real con `fetch` simulado.
 - `src/showcase/ShowcasePage.test.tsx` pasa [axe-core](https://github.com/dequelabs/axe-core) sobre la página (al cargar y con el buscador y la sección plegable abiertos) y falla ante cualquier incumplimiento de nivel A o AA de WCAG. jsdom no calcula colores, así que esa revisión no mide el contraste: lo cubre `contrast.test.ts`.
+
+## Búsqueda en el catálogo
+
+La app busca especies y géneros con las funciones de la API `search_species` y `search_genera` (ver [Búsqueda de especies](supabase/README.md#búsqueda-de-especies)). Desde la app se usan así:
+
+- `apps/web/src/lib/catalogSearch.ts`: `searchSpecies(query, { signal, maxResults })` y `searchGenera(query, { signal, maxResults })` devuelven los resultados en camelCase (`scientificName`, `matchedName`, `matchedNameType`...). No hacen ninguna petición si la consulta recortada tiene menos de 2 o más de 100 caracteres (`SEARCH_QUERY_MIN_LENGTH` y `SEARCH_QUERY_MAX_LENGTH`, los límites de la base); piden 10 resultados por defecto y como mucho 20. Fallan con `CatalogSearchError`, cuyo `reason` es `aborted` (cancelada), `offline` (sin conexión) o `failed` (servidor o red). `speciesMatchText()` y `genusMatchText()` dan el texto de por qué coincidió ("Sinónimo: …", "Nombre común: …", "Abreviatura: …").
+- `apps/web/src/lib/useCatalogSearch.ts`: `useSpeciesSearch(query)` y `useGenusSearch(query)` buscan mientras se escribe, con 250 ms de espera entre pulsaciones (`debounceMs`), cancelan la petición anterior al escribir de nuevo o al desmontar y nunca devuelven resultados de otra consulta. Devuelven `{ status, results, error }`, con `status` `idle` (menos de 2 caracteres), `loading`, `success`, `empty` o `error`, y `error.message` en español, distinto sin conexión.
+- `Autocomplete` recibe esos estados: `loading`, `error` (el mensaje) y `minQueryLength` (por debajo no dice "Sin resultados").
+
+Las funciones son públicas: sin sesión, la petición va con la clave publicable, como anon. Con sesión lleva el token de Clerk como cualquier otra; si no se puede obtener por falta de conexión, el error es `offline`.
 
 ## Variables de entorno de la app
 

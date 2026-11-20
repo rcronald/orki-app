@@ -12,6 +12,7 @@ import {
   type PlantValidation,
   type Profile,
   type Species,
+  type SpeciesMatchType,
   type SpeciesName,
   type SpeciesNameType,
   type SpeciesSource,
@@ -76,6 +77,10 @@ function usosDelCliente(supabase: OrkiSupabaseClient) {
   void supabase.rpc('requesting_user_id')
   // @ts-expect-error: la función no existe.
   void supabase.rpc('no_existe')
+  void supabase.rpc('search_species', { query: 'phal', max_results: 10 })
+  void supabase.rpc('search_genera', { query: 'phal' })
+  // @ts-expect-error: falta el argumento obligatorio query.
+  void supabase.rpc('search_species', { max_results: 10 })
 }
 void usosDelCliente
 
@@ -107,6 +112,9 @@ describe('tipos del esquema', () => {
     >()
     expectTypeOf<FlowerColor>().toEqualTypeOf<
       'white' | 'pink' | 'purple' | 'yellow' | 'orange' | 'bicolor'
+    >()
+    expectTypeOf<SpeciesMatchType>().toEqualTypeOf<
+      'scientific' | 'synonym' | 'common'
     >()
     // @ts-expect-error: "dead" no es un PlantStatus.
     const estado: PlantStatus = 'dead'
