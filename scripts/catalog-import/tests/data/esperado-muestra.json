@@ -1,0 +1,501 @@
+{
+  "summary": {
+    "source": {
+      "file": "muestra-col26.10xr.tsv",
+      "family": "Orchidaceae"
+    },
+    "rows_read": 49,
+    "rows_other_family": 2,
+    "family_records": 47,
+    "genera": 8,
+    "hybrid_genera": 2,
+    "species": 10,
+    "hybrids": 4,
+    "synonyms": 8,
+    "ambiguous_synonyms": 1,
+    "reassigned_synonyms": 2,
+    "discarded": {
+      "FORMULA_HIBRIDA": 3,
+      "GENERO_SIN_ESPECIES": 2,
+      "INFRAESPECIFICO_ACEPTADO": 2,
+      "MAL_APLICADO": 1,
+      "PROVISIONAL": 2,
+      "RANGO_NO_IMPORTADO": 1,
+      "SINONIMO_DE_EXCLUIDO": 1,
+      "SINONIMO_DE_GENERO": 1,
+      "SINONIMO_DE_PROVISIONAL": 2,
+      "SINONIMO_IGUAL_AL_ACEPTADO": 1,
+      "SINONIMO_REPETIDO": 2,
+      "SINONIMO_SIN_DESTINO": 1,
+      "SIN_RANGO": 2
+    },
+    "adjusted": {
+      "HIBRIDO_INCONSISTENTE": 2,
+      "NOMBRE_NORMALIZADO": 1,
+      "SINONIMO_REASIGNADO": 2
+    }
+  },
+  "genera": [
+    {
+      "name": "Bulbophyllum",
+      "source_ref": "8VRGS",
+      "is_hybrid": false
+    },
+    {
+      "name": "Cattleya",
+      "source_ref": "8VW29",
+      "is_hybrid": false
+    },
+    {
+      "name": "Chamorchis",
+      "source_ref": "8VW5N",
+      "is_hybrid": false
+    },
+    {
+      "name": "Dendrobium",
+      "source_ref": "8VWT5",
+      "is_hybrid": false
+    },
+    {
+      "name": "Orchiserapias",
+      "source_ref": "69FQ",
+      "is_hybrid": false
+    },
+    {
+      "name": "Phalaenopsis",
+      "source_ref": "8W2B9",
+      "is_hybrid": false
+    },
+    {
+      "name": "× Anacamptorchis",
+      "source_ref": "8VTQS",
+      "is_hybrid": true
+    },
+    {
+      "name": "× Brassocattleya",
+      "source_ref": "8VVQS",
+      "is_hybrid": true
+    }
+  ],
+  "species": [
+    {
+      "scientific_name": "Brassocattleya hybrida",
+      "authorship": "hort.",
+      "source_ref": "M592X",
+      "genus": "× Brassocattleya",
+      "genus_ref": "8VVQS",
+      "type": "hybrid",
+      "synonyms": []
+    },
+    {
+      "scientific_name": "Bulbophyllum fletcherianum",
+      "authorship": "J.G.Fowler",
+      "source_ref": "8W7QM",
+      "genus": "Bulbophyllum",
+      "genus_ref": "8VRGS",
+      "type": "species",
+      "synonyms": []
+    },
+    {
+      "scientific_name": "Cattleya labiata",
+      "authorship": "Lindl.",
+      "source_ref": "RWFC",
+      "genus": "Cattleya",
+      "genus_ref": "8VW29",
+      "type": "species",
+      "synonyms": [
+        {
+          "name": "Cattleya bullieri",
+          "authorship": "Carrière",
+          "source_ref": "7THCP",
+          "status": "synonym",
+          "rank": "species",
+          "via": null
+        },
+        {
+          "name": "Cattleya labiata autumnalis",
+          "authorship": "Pynaert",
+          "source_ref": "KZT8K",
+          "status": "synonym",
+          "rank": "infraspecific name",
+          "via": null
+        },
+        {
+          "name": "Cattleya labiata f. alba",
+          "authorship": "(Linden & Rodigas) F.Barros & J.A.N.Bat.",
+          "source_ref": "7Z22G",
+          "status": "synonym",
+          "rank": "form",
+          "via": null
+        }
+      ]
+    },
+    {
+      "scientific_name": "Chamorchis alpina",
+      "authorship": "(L.) Rich.",
+      "source_ref": "TLRN",
+      "genus": "Chamorchis",
+      "genus_ref": "8VW5N",
+      "type": "species",
+      "synonyms": [
+        {
+          "name": "Herminium alpinum",
+          "authorship": "(L.) Sweet",
+          "source_ref": "3L28J",
+          "status": "synonym",
+          "rank": "species",
+          "via": null
+        }
+      ]
+    },
+    {
+      "scientific_name": "Dendrobium thyrsiflorum",
+      "authorship": "B.S.Williams",
+      "source_ref": "6CJK4",
+      "genus": "Dendrobium",
+      "genus_ref": "8VWT5",
+      "type": "species",
+      "synonyms": []
+    },
+    {
+      "scientific_name": "Phalaenopsis amabilis",
+      "authorship": "(L.) Blume",
+      "source_ref": "4FR2J",
+      "genus": "Phalaenopsis",
+      "genus_ref": "8W2B9",
+      "type": "species",
+      "synonyms": [
+        {
+          "name": "Cymbidium amabile",
+          "authorship": "(L.) Roxb.",
+          "source_ref": "7VKDG",
+          "status": "synonym",
+          "rank": "species",
+          "via": null
+        },
+        {
+          "name": "Epidendrum amabile",
+          "authorship": "L.",
+          "source_ref": "7VX9T",
+          "status": "ambiguous synonym",
+          "rank": "species",
+          "via": null
+        },
+        {
+          "name": "Phalaenopsis amabilis var. moluccana",
+          "authorship": "Schltr.",
+          "source_ref": "7YX7Y",
+          "status": "synonym",
+          "rank": "variety",
+          "via": "7YKK5"
+        },
+        {
+          "name": "Phalaenopsis celebica",
+          "authorship": "Vlooten",
+          "source_ref": "7XWJL",
+          "status": "synonym",
+          "rank": "species",
+          "via": "7YKK5"
+        }
+      ]
+    },
+    {
+      "scientific_name": "Phalaenopsis aphrodite",
+      "authorship": "Rchb.f.",
+      "source_ref": "4FR2M",
+      "genus": "Phalaenopsis",
+      "genus_ref": "8W2B9",
+      "type": "species",
+      "synonyms": []
+    },
+    {
+      "scientific_name": "Phalaenopsis × intermedia",
+      "authorship": "Lindl.",
+      "source_ref": "4FR3H",
+      "genus": "Phalaenopsis",
+      "genus_ref": "8W2B9",
+      "type": "hybrid",
+      "synonyms": []
+    },
+    {
+      "scientific_name": "× Anacamptorchis bassoulsii",
+      "authorship": "(Balayer) B.Bock",
+      "source_ref": "66JFS",
+      "genus": "× Anacamptorchis",
+      "genus_ref": "8VTQS",
+      "type": "hybrid",
+      "synonyms": []
+    },
+    {
+      "scientific_name": "× Orchiserapias dhiorii",
+      "authorship": "M.Ackermann & Mar.Ackermann",
+      "source_ref": "L2GFV",
+      "genus": "Orchiserapias",
+      "genus_ref": "69FQ",
+      "type": "hybrid",
+      "synonyms": []
+    }
+  ],
+  "issues": [
+    {
+      "source_ref": "VQQMR",
+      "name": "Anacamptis morio × Orchis mascula",
+      "authorship": null,
+      "rank": "species",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "FORMULA_HIBRIDA",
+      "message": "Fórmula híbrida «A × B»: no es un nombre de especie."
+    },
+    {
+      "source_ref": "VQQXL",
+      "name": "Anacamptis morio × palustris",
+      "authorship": null,
+      "rank": "species",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "FORMULA_HIBRIDA",
+      "message": "Fórmula híbrida «A × B»: no es un nombre de especie."
+    },
+    {
+      "source_ref": "VQSPG",
+      "name": "Anacamptis morio × Orchis mascula",
+      "authorship": null,
+      "rank": "species",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "FORMULA_HIBRIDA",
+      "message": "Fórmula híbrida «A × B»: no es un nombre de especie."
+    },
+    {
+      "source_ref": "8VTQR",
+      "name": "Anacamptis",
+      "authorship": "Rich.",
+      "rank": "genus",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "GENERO_SIN_ESPECIES",
+      "message": "Género aceptado sin ninguna especie importada."
+    },
+    {
+      "source_ref": "8VXXY",
+      "name": "Goodyera",
+      "authorship": "R.Br.",
+      "rank": "genus",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "GENERO_SIN_ESPECIES",
+      "message": "Género aceptado sin ninguna especie importada."
+    },
+    {
+      "source_ref": "L2GFV",
+      "name": "× Orchiserapias dhiorii",
+      "authorship": "M.Ackermann & Mar.Ackermann",
+      "rank": "species",
+      "status": "accepted",
+      "action": "ajustado",
+      "code": "HIBRIDO_INCONSISTENTE",
+      "message": "El signo × del nombre no coincide con el de su género: se importa como híbrido. Género: «Orchiserapias»."
+    },
+    {
+      "source_ref": "M592X",
+      "name": "Brassocattleya hybrida",
+      "authorship": "hort.",
+      "rank": "species",
+      "status": "accepted",
+      "action": "ajustado",
+      "code": "HIBRIDO_INCONSISTENTE",
+      "message": "El signo × del nombre no coincide con el de su género: se importa como híbrido. Género: «× Brassocattleya»."
+    },
+    {
+      "source_ref": "7YKK5",
+      "name": "Phalaenopsis amabilis subsp. moluccana",
+      "authorship": "(Schltr.) Christenson",
+      "rank": "subspecies",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "INFRAESPECIFICO_ACEPTADO",
+      "message": "Taxón aceptado por debajo de especie: no se importan subespecies, variedades ni formas."
+    },
+    {
+      "source_ref": "VCLHC",
+      "name": "Phalaenopsis cornu-cervi f. cornu-cervi",
+      "authorship": null,
+      "rank": "form",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "INFRAESPECIFICO_ACEPTADO",
+      "message": "Taxón aceptado por debajo de especie: no se importan subespecies, variedades ni formas."
+    },
+    {
+      "source_ref": "8X2QV",
+      "name": "Phalaenopsis amabilis",
+      "authorship": "Lindl.",
+      "rank": "species",
+      "status": "misapplied",
+      "action": "descartado",
+      "code": "MAL_APLICADO",
+      "message": "Nombre mal aplicado: se excluye siempre. Apunta a 4FR2M (Phalaenopsis aphrodite, species, accepted)."
+    },
+    {
+      "source_ref": "7THCP",
+      "name": "Cattleya bullieri",
+      "authorship": "Carrière",
+      "rank": "species",
+      "status": "synonym",
+      "action": "ajustado",
+      "code": "NOMBRE_NORMALIZADO",
+      "message": "Se limpiaron los espacios o el signo de híbrido del nombre o la autoría. Original: «  Cattleya   bullieri » «Carrière  »."
+    },
+    {
+      "source_ref": "N8D5X",
+      "name": "Dendrobium thyrsiflorum",
+      "authorship": "Rchb.fil. ex André",
+      "rank": "species",
+      "status": "provisionally accepted",
+      "action": "descartado",
+      "code": "PROVISIONAL",
+      "message": "Taxón provisionalmente aceptado: se excluye."
+    },
+    {
+      "source_ref": "VJRY8",
+      "name": "Epipactis atrorubens",
+      "authorship": "(Hoffm.) Besser",
+      "rank": "species",
+      "status": "provisionally accepted",
+      "action": "descartado",
+      "code": "PROVISIONAL",
+      "message": "Taxón provisionalmente aceptado: se excluye."
+    },
+    {
+      "source_ref": "LLFHH",
+      "name": "Apostasiaceae",
+      "authorship": "Lindl.",
+      "rank": "family",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "RANGO_NO_IMPORTADO",
+      "message": "Rango que no se importa. Rango: «family»."
+    },
+    {
+      "source_ref": "R8WB3",
+      "name": "Orchis × alatiflora",
+      "authorship": "(Lassim.) Lassim.",
+      "rank": "species",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_DE_EXCLUIDO",
+      "message": "Sinónimo de una especie que no se importa. Apunta a VQQXL (Anacamptis morio × palustris, species, accepted), descartada por FORMULA_HIBRIDA."
+    },
+    {
+      "source_ref": "8VXDV",
+      "name": "Epipactis",
+      "authorship": "Ség.",
+      "rank": "genus",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_DE_GENERO",
+      "message": "Sinónimo de rango género: el catálogo no guarda sinónimos de géneros."
+    },
+    {
+      "source_ref": "7VYRH",
+      "name": "Epipactis atropurpurea",
+      "authorship": "Raf.",
+      "rank": "species",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_DE_PROVISIONAL",
+      "message": "Sinónimo de un taxón provisionalmente aceptado. Apunta a VJRY8 (Epipactis atrorubens, species, provisionally accepted)."
+    },
+    {
+      "source_ref": "7Z2JG",
+      "name": "Epipactis atrorubens f. longibracteata",
+      "authorship": "(Bordz.) Soó",
+      "rank": "form",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_DE_PROVISIONAL",
+      "message": "Sinónimo de un taxón provisionalmente aceptado. Apunta a VJRY8 (Epipactis atrorubens, species, provisionally accepted)."
+    },
+    {
+      "source_ref": "7SXQ6",
+      "name": "Bulbophyllum fletcherianum",
+      "authorship": "Rolfe",
+      "rank": "species",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_IGUAL_AL_ACEPTADO",
+      "message": "Sinónimo igual al nombre aceptado de su propia especie. Especie: 8W7QM (Bulbophyllum fletcherianum, species, accepted)."
+    },
+    {
+      "source_ref": "7XWJL",
+      "name": "Phalaenopsis celebica",
+      "authorship": "Vlooten",
+      "rank": "species",
+      "status": "synonym",
+      "action": "ajustado",
+      "code": "SINONIMO_REASIGNADO",
+      "message": "Sinónimo de un taxón infraespecífico aceptado: se asigna a la especie de ese taxón. Apuntaba a 7YKK5 (Phalaenopsis amabilis subsp. moluccana, subspecies, accepted); pasa a 4FR2J (Phalaenopsis amabilis, species, accepted)."
+    },
+    {
+      "source_ref": "7YX7Y",
+      "name": "Phalaenopsis amabilis var. moluccana",
+      "authorship": "Schltr.",
+      "rank": "variety",
+      "status": "synonym",
+      "action": "ajustado",
+      "code": "SINONIMO_REASIGNADO",
+      "message": "Sinónimo de un taxón infraespecífico aceptado: se asigna a la especie de ese taxón. Apuntaba a 7YKK5 (Phalaenopsis amabilis subsp. moluccana, subspecies, accepted); pasa a 4FR2J (Phalaenopsis amabilis, species, accepted)."
+    },
+    {
+      "source_ref": "3L28K",
+      "name": "Herminium alpinum",
+      "authorship": "(L.) Lindl.",
+      "rank": "species",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_REPETIDO",
+      "message": "Sinónimo repetido dentro de la misma especie: se conserva uno. Se conserva 3L28J (Herminium alpinum, species, synonym)."
+    },
+    {
+      "source_ref": "M9K5Q",
+      "name": "Cattleya labiata f. alba",
+      "authorship": "(Linden & Rodigas) M.Wolff & O.Gruss",
+      "rank": "form",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_REPETIDO",
+      "message": "Sinónimo repetido dentro de la misma especie: se conserva uno. Se conserva 7Z22G (Cattleya labiata f. alba, form, synonym)."
+    },
+    {
+      "source_ref": "VCLHB",
+      "name": "Phalaenopsis cornu-cervi var. cornu-cervi",
+      "authorship": null,
+      "rank": "variety",
+      "status": "synonym",
+      "action": "descartado",
+      "code": "SINONIMO_SIN_DESTINO",
+      "message": "El sinónimo no lleva a una especie aceptada. Apunta a 8W2B9 (Phalaenopsis, genus, accepted)."
+    },
+    {
+      "source_ref": "BOLD.AAM4945",
+      "name": "BOLD:AAM4945",
+      "authorship": null,
+      "rank": "unranked",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "SIN_RANGO",
+      "message": "Identificador molecular sin rango (BOLD o UNITE), no es un nombre."
+    },
+    {
+      "source_ref": "SH1132364.10FU",
+      "name": "SH1132364.10FU",
+      "authorship": null,
+      "rank": "unranked",
+      "status": "accepted",
+      "action": "descartado",
+      "code": "SIN_RANGO",
+      "message": "Identificador molecular sin rango (BOLD o UNITE), no es un nombre."
+    }
+  ]
+}

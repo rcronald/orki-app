@@ -105,7 +105,7 @@ Fuentes: [página de descarga de COL (código fuente)](https://raw.githubusercon
 | Estado                       | `status`: `accepted`, `provisionally accepted`, `synonym`, `ambiguous synonym`, `misapplied`. **No existe «doubtful»**                                                                                | `taxonomicStatus`: `ACCEPTED`, `DOUBTFUL`, `SYNONYM`, `HOMOTYPIC_SYNONYM`, `HETEROTYPIC_SYNONYM`, `PROPARTE_SYNONYM` |
 | Nombre sin autoría           | `scientificName` ya viene sin autoría (`Phalaenopsis amabilis`)                                                                                                                                       | `canonicalName`, pero **quita el marcador de rango** (`Phalaenopsis amabilis ramosa` para un `var.`)                 |
 | Autoría                      | `authorship` (`(L.) Blume`), además desglosada en `combinationAuthorship` y `basionymAuthorship`                                                                                                      | `authorship`                                                                                                         |
-| Sinónimo → aceptado          | En la API: `accepted.id` y `parentId`. En la exportación: `col:parentID` del sinónimo apunta al aceptado (convención ColDP; ver «No verificado»)                                                      | `acceptedKey`                                                                                                        |
+| Sinónimo → aceptado          | En la API: `accepted.id` y `parentId`. En la exportación: `col:parentID` del sinónimo apunta al aceptado (comprobado en #73, ver la sección 8)                                                        | `acceptedKey`                                                                                                        |
 | Género                       | `name.genus` (epíteto genérico) y `parentId` (taxón padre). **Pueden no coincidir**, ver más abajo                                                                                                    | `genus`, `genusKey`                                                                                                  |
 | Híbridos                     | `name.notho`: `["specific"]` (`Phalaenopsis × intermedia`) o `["generic"]` (`× Anacamptorchis bassoulsii`). El signo `×` va dentro de `scientificName`. Las fórmulas `A × B` tienen `type: "formula"` | `nameType: HYBRID` (409 nombres)                                                                                     |
 | Nombres comunes              | Existen (`vernacularNames` en `/taxon/{id}/info`), pero son escasos para orquídeas: _P. amabilis_ solo tiene uno en sueco                                                                             | Endpoint `/vernacularNames`                                                                                          |
@@ -130,9 +130,9 @@ El mismo taxón en GBIF v2 (`api.gbif.org/v2/species/match?checklistKey=7ddf…&
 
 - **Nombres mal aplicados con el mismo nombre que un aceptado:** «_Phalaenopsis amabilis_ Lindl.» (misapplied) comparte nombre sin autoría con la aceptada. No se deben cargar como sinónimos.
 - **Nombres aceptados repetidos sin autoría:** hay 1 caso, _Dendrobium thyrsiflorum_ B.S.Williams (aceptada) y _D. thyrsiflorum_ Rchb.f. ex André (provisional). Chocaría con el índice único de `lower(scientific_name)`.
-- **Género del nombre distinto del género padre** en 221 especies (87 aceptadas y 134 provisionales). Ejemplo: _Epipactis atrorubens_ cuelga de _Goodyera_, porque en COL XR «_Epipactis_ Ség.» figura como sinónimo de _Goodyera_. Propongo tomar el género del propio nombre y mandar los desacuerdos al reporte.
+- **Género del nombre distinto del género padre** en 221 especies (87 aceptadas y 134 provisionales). Ejemplo: _Epipactis atrorubens_ cuelga de _Goodyera_, porque en COL XR «_Epipactis_ Ség.» figura como sinónimo de _Goodyera_. Propongo tomar el género del propio nombre y mandar los desacuerdos al reporte. _Revisado en #73 (sección 8): en la exportación ninguna especie aceptada que no sea fórmula tiene este problema; todos los casos reales son provisionales o fórmulas, que se excluyen. Se usa el género padre._
 - **Nombres sin autoría:** 123 aceptados, casi todos fórmulas híbridas y 5 nombres normales.
-- **Registros `unranked`:** 13 252 bajo Orchidaceae son identificadores moleculares (`BOLD:AAB4896`) y se descartan.
+- **Registros `unranked`:** 13 252 bajo Orchidaceae son identificadores moleculares y se descartan. _Revisado en #73: 13 226 son de UNITE (`SH1132364.10FU`) y solo 26 de BOLD (`BOLD:AAM4945`)._
 
 ## 5. Órdenes de magnitud para Orchidaceae (COL26.10 XR)
 
@@ -193,6 +193,24 @@ Conteos con `nameusage/search?TAXON_ID=DPL&limit=0` en la versión 316691:
   - sus claves no coinciden con las de GBIF ni con las de COL.
 - No la recomiendo como fuente principal para la Fase 1. Sí conviene citarla en los créditos.
 
+## 8. Formato real de la exportación (comprobado en #73)
+
+Comprobado el 20 de noviembre de 2026 sobre la exportación completa de la opción A, descargada una vez fuera del repositorio y leída entera.
+
+- **Archivo:** zip de 137 MB (SHA-256 `6f2a6b6a645ea8306cea2149027c84dd7f08cd781b1079c5aee453a0a13adc73`), generado el 27 de octubre de 2026, con dos miembros: `dataset-316691.tsv` (1 536 938 134 bytes) y `metadata.yaml`, que trae `key: 316691`, `alias: COL26.10 XR`, `version: 2026-10-16 XR`, `issued: 2026-10-16` y `doi: 10.48580/dgzlf`. La CLI lee y muestra esos datos.
+- **TSV:** una cabecera y 8 504 545 filas, todas con las 23 columnas de la sección 3. No usa comillas: 22 nombres llevan comillas dobles dentro y hay que leerlo sin interpretarlas. Se puede leer línea a línea directamente del zip. Leer el archivo entero y quedarse con Orchidaceae tarda unos 4 segundos.
+- **No hay columnas** de nombre aceptado, de tipo de nombre ni de híbrido (`notho`). El aceptado sale de `col:parentID`; el híbrido, del signo «×» de `col:scientificName`, y la fórmula, de la forma del nombre. Algunas fórmulas usan la «x» latina («_Anacamptis morio_ x _palustris_», 46 especies aceptadas) y otras «×».
+- **`col:family` va rellena en los sinónimos** y en todos los rangos por debajo de la familia: hay 114 009 filas con `col:family = Orchidaceae`, y ninguna fila de todo el archivo cuyo padre esté entre ellas tiene otra familia. Basta con filtrar por esa columna, sin recorrer el árbol. La fila de la propia familia (`DPL`) trae `col:family` vacía; con ella son las 114 010 de la API.
+- **`col:ID` es único**, también para los sinónimos ambiguos: cada uno es una fila con su propio identificador que apunta a un solo aceptado. Un nombre «pro parte» aparece como varias filas con distinto identificador.
+- **`col:parentID` de un sinónimo** apunta siempre a un taxón aceptado o provisional, nunca a otro sinónimo. A veces ese taxón es infraespecífico: 1 992 sinónimos de rango especie apuntan a una subespecie aceptada y 1 286 a una variedad. Las subespecies, variedades y formas aceptadas cuelgan de su especie, salvo 54 que cuelgan directamente del género.
+- **Especies aceptadas:** 32 551 cuelgan de un género aceptado y 17 directamente de la familia (todas fórmulas). `col:genus` es siempre el nombre del género padre (con «×» si es nothogénero), no el género escrito en el nombre.
+- **Género del nombre frente al género padre:** sin contar el «×», no difiere en ninguna especie aceptada que no sea fórmula. Difiere en 120 provisionales (más 14 fórmulas provisionales), como _Epipactis atrorubens_ bajo _Goodyera_. Las 87 aceptadas de la sección 4 coinciden en número con las 87 fórmulas aceptadas que cuelgan de un género (supuesto: la API no da `name.genus` para las fórmulas; no se volvió a consultar).
+- **Signo de híbrido:** en Orchidaceae siempre es «×» (U+00D7) seguido de un espacio. No hay «×» pegado, ni espacios dobles, ni espacios en los extremos, ni espacios de no separación. En 18 especies aceptadas el «×» del nombre no coincide con el de su género: 8 sin «×» en un nothogénero («_Brassocattleya hybrida_» bajo «× _Brassocattleya_»), 8 nothoespecies dentro de un nothogénero («_Serapicamptis_ × _garriuscola_») y 2 con «×» bajo un género sin él («× _Orchiserapias dhiorii_» bajo «_Orchiserapias_»).
+- **Géneros aceptados sin especies aceptadas:** 50, de ellos 33 nothogéneros hortícolas («× _Aliceara_») y variantes ortográficas aceptadas como géneros («_Bulbopyllum_», «_Bulbophylum_», «_Coralliorrhiza_», «_Schomburkgia_»).
+- **Rangos menores:** además de subespecie, variedad y forma aparecen `subvariety`, `subform`, `lusus`, `proles`, `infraspecific name` y `other`; estos dos últimos son trinomios sin marcador («_Cattleya labiata autumnalis_»).
+
+Los recuentos que da la normalización con estas reglas están en el [README de la carpeta](README.md#resultado-con-col2610-xr-frente-a-fuentemd).
+
 ## Decisiones para aprobar
 
 Las cifras son de COL26.10 XR, Orchidaceae.
@@ -235,7 +253,7 @@ Las cifras son de COL26.10 XR, Orchidaceae.
 - **Páginas web de COL y de GBIF:** catalogueoflife.org y gbif.org (términos de uso, acuerdo de usuario de datos, pautas de cita) devuelven 403 a clientes automáticos. Lo del portal de COL lo verifiqué en su código fuente público (`CatalogueOfLife/portal`). Lo del acuerdo de usuario de GBIF sale solo de fragmentos de resultados de búsqueda.
 - **Atribución en apps:** no encontré una pauta de GBIF ni de COL específica para apps. La propuesta de la sección 2 es mi interpretación de CC BY 4.0, sección 3(a).
 - **Límites de ritmo de la API de ChecklistBank:** no están documentados en lo que encontré. Los de GBIF no dan cifras («no garantizamos ningún ritmo»).
-- **Contenido completo de la exportación A:** solo leí la cabecera. No comprobé que las filas de sinónimos traigan rellena la columna `col:family`, ni que `col:parentID` del sinónimo sea el aceptado (es lo que indica ColDP y lo que hace la API). Si `col:family` va vacía en los sinónimos, el filtro debe recorrer el árbol por `col:parentID`.
+- ~~**Contenido completo de la exportación A:** solo leí la cabecera.~~ Comprobado en #73: los sinónimos traen `col:family` y su `col:parentID` es el aceptado (sección 8).
 - **Exportación de otras versiones:** no sé si `export.zip` sin cuenta responde igual de rápido para una versión cuyo archivo no esté ya generado. Puede que lance un trabajo y tarde.
 - **Fecha exacta del archivo `xr_latest_coldp.zip`:** su fecha (22 de octubre de 2026) coincide con COL26.10 XR, pero el archivo no dice explícitamente qué versión es.
 - **Tabla de correspondencia GBIF → COL:** no pude abrir `download.checklistbank.org/col/gbif/` (desafío anti-robots).

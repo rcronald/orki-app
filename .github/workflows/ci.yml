@@ -47,6 +47,40 @@ jobs:
       - name: Build
         run: npm run build
 
+  importacion-catalogo:
+    name: Importación del catálogo (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: scripts/catalog-import
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # uv toma su versión de required-version en pyproject.toml e instala el Python de
+      # .python-version. La caché depende de uv.lock.
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: scripts/catalog-import
+          cache-dependency-glob: uv.lock
+
+      - name: Instalar Python y dependencias
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run --locked ruff check
+
+      - name: Verificar formato
+        run: uv run --locked ruff format --check
+
+      # Las pruebas usan la muestra versionada y bloquean cualquier conexión de red.
+      - name: Pruebas
+        run: uv run --locked pytest
+
   base-de-datos:
     name: Pruebas de base de datos
     runs-on: ubuntu-latest
