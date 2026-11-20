@@ -88,6 +88,7 @@ orki-app/
 │       ├── src/               Código fuente y pruebas
 │       │   ├── assets/        Marcador sin-foto.svg del design system
 │       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol, rutas protegidas y token para Supabase
+│       │   ├── collection/    Colección del usuario en memoria: lectura, almacén compartido, búsqueda, agrupación y contadores
 │       │   ├── components/    Componentes de la app (estructura con la navegación, página)
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
@@ -347,6 +348,36 @@ Qué haría falta para el modo de solo lectura del issue #18 (colección visible
 ### Service worker y autenticación
 
 El service worker (configuración en `apps/web/vite.config.ts`) no tiene `runtimeCaching`: solo responde a los archivos del precache y a las navegaciones dentro de la app. Las peticiones a Clerk (script y API, en su dominio de Frontend API) y a Google son de otro origen y van siempre a la red, sin guardarse. Las redirecciones de inicio de sesión ocurren en esos dominios; a la vuelta llegan a rutas de la app (subrutas de `/iniciar-sesion` o `/registro`, o la página pedida), que reciben `index.html` para que Clerk termine en el navegador. Clerk no tiene rutas propias en el dominio de la app, así que no hace falta `navigateFallbackDenylist`; haría falta si algún día se usara el proxy de Clerk (`proxyUrl`).
+
+## Colección del usuario
+
+La colección (todas las plantas del usuario con su especie y su género) se lee una vez y se comparte entre pantallas desde `apps/web/src/collection/` (#93). Filtrar, agrupar, contar y ordenar se hace en el dispositivo.
+
+Desde una pantalla:
+
+```tsx
+import { useCollection } from '../collection/useCollection.ts'
+import {
+  countGenera,
+  countPlants,
+  filterByText,
+  groupByGenus,
+} from '../collection/selectors.ts'
+
+const { status, plants, error, reload, upsertPlant, removePlant } =
+  useCollection()
+// status: 'idle' | 'loading' | 'ready' | 'error'
+// plants: todas las plantas (también las dadas de baja) o null si aún no hay datos
+// error.reason: 'offline' | 'session-ended' | 'failed'; error.message, el texto para mostrar
+const visibles = plants ? filterByText(plants, query) : []
+```
+
+- **Una lectura por usuario:** `<CollectionProvider>` (dentro de `AuthProvider`) no lee nada al arrancar; la primera pantalla que llama a `useCollection()` lanza la lectura y las demás la comparten, también con `React.StrictMode`. Al cambiar de usuario o cerrar sesión, la colección se descarta y la respuesta tardía de la cuenta anterior se ignora. Tras un error no se reintenta solo: `reload()` (botón "Reintentar").
+- **Después de escribir** (#11, #16): pide de vuelta la fila con `.select(COLLECTION_PLANT_SELECT)`, pásala por `toCollectionPlant()` (`model.ts`) y llama a `upsertPlant(planta)`; tras borrar, `removePlant(id)`. No se vuelve a leer todo.
+- **Funciones puras** (`selectors.ts`): `filterByText`, `groupByGenus`, `countPlants`, `countGenera`, `sortByName`, `sortByNewest` y `plantsByStatus`. Por defecto solo cuentan las plantas activas; `{ includeInactive: true }` incluye las perdidas y regaladas. La búsqueda usa `normalizeSearchText()` (`normalize.ts`), la misma regla que el catálogo: minúsculas, sin tildes, espacios unificados y sin el signo de híbrido (`×` o una `x` suelta).
+- **Lectura en Supabase** (`supabase-source.ts`): una consulta a `plants` con la especie y el género embebidos, filtrada por el usuario activo y paginada por id de 1 000 en 1 000 (el tope de filas de la API).
+
+Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `CollectionSource` (`source.ts`), cuyo `load({ userId, signal, provide })` devuelve todas las plantas del usuario o rechaza con un `CollectionLoadError` con su motivo. `provide(plantas)` entrega un resultado provisional (la copia del dispositivo) antes del definitivo. Pásala a `<CollectionProvider source={miFuente}>`; puede envolver a `supabaseCollectionSource`. En las pruebas, `src/test/collection-source.ts` tiene una fuente controlada a mano.
 
 ## Base de datos y migraciones
 
