@@ -66,9 +66,9 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   ui('color-secondary', 'color-neutral-50'),
   // Borde de los mensajes de error y del botón destructivo en hover.
   ui('color-danger', 'color-danger-soft'),
-  // Borde del campo con error (bundle-extra.css).
+  // Borde del campo con error.
   ui('color-danger', 'color-neutral-0'),
-  // Sugerencia activa del buscador (components-pending.css): texto secundario
+  // Sugerencia activa del buscador: texto secundario
   // y acción final sobre color-primary-soft, con el anillo color-secondary.
   text('color-neutral-700', 'color-primary-soft'),
   ui('color-secondary', 'color-primary-soft'),

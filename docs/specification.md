@@ -137,31 +137,24 @@ orki-app/
 | Disponibilidad | 99.5% mensual |
 | Escalabilidad | Hasta 10 000 usuarios y 100 000 plantas sin rediseño |
 
-## 7. Design tokens
+## 7. Design system
 
-Principio: la interfaz es neutra y las fotos de las orquídeas ponen el color. Tokens pensados para CSS variables o Tailwind; el modo oscuro se define sobre los mismos nombres en fase 3.
+Principio: la interfaz es neutra y las fotos de las orquídeas ponen el color.
 
-| Token | Valor | Uso |
+La fuente de verdad del diseño es el design system de Orki: https://claude.ai/artifact/BCQrAtoNqdjgkxEBfLpoaK. Ahí están los tokens con sus valores y contrastes, las reglas de uso, la guía de cada componente y la hoja de estilos `components/bundle.css`. Esta sección solo resume qué contiene; si algo difiere, manda el design system.
+
+| Familia | Tokens | Notas |
 | --- | --- | --- |
-| color-primary | #D83B6F | Acciones principales, chip seleccionado, acento de marca |
-| color-primary-soft | #FCE4EC | Fondos de chips y estados hover del primario |
-| color-secondary | #336049 | Títulos, etiquetas, bordes de campos (verde hoja) |
-| color-success | #2E7D4F | Respuesta "Sí, la tienes", estado "validada" |
-| color-warning | #D9A441 | Estado "nombre por validar", avisos |
-| color-neutral-0 | #FFFCF7 | Fondo de pantalla (blanco cálido) |
-| color-neutral-50 | #F6F1E8 | Fondo de tarjetas y secciones (crema claro) |
-| color-neutral-700 | #545454 | Texto secundario y placeholders |
-| color-neutral-900 | #1F1F1F | Texto principal |
-| font-display | Serif elegante (ej. Playfair Display o Lora) | Títulos y nombres científicos; nombre científico siempre en cursiva |
-| font-body | Sans simple (ej. Inter) | Todo lo demás |
-| text-xs / sm / md / lg / xl / display | 12 / 14 / 16 / 18 / 22 / 32 px | Escala tipográfica |
-| space-1 a space-6 | 4 / 8 / 12 / 16 / 24 / 32 px | Espaciado en múltiplos de 4 |
-| radius-sm / md / lg / pill | 8 / 12 / 16 / 999 px | Botones y campos 12, tarjetas 16, chips pill |
-| shadow-card | 0 2px 8px rgba(31, 31, 31, 0.08) | Sombra única, muy suave |
-| overlay-genus | rgba(255, 252, 247, 0.85) | Velo sobre la foto de fondo del género en el registro |
-| motion-bg | 300 ms ease-in-out | Transición del fondo al detectar género |
+| Color | `color-primary`, `color-primary-soft`, `color-secondary`, `color-success`, `color-warning`, `color-danger`, `color-danger-soft`, `color-neutral-0`, `color-neutral-50`, `color-neutral-700`, `color-neutral-900`, `overlay-genus` | Todos los pares de texto y fondo que el sistema da por válidos cumplen WCAG AA |
+| Tipografía | `font-display` (Playfair Display), `font-body` (Inter); `text-xs`, `text-sm`, `text-md`, `text-lg`, `text-xl`, `text-display` y `scientific-name` | El nombre científico va siempre en cursiva con `font-display` |
+| Espaciado | `space-1` a `space-6` | Múltiplos de 4, de 4 a 32 px |
+| Radios | `radius-sm`, `radius-md`, `radius-lg`, `radius-pill` | Botones y campos `md`, tarjetas `lg`, chips `pill` |
+| Sombra | `shadow-card` | Sombra única, solo en tarjetas |
+| Movimiento | `motion-bg` | Transición del fondo al detectar género; es la única animación |
 
-Componentes base de Fase 1: tarjeta de planta, buscador con autocompletado, chip de filtro, chip de género, chip de tipo, chip de estado, botón primario y secundario, campo de texto, sección plegable, tarjeta de resultado "¿ya la tengo?".
+Componentes de la Fase 1: `Button` (primario, secundario y destructivo), `Chip`, `TextField`, `Autocomplete` (buscador con autocompletado), `Collapsible` (sección plegable), `StatusBadge` ("Validada" y "Nombre por validar"), `SpecimenCard` (tarjeta de planta) y `OwnershipAnswer` (respuesta de "¿ya la tengo?").
+
+En la app, los tokens son variables CSS con los mismos nombres y la hoja de estilos de los componentes es una copia literal de la del design system. Un cambio de diseño se hace primero en el design system. El modo oscuro se define sobre los mismos nombres en la fase 3.
 
 ## 8. Mockups de referencia
 
@@ -173,7 +166,7 @@ Son referencia de estructura y jerarquía, no pixel-perfect.
 | --- | --- | --- |
 | 1 | Inventario | Buscador fijo arriba, chips de género, contador de orquídeas y géneros, cuadrícula de tarjetas con foto, nombre científico en cursiva y chip de estado |
 | 2 | Registro rápido | Nombre científico con autocompletado, chips de género, chips de tipo (Especie, Híbrido, No sé), foto, origen con autocompletado, fecha precargada con hoy, sección plegable "Más detalles", botón primario |
-| 3 | ¿Ya la tengo? | Tarjeta de respuesta en verde ("Sí, la tienes - 2 ejemplares") y variante en gris ("No la tienes") |
+| 3 | ¿Ya la tengo? | Tarjeta de respuesta en verde ("Sí, la tienes", con el número de ejemplares) y variante neutra ("Aún no la tienes") |
 
 ## 9. Orden de implementación
 

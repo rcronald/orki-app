@@ -15,6 +15,10 @@
 --   - El esquema "auth" con auth.jwt(), que devuelve las claims del token de la petición. En
 --     Supabase, PostgREST guarda esas claims en el parámetro request.jwt.claims de la
 --     transacción; aquí las pruebas lo fijan con "set local request.jwt.claims".
+--   - La función public.rls_auto_enable(), que Supabase crea en los proyectos con la opción
+--     de activar Row Level Security en toda tabla nueva. Nace ejecutable por todos los roles;
+--     las migraciones le retiran ese permiso y las pruebas lo comprueban. No se simula el
+--     disparador de eventos que la usa: las migraciones activan RLS de forma explícita.
 --   - Los privilegios por defecto que Supabase concede sobre lo que se crea en "public" (todo
 --     a anon, authenticated y service_role). Es el peor caso: las migraciones deben retirarlos
 --     de forma explícita, y las pruebas comprueban que lo hacen.
@@ -87,3 +91,21 @@ as $$
 $$;
 
 grant execute on function auth.jwt() to postgres, anon, authenticated, service_role;
+
+-- public.rls_auto_enable() --------------------------------------------------------------
+
+-- Misma firma, dueño y permisos que en un proyecto de Supabase con la opción de activar Row
+-- Level Security en las tablas nuevas. El cuerpo no importa: nada la llama aquí.
+create or replace function public.rls_auto_enable()
+returns event_trigger
+language plpgsql
+security definer
+set search_path to 'pg_catalog'
+as $$
+begin
+  null;
+end;
+$$;
+
+alter function public.rls_auto_enable() owner to postgres;
+grant execute on function public.rls_auto_enable() to public, anon, authenticated, service_role;

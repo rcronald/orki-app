@@ -57,6 +57,20 @@ select pruebas.comprobar(
     and not has_schema_privilege('authenticated', 'private', 'usage')
 );
 
+-- prueba: ninguna función security definer de public es ejecutable por anon ni authenticated
+-- Las funciones de public quedan expuestas en la API (/rest/v1/rpc); una security definer se
+-- ejecuta con los permisos de su dueño. Incluye rls_auto_enable(), que crea Supabase.
+select pruebas.iguales(
+  'funciones security definer de public ejecutables por anon o authenticated',
+  (select coalesce(string_agg(r.rol || ':' || p.proname, ', ' order by r.rol, p.proname), 'ninguna')
+     from pg_proc p
+     cross join (values ('anon'), ('authenticated')) r (rol)
+     where p.pronamespace = 'public'::regnamespace
+       and p.prosecdef
+       and has_function_privilege(r.rol, p.oid, 'execute')),
+  'ninguna'
+);
+
 -- prueba: toda función security definer de public y private fija su search_path
 -- Sin search_path fijo, quien la llama podría hacer que resuelva nombres en otro esquema y
 -- ejecutar código suyo con los permisos del dueño.
