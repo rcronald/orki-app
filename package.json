@@ -21,7 +21,9 @@
     "db:new": "node scripts/supabase-db.mjs nueva",
     "db:status": "node scripts/supabase-db.mjs estado",
     "db:push": "node scripts/supabase-db.mjs aplicar",
-    "db:test": "node scripts/db-test.mjs"
+    "db:test": "node scripts/db-test.mjs",
+    "db:types": "node scripts/db-types.mjs",
+    "db:types:check": "node scripts/db-types.mjs --comprobar"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

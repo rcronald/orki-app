@@ -82,8 +82,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: npm
 
-      # Las pruebas solo necesitan Node y psql; no hace falta instalar dependencias.
+      # Las pruebas solo necesitan Node y psql; la comprobación de tipos usa además la CLI de
+      # Supabase y Prettier del proyecto.
+      - name: Instalar dependencias
+        run: npm ci
+
       - name: Comprobar el cliente psql
         run: |
           if ! command -v psql > /dev/null; then
@@ -94,3 +99,10 @@ jobs:
 
       - name: Pruebas de base de datos
         run: npm run db:test
+
+      # Genera los tipos desde las migraciones sobre el mismo Postgres y falla si no coinciden
+      # con apps/web/src/lib/database.types.ts. Corre aunque fallen las pruebas, para ver
+      # ambos resultados en la misma ejecución.
+      - name: Comprobar los tipos generados del esquema
+        if: ${{ !cancelled() }}
+        run: npm run db:types:check

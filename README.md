@@ -49,21 +49,23 @@ npm run build
 
 Todos se ejecutan desde la raíz del repositorio.
 
-| Script                 | Qué hace                                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `npm run dev`          | Levanta el servidor de desarrollo de la app web (Vite). Acepta opciones de Vite después de `--`.             |
-| `npm run build`        | Comprueba los tipos y genera el build de producción de la app web en `apps/web/dist`, con el service worker. |
-| `npm run preview`      | Sirve el build de `apps/web/dist` en local para probarlo. Requiere ejecutar antes `npm run build`.           |
-| `npm run typecheck`    | Comprueba los tipos de TypeScript de la app web sin generar archivos.                                        |
-| `npm run lint`         | Ejecuta ESLint en todo el repositorio. Falla con cualquier aviso.                                            |
-| `npm run format`       | Formatea todo el repositorio con Prettier.                                                                   |
-| `npm run format:check` | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                     |
-| `npm test`             | Ejecuta las pruebas de la app web una vez (Vitest).                                                          |
-| `npm run test:watch`   | Ejecuta las pruebas de la app web en modo observación.                                                       |
-| `npm run db:new`       | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                         |
-| `npm run db:status`    | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                    |
-| `npm run db:push`      | Aplica las migraciones pendientes en el proyecto de desarrollo.                                              |
-| `npm run db:test`      | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.    |
+| Script                   | Qué hace                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `npm run dev`            | Levanta el servidor de desarrollo de la app web (Vite). Acepta opciones de Vite después de `--`.             |
+| `npm run build`          | Comprueba los tipos y genera el build de producción de la app web en `apps/web/dist`, con el service worker. |
+| `npm run preview`        | Sirve el build de `apps/web/dist` en local para probarlo. Requiere ejecutar antes `npm run build`.           |
+| `npm run typecheck`      | Comprueba los tipos de TypeScript de la app web sin generar archivos.                                        |
+| `npm run lint`           | Ejecuta ESLint en todo el repositorio. Falla con cualquier aviso.                                            |
+| `npm run format`         | Formatea todo el repositorio con Prettier.                                                                   |
+| `npm run format:check`   | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                     |
+| `npm test`               | Ejecuta las pruebas de la app web una vez (Vitest).                                                          |
+| `npm run test:watch`     | Ejecuta las pruebas de la app web en modo observación.                                                       |
+| `npm run db:new`         | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                         |
+| `npm run db:status`      | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                    |
+| `npm run db:push`        | Aplica las migraciones pendientes en el proyecto de desarrollo.                                              |
+| `npm run db:test`        | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.    |
+| `npm run db:types`       | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.   |
+| `npm run db:types:check` | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.         |
 
 La app web tiene además un script propio para regenerar los iconos provisionales de la PWA en `apps/web/public`:
 
@@ -87,7 +89,7 @@ orki-app/
 │       │   ├── components/    Componentes de la app
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
-│       │   ├── lib/           Cliente de Supabase
+│       │   ├── lib/           Cliente de Supabase y tipos del esquema
 │       │   ├── showcase/      Página interna de muestra (solo fuera de producción)
 │       │   └── styles/        Tokens, fuentes y hojas de estilos de los componentes
 │       ├── .env.example       Plantilla de las variables de entorno de la app
@@ -98,6 +100,7 @@ orki-app/
 │   ├── catalog-import/        Importación del catálogo de especies (pendiente)
 │   ├── db-desechable/         Base Postgres desechable con el esquema aplicado
 │   ├── db-test.mjs            Pruebas de base de datos (db:test)
+│   ├── db-types.mjs           Tipos de TypeScript del esquema (db:types, db:types:check)
 │   └── supabase-db.mjs        Scripts de migraciones (db:new, db:status, db:push)
 ├── supabase/
 │   ├── config.toml            Configuración de la CLI de Supabase
@@ -293,7 +296,28 @@ Qué no cubren:
 
 Cómo se escriben las pruebas y cómo añadir una al crear una migración está en [supabase/README.md](supabase/README.md#pruebas-de-base-de-datos).
 
-La preparación de la base es una pieza aparte, `scripts/db-desechable/index.mjs`, que otros scripts pueden reutilizar cuando necesiten el esquema sin tocar Supabase: `conBaseDesechable(trabajo)` crea la base, aplica el mínimo de Supabase y las migraciones, llama a `trabajo` con la conexión y lo limpia todo al terminar.
+La preparación de la base es una pieza aparte, `scripts/db-desechable/index.mjs`, que otros scripts pueden reutilizar cuando necesiten el esquema sin tocar Supabase: `conBaseDesechable(trabajo)` crea la base, aplica el mínimo de Supabase y las migraciones, llama a `trabajo` con la conexión y lo limpia todo al terminar. La usan también los tipos de TypeScript (sección siguiente).
+
+### Tipos de TypeScript del esquema
+
+```sh
+npm run db:types         # regenera apps/web/src/lib/database.types.ts
+npm run db:types:check   # comprueba que el archivo versionado está al día
+```
+
+El cliente de Supabase de la app está tipado con el esquema (`createClient<Database>` en `apps/web/src/lib/supabase.ts`), así que usar una tabla o una columna que no existe, o un valor que no está en un enumerado, es un error de compilación. Los tipos salen de las migraciones, no de un proyecto de Supabase:
+
+- `apps/web/src/lib/database.types.ts` es el archivo generado. Se versiona y no se edita a mano; su cabecera lo recuerda. ESLint lo ignora; Prettier no, porque el generador ya lo entrega formateado con la configuración del repositorio.
+- `apps/web/src/lib/database.ts` pone nombres cómodos a esos tipos para el resto de la app: la fila, la inserción y la actualización de cada tabla (`Plant`, `PlantInsert`, `PlantUpdate`, `Species`...), cada enumerado (`PlantStatus`, `FlowerColor`...) y `enumValues`, con los valores de cada enumerado en orden para recorrerlos en la interfaz. Este archivo se escribe a mano: si una migración añade una tabla o un enumerado, añade aquí su alias.
+- `apps/web/src/lib/database.test.ts` es la prueba de tipos: con `@ts-expect-error` comprueba que `npm run typecheck` rechaza tablas y columnas inexistentes y valores de enumerado inválidos, y que los alias existen. No hace consultas.
+
+`npm run db:types` prepara la misma base desechable que las pruebas (todas las migraciones sobre el mínimo de Supabase), ejecuta contra ella `supabase gen types --schema=public` con la CLI del proyecto y formatea el resultado con Prettier. Necesita lo mismo que `npm run db:test` (`psql`, y `initdb` y `pg_ctl` o `ORKI_TEST_DB_URL`) más las dependencias instaladas (`npm ci`), pero no Docker ni credenciales: la CLI de Supabase genera los tipos sin contenedores cuando recibe la URL de una base de datos. Solo incluye el esquema `public`, que es el que expone la API; los esquemas `auth`, `extensions` y `private` quedan fuera. Si el archivo ya estaba al día, no lo toca.
+
+La regla: **una migración nueva va en el mismo commit que los tipos regenerados.** Después de escribir o cambiar una migración, ejecuta `npm run db:types` e incluye `database.types.ts` en el commit. En el CI, el job **Pruebas de base de datos** ejecuta `npm run db:types:check` sobre el Postgres 17 del job: genera los tipos de nuevo y falla si no son idénticos al archivo versionado, mostrando la primera línea distinta y el comando que hay que ejecutar. Falla tanto si falta regenerar tras una migración como si alguien editó el archivo a mano.
+
+El resultado no depende de la versión de PostgreSQL (se comprobó que la 14 y la 17 generan exactamente el mismo archivo) ni de la configuración regional del servidor, porque la CLI ordena tablas, columnas y enumerados por su cuenta. Sí depende de las versiones de la CLI de Supabase y de Prettier fijadas en `package-lock.json`: al actualizar cualquiera de las dos, ejecuta `npm run db:types` y versiona el resultado si cambia.
+
+Una limitación: al generar desde una URL de base de datos, la CLI no añade la versión de PostgREST del proyecto (la clave interna `__InternalSupabase` que sí añade al generar desde un proyecto de Supabase), y `supabase-js` supone entonces PostgREST 12. Solo afecta al tipado de opciones propias de versiones posteriores de PostgREST.
 
 ### Producción
 
@@ -367,4 +391,4 @@ El proyecto sigue GitHub Flow:
 
 ## Integración continua
 
-El workflow `.github/workflows/ci.yml` se ejecuta en cada pull request y en cada push a `main`. Instala las dependencias con `npm ci` usando la versión de Node de `.nvmrc` y la caché de npm, y después ejecuta `lint`, `format:check`, `typecheck`, `test` y `build`, en ese orden. Si cualquiera de esos pasos falla, el job falla. Cuando se suben nuevos commits a un pull request, la ejecución anterior de ese mismo pull request se cancela.
+El workflow `.github/workflows/ci.yml` se ejecuta en cada pull request y en cada push a `main`. Instala las dependencias con `npm ci` usando la versión de Node de `.nvmrc` y la caché de npm, y después ejecuta `lint`, `format:check`, `typecheck`, `test` y `build`, en ese orden. Si cualquiera de esos pasos falla, el job falla. Un segundo job, **Pruebas de base de datos**, ejecuta `npm run db:test` y `npm run db:types:check` sobre un Postgres 17 desechable (ver [Pruebas de la base de datos](#pruebas-de-la-base-de-datos) y [Tipos de TypeScript del esquema](#tipos-de-typescript-del-esquema)). Cuando se suben nuevos commits a un pull request, la ejecución anterior de ese mismo pull request se cancela.
