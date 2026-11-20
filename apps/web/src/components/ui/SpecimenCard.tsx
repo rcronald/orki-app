@@ -96,7 +96,9 @@ export function SpecimenCard({
       />
       <div
         className={
-          isRow ? 'orki-card__body min-w-0 flex-1 p-space-3' : 'orki-card__body'
+          isRow
+            ? 'orki-card__body min-w-[0] flex-1 p-space-3'
+            : 'orki-card__body'
         }
       >
         <Heading

@@ -1,8 +1,11 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
+import { CollectionLoadError } from '../collection/source.ts'
+import type { CollectionStatus } from '../collection/store.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import {
   CATTLEYA,
@@ -23,44 +26,89 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function renderInventory(plants: readonly CollectionPlant[] | null) {
-  return render(
+interface Props {
+  status?: CollectionStatus
+  error?: CollectionLoadError | null
+  onRetry?: () => void
+  initialQuery?: string
+}
+
+// La vista con el buscador controlado por un estado local, como lo hace
+// CollectionPage con la URL.
+function Harness({
+  plants,
+  status,
+  error = null,
+  onRetry = () => {},
+  initialQuery = '',
+}: Props & { plants: readonly CollectionPlant[] | null }) {
+  const [query, setQuery] = useState(initialQuery)
+  return (
+    <InventoryView
+      status={status ?? (plants === null ? 'loading' : 'ready')}
+      plants={plants}
+      error={error}
+      onRetry={onRetry}
+      query={query}
+      onQueryChange={setQuery}
+    />
+  )
+}
+
+function renderInventory(
+  plants: readonly CollectionPlant[] | null,
+  props: Props = {},
+) {
+  const tree = (current: readonly CollectionPlant[] | null, extra: Props) => (
     <MemoryRouter>
       <main>
-        <InventoryView
-          status={plants === null ? 'loading' : 'ready'}
-          plants={plants}
-          error={null}
-          onRetry={() => {}}
-        />
+        <Harness plants={current} {...props} {...extra} />
       </main>
-    </MemoryRouter>,
+    </MemoryRouter>
   )
+  const result = render(tree(plants, {}))
+  return {
+    ...result,
+    rerenderWith: (
+      next: readonly CollectionPlant[] | null,
+      extra: Props = {},
+    ) => {
+      result.rerender(tree(next, extra))
+    },
+  }
+}
+
+// Planta de prueba con el nombre ingresado igual al mostrado (plant() deja
+// "Phalaenopsis amabilis" por defecto, que el buscador también mira).
+function specimen(
+  overrides: Partial<CollectionPlant> & { displayName: string },
+): CollectionPlant {
+  return plant({ enteredName: overrides.displayName, ...overrides })
 }
 
 // Colección de ejemplo: dos Phalaenopsis, una Cattleya, un híbrido de género
 // híbrido, una planta por validar y una perdida que no cuenta.
-const amabilis = plant({
+const amabilis = specimen({
   displayName: 'Phalaenopsis amabilis',
   createdAt: '2026-11-01T10:00:00+00:00',
   nickname: 'La blanca',
 })
-const schilleriana = plant({
+const schilleriana = specimen({
   displayName: 'Phalaenopsis schilleriana',
   createdAt: '2026-11-05T10:00:00+00:00',
 })
-const maxima = plant({
+const maxima = specimen({
   displayName: 'Cattleya maxima',
   genus: CATTLEYA,
   createdAt: '2026-10-01T10:00:00+00:00',
 })
-const memoria = plant({
+const memoria = specimen({
   displayName: '× Rhyncholaeliocattleya Memoria Anna Balmores',
   genus: RHYNCHOLAELIOCATTLEYA,
   type: 'hybrid',
   createdAt: '2026-11-10T10:00:00+00:00',
 })
-const pending = plant({
+const pending = specimen({
   displayName: 'la naranja del mercado',
   displayNameIsScientific: false,
   enteredName: 'la naranja del mercado',
@@ -69,7 +117,7 @@ const pending = plant({
   validation: 'pending',
   createdAt: '2026-09-01T10:00:00+00:00',
 })
-const lost = plant({
+const lost = specimen({
   displayName: 'Phalaenopsis aphrodite',
   status: 'lost',
   createdAt: '2026-11-15T10:00:00+00:00',
@@ -153,7 +201,7 @@ describe('InventoryView', () => {
   })
 
   it('una planta por validar se ve con su nombre ingresado, sin cursiva, y su etiqueta', () => {
-    const unidentifiable = plant({
+    const unidentifiable = specimen({
       displayName: 'regalo de la abuela',
       displayNameIsScientific: false,
       enteredName: 'regalo de la abuela',
@@ -283,13 +331,17 @@ describe('InventoryView', () => {
     ).toHaveAttribute('href', '/coleccion/nueva')
   })
 
-  it('el orden del tabulador va del registro a los controles de vista', async () => {
+  it('el orden del tabulador va del registro al buscador y a los controles de vista', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
     await user.tab()
     expect(
       screen.getByRole('link', { name: 'Registrar orquídea' }),
+    ).toHaveFocus()
+    await user.tab()
+    expect(
+      screen.getByRole('searchbox', { name: 'Buscar en tu colección' }),
     ).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Lista' })).toHaveFocus()
@@ -319,7 +371,7 @@ describe('InventoryView', () => {
   it('con 300 plantas se pinta entera y cambia de vista y de agrupación', async () => {
     const genera = [PHALAENOPSIS, CATTLEYA, RHYNCHOLAELIOCATTLEYA]
     const many = Array.from({ length: 300 }, (_, index) =>
-      plant({
+      specimen({
         displayName: `${genera[index % 3]?.name ?? ''} ejemplar ${index}`,
         genus: genera[index % 3] ?? PHALAENOPSIS,
         createdAt: new Date(
@@ -343,5 +395,231 @@ describe('InventoryView', () => {
       screen.getByRole('region', { name: 'Cattleya, 100 orquídeas' }),
     ).toBeInTheDocument()
     expect(screen.getAllByRole('article')).toHaveLength(300)
+  })
+})
+
+describe('InventoryView: buscador', () => {
+  const searchbox = () =>
+    screen.getByRole('searchbox', { name: 'Buscar en tu colección' })
+  const status = () => within(screen.getByRole('search')).getByRole('status')
+
+  // Con origen y apodo, para buscar por ellos.
+  const oncidium = specimen({
+    displayName: 'Oncidium Sharry Baby',
+    genus: { id: 'genus-onc', name: 'Oncidium' },
+    nickname: 'La de chocolate',
+    origin: 'Feria de Miraflores',
+    createdAt: '2026-08-01T10:00:00+00:00',
+  })
+  const PLANTS = [...COLLECTION, oncidium]
+  const HYBRID = '× Rhyncholaeliocattleya Memoria Anna Balmores'
+
+  it.each([
+    ['sin tildes ni mayúsculas', 'MIRAFLORES', 'Oncidium Sharry Baby'],
+    ['por el apodo', 'chocolate', 'Oncidium Sharry Baby'],
+    ['por el origen con tilde', 'féria', 'Oncidium Sharry Baby'],
+    ['sin el signo "×"', 'rhyncho memoria', HYBRID],
+    ['con el signo "×"', '× rhyncholaeliocattleya', HYBRID],
+    ['por el nombre ingresado', 'naranja', 'la naranja del mercado'],
+  ])('filtra %s', async (_case, text, expected) => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS)
+
+    await user.type(searchbox(), text)
+    expect(cardNames()).toEqual([expected])
+    // Los contadores de cabecera siguen siendo los de toda la colección.
+    expect(screen.getByText('6 orquídeas')).toBeInTheDocument()
+    expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
+  })
+
+  it('anuncia cuántas coinciden sin sacar el foco del campo', async () => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS)
+
+    expect(status()).toBeEmptyDOMElement()
+    await user.type(searchbox(), 'phal')
+    expect(status()).toHaveTextContent('2 de 6 orquídeas coinciden.')
+    expect(searchbox()).toHaveFocus()
+    await user.type(searchbox(), 'zzz')
+    expect(status()).toHaveTextContent(
+      'Ninguna orquídea coincide con la búsqueda.',
+    )
+    expect(searchbox()).toHaveFocus()
+  })
+
+  it('agrupada, los géneros sin coincidencias desaparecen', async () => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS)
+    await user.click(screen.getByRole('button', { name: 'Agrupar por género' }))
+
+    await user.type(searchbox(), 'cattleya')
+    expect(
+      screen
+        .getAllByRole('heading', { level: 2 })
+        .map((heading) => heading.firstChild?.textContent),
+    ).toEqual(['Cattleya', '× Rhyncholaeliocattleya'])
+  })
+
+  it('el botón limpia la búsqueda y devuelve el foco al campo', async () => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS)
+
+    expect(
+      screen.queryByRole('button', { name: 'Limpiar la búsqueda' }),
+    ).toBeNull()
+    await user.type(searchbox(), 'phal')
+    await user.click(
+      screen.getByRole('button', { name: 'Limpiar la búsqueda' }),
+    )
+    expect(searchbox()).toHaveValue('')
+    expect(searchbox()).toHaveFocus()
+    expect(screen.getAllByRole('article')).toHaveLength(6)
+    expect(status()).toBeEmptyDOMElement()
+  })
+
+  it('Escape limpia la búsqueda', async () => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS)
+
+    await user.type(searchbox(), 'phal')
+    await user.keyboard('{Escape}')
+    expect(searchbox()).toHaveValue('')
+    expect(screen.getAllByRole('article')).toHaveLength(6)
+  })
+
+  it('sin resultados ofrece limpiar la búsqueda', async () => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS, { initialQuery: 'vanda' })
+
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
+    expect(
+      screen.getByText(/Ninguna orquídea de tu colección coincide con/),
+    ).toHaveTextContent('«vanda»')
+    // No es la invitación de la colección vacía.
+    expect(screen.queryByText('Tu colección está vacía')).toBeNull()
+    await expectNoAxeViolations()
+
+    // El botón del panel (el del campo hace lo mismo).
+    const panelButton = screen.getAllByRole('button', {
+      name: 'Limpiar la búsqueda',
+    })[1]
+    expect(panelButton).toBeDefined()
+    if (panelButton) await user.click(panelButton)
+    expect(searchbox()).toHaveValue('')
+    expect(screen.getAllByRole('article')).toHaveLength(6)
+  })
+
+  it('no tiene fallos A ni AA con una búsqueda escrita', async () => {
+    const user = userEvent.setup()
+    renderInventory(PLANTS)
+    await user.type(searchbox(), 'phal')
+    await expectNoAxeViolations()
+  })
+})
+
+describe('InventoryView: vacía, carga y error', () => {
+  it('sin plantas invita a registrar la primera, sin buscador ni controles', async () => {
+    renderInventory([])
+
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Tu colección está vacía',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Registrar mi primera orquídea' }),
+    ).toHaveAttribute('href', '/coleccion/nueva')
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Vista' })).toBeNull()
+    // Una sola acción principal: el acceso fijo no se repite.
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+    await expectNoAxeViolations()
+  })
+
+  it('con solo plantas dadas de baja lo dice', () => {
+    renderInventory([lost])
+    expect(
+      screen.getByRole('heading', { name: 'No tienes orquídeas activas' }),
+    ).toBeInTheDocument()
+  })
+
+  it('mientras carga: esqueleto oculto al lector, estado anunciado y sin saltos al llegar', async () => {
+    const user = userEvent.setup()
+    const { rerenderWith } = renderInventory(null)
+
+    expect(screen.getByText('Cargando tu colección…')).toHaveAttribute(
+      'role',
+      'status',
+    )
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
+    await expectNoAxeViolations()
+
+    // Se puede escribir mientras carga; al llegar los datos, el campo es el
+    // mismo (no se vuelve a montar) y conserva el foco y lo escrito.
+    const input = screen.getByRole('searchbox')
+    await user.type(input, 'phal')
+    rerenderWith(COLLECTION)
+    expect(screen.getByRole('searchbox')).toBe(input)
+    expect(input).toHaveFocus()
+    expect(cardNames()).toEqual([
+      'Phalaenopsis schilleriana',
+      'Phalaenopsis amabilis',
+    ])
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull()
+  })
+
+  it.each([
+    [
+      'offline',
+      'Sin conexión',
+      'No se pudo cargar tu colección porque no hay conexión.',
+    ],
+    ['session-ended', 'Tu sesión terminó', 'Vuelve a iniciar sesión'],
+    ['failed', 'No se pudo cargar tu colección', 'Algo falló al leerla.'],
+  ] as const)(
+    'error %s: mensaje claro y "Reintentar"',
+    async (reason, title, text) => {
+      const user = userEvent.setup()
+      const onRetry = vi.fn()
+      renderInventory(null, {
+        status: 'error',
+        error: new CollectionLoadError(reason),
+        onRetry,
+      })
+
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(title)
+      expect(alert).toHaveTextContent(text)
+      expect(
+        within(alert).queryByRole('link', { name: 'Iniciar sesión' }) !== null,
+      ).toBe(reason === 'session-ended')
+      expect(screen.queryByText('Cargando tu colección…')).toBeNull()
+      await user.click(
+        within(alert).getByRole('button', { name: 'Reintentar' }),
+      )
+      expect(onRetry).toHaveBeenCalledTimes(1)
+      await expectNoAxeViolations()
+    },
+  )
+
+  it('si falla una recarga, sigue mostrando los datos con un aviso', async () => {
+    const user = userEvent.setup()
+    const onRetry = vi.fn()
+    renderInventory(COLLECTION, {
+      status: 'error',
+      error: new CollectionLoadError('offline'),
+      onRetry,
+    })
+
+    expect(screen.getAllByRole('article')).toHaveLength(5)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Sin conexión: no se pudo actualizar tu colección.',
+    )
+    await user.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+    await expectNoAxeViolations()
   })
 })

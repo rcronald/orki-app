@@ -1,8 +1,9 @@
-import { useId, useMemo } from 'react'
+import { useDeferredValue, useId, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import {
   countGenera,
+  filterByText,
   groupByGenus,
   plantsByStatus,
   sortByNewest,
@@ -10,17 +11,26 @@ import {
 } from '../collection/selectors.ts'
 import type { CollectionLoadError } from '../collection/source.ts'
 import type { CollectionStatus } from '../collection/store.ts'
-import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { PATHS } from '../routes/paths.ts'
+import {
+  EmptyCollection,
+  LoadErrorPanel,
+  LoadingList,
+  LoadingSummary,
+  NoResults,
+  ReloadErrorBanner,
+} from './InventoryStates.tsx'
+import { InventorySearch } from './InventorySearch.tsx'
 import { PlantCard } from './PlantCard.tsx'
 import {
   useInventoryPreferences,
   type InventoryView as View,
 } from './preferences.ts'
-import { genusCountText, plantCountText } from './texts.ts'
+import { VIEW_CLASSES } from './view-classes.ts'
+import { genusCountText, matchCountText, plantCountText } from './texts.ts'
 
 export interface InventoryViewProps {
   /** Estado de la colección (useCollection().status). */
@@ -31,13 +41,12 @@ export interface InventoryViewProps {
   error: CollectionLoadError | null
   /** Vuelve a leer la colección (useCollection().reload). */
   onRetry: () => void
-}
-
-// Clases de cada vista. Cuadrícula: dos por fila en el celular (360 px) y más
-// en pantallas anchas. Lista: una por fila, dos en escritorio.
-const VIEW_CLASSES: Record<View, string> = {
-  list: 'grid grid-cols-1 gap-space-3 lg:grid-cols-2',
-  grid: 'grid grid-cols-2 gap-space-3 sm:grid-cols-3 lg:grid-cols-4',
+  /** Texto del buscador (controlado: CollectionPage lo guarda en la URL). */
+  query: string
+  /** Se llama con el texto nuevo del buscador. */
+  onQueryChange: (query: string) => void
+  /** Bloque bajo el buscador; lo usará "¿Ya la tengo?" (#19). */
+  searchResult?: ReactNode
 }
 
 // En el celular, el acceso a registrar queda fijo abajo: se deja sitio para
@@ -50,21 +59,32 @@ const TOUCH_CHIP = 'py-space-3'
 
 /**
  * Pantalla de inventario sin la carga de datos: recibe la colección y pinta
- * los contadores, el acceso a registrar, los controles de vista y la lista o
- * cuadrícula, agrupada por género o no. La usa CollectionPage con
+ * los contadores, el acceso a registrar, el buscador, los controles de vista y
+ * la lista o cuadrícula, agrupada por género o no, con sus estados de carga,
+ * error, colección vacía y búsqueda sin resultados. La usa CollectionPage con
  * useCollection() y la página de muestra con datos fijos.
  *
  * Solo muestra y cuenta las plantas activas (decisión del #14); las dadas de
- * baja llegan con el filtro de estado (#15).
+ * baja llegan con el filtro de estado (#15). Los contadores de cabecera son
+ * siempre los de toda la colección; cuántas coinciden con la búsqueda va
+ * aparte, bajo el buscador.
  */
 export function InventoryView({
   status,
   plants,
   error,
   onRetry,
+  query,
+  onQueryChange,
+  searchResult,
 }: InventoryViewProps) {
   const [preferences, setPreferences] = useInventoryPreferences()
   const { view, grouped } = preferences
+
+  // El campo muestra cada pulsación al momento; la lista se filtra con el
+  // valor diferido, que React calcula sin bloquear la escritura.
+  const deferredQuery = useDeferredValue(query)
+  const searching = deferredQuery.trim() !== ''
 
   // Derivados memoizados: cambiar de vista (lista o cuadrícula) no recalcula
   // nada; agrupar o desagrupar calcula solo la forma que se pinta.
@@ -73,93 +93,121 @@ export function InventoryView({
     [plants],
   )
   const genusCount = useMemo(() => countGenera(active), [active])
+  const matches = useMemo(
+    () => filterByText(active, deferredQuery),
+    [active, deferredQuery],
+  )
+  // Agrupada, los géneros sin coincidencias desaparecen solos.
   const groups = useMemo(
-    () => (grouped ? groupByGenus(active) : null),
-    [grouped, active],
+    () => (grouped ? groupByGenus(matches) : null),
+    [grouped, matches],
   )
   const newest = useMemo(
-    () => (grouped ? null : sortByNewest(active)),
-    [grouped, active],
+    () => (grouped ? null : sortByNewest(matches)),
+    [grouped, matches],
   )
 
-  const summary = (
-    <div className="flex flex-wrap items-center justify-between gap-space-3">
-      {plants !== null && (
-        <ul
-          aria-label="Resumen de tu colección"
-          className="flex flex-wrap gap-x-space-4 gap-y-space-1 text-md text-neutral-700"
-        >
-          <li>{plantCountText(active.length)}</li>
-          <li>{genusCountText(genusCount)}</li>
-        </ul>
-      )}
-      <RegisterLink />
-    </div>
-  )
+  const clearQuery = () => onQueryChange('')
+  const registerLink = <RegisterLink />
 
-  if (plants === null) {
+  if (plants !== null && active.length === 0) {
     return (
       <div className={ROOT_CLASSES}>
-        {summary}
-        {status === 'error' && error ? (
-          <div role="alert" className="flex flex-col items-start gap-space-3">
-            <p>{error.message}</p>
-            <Button onClick={onRetry}>Reintentar</Button>
-          </div>
-        ) : (
-          <p role="status" className="text-neutral-700">
-            Cargando tu colección…
-          </p>
+        {status === 'error' && error && (
+          <ReloadErrorBanner error={error} onRetry={onRetry} />
         )}
+        <EmptyCollection hasInactive={plants.length > 0} />
       </div>
     )
   }
 
+  const controls = (
+    <>
+      <div className="sticky top-[0] z-10 -mx-space-1 bg-neutral-0 px-space-1 py-space-2">
+        <InventorySearch
+          value={query}
+          onValueChange={onQueryChange}
+          status={
+            plants !== null && searching
+              ? matchCountText(matches.length, active.length)
+              : null
+          }
+        >
+          {searchResult}
+        </InventorySearch>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-space-2">
+        <ChipGroup aria-label="Vista">
+          <Chip
+            className={TOUCH_CHIP}
+            selected={view === 'list'}
+            onClick={() => setPreferences({ view: 'list' })}
+          >
+            Lista
+          </Chip>
+          <Chip
+            className={TOUCH_CHIP}
+            selected={view === 'grid'}
+            onClick={() => setPreferences({ view: 'grid' })}
+          >
+            Cuadrícula
+          </Chip>
+        </ChipGroup>
+        <Chip
+          className={TOUCH_CHIP}
+          selected={grouped}
+          onClick={() => setPreferences({ grouped: !grouped })}
+        >
+          Agrupar por género
+        </Chip>
+      </div>
+    </>
+  )
+
+  const loading = plants === null && !(status === 'error' && error)
+
+  // Un solo árbol para todos los estados, con cada parte siempre en el mismo
+  // sitio: al llegar los datos, el buscador no se vuelve a montar y conserva
+  // el foco y lo escrito mientras cargaba.
   return (
     <div className={ROOT_CLASSES}>
-      {summary}
-
-      {active.length === 0 ? (
-        <p className="text-neutral-700">Aún no tienes orquídeas registradas.</p>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-space-2">
-            <ChipGroup aria-label="Vista">
-              <Chip
-                className={TOUCH_CHIP}
-                selected={view === 'list'}
-                onClick={() => setPreferences({ view: 'list' })}
-              >
-                Lista
-              </Chip>
-              <Chip
-                className={TOUCH_CHIP}
-                selected={view === 'grid'}
-                onClick={() => setPreferences({ view: 'grid' })}
-              >
-                Cuadrícula
-              </Chip>
-            </ChipGroup>
-            <Chip
-              className={TOUCH_CHIP}
-              selected={grouped}
-              onClick={() => setPreferences({ grouped: !grouped })}
-            >
-              Agrupar por género
-            </Chip>
-          </div>
-
-          {groups ? (
-            <div className="flex flex-col gap-space-5">
-              {groups.map((group) => (
-                <GenusSection key={group.genus.id} group={group} view={view} />
-              ))}
-            </div>
-          ) : (
-            <PlantList plants={newest ?? []} view={view} headingLevel={2} />
-          )}
-        </>
+      <div className="flex flex-wrap items-center justify-between gap-space-3">
+        {plants === null ? (
+          loading && <LoadingSummary />
+        ) : (
+          <ul
+            aria-label="Resumen de tu colección"
+            className="flex flex-wrap gap-x-space-4 gap-y-space-1 text-md text-neutral-700"
+          >
+            <li>{plantCountText(active.length)}</li>
+            <li>{genusCountText(genusCount)}</li>
+          </ul>
+        )}
+        {registerLink}
+      </div>
+      {status === 'error' && error && plants !== null && (
+        <ReloadErrorBanner error={error} onRetry={onRetry} />
       )}
+      {status === 'error' && error && plants === null ? (
+        <LoadErrorPanel error={error} onRetry={onRetry} />
+      ) : (
+        controls
+      )}
+      <div aria-busy={loading} className="flex flex-col">
+        {loading ? (
+          <LoadingList view={view} />
+        ) : plants === null ? null : matches.length === 0 ? (
+          <NoResults query={deferredQuery} onClear={clearQuery} />
+        ) : groups ? (
+          <div className="flex flex-col gap-space-5">
+            {groups.map((group) => (
+              <GenusSection key={group.genus.id} group={group} view={view} />
+            ))}
+          </div>
+        ) : (
+          <PlantList plants={newest ?? []} view={view} headingLevel={2} />
+        )}
+      </div>
     </div>
   )
 }
@@ -176,7 +224,7 @@ function PlantList({
   return (
     <ul className={VIEW_CLASSES[view]}>
       {plants.map((plant) => (
-        <li key={plant.id} className="min-w-0">
+        <li key={plant.id} className="min-w-[0]">
           <PlantCard plant={plant} view={view} headingLevel={headingLevel} />
         </li>
       ))}
@@ -195,7 +243,7 @@ function GenusSection({ group, view }: { group: GenusGroup; view: View }) {
         id={headingId}
         className="flex items-center gap-space-2 text-lg font-semibold text-secondary"
       >
-        <span className="min-w-0 [overflow-wrap:anywhere]">
+        <span className="min-w-[0] [overflow-wrap:anywhere]">
           {group.genus.name}
         </span>
         <span
@@ -213,7 +261,7 @@ function GenusSection({ group, view }: { group: GenusGroup; view: View }) {
 
 // Acceso a registrar una planta. En el celular queda fijo abajo, al alcance
 // del pulgar; desde 640 px va en su sitio, junto a los contadores. En el
-// orden del tabulador va siempre aquí, antes de la lista.
+// orden del tabulador va siempre aquí, antes del buscador y de la lista.
 function RegisterLink() {
   return (
     <Link

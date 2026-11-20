@@ -171,6 +171,20 @@ describe('ShowcasePage', () => {
     )
     expect(within(inventory).getAllByRole('article')).toHaveLength(300)
     expect(within(inventory).getByText('300 orquídeas')).toBeInTheDocument()
+
+    await user.click(within(inventory).getByRole('button', { name: 'Vacía' }))
+    expect(
+      within(inventory).getByRole('heading', {
+        name: 'Tu colección está vacía',
+      }),
+    ).toBeInTheDocument()
+    await user.click(
+      within(inventory).getByRole('button', { name: 'Sin conexión' }),
+    )
+    expect(within(inventory).getByRole('alert')).toHaveTextContent(
+      'Sin conexión',
+    )
+    await expectNoAxeViolations()
   })
 
   it('no tiene fallos de accesibilidad A ni AA al cargar', async () => {
