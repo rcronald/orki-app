@@ -1,0 +1,32 @@
+import { useRef, type ReactNode } from 'react'
+import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
+
+interface PageProps {
+  /** Título visible (h1) y de la pestaña. */
+  title: string
+  /** Título de la pestaña si difiere; null deja solo "Orki". */
+  tabTitle?: string | null
+  children?: ReactNode
+}
+
+// Contenido de una página dentro de AppShell: pone el título de la pestaña y
+// el h1, que recibe el foco al llegar navegando (tabIndex -1 lo hace enfocable
+// por código sin meterlo en el orden del tabulador).
+export function Page({ title, tabTitle = title, children }: PageProps) {
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  usePageTitle(tabTitle)
+  useFocusOnNavigation(headingRef)
+
+  return (
+    <div className="flex w-full max-w-lg flex-col gap-space-3">
+      <h1
+        ref={headingRef}
+        tabIndex={-1}
+        className="font-display text-xl font-semibold text-neutral-900"
+      >
+        {title}
+      </h1>
+      {children}
+    </div>
+  )
+}

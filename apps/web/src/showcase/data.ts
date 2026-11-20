@@ -86,6 +86,11 @@ export const GENERA = [
   'Vanda',
 ] as const
 
+/** Los géneros de GENERA como sugerencias del buscador de géneros. */
+export const GENUS_OPTIONS: readonly AutocompleteOption[] = GENERA.map(
+  (name) => ({ id: name.toLowerCase(), label: name }),
+)
+
 export const PLANT_STATES = ['Activa', 'Perdida', 'Regalada'] as const
 
 /** Muestras de los estilos de texto (las de tokens.json del design system). */

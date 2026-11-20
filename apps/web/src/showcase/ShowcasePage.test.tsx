@@ -1,35 +1,9 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import axe from 'axe-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ICON_NAMES } from '../components/ui/icons.ts'
+import { expectNoAxeViolations } from '../test/axe.ts'
 import ShowcasePage from './ShowcasePage.tsx'
-
-// Revisión automática de accesibilidad de la página de muestra con axe-core:
-// falla ante cualquier incumplimiento de nivel A o AA de WCAG 2.0, 2.1 y 2.2.
-// jsdom no calcula colores ni tamaños, así que el contraste lo cubre
-// src/styles/contrast.test.ts y aquí axe lo deja como "incompleto".
-const WCAG_A_AA = [
-  'wcag2a',
-  'wcag2aa',
-  'wcag21a',
-  'wcag21aa',
-  'wcag22a',
-  'wcag22aa',
-]
-
-async function expectNoAxeViolations() {
-  const results = await axe.run(document, {
-    runOnly: { type: 'tag', values: WCAG_A_AA },
-    resultTypes: ['violations'],
-  })
-  const report = results.violations.map(
-    (violation) =>
-      `${violation.id} (${violation.impact ?? 'sin impacto'}): ${violation.help}\n` +
-      violation.nodes.map((node) => `  ${node.target.join(' ')}`).join('\n'),
-  )
-  expect(report).toEqual([])
-}
 
 beforeEach(() => {
   // Como en index.html.
@@ -160,6 +134,37 @@ describe('ShowcasePage', () => {
     expect(
       screen.getByText('Elegiste Phalaenopsis amabilis.'),
     ).toBeInTheDocument()
+  })
+
+  it('sin configuración de Supabase, los buscadores usan los datos fijos', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const user = userEvent.setup({
+        advanceTimers: (ms) => vi.advanceTimersByTime(ms),
+      })
+      render(<ShowcasePage />)
+      expect(screen.getAllByText(/^Datos fijos/)).toHaveLength(2)
+
+      await user.type(
+        screen.getByRole('combobox', { name: 'Nombre científico' }),
+        'wakanki',
+      )
+      await act(() => vi.advanceTimersByTimeAsync(1000))
+      expect(
+        screen.getByRole('option', { name: /^Masdevallia veitchiana,/ }),
+      ).toBeVisible()
+
+      await user.type(
+        screen.getByRole('combobox', { name: 'Otro género' }),
+        'den',
+      )
+      expect(screen.getByRole('option', { name: 'Dendrobium' })).toBeVisible()
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('no tiene fallos de accesibilidad A ni AA al cargar', async () => {

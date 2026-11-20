@@ -1,13 +1,74 @@
-function App() {
+import { lazy, Suspense } from 'react'
+import { Route, Routes } from 'react-router'
+import { AuthProvider } from './auth/AuthProvider.tsx'
+import { RequireAuth, RequireCatalogAdmin } from './auth/RouteGuards.tsx'
+import { AppShell } from './components/AppShell.tsx'
+import { CatalogAdminPage } from './pages/CatalogAdminPage.tsx'
+import { CatalogPage } from './pages/CatalogPage.tsx'
+import { CollectionPage } from './pages/CollectionPage.tsx'
+import { HomePage } from './pages/HomePage.tsx'
+import { NewPlantPage } from './pages/NewPlantPage.tsx'
+import { NotFoundPage } from './pages/NotFoundPage.tsx'
+import { SignInPage } from './pages/SignInPage.tsx'
+import { SignUpPage } from './pages/SignUpPage.tsx'
+import type { AppEnv } from './config/env.ts'
+import { PATHS } from './routes/paths.ts'
+
+// Panel de diagnóstico de la identidad (/diagnostico), solo fuera de
+// producción. Misma técnica que la muestra (ver routes/AppRouter.tsx): con
+// VITE_APP_ENV=prod la comparación es estática, Vite la sustituye por false y
+// el import dinámico desaparece del build; además, la ruta solo se registra si
+// el ambiente ya validado no es prod. Va dentro de Clerk porque muestra el
+// usuario según Clerk, pero no exige sesión.
+const IdentityDiagnosticsPage =
+  import.meta.env.VITE_APP_ENV === 'prod'
+    ? null
+    : lazy(() => import('./diagnostics/IdentityDiagnosticsPage.tsx'))
+
+interface AppProps {
+  /** Ambiente ya validado por parseEnv. */
+  appEnv: AppEnv
+  /** Clave publicable de Clerk ya validada por parseEnv. */
+  clerkPublishableKey: string
+}
+
+// La app con Clerk: mapa de rutas de la Fase 1. AppRouter carga este módulo de
+// forma diferida, así Clerk y su localización van en un chunk aparte del
+// inicial (ver AppRouter.tsx). Las páginas son pequeñas y van aquí mismo: un
+// chunk por página añadiría peticiones sin ahorrar nada.
+//
+// Las rutas de acceso terminan en /* porque Clerk (routing="path") monta sus
+// pasos como subrutas: /iniciar-sesion/factor-one, /iniciar-sesion/sso-callback.
+function App({ appEnv, clerkPublishableKey }: AppProps) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-space-3 bg-neutral-0 px-space-4 text-center">
-      <h1 className="font-display text-display font-semibold text-neutral-900">
-        Orki
-      </h1>
-      <p className="max-w-sm text-lg text-neutral-700">
-        Tu colección de orquídeas, siempre a mano.
-      </p>
-    </main>
+    <AuthProvider publishableKey={clerkPublishableKey}>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<HomePage />} />
+          <Route path={PATHS.catalog} element={<CatalogPage />} />
+          {IdentityDiagnosticsPage && appEnv !== 'prod' && (
+            <Route
+              path={PATHS.identityDiagnostics}
+              element={
+                <Suspense fallback={null}>
+                  <IdentityDiagnosticsPage />
+                </Suspense>
+              }
+            />
+          )}
+          <Route element={<RequireAuth />}>
+            <Route path={PATHS.collection} element={<CollectionPage />} />
+            <Route path={PATHS.newPlant} element={<NewPlantPage />} />
+            <Route element={<RequireCatalogAdmin />}>
+              <Route path={PATHS.catalogAdmin} element={<CatalogAdminPage />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+        <Route path={`${PATHS.signIn}/*`} element={<SignInPage />} />
+        <Route path={`${PATHS.signUp}/*`} element={<SignUpPage />} />
+      </Routes>
+    </AuthProvider>
   )
 }
 

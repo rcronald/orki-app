@@ -18,6 +18,7 @@ select pruebas.iguales('species_type', enum_range(null::public.species_type)::te
 select pruebas.iguales('species_status', enum_range(null::public.species_status)::text, '{imported,validated,observed}');
 select pruebas.iguales('species_source', enum_range(null::public.species_source)::text, '{gbif,curated,user_proposal}');
 select pruebas.iguales('species_name_type', enum_range(null::public.species_name_type)::text, '{synonym,common}');
+select pruebas.iguales('species_match_type', enum_range(null::public.species_match_type)::text, '{scientific,synonym,common}');
 select pruebas.iguales('plant_type', enum_range(null::public.plant_type)::text, '{species,hybrid,unknown}');
 select pruebas.iguales('plant_status', enum_range(null::public.plant_status)::text, '{active,lost,gifted}');
 select pruebas.iguales('plant_validation', enum_range(null::public.plant_validation)::text, '{pending,validated,unidentifiable}');
@@ -47,13 +48,14 @@ select pruebas.iguales(
     || 'species.set_updated_at:O, species_names.set_updated_at:O'
 );
 
--- prueba: las funciones de los disparadores viven en private y fijan un search_path vacío
+-- prueba: las funciones de los disparadores y el guardián de administrador viven en private y fijan un search_path vacío
 select pruebas.iguales(
   'funciones de private',
   (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ','), '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'private'::regnamespace),
   'propagate_species_to_plants definer=true search_path=""; '
+    || 'require_catalog_admin definer=false search_path=""; '
     || 'set_updated_at definer=false search_path=""; '
     || 'sync_plant_with_species definer=true search_path=""'
 );
