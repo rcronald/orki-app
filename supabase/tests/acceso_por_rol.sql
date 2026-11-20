@@ -3,8 +3,9 @@
 -- PostgREST ejecuta cada petición con el rol del token (anon sin sesión, authenticated con
 -- sesión de Clerk, service_role con la clave de servicio) y deja las claims del token en
 -- request.jwt.claims. Aquí se reproduce con "set local role" y "set local request.jwt.claims".
--- El catálogo es de solo lectura; perfiles y plantas están cerrados para anon, y lo que puede
--- hacer authenticated con ellos se prueba en politicas_plantas_y_perfiles.sql.
+-- Para anon el catálogo es de solo lectura y perfiles y plantas están cerrados. Lo que puede
+-- hacer authenticated se prueba en politicas_catalogo.sql (escribir el catálogo, solo los
+-- administradores) y en politicas_plantas_y_perfiles.sql (su perfil y sus plantas).
 
 -- Datos de partida: una especie con un nombre, un perfil y una planta de user_a.
 insert into public.species (scientific_name, genus_id, type, status, source)
@@ -35,7 +36,8 @@ select pruebas.iguales(
   '(5,5,1,1)'
 );
 
--- prueba: ni anon ni authenticated pueden insertar, actualizar, borrar ni vaciar el catálogo
+-- prueba: anon no puede insertar, actualizar ni borrar en el catálogo, y ni anon ni authenticated pueden vaciarlo
+-- La escritura de authenticated (solo administradores) se prueba en politicas_catalogo.sql.
 do $$
 declare
   rol text;
@@ -45,6 +47,12 @@ begin
     execute format('set local role %I', rol);
     perform set_config('request.jwt.claims', '{"sub": "user_a", "role": "' || rol || '"}', true);
     foreach tabla in array array['genera', 'genus_abbreviations', 'species', 'species_names'] loop
+      perform pruebas.debe_fallar(
+        format('%s vacía %s', rol, tabla),
+        format('truncate public.%I cascade', tabla),
+        '42501'
+      );
+      continue when rol = 'authenticated';
       perform pruebas.debe_fallar(
         format('%s inserta en %s', rol, tabla),
         format('insert into public.%I default values', tabla),
@@ -58,11 +66,6 @@ begin
       perform pruebas.debe_fallar(
         format('%s borra de %s', rol, tabla),
         format('delete from public.%I', tabla),
-        '42501'
-      );
-      perform pruebas.debe_fallar(
-        format('%s vacía %s', rol, tabla),
-        format('truncate public.%I cascade', tabla),
         '42501'
       );
     end loop;
@@ -150,13 +153,13 @@ select pruebas.debe_fallar(
 -- prueba: anon y authenticated no pueden ejecutar las funciones de private ni usar el esquema
 select pruebas.iguales(
   'privilegios de anon y authenticated sobre private y sus funciones',
-  (select string_agg(r.rol || ':' || has_schema_privilege(r.rol, 'private', 'usage')
-                     || ':' || has_function_privilege(r.rol, p.oid, 'execute'), ', ' order by r.rol, p.proname)
+  (select string_agg(distinct x.permisos, ', ' order by x.permisos)
      from (values ('anon'), ('authenticated')) r (rol)
      cross join pg_proc p
+     cross join lateral (select r.rol || ':' || has_schema_privilege(r.rol, 'private', 'usage')
+                                || ':' || has_function_privilege(r.rol, p.oid, 'execute') as permisos) x
      where p.pronamespace = 'private'::regnamespace),
-  'anon:false:false, anon:false:false, anon:false:false, '
-    || 'authenticated:false:false, authenticated:false:false, authenticated:false:false'
+  'anon:false:false, authenticated:false:false'
 );
 set local role authenticated;
 select pruebas.debe_fallar(

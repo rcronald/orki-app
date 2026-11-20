@@ -259,7 +259,19 @@ Las pantallas de acceso leen `redirect_url` (`src/auth/useAuthRedirectDestinatio
 - El valor de administrador es **`catalog_admin`** (`CATALOG_ADMIN_ROLE` en `src/auth/roles.ts`). Es el mismo que se pone en Clerk (#55) y el que comprueban las políticas RLS (#6); si cambia, cambia en los tres sitios.
 - Configuración en el panel de Clerk (#55): en el usuario, metadatos públicos `{ "role": "catalog_admin" }`; en Sessions > Customize session token, el claim `{ "app_role": "{{user.public_metadata.role}}" }`. Los metadatos públicos solo se cambian desde el panel o el backend, no desde el navegador.
 - La app lo lee de `sessionClaims` de [`useAuth()`](https://clerk.com/docs/react/reference/hooks/use-auth), sin peticiones extra (`useIsCatalogAdmin`). Un cambio de rol llega con el siguiente token de sesión, no al instante.
-- Ocultar el enlace y la pantalla es **solo comodidad de la interfaz**: el token está en el navegador y la interfaz se puede manipular. La protección real son las políticas RLS de la base de datos (#6), que leen el mismo claim del token que verifica Supabase.
+- Ocultar el enlace y la pantalla es **solo comodidad de la interfaz**: el token está en el navegador y la interfaz se puede manipular. La protección real son las políticas RLS de la base de datos (#6), que leen el mismo claim del token que verifica Supabase con `public.is_catalog_admin()`: con el rol, `authenticated` puede insertar, editar y borrar en las cuatro tablas del catálogo; sin él, solo leerlas. Las funciones que necesitan saltarse RLS siguen el patrón de [Funciones de administrador](supabase/README.md#funciones-de-administrador).
+
+#### Asignar y retirar el rol
+
+Se hace a mano en el [panel de Clerk](https://dashboard.clerk.com), en la instancia del ambiente que corresponda (desarrollo o producción tienen usuarios distintos):
+
+1. **Asignar:** Users > el usuario > Metadata > Public > Edit, y deja `{ "role": "catalog_admin" }` (conservando las demás claves que hubiera). Guarda.
+2. **Retirar:** en el mismo sitio, borra la clave `role` (o el valor entero si era la única) y guarda.
+3. Comprueba una sola vez por instancia que Sessions > Customize session token tiene el claim `{ "app_role": "{{user.public_metadata.role}}" }`. Sin él, el token no lleva el rol aunque el usuario lo tenga.
+
+El valor tiene que ser exactamente `catalog_admin`, en minúsculas y sin espacios; cualquier otro (`admin`, `CATALOG_ADMIN`...) no da permisos. Los metadatos públicos solo se escriben con la clave secreta de Clerk (panel o backend), así que el usuario no puede ponérselo; el rol en otro sitio que el usuario sí controla (`unsafe_metadata`) no sirve, porque solo cuenta el claim de primer nivel `app_role`.
+
+**Cuánto tarda:** el cambio se refleja sin cerrar sesión cuando Clerk renueva el token de sesión, que dura un minuto aproximadamente: en general en un minuto, y en desarrollo se comprobó que en menos de dos. Hasta entonces, el token anterior sigue valiendo, también para la base de datos. Cerrar sesión y volver a entrar lo aplica al momento. En `/diagnostico` (fuera de producción) se ve el valor de `app_role` que trae el token.
 
 ### Identidad: de Clerk a Postgres
 

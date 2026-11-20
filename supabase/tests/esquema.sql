@@ -47,13 +47,14 @@ select pruebas.iguales(
     || 'species.set_updated_at:O, species_names.set_updated_at:O'
 );
 
--- prueba: las funciones de los disparadores viven en private y fijan un search_path vacío
+-- prueba: las funciones de los disparadores y el guardián de administrador viven en private y fijan un search_path vacío
 select pruebas.iguales(
   'funciones de private',
   (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ','), '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'private'::regnamespace),
   'propagate_species_to_plants definer=true search_path=""; '
+    || 'require_catalog_admin definer=false search_path=""; '
     || 'set_updated_at definer=false search_path=""; '
     || 'sync_plant_with_species definer=true search_path=""'
 );

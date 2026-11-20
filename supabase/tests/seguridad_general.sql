@@ -57,17 +57,16 @@ select pruebas.comprobar(
     and not has_schema_privilege('authenticated', 'private', 'usage')
 );
 
--- prueba: ninguna función security definer de public es ejecutable por anon ni authenticated
+-- prueba: las funciones security definer de public que expone la API siguen el patrón de administrador
 -- Las funciones de public quedan expuestas en la API (/rest/v1/rpc); una security definer se
--- ejecuta con los permisos de su dueño. Incluye rls_auto_enable(), que crea Supabase.
+-- ejecuta con los permisos de su dueño y se salta RLS. anon no puede ejecutar ninguna, y
+-- authenticated solo las de administrador: search_path vacío y, como primera sentencia, la
+-- llamada a private.require_catalog_admin() (pruebas.funciones_definer_expuestas, en
+-- tests/soporte/ayudantes.sql). Incluye rls_auto_enable(), que crea Supabase y que la
+-- migración de avisos deja sin permiso para anon ni authenticated.
 select pruebas.iguales(
-  'funciones security definer de public ejecutables por anon o authenticated',
-  (select coalesce(string_agg(r.rol || ':' || p.proname, ', ' order by r.rol, p.proname), 'ninguna')
-     from pg_proc p
-     cross join (values ('anon'), ('authenticated')) r (rol)
-     where p.pronamespace = 'public'::regnamespace
-       and p.prosecdef
-       and has_function_privilege(r.rol, p.oid, 'execute')),
+  'funciones security definer de public expuestas sin el patrón de administrador',
+  pruebas.funciones_definer_expuestas(),
   'ninguna'
 );
 

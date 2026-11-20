@@ -264,6 +264,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
     }
     Enums: {
