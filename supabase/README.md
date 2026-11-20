@@ -211,3 +211,70 @@ La app usa tipos generados a partir de estas migraciones (`apps/web/src/lib/data
 - Después de actualizar la CLI de Supabase o Prettier, si `npm run db:types:check` dice que no coinciden.
 
 `npm run db:types` los genera sin Docker ni credenciales, sobre la misma base desechable que las pruebas, y solo con el esquema `public`. `npm run db:types:check` hace lo mismo sin escribir y falla si el archivo versionado es distinto; es lo que ejecuta el CI. Si la migración añade una tabla o un enumerado, añade también su alias en `apps/web/src/lib/database.ts`. El detalle está en la sección [Tipos de TypeScript del esquema](../README.md#tipos-de-typescript-del-esquema) del README principal.
+
+## Rendimiento de la búsqueda
+
+`npm run db:perf` mide `public.search_species()` con un catálogo sintético del tamaño del real (#70). No corre en el CI: es una orden aparte, para repetirla cuando cambie la búsqueda, sus índices o el tamaño previsto del catálogo.
+
+Qué hace, siempre sobre la base desechable de las pruebas (nunca sobre los proyectos de Supabase):
+
+1. Aplica todas las migraciones y carga el catálogo sintético de `scripts/db-perf/catalogo-sintetico.sql`, y después hace `vacuum analyze`.
+2. Ejecuta como `anon` doce consultas típicas del autocompletado (prefijos de 2 y 3 letras, prefijo de género, género e inicio de epíteto, nombre con errores, sin tildes, sinónimo, nombre común, sin resultados, epítetos muy frecuentes y una consulta larga), cada una 3 veces para calentar y 30 veces medidas, con el tope de resultados por defecto (10).
+3. Reporta por consulta la mediana, el p95 y el máximo del tiempo dentro de la base de datos (con `clock_timestamp()` alrededor de la llamada, sin la red ni PostgREST), las filas devueltas y cuántas veces por llamada se recorrieron los índices de trigramas y, de forma secuencial, `species` y `species_names` (diferencia de `pg_stat_user_indexes` y `pg_stat_user_tables`; hace falta PostgreSQL 15 o posterior).
+4. Imprime el tamaño de las tablas e índices del catálogo y de la base completa.
+
+Termina con código 1 si el p95 de alguna consulta supera el objetivo o si alguna no recorre los dos índices de trigramas.
+
+```sh
+npm run db:perf
+npm run db:perf -- --especies 60000 --sinonimos 160000 --planes
+```
+
+| Opción             | Por defecto | Qué es                                                                                                            |
+| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `--generos N`      | 900         | Géneros del catálogo sintético.                                                                                   |
+| `--especies N`     | 30000       | Especies e híbridos aceptados.                                                                                    |
+| `--sinonimos N`    | 80000       | Sinónimos.                                                                                                        |
+| `--comunes N`      | 3000        | Nombres comunes.                                                                                                  |
+| `--semilla TEXTO`  | `orki`      | Semilla del generador: la misma semilla con las mismas cifras da exactamente el mismo catálogo.                   |
+| `--repeticiones N` | 30          | Ejecuciones medidas de cada consulta, después de 3 de calentamiento.                                              |
+| `--umbral-ms N`    | 300         | Objetivo por consulta, comparado con el p95.                                                                      |
+| `--planes`         | no          | Muestra además el plan (`explain analyze, buffers`) de la consulta interna de `search_species`, con auto_explain. |
+
+Las cifras por defecto son una estimación del catálogo de orquídeas; se ajustarán cuando la importación del #8 dé las reales. El generador imita los nombres reales en longitud y trigramas, porque de eso depende el rendimiento: unos cincuenta géneros reales y el resto compuestos con sílabas y terminaciones botánicas, epítetos latinizados con muchos repetidos entre géneros (`alba`, `grandiflora`, `speciosa`...), un reparto de especies por género muy desigual (como Bulbophyllum o Dendrobium frente a géneros de una especie), un 10 % de híbridos con nombre de grex, sinónimos que repiten el epíteto en otro género y nombres comunes en español e inglés. Incluye unas especies reales fijas (Phalaenopsis amabilis, Cattleya labiata, Doritis pulcherrima...) para que las consultas tengan una respuesta conocida. Cumple todas las restricciones del esquema.
+
+Mide con la versión de PostgreSQL del servidor. Por defecto es el clúster temporal con los binarios locales (en macOS suele ser otra versión, y con una anterior a la 15 no se cuentan los recorridos de los índices); para medir con la 17, como Supabase, levanta un contenedor desechable y pásalo en `ORKI_TEST_DB_URL`:
+
+```sh
+docker run -d --rm --name orki-perf -e POSTGRES_USER=supabase_admin -e POSTGRES_PASSWORD=desechable -p 127.0.0.1:55417:5432 postgres:17
+ORKI_TEST_DB_URL=postgresql://supabase_admin:desechable@127.0.0.1:55417/postgres npm run db:perf
+docker stop orki-perf
+```
+
+### Resultados
+
+20 de noviembre de 2026, con las cifras por defecto (900 géneros, 30 000 especies, de ellas 3188 híbridos, 80 000 sinónimos y 3000 nombres comunes) y la semilla `orki`. PostgreSQL 17.12 en un contenedor `postgres:17` (Podman, máquina virtual de 4 CPU y 3,7 GB) sobre un Apple M4 Pro. La carga del catálogo tarda unos 6 s.
+
+| Consulta                   | Texto                                                        | Mediana (ms) | p95 (ms) | Filas | Índices de trigramas |
+| -------------------------- | ------------------------------------------------------------ | -----------: | -------: | ----: | -------------------- |
+| Prefijo de 2 letras        | `ph`                                                         |        140,8 |    151,0 |    10 | sí                   |
+| Prefijo de 3 letras        | `cat`                                                        |         35,5 |     37,0 |    10 | sí                   |
+| Prefijo de género          | `dendrob`                                                    |         56,5 |     60,3 |    10 | sí                   |
+| Género + inicio de epíteto | `phal amab`                                                  |         19,8 |     20,0 |    10 | sí                   |
+| Nombre completo con error  | `catleya labiatta`                                           |          8,3 |      8,6 |    10 | sí                   |
+| Sin tildes (nombre común)  | `orquidea mariposa`                                          |         19,9 |     21,2 |    10 | sí                   |
+| Sinónimo                   | `doritis pulch`                                              |         15,2 |     16,4 |    10 | sí                   |
+| Nombre común               | `dancing lady`                                               |          2,6 |      3,0 |    10 | sí                   |
+| Sin resultados             | `xqzvkjw`                                                    |          0,0 |      0,1 |     0 | sí                   |
+| Epíteto muy frecuente      | `grandiflora`                                                |         38,4 |     43,0 |    10 | sí                   |
+| Epíteto frecuente y corto  | `alba`                                                       |          9,9 |     10,1 |    10 | sí                   |
+| Consulta larga             | `phalaenopsis amabilis subsp. rosenstromii var. grandiflora` |         12,1 |     12,9 |    10 | sí                   |
+
+Todas cumplen el objetivo de 300 ms. Cada llamada recorre los dos índices de trigramas, dos veces cada uno (una por cada rama del `or`: similitud y prefijo), y ninguna recorre `species_names` de forma secuencial. `species` sí se recorre entera una vez por llamada: el planificador prefiere un hash join para añadir los datos de la especie a los candidatos (30 000 filas, alrededor de 1 ms).
+
+Tamaño: el catálogo ocupa 40,3 MB (`species` 13,1 MB y `species_names` 26,5 MB, de los que 14,1 MB son los dos índices de trigramas) y la base completa 48,3 MB, menos de una décima parte de los 500 MB del plan gratuito de Supabase.
+
+Cuidado al leer estas cifras:
+
+- Son de una máquina local rápida y sin carga, no del plan gratuito de Supabase, que usa CPU compartida: allí los tiempos pueden ser bastante mayores. El objetivo se debe comprobar también en el proyecto real cuando esté el catálogo importado (#8).
+- El tiempo crece con el número de candidatos (nombres que pasan el filtro de similitud o de prefijo antes de quedarse con la mejor coincidencia de cada especie), no con el de resultados. La consulta más cara es la de 2 letras: `ph` deja pasar unos 21 000 nombres, porque `word_similarity` con una consulta tan corta coincide con cualquier nombre que tenga una palabra que empiece por esas letras. Con el doble de catálogo (60 000 especies y 160 000 sinónimos) su p95 llega a 302 ms y ya no cumple; las demás se quedan por debajo de 150 ms.

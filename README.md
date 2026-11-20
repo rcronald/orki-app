@@ -49,24 +49,25 @@ npm run build
 
 Todos se ejecutan desde la raíz del repositorio.
 
-| Script                   | Qué hace                                                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `npm run dev`            | Levanta el servidor de desarrollo de la app web (Vite). Acepta opciones de Vite después de `--`.             |
-| `npm run build`          | Comprueba los tipos y genera el build de producción de la app web en `apps/web/dist`, con el service worker. |
-| `npm run preview`        | Sirve el build de `apps/web/dist` en local para probarlo. Requiere ejecutar antes `npm run build`.           |
-| `npm run typecheck`      | Comprueba los tipos de TypeScript de la app web sin generar archivos.                                        |
-| `npm run lint`           | Ejecuta ESLint en todo el repositorio. Falla con cualquier aviso.                                            |
-| `npm run format`         | Formatea todo el repositorio con Prettier.                                                                   |
-| `npm run format:check`   | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                     |
-| `npm test`               | Ejecuta las pruebas de la app web una vez (Vitest).                                                          |
-| `npm run test:watch`     | Ejecuta las pruebas de la app web en modo observación.                                                       |
-| `npm run db:new`         | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                         |
-| `npm run db:status`      | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                    |
-| `npm run db:push`        | Aplica las migraciones pendientes en el proyecto de desarrollo.                                              |
-| `npm run db:seed:dev`    | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.   |
-| `npm run db:test`        | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.    |
-| `npm run db:types`       | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.   |
-| `npm run db:types:check` | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.         |
+| Script                   | Qué hace                                                                                                                                                                   |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`            | Levanta el servidor de desarrollo de la app web (Vite). Acepta opciones de Vite después de `--`.                                                                           |
+| `npm run build`          | Comprueba los tipos y genera el build de producción de la app web en `apps/web/dist`, con el service worker.                                                               |
+| `npm run preview`        | Sirve el build de `apps/web/dist` en local para probarlo. Requiere ejecutar antes `npm run build`.                                                                         |
+| `npm run typecheck`      | Comprueba los tipos de TypeScript de la app web sin generar archivos.                                                                                                      |
+| `npm run lint`           | Ejecuta ESLint en todo el repositorio. Falla con cualquier aviso.                                                                                                          |
+| `npm run format`         | Formatea todo el repositorio con Prettier.                                                                                                                                 |
+| `npm run format:check`   | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                                                                                   |
+| `npm test`               | Ejecuta las pruebas de la app web una vez (Vitest).                                                                                                                        |
+| `npm run test:watch`     | Ejecuta las pruebas de la app web en modo observación.                                                                                                                     |
+| `npm run db:new`         | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                                                                                       |
+| `npm run db:status`      | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                                                                                  |
+| `npm run db:push`        | Aplica las migraciones pendientes en el proyecto de desarrollo.                                                                                                            |
+| `npm run db:seed:dev`    | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.                                                                 |
+| `npm run db:test`        | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.                                                                  |
+| `npm run db:perf`        | Mide la búsqueda con un catálogo sintético en un Postgres desechable. No corre en el CI (ver [Rendimiento de la búsqueda](supabase/README.md#rendimiento-de-la-búsqueda)). |
+| `npm run db:types`       | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.                                                                 |
+| `npm run db:types:check` | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.                                                                       |
 
 La app web tiene además un script propio para regenerar los iconos provisionales de la PWA en `apps/web/public`:
 
