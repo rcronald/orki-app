@@ -6,8 +6,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger'
 export type ButtonProps = ComponentPropsWithRef<'button'> & {
   /**
    * primary: la acción principal de la pantalla (una sola por pantalla).
-   * secondary: todo lo demás. danger: acciones destructivas, como borrar
-   * (añadido de la app, estilos en bundle-extra.css).
+   * secondary: todo lo demás. danger: acciones destructivas, como borrar.
    */
   variant?: ButtonVariant
   /** Ocupa el ancho del contenedor; para la acción principal en móvil. */
