@@ -168,7 +168,7 @@ Las migraciones cargan las abreviaturas estándar de la RHS (las de las etiqueta
 
 ## Importación del catálogo
 
-El catálogo de especies se carga desde el Catalogue of Life eXtended Release (COL XR) con `orki-catalogo cargar` (`scripts/catalog-import/`, issue #8; cómo se ejecuta y sus reglas están en [su README](../scripts/catalog-import/README.md)). Lo que el esquema aporta:
+El catálogo de especies se carga desde el Catalogue of Life eXtended Release (COL XR) con `orki-catalogo cargar` (`scripts/catalog-import/`, issue #8; sus reglas están en [su README](../scripts/catalog-import/README.md), y cómo se ejecuta en local, en desarrollo y en producción, con el workflow manual `importar-catalogo.yml`, en [Ejecución por ambiente](../scripts/catalog-import/README.md#ejecución-por-ambiente)). Requiere las migraciones aplicadas en el ambiente. Lo que el esquema aporta:
 
 - `species_source` tiene el valor `col` (migración `20261120220000_fuente_col_en_especies.sql`). `gbif` se conserva aunque no se use. El valor va solo en su migración porque Postgres no deja usar un valor de enumerado en la misma transacción que lo añade, y cada migración se aplica en su propia transacción (lo hacen así la CLI de Supabase y `npm run db:test`).
 - `species_col_has_source_ref` (migración `20261120220100_col_exige_referencia.sql`) exige `source_ref` a lo importado de COL, igual que `species_gbif_has_source_ref` con `gbif`. La carga encuentra cada especie por la restricción única `(source, source_ref)`.

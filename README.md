@@ -498,6 +498,10 @@ Las credenciales están registradas en GitHub (Settings > Secrets and variables 
 - `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
 - `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
 
+### Importación del catálogo
+
+El catálogo de especies (Catalogue of Life) se carga con `orki-catalogo cargar` de `scripts/catalog-import/`, después de aplicar las migraciones. En desarrollo se puede cargar desde tu máquina o con el workflow; en producción, solo con el workflow manual `.github/workflows/importar-catalogo.yml` (Actions > Importar catálogo), que simula por defecto, exige escribir el identificador del proyecto para escribir en producción y deja el reporte como artefacto. Usa `SUPABASE_DB_PASSWORD` y `SUPABASE_PROJECT_REF` del environment y además la variable `SUPABASE_POOLER_HOST`, que hay que crear en cada environment. La guía completa (pasos por ambiente, cómo leer el reporte y qué hacer con una versión nueva de la fuente) está en [Ejecución por ambiente](scripts/catalog-import/README.md#ejecución-por-ambiente).
+
 ## Despliegue en Vercel
 
 La app web se despliega en Vercel, conectado al repositorio de GitHub:

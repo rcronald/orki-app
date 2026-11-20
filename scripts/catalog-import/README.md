@@ -2,7 +2,7 @@
 
 Scripts en Python que preparan el catálogo de especies de orquídeas de Orki a partir del **Catalogue of Life eXtended Release** (COL26.10 XR, clave de ChecklistBank `316691`). La investigación de la fuente, la licencia y el formato está en [FUENTE.md](FUENTE.md); las decisiones aprobadas, en el issue #72.
 
-Hay dos partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura, y la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)). El workflow manual y la guía por ambiente llegan en #75.
+Hay tres partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); y el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)).
 
 ## Requisitos e instalación
 
@@ -26,10 +26,11 @@ En el CI, el job «Importación del catálogo (Python)» de `.github/workflows/c
 
 ## Uso de la CLI
 
-Descarga la exportación de la versión fijada **fuera del repositorio** (unos 137 MB; no se versiona) y pásala a la CLI. Lee el zip directamente, sin descomprimirlo:
+Descarga la exportación de la versión fijada en [`fuente.json`](fuente.json) **fuera del repositorio** (unos 137 MB; no se versiona), comprueba su SHA-256 y pásala a la CLI. Lee el zip directamente, sin descomprimirlo:
 
 ```sh
 curl -L -o /tmp/col-316691.zip 'https://api.checklistbank.org/dataset/316691/export.zip?format=ColDP'
+shasum -a 256 /tmp/col-316691.zip   # tiene que dar el sha256 de fuente.json
 uv run orki-catalogo /tmp/col-316691.zip                              # resumen
 uv run orki-catalogo /tmp/col-316691.zip --salida /tmp/catalogo.json  # y salida normalizada
 ```
@@ -49,6 +50,7 @@ También acepta el TSV suelto. Imprime los recuentos de géneros, especies, híb
 | `src/catalog_import/target.py`    | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                     |
 | `src/catalog_import/load.py`      | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                    |
 | `src/catalog_import/report.py`    | Reporte CSV y resumen por pantalla                                                                             |
+| `fuente.json`                     | Versión fijada de la fuente: clave, DOI, URL y SHA-256 de la exportación (la usa el workflow)                  |
 | `tests/`                          | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md)) |
 | `tests/basedatos.py`              | Bases desechables con las migraciones para las pruebas de la carga                                             |
 
@@ -122,7 +124,7 @@ Ojo para la carga y la búsqueda: 593 sinónimos coinciden con el nombre aceptad
 
 `orki-catalogo cargar` lee la exportación, la normaliza con las reglas de arriba y la carga en Postgres por conexión directa, en **una sola transacción**: o entra todo o no entra nada. Es repetible (una segunda ejecución con la misma fuente no cambia ninguna fila, ni su `updated_at`) y **nunca borra**. Necesita las migraciones `20261120220000_fuente_col_en_especies.sql` y `20261120220100_col_exige_referencia.sql`, que añaden la fuente `col`; si faltan, se niega a cargar.
 
-Aquí solo se describe la ejecución en local. El workflow manual y la guía para desarrollo y producción son del issue #75.
+Aquí se describe la ejecución en local, que sirve para probar. Cómo se carga en desarrollo y en producción está en [Ejecución por ambiente](#ejecución-por-ambiente).
 
 ### En local
 
@@ -275,3 +277,173 @@ Las pruebas siguen bloqueando la red de Python; la conexión a la base la hace l
 - Las pruebas se conectan como superusuario; en Supabase la carga se conectará como `postgres`, que es el dueño de las tablas pero no superusuario. Lo que hace la carga (bloquear, `COPY` a tablas temporales, escribir las cuatro tablas, `analyze`) no necesita más que eso, pero no se ha probado contra un proyecto de Supabase.
 - Con el pooler en modo transacción (puerto 6543) la carga también debería funcionar, porque es una sola transacción y no usa sentencias preparadas, pero no se ha probado; la conexión directa o el pooler en modo sesión (puerto 5432) son la opción segura.
 - Los datos de ejemplo de desarrollo (`supabase/datos-ejemplo/`) tienen especies de fuente `curated` con nombres que COL también trae (por ejemplo Phalaenopsis amabilis): en desarrollo saldrán como `NOMBRE_DE_OTRA_FUENTE` y no se cargarán sus sinónimos.
+
+## Ejecución por ambiente
+
+| Ambiente   | Dónde se ejecuta                                                        | Credenciales                                                                |
+| ---------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Local      | Tu máquina, contra un Postgres desechable                               | Las del contenedor, que no son secretas                                     |
+| Desarrollo | Tu máquina o el workflow, contra el proyecto de desarrollo              | La contraseña de la base de desarrollo, solo en la variable de entorno      |
+| Producción | **Solo** el workflow `importar-catalogo.yml`, con el environment `prod` | Secretos y variables del environment `prod` de GitHub; nunca en una máquina |
+
+### Antes de cargar: las migraciones
+
+La carga necesita que el ambiente tenga aplicadas todas las migraciones del catálogo: las de la fuente `col` (`20261120220000_fuente_col_en_especies.sql` y `20261120220100_col_exige_referencia.sql`) y las de la búsqueda (`search_species`, `search_genera` y sus índices), además de las anteriores del catálogo. `orki-catalogo cargar` solo comprueba que exista el valor `col` de la fuente y, si falta, termina sin escribir nada; el resto no lo comprueba, así que mira antes que no quede ninguna migración pendiente. El orden es siempre:
+
+1. Aplicar las migraciones en el ambiente: `npm run db:push` en desarrollo o el workflow «Migraciones» en producción, que corre solo al fusionar en `main` (ver [Base de datos y migraciones](../../README.md#base-de-datos-y-migraciones)). `npm run db:status` dice cuáles están aplicadas.
+2. Simular la carga y revisar el reporte.
+3. Escribir.
+
+No lances una importación mientras corre el workflow de migraciones en el mismo ambiente: son grupos de concurrencia distintos y no se esperan entre sí. La carga bloquea las tablas del catálogo mientras dura, así que una migración que las toque esperaría o fallaría por `lock_timeout`.
+
+### En local
+
+Ver [En local](#en-local), arriba: un Postgres desechable, las migraciones aplicadas con `psql` y `--ambiente local`. Sirve para probar un cambio del script o una versión nueva de la fuente sin tocar Supabase.
+
+### En desarrollo, desde tu máquina
+
+Se conecta al proyecto de desarrollo (`xaitolsnmjlpyptntfwi`). La conexión directa (`db.<ref>.supabase.co`) solo funciona por IPv6; si tu red no tiene IPv6, usa el **pooler en modo sesión**, que funciona por IPv4. Las dos URL se copian del panel de Supabase del proyecto de desarrollo, botón **Connect**:
+
+- Conexión directa: `postgresql://postgres:<contraseña>@db.xaitolsnmjlpyptntfwi.supabase.co:5432/postgres`.
+- Pooler en modo sesión («Session pooler»): `postgresql://postgres.xaitolsnmjlpyptntfwi:<contraseña>@aws-<n>-<región>.pooler.supabase.com:5432/postgres`. Copia el host tal cual: el número del principio es el del clúster y no se deduce de la región.
+
+La contraseña es la de la base de desarrollo, la misma que `SUPABASE_DB_PASSWORD` de tu `supabase/.env` (se puede restablecer en Project Settings > Database). Si lleva caracteres especiales (`@`, `:`, `/`, `#`, `?`, `%`, espacio), hay que codificarlos en la URL (`@` es `%40`, por ejemplo).
+
+La URL no se escribe en ningún archivo versionado ni en una orden que quede en el historial del shell. Pégala en una lectura oculta, en la misma terminal donde vas a cargar:
+
+```sh
+read -rs ORKI_CATALOG_DB_URL && export ORKI_CATALOG_DB_URL   # pega la URL y pulsa Intro; no se ve ni queda en el historial
+
+cd scripts/catalog-import
+uv run orki-catalogo cargar /tmp/col-316691.zip --ambiente dev             # simulación
+# revisa el resumen y el CSV (ver «Cómo leer el reporte»)
+uv run orki-catalogo cargar /tmp/col-316691.zip --ambiente dev --escribir  # carga de verdad
+
+unset ORKI_CATALOG_DB_URL
+```
+
+`--ambiente dev` se niega a conectar si la URL no es del proyecto de desarrollo (por ejemplo, si pegaste la de producción). Las credenciales de producción no se usan nunca desde una máquina.
+
+Los datos de ejemplo de desarrollo (`npm run db:seed:dev`) traen especies de fuente `curated` con nombres que COL también tiene: en desarrollo saldrán como `NOMBRE_DE_OTRA_FUENTE` y no se cargarán sus sinónimos. Es lo esperado.
+
+También se puede cargar desarrollo con el workflow, igual que producción (sin la confirmación), desde cualquier rama.
+
+### En producción, con el workflow
+
+El workflow **Importar catálogo** (`.github/workflows/importar-catalogo.yml`) solo se lanza a mano. Sus entradas:
+
+| Entrada                | Valores                              | Qué hace                                                                                                                                                   |
+| ---------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ambiente`             | `dev` (por defecto) o `prod`         | Environment de GitHub del que toma los secretos y base de destino. `prod` solo desde `main`.                                                               |
+| `modo`                 | `simular` (por defecto) o `escribir` | `simular` hace toda la carga y la revierte; solo el valor exacto `escribir` añade `--escribir`.                                                            |
+| `confirmar_produccion` | texto                                | Solo al escribir en producción: hay que escribir el identificador del proyecto de producción (`fzundhfxnbyjbxyhkgtg`). Se pasa a `--confirmar-produccion`. |
+
+Qué hace, en orden:
+
+1. Comprueba las entradas antes de obtener el código: producción solo desde `main`, las variables del environment presentes y, al escribir en producción, que la confirmación sea el identificador del proyecto.
+2. Descarga la exportación fijada en [`fuente.json`](fuente.json) (o la toma de la caché de Actions, con clave por versión y hash) y **verifica su SHA-256**. Si no coincide, falla sin conectarse a nada.
+3. Instala Python y las dependencias con `uv sync --locked --no-dev`.
+4. Compone la URL de conexión con los secretos del environment, la enmascara en el registro y ejecuta `orki-catalogo cargar` con `--ambiente` igual al environment.
+5. Escribe un resumen en la página de la ejecución (el resumen de la CLI, con los recuentos, los conflictos y el tamaño de la base, y una tabla de filas del reporte por entidad y resultado) y sube el reporte CSV y la salida de la CLI como artefacto `reporte-carga-<ambiente>-<modo>-<id de ejecución>`, con 30 días de retención. Las dos cosas se hacen también cuando la carga falla.
+
+Nunca corren dos importaciones a la vez contra el mismo ambiente (la segunda espera) y la ejecución se corta a los 30 minutos. La carga completa tarda unos segundos; casi todo el tiempo es la descarga.
+
+**Pasos para producción:**
+
+1. Comprueba que las migraciones están aplicadas en producción (ver arriba).
+2. **Simula.** En GitHub: Actions > Importar catálogo > Run workflow, rama `main`, ambiente `prod`, modo `simular`, confirmación vacía. O con la CLI de GitHub:
+
+   ```sh
+   gh workflow run importar-catalogo.yml -R rcronald/orki-app --ref main -f ambiente=prod -f modo=simular
+   gh run watch -R rcronald/orki-app                  # elige la ejecución y espera a que termine
+   gh run download <id> -R rcronald/orki-app          # descarga el reporte a la carpeta actual
+   ```
+
+   La simulación bloquea la escritura del catálogo de producción unos segundos (la lectura y la búsqueda siguen funcionando).
+
+3. **Revisa** el resumen de la ejecución y el CSV (ver [Cómo leer el reporte](#cómo-leer-el-reporte)). No sigas si hay rechazos o conflictos que no entiendas.
+4. **Escribe**, con la misma versión de la fuente y la confirmación:
+
+   ```sh
+   gh workflow run importar-catalogo.yml -R rcronald/orki-app --ref main -f ambiente=prod -f modo=escribir -f confirmar_produccion=fzundhfxnbyjbxyhkgtg
+   ```
+
+   En la interfaz: modo `escribir` y el identificador en `confirmar_produccion`.
+
+5. Comprueba que el reporte de la escritura dice lo mismo que el de la simulación (salvo que algo cambiara entre medias) y anota en el issue el tamaño de la base y los recuentos.
+
+La confirmación no es un secreto (el identificador está en el código); sirve para que escribir en producción no pueda ser un clic por descuido.
+
+#### Credenciales que usa el workflow
+
+Del environment elegido (`dev` o `prod`), en Settings > Environments:
+
+| Nombre                 | Tipo     | Para qué                                                                  | Estado                         |
+| ---------------------- | -------- | ------------------------------------------------------------------------- | ------------------------------ |
+| `SUPABASE_DB_PASSWORD` | Secreto  | Contraseña de la base (la misma que usa el workflow de migraciones)       | Ya existe en `dev` y en `prod` |
+| `SUPABASE_PROJECT_REF` | Variable | Identificador del proyecto: forma el usuario del pooler, `postgres.<ref>` | Ya existe en `dev` y en `prod` |
+| `SUPABASE_POOLER_HOST` | Variable | Host del pooler del proyecto, `aws-<n>-<región>.pooler.supabase.com`      | **Hay que crearla** en los dos |
+
+No usa `SUPABASE_ACCESS_TOKEN` (el token de la API de gestión): la carga solo necesita la base.
+
+**Por qué el pooler.** Los ejecutores de GitHub Actions no tienen IPv6 de salida, y la conexión directa de Supabase (`db.<ref>.supabase.co`) solo funciona por IPv6 en los planes sin el complemento de IPv4. El workflow de migraciones lo resuelve con `supabase link`, que pide la dirección del pooler a la API de gestión. Aquí se usa directamente el **pooler en modo sesión** (Supavisor, puerto 5432, usuario `postgres.<ref>`), que funciona por IPv4 y mantiene una conexión propia durante toda la sesión, como la directa. El host no es un secreto, pero no se puede deducir solo de la región (lleva el número del clúster), por eso es una variable.
+
+**Crear `SUPABASE_POOLER_HOST`** (una vez por environment). El host sale del panel de Supabase de cada proyecto: Connect > Session pooler, la parte entre `@` y `:5432` (por ejemplo `aws-0-us-east-1.pooler.supabase.com`; copia el tuyo). Después:
+
+```sh
+gh variable set SUPABASE_POOLER_HOST --env dev  -R rcronald/orki-app --body 'aws-<n>-<región>.pooler.supabase.com'
+gh variable set SUPABASE_POOLER_HOST --env prod -R rcronald/orki-app --body 'aws-<n>-<región>.pooler.supabase.com'
+```
+
+Si los dos proyectos están en la misma región, el host suele ser el mismo; compruébalo en cada uno. Si falta o no tiene ese formato, el workflow falla en el primer paso y lo dice.
+
+**Que no salgan credenciales en el registro.** La contraseña llega solo como variable de entorno del paso que carga; GitHub la enmascara, y el paso enmascara además su versión codificada para URL y la URL completa. La URL se compone en ese mismo paso, no se guarda en ningún archivo ni en `GITHUB_ENV`, y se borra la contraseña del entorno antes de lanzar la CLI. Ningún paso usa `set -x`. La CLI no imprime la URL y quita la contraseña de los errores de la base. Las entradas del formulario llegan a los scripts solo por variables de entorno, nunca escritas dentro del código del paso, así que no se pueden inyectar órdenes.
+
+**Repositorio público.** Los registros, el resumen y los artefactos de las ejecuciones los puede ver cualquiera que pueda ver el repositorio. Solo contienen datos públicos (nombres del catálogo, claves de COL, el identificador del proyecto y el host del pooler) y los recuentos y tamaños de la base.
+
+### Cómo leer el reporte
+
+Empieza por el resumen (en la terminal o en la página de la ejecución): dice el modo, los recuentos por entidad y resultado, los registros de la base al terminar, el tamaño y los tiempos. Después abre el CSV con una hoja de cálculo y filtra por `resultado`:
+
+- `nuevo`, `actualizado` y `sin_cambios`: lo que la carga hace (o haría). En `actualizado`, `detalle` dice qué cambia y a cuántas plantas de usuarios se propaga; revisa los cambios de género o de tipo que afecten a plantas.
+- `descartado` y `ajustado`: decisiones de la normalización, con los códigos de [Códigos de motivo](#códigos-de-motivo). Sus totales deberían parecerse a los de esa tabla para la misma versión; una diferencia grande indica que la fuente cambió.
+- `no_en_fuente`: está en la base pero esta fuente ya no lo trae. No se borra nunca.
+- `conflicto` y `rechazado`: no se cargaron; hay que mirarlos uno a uno.
+- `entidad = carga` (`resultado = info`): fuente, ambiente, destino sin credenciales, modo, totales (`TOTAL`), recuentos de la base (`RECUENTO`), tamaños en bytes (`TAMANO`) y tiempos (`TIEMPO`).
+
+Qué hacer con cada código de conflicto, rechazo o baja:
+
+| Código                        | Resultado    | Qué hacer                                                                                                                                                                                                                                         |
+| ----------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ESPECIE_PROTEGIDA`           | conflicto    | Un administrador la validó u observó y la fuente dice otra cosa. Decide si el cambio de la fuente es correcto; si lo es, edítala a mano en el backoffice. La carga no la tocará nunca.                                                            |
+| `NOMBRE_DE_OTRA_FUENTE`       | conflicto    | Ya hay una especie con ese nombre de la lista curada, de una propuesta o de `gbif`. Si es la misma especie, no hace falta nada (la de la base manda); si conviene, un administrador puede pasarla a `col` con su clave para que reciba sinónimos. |
+| `CLAVE_DISTINTA`              | conflicto    | La base tiene ese nombre con otra clave de COL que la fuente sigue usando para otro registro. Busca las dos claves en COL (`https://www.catalogueoflife.org/data/taxon/<clave>`) y corrige a mano la que esté mal.                                |
+| `NOMBRE_OCUPADO`              | conflicto    | La fuente renombra la especie a un nombre que ya tiene otra. Suele ser un sinónimo que pasó a aceptado: candidato a fusionar especies (#21).                                                                                                      |
+| `GENERO_MAYUSCULAS_DISTINTAS` | conflicto    | El género de la base solo difiere en mayúsculas. Corrige el nombre a mano si el de la fuente es el bueno.                                                                                                                                         |
+| `GENERO_AMBIGUO`              | conflicto    | Hay varios géneros que solo se distinguen por el «×». Deja uno (fusionando a mano) y vuelve a cargar.                                                                                                                                             |
+| `GENERO_EN_CONFLICTO`         | rechazado    | La especie no se carga porque su género está en conflicto. Se resuelve con el conflicto del género.                                                                                                                                               |
+| `SINONIMO_SIN_ESPECIE`        | rechazado    | Su especie no se cargó (por uno de los conflictos de arriba). Se resuelve con el de la especie.                                                                                                                                                   |
+| `SINONIMO_ES_NOMBRE_COMUN`    | conflicto    | La especie ya tiene ese nombre como nombre común. Normalmente es un nombre común mal clasificado: corrígelo a mano si procede.                                                                                                                    |
+| `SINONIMO_IGUAL_AL_NOMBRE`    | conflicto    | El sinónimo coincide con el nombre de la especie en la base. Nada que hacer.                                                                                                                                                                      |
+| `ESPECIE_NO_EN_FUENTE`        | no_en_fuente | La fuente ya no trae esa clave (sinónimo nuevo, clave cambiada o baja). Se conserva; revisa en COL qué pasó y si hay plantas enlazadas.                                                                                                           |
+| `GENERO_NO_EN_FUENTE`         | no_en_fuente | Género de la base que COL no trae (con COL26.10 XR, Rhyncholaeliocattleya, Odontoglossum y Sophronitis). Nada que hacer.                                                                                                                          |
+
+`CLAVE_ACTUALIZADA` (resultado `actualizado`) no es un conflicto: COL cambió la clave de una especie importada sin tocar el nombre y la carga la sigue. Conviene revisar si son muchas.
+
+Si la carga falla (error de la base, esquema incompleto, conexión), la transacción se revierte entera y no se ha escrito nada: corrige la causa y vuelve a lanzarla.
+
+### Nueva versión de la fuente
+
+La versión está fijada en [`fuente.json`](fuente.json): `alias`, `clave` de ChecklistBank, `doi`, `publicada`, `url` y `sha256` del zip. El workflow descarga esa URL y se niega a cargar si el SHA-256 no coincide. Para pasar a una versión nueva de COL XR:
+
+1. Busca la versión en ChecklistBank (`https://api.checklistbank.org/dataset?releasedFrom=3&origin=xrelease`) y anota su clave, alias, DOI y fecha.
+2. Descárgala fuera del repositorio, calcula su SHA-256 (`shasum -a 256`) y ejecuta `uv run orki-catalogo <zip>`: el resumen dice la clave y el alias que trae `metadata.yaml`, que tienen que coincidir. Compara los recuentos con los de [Resultado con COL26.10 XR frente a FUENTE.md](#resultado-con-col2610-xr-frente-a-fuentemd).
+3. Cambia `fuente.json` (todos los campos) y actualiza FUENTE.md y las cifras de este README en el mismo pull request.
+4. Simula en local o en desarrollo y revisa sobre todo las **bajas** (`no_en_fuente`) y las **claves cambiadas** (`CLAVE_ACTUALIZADA`, `CLAVE_DISTINTA`): COL cambió claves por error en 2026 (FUENTE.md, sección 6). Si hay muchas, mira los informes `deleted.tsv` y `superseded.tsv` de la versión antes de seguir.
+5. Carga en desarrollo, y después en producción con el workflow (simular, revisar, escribir).
+
+**Si ChecklistBank regenera el archivo** de la misma versión, el zip puede cambiar de bytes (otra fecha de generación) aunque los datos sean los mismos, y el workflow fallará con «El SHA-256 de la exportación … no coincide». No cambies el hash a ciegas: descarga el archivo nuevo, comprueba que `metadata.yaml` sigue diciendo la misma clave y versión y que el resumen de la CLI da los mismos recuentos, y solo entonces actualiza `sha256` en `fuente.json` (y la nota de la sección 8 de FUENTE.md) en un pull request. Las versiones mensuales se conservan un año en ChecklistBank; si la fijada desaparece, hay que pasar a una nueva.
+
+### Atribución y licencia
+
+Los datos del Catalogue of Life tienen licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hay que citar la versión importada con su DOI (hoy «Catalogue of Life (2026-10-16 XR), https://doi.org/10.48580/dgzlf»), indicar la licencia y decir que los datos están filtrados a Orchidaceae y normalizados por Orki; conviene citar también la WCVP de Kew, que aporta casi todas las especies aceptadas. Las citas completas están en [FUENTE.md, sección 2](FUENTE.md#2-licencia-y-atribución). El reporte de cada carga anota la fuente, la versión y el DOI. Al cambiar de versión, actualiza también la cita donde se muestre en la app (pendiente: página pública de créditos y fuentes, issue #72).

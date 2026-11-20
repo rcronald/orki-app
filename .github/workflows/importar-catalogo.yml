@@ -1,0 +1,271 @@
+name: Importar catálogo
+
+# Carga el catálogo de especies del Catalogue of Life en el proyecto de Supabase de un
+# ambiente, con `orki-catalogo cargar` (scripts/catalog-import). Solo se lanza a mano, desde
+# la pestaña Actions o con `gh workflow run`: nunca por push, pull request ni calendario.
+# Por defecto es una simulación (la transacción se revierte); escribir es una elección
+# explícita y, en producción, exige además escribir el identificador del proyecto.
+# Guía completa: scripts/catalog-import/README.md, sección «Ejecución por ambiente».
+run-name: Importar catálogo (${{ inputs.ambiente }}, ${{ inputs.modo }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente donde cargar el catálogo
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+      modo:
+        description: simular (no escribe nada) o escribir (confirma los cambios)
+        type: choice
+        options:
+          - simular
+          - escribir
+        default: simular
+      confirmar_produccion:
+        description: Solo para escribir en producción, el identificador (ref) del proyecto de producción
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Una sola importación a la vez por ambiente; la siguiente espera, no se cancela la que está
+# en curso.
+concurrency:
+  group: importar-catalogo-${{ inputs.ambiente }}
+  cancel-in-progress: false
+
+jobs:
+  importar:
+    name: Importar catálogo (${{ inputs.ambiente }}, ${{ inputs.modo }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.ambiente }}
+    defaults:
+      run:
+        # Con «shell: bash» explícito, GitHub ejecuta bash con -e y -o pipefail. Nunca se usa
+        # set -x: imprimiría la URL de la base.
+        shell: bash
+        working-directory: scripts/catalog-import
+    # Las entradas llegan a los scripts solo por variables de entorno, nunca interpoladas en
+    # el texto de «run», para que no se puedan inyectar órdenes.
+    env:
+      AMBIENTE: ${{ inputs.ambiente }}
+      MODO: ${{ inputs.modo }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Comprobar las entradas
+        working-directory: .
+        env:
+          CONFIRMACION: ${{ inputs.confirmar_produccion }}
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
+          RAMA: ${{ github.ref_name }}
+          REF_GIT: ${{ github.ref }}
+        run: |
+          case "$AMBIENTE" in dev | prod) ;; *)
+            echo "::error::Ambiente no válido."
+            exit 1
+            ;;
+          esac
+          case "$MODO" in simular | escribir) ;; *)
+            echo "::error::Modo no válido: tiene que ser simular o escribir."
+            exit 1
+            ;;
+          esac
+          if [[ "$AMBIENTE" == prod && "$REF_GIT" != refs/heads/main ]]; then
+            echo "::error::La importación en producción solo se lanza desde main (se lanzó desde ${RAMA})."
+            exit 1
+          fi
+          if [[ ! "$REF_PROYECTO" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error::Falta la variable SUPABASE_PROJECT_REF del environment ${AMBIENTE} o no es un identificador de proyecto."
+            exit 1
+          fi
+          if [[ ! "$POOLER_HOST" =~ ^aws-[0-9]+-[a-z0-9-]+\.pooler\.supabase\.com$ ]]; then
+            echo "::error::Falta la variable SUPABASE_POOLER_HOST del environment ${AMBIENTE} (aws-<n>-<región>.pooler.supabase.com) o no tiene ese formato. Ver scripts/catalog-import/README.md."
+            exit 1
+          fi
+          if [[ "$MODO" == escribir && "$AMBIENTE" == prod ]]; then
+            if [[ "$CONFIRMACION" != "$REF_PROYECTO" ]]; then
+              echo "::error::Para escribir en producción hay que escribir en confirmar_produccion el identificador del proyecto de producción. No coincide: no se ha conectado a nada."
+              exit 1
+            fi
+          elif [[ -n "$CONFIRMACION" ]]; then
+            echo "::notice::confirmar_produccion solo se usa al escribir en producción; en esta ejecución se ignora."
+          fi
+          echo "Ambiente: ${AMBIENTE}. Modo: ${MODO}."
+
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # La versión, la URL y el SHA-256 de la exportación están fijados en fuente.json.
+      - name: Leer la fuente fijada
+        id: fuente
+        run: |
+          clave="$(jq -er '.clave' fuente.json)"
+          url="$(jq -er '.url' fuente.json)"
+          sha="$(jq -er '.sha256' fuente.json)"
+          alias="$(jq -er '.alias' fuente.json)"
+          if [[ ! "$sha" =~ ^[0-9a-f]{64}$ || ! "$clave" =~ ^[0-9]+$ || "$url" != https://api.checklistbank.org/* ]]; then
+            echo "::error::fuente.json no es válido (clave, url de ChecklistBank y sha256 en hexadecimal)."
+            exit 1
+          fi
+          {
+            echo "clave=${clave}"
+            echo "url=${url}"
+            echo "sha256=${sha}"
+            echo "alias=${alias}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Fuente: ${alias} (clave ${clave}), SHA-256 esperado ${sha}"
+
+      # La caché solo evita volver a descargar 137 MB; lo restaurado se verifica igual que lo
+      # descargado, y solo se guarda en la caché un archivo ya verificado.
+      - name: Restaurar la exportación de la caché
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/fuente/export.zip
+          key: col-export-${{ steps.fuente.outputs.clave }}-${{ steps.fuente.outputs.sha256 }}
+
+      - name: Descargar la exportación
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          URL: ${{ steps.fuente.outputs.url }}
+          ARCHIVO: ${{ runner.temp }}/fuente/export.zip
+        run: |
+          mkdir -p "$(dirname "$ARCHIVO")"
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --connect-timeout 30 --max-time 1200 --output "$ARCHIVO" "$URL"
+          ls -l "$ARCHIVO"
+
+      - name: Verificar el SHA-256 de la exportación
+        env:
+          SHA256: ${{ steps.fuente.outputs.sha256 }}
+          ARCHIVO: ${{ runner.temp }}/fuente/export.zip
+        run: |
+          real="$(sha256sum "$ARCHIVO" | cut -d' ' -f1)"
+          if [[ "$real" != "$SHA256" ]]; then
+            echo "::error::El SHA-256 de la exportación (${real}) no coincide con el de fuente.json (${SHA256}). ChecklistBank pudo regenerar el archivo o la descarga es otra cosa: no se carga nada. Ver «Nueva versión de la fuente» en scripts/catalog-import/README.md."
+            exit 1
+          fi
+          echo "SHA-256 verificado: ${real} ($(stat -c %s "$ARCHIVO") bytes)"
+
+      - name: Guardar la exportación en la caché
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/fuente/export.zip
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      # uv toma su versión de required-version en pyproject.toml e instala el Python de
+      # .python-version. La caché depende de uv.lock.
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: scripts/catalog-import
+          cache-dependency-glob: uv.lock
+
+      - name: Instalar Python y dependencias
+        run: uv sync --locked --no-dev
+
+      # Los ejecutores de GitHub no tienen IPv6 de salida y la conexión directa de Supabase
+      # (db.<ref>.supabase.co) solo funciona por IPv6, así que se usa el pooler en modo sesión
+      # (puerto 5432, usuario postgres.<ref>), que funciona por IPv4. La URL se compone aquí,
+      # en el mismo paso que la usa, con la contraseña codificada para URL y enmascarada; no
+      # se escribe en ningún archivo ni en GITHUB_ENV. orki-catalogo comprueba que la URL es
+      # del proyecto del ambiente pedido y no la imprime nunca.
+      - name: Cargar el catálogo
+        id: carga
+        env:
+          CONFIRMACION: ${{ inputs.confirmar_produccion }}
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          ARCHIVO: ${{ runner.temp }}/fuente/export.zip
+          REPORTE_DIR: ${{ runner.temp }}/reporte
+        run: |
+          if [[ -z "$DB_PASSWORD" ]]; then
+            echo "::error::Falta el secreto SUPABASE_DB_PASSWORD del environment ${AMBIENTE}."
+            exit 1
+          fi
+          clave_url="$(uv run --no-sync python -I -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
+          echo "::add-mask::${clave_url}"
+          ORKI_CATALOG_DB_URL="postgresql://postgres.${REF_PROYECTO}:${clave_url}@${POOLER_HOST}:5432/postgres?sslmode=require"
+          echo "::add-mask::${ORKI_CATALOG_DB_URL}"
+          export ORKI_CATALOG_DB_URL
+          unset DB_PASSWORD clave_url
+
+          mkdir -p "$REPORTE_DIR"
+          if [[ "$MODO" == escribir ]]; then sufijo=escritura; else sufijo=simulacion; fi
+          reporte="${REPORTE_DIR}/reporte-carga-${AMBIENTE}-${sufijo}-$(date -u +%Y%m%dT%H%M%SZ).csv"
+          echo "reporte=${reporte}" >> "$GITHUB_OUTPUT"
+
+          # --escribir solo se añade si el modo es exactamente «escribir»; cualquier otro valor
+          # deja la simulación. La confirmación solo se pasa al escribir en producción.
+          argumentos=(cargar "$ARCHIVO" --ambiente "$AMBIENTE" --reporte "$reporte")
+          if [[ "$MODO" == escribir ]]; then
+            argumentos+=(--escribir)
+            if [[ "$AMBIENTE" == prod ]]; then
+              argumentos+=(--confirmar-produccion "$CONFIRMACION")
+            fi
+          fi
+          uv run --no-sync orki-catalogo "${argumentos[@]}" 2>&1 | tee "${REPORTE_DIR}/salida.txt"
+
+      - name: Resumen de la ejecución
+        if: ${{ always() && steps.carga.outcome != 'skipped' }}
+        env:
+          RESULTADO: ${{ steps.carga.outcome }}
+          REPORTE: ${{ steps.carga.outputs.reporte }}
+          FUENTE: ${{ steps.fuente.outputs.alias }}
+          REPORTE_DIR: ${{ runner.temp }}/reporte
+        run: |
+          {
+            echo "## Importación del catálogo: ${AMBIENTE}, ${MODO}"
+            echo
+            echo "Fuente: ${FUENTE}. Resultado del paso de carga: **${RESULTADO}**."
+            echo
+            if [[ -s "${REPORTE_DIR}/salida.txt" ]]; then
+              echo '```'
+              cat "${REPORTE_DIR}/salida.txt"
+              echo '```'
+            fi
+            if [[ -n "$REPORTE" && -s "$REPORTE" ]]; then
+              echo
+              echo "### Filas del reporte por entidad y resultado"
+              echo
+              uv run --no-sync python -I - "$REPORTE" <<'PY'
+          import csv
+          import sys
+          from collections import Counter
+
+          with open(sys.argv[1], encoding='utf-8-sig', newline='') as f:
+              counts = Counter(
+                  (row['entidad'], row['resultado'])
+                  for row in csv.DictReader(f)
+                  if row['entidad'] != 'carga'
+              )
+          print('| Entidad | Resultado | Filas |')
+          print('| --- | --- | ---: |')
+          for (entity, outcome), n in sorted(counts.items()):
+              print(f'| {entity} | {outcome} | {n} |')
+          PY
+              echo
+              echo "El CSV completo está en el artefacto de esta ejecución."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir el reporte
+        if: ${{ always() && steps.carga.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: reporte-carga-${{ inputs.ambiente }}-${{ inputs.modo }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/reporte/
+          if-no-files-found: warn
+          retention-days: 30
