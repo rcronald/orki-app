@@ -46,3 +46,63 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  base-de-datos:
+    name: Pruebas de base de datos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Postgres desechable con la misma versión mayor que los proyectos de Supabase. Se usa la
+    # imagen oficial y el mínimo de Supabase lo simula scripts/db-desechable, igual que en
+    # local. El superusuario se llama supabase_admin para que "postgres" sea, como en
+    # Supabase, un rol sin superusuario. La contraseña no es un secreto: el contenedor solo
+    # vive mientras dura el job.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: supabase_admin
+          POSTGRES_PASSWORD: desechable
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U supabase_admin -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ORKI_TEST_DB_URL: postgresql://supabase_admin:desechable@127.0.0.1:5432/postgres
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node desde .nvmrc
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Las pruebas solo necesitan Node y psql; la comprobación de tipos usa además la CLI de
+      # Supabase y Prettier del proyecto.
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Comprobar el cliente psql
+        run: |
+          if ! command -v psql > /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      - name: Pruebas de base de datos
+        run: npm run db:test
+
+      # Genera los tipos desde las migraciones sobre el mismo Postgres y falla si no coinciden
+      # con apps/web/src/lib/database.types.ts. Corre aunque fallen las pruebas, para ver
+      # ambos resultados en la misma ejecución.
+      - name: Comprobar los tipos generados del esquema
+        if: ${{ !cancelled() }}
+        run: npm run db:types:check
