@@ -6,7 +6,7 @@ La especificación completa de la Fase 1 está en [docs/specification.md](docs/s
 
 ## Estado actual
 
-El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase, con pruebas que se ejecutan en un Postgres desechable (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. La app ya tiene los tokens y los componentes base del design system de Orki, con una página interna de muestra fuera de producción (ver [Design system en la app](#design-system-en-la-app)), aunque todavía no hay pantallas reales ni enrutamiento. Todavía no hay autenticación; llega en un issue posterior.
+El repositorio contiene la base del monorepo: la app web con React, Vite, TypeScript y Tailwind CSS, configurada como PWA, junto con el lint, el formato, las pruebas y la integración continua. También está el flujo de migraciones de la base de datos con la CLI de Supabase, con pruebas que se ejecutan en un Postgres desechable (ver [Base de datos y migraciones](#base-de-datos-y-migraciones)). La app lee su configuración de variables de entorno, la valida al arrancar y crea el cliente de Supabase, aunque todavía no hace ninguna consulta (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)). La configuración de despliegue en Vercel está versionada en `apps/web/vercel.json` (ver [Despliegue en Vercel](#despliegue-en-vercel)); el proyecto de Vercel se crea a mano en un paso posterior. La app ya tiene los tokens y los componentes base del design system de Orki, con una página interna de muestra fuera de producción (ver [Design system en la app](#design-system-en-la-app)), aunque todavía no hay pantallas reales ni enrutamiento. La app usa Clerk para la autenticación, con las pantallas de inicio de sesión y de registro de Clerk en español y con la apariencia del design system (ver [Autenticación](#autenticación)); la conexión con Supabase y las rutas protegidas llegan en issues posteriores.
 
 ## Requisitos
 
@@ -27,7 +27,7 @@ cp apps/web/.env.example apps/web/.env.local   # y completa los valores
 npm run dev
 ```
 
-`npm ci` instala las dependencias de todo el monorepo a partir del único `package-lock.json`, que está en la raíz. `npm run dev` levanta el servidor de desarrollo de Vite en <http://localhost:5173>. Antes de `npm run dev` hay que preparar `apps/web/.env.local` con los datos del proyecto de Supabase de desarrollo, como se explica en [Variables de entorno de la app](#variables-de-entorno-de-la-app); sin ese archivo la app arranca, pero muestra una pantalla de error que dice qué variables faltan. Las pruebas y el build no necesitan ninguna variable.
+`npm ci` instala las dependencias de todo el monorepo a partir del único `package-lock.json`, que está en la raíz. `npm run dev` levanta el servidor de desarrollo de Vite en <http://localhost:5173>. Antes de `npm run dev` hay que preparar `apps/web/.env.local` con los datos del proyecto de Supabase de desarrollo y la clave publicable de la instancia de desarrollo de Clerk, como se explica en [Variables de entorno de la app](#variables-de-entorno-de-la-app); sin ese archivo la app arranca, pero muestra una pantalla de error que dice qué variables faltan. Las pruebas y el build no necesitan ninguna variable.
 
 Para abrir la app desde el celular en la misma red, expón el servidor en la red local:
 
@@ -86,12 +86,15 @@ orki-app/
 │       ├── scripts/           Utilidades de la app (generación de iconos)
 │       ├── src/               Código fuente y pruebas
 │       │   ├── assets/        Marcador sin-foto.svg del design system
+│       │   ├── auth/          Proveedor de Clerk, apariencia, estados y controles de cuenta
 │       │   ├── components/    Componentes de la app
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
 │       │   ├── lib/           Cliente de Supabase y tipos del esquema
+│       │   ├── pages/         Pantallas (inicio, inicio de sesión y registro)
 │       │   ├── showcase/      Página interna de muestra (solo fuera de producción)
-│       │   └── styles/        Tokens, fuentes y hojas de estilos de los componentes
+│       │   ├── styles/        Tokens, fuentes y hojas de estilos de los componentes
+│       │   └── test/          Utilidades de las pruebas (axe, Clerk simulado)
 │       ├── .env.example       Plantilla de las variables de entorno de la app
 │       └── vercel.json        Configuración del despliegue en Vercel
 ├── docs/
@@ -178,15 +181,16 @@ Fuera de producción, la ruta `/muestra` enseña todos los tokens (cada color co
 
 ## Variables de entorno de la app
 
-La app web lee tres variables de entorno. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
+La app web lee cuatro variables de entorno. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
 
-| Variable                        | Qué es                                                        | Dónde se obtiene                                                                                   |
-| ------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | URL del proyecto de Supabase, con `https`.                    | En el panel de Supabase, botón Connect o Project Settings > Data API (Project URL).                |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Clave publicable del proyecto. Empieza por `sb_publishable_`. | En Project Settings > API Keys. No uses nunca una clave secreta (`sb_secret_`); la app la rechaza. |
-| `VITE_APP_ENV`                  | Ambiente al que apunta la app: `dev` o `prod`.                | Lo decide quien configura el ambiente. Coincide con los nombres de los environments de GitHub.     |
+| Variable                        | Qué es                                                                                                                 | Dónde se obtiene                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | URL del proyecto de Supabase, con `https`.                                                                             | En el panel de Supabase, botón Connect o Project Settings > Data API (Project URL).                |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Clave publicable del proyecto. Empieza por `sb_publishable_`.                                                          | En Project Settings > API Keys. No uses nunca una clave secreta (`sb_secret_`); la app la rechaza. |
+| `VITE_APP_ENV`                  | Ambiente al que apunta la app: `dev` o `prod`.                                                                         | Lo decide quien configura el ambiente. Coincide con los nombres de los environments de GitHub.     |
+| `VITE_CLERK_PUBLISHABLE_KEY`    | Clave publicable de la instancia de Clerk del ambiente. Empieza por `pk_test_` (desarrollo) o `pk_live_` (producción). | En el panel de Clerk, página API keys. No uses nunca la clave secreta (`sk_`); la app la rechaza.  |
 
-La URL y la clave publicable no son secretas, pero tampoco se versionan, porque cambian de un ambiente a otro.
+La URL y las claves publicables no son secretas, pero tampoco se versionan, porque cambian de un ambiente a otro. La clave secreta de Clerk no la usa la app y no debe aparecer en el repositorio, en un issue ni en un chat.
 
 ### Preparar el `.env` local
 
@@ -196,19 +200,64 @@ En tu máquina la app apunta siempre al proyecto de Supabase de desarrollo. Copi
 cp apps/web/.env.example apps/web/.env.local
 ```
 
-`apps/web/.env.local` está ignorado por git. Pon en él la URL y la clave publicable del proyecto de desarrollo y deja `VITE_APP_ENV=dev`. Si cambias el archivo con el servidor en marcha, reinicia `npm run dev`.
+`apps/web/.env.local` está ignorado por git. Pon en él la URL y la clave publicable del proyecto de Supabase de desarrollo, la clave publicable de la instancia de desarrollo de Clerk (`pk_test_`) y deja `VITE_APP_ENV=dev`. Si cambias el archivo con el servidor en marcha, reinicia `npm run dev`.
 
 No lo confundas con `supabase/.env`: ese archivo es para la CLI de Supabase y contiene credenciales secretas (ver [Credenciales](#credenciales)); `apps/web/.env.local` es para la app y no lleva ningún secreto.
 
 ### Validación al arrancar
 
-Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clave no está vacía (y no es una clave secreta) y que el ambiente es `dev` o `prod`. Si algo falla, en lugar de la app aparece una pantalla de error que nombra cada variable con problemas y el motivo, sin mostrar nunca sus valores; la consola del navegador muestra también los nombres.
+Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clave de Supabase no está vacía (y no es una clave secreta), que el ambiente es `dev` o `prod` y que la clave de Clerk empieza por `pk_test_` o `pk_live_` y corresponde al ambiente: `pk_test_` solo con `dev` y `pk_live_` solo con `prod`. Si se pega la clave secreta de Clerk (`sk_`), el error lo dice expresamente. Si algo falla, en lugar de la app aparece una pantalla de error que nombra cada variable con problemas y el motivo, sin mostrar nunca sus valores; la consola del navegador muestra también los nombres.
 
 Fuera de producción, la app muestra en la esquina inferior izquierda una etiqueta pequeña con el ambiente ("Desarrollo"), para comprobar a simple vista a qué ambiente apunta una vista previa o el servidor local. Con `VITE_APP_ENV=prod` no aparece.
 
-El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada. No guarda sesión de Supabase Auth: la autenticación llegará con Clerk.
+El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada. No guarda sesión de Supabase Auth: la autenticación es de Clerk (ver [Autenticación](#autenticación)); el envío del token de Clerk a Supabase llega en el issue #58.
 
 Las pruebas no leen estas variables (la validación se prueba con objetos de entorno de ejemplo), así que `npm test` y `npm run build` funcionan sin ningún `.env`, también en la integración continua.
+
+## Autenticación
+
+La autenticación es de [Clerk](https://clerk.com/docs), con su SDK de React vigente, `@clerk/react` (Core 3). Los métodos de acceso (correo con código de verificación y Google) se activan en el panel de Clerk, no en el código; la app usa los componentes de Clerk en lugar de formularios propios.
+
+### Cómo está montada
+
+- `src/auth/AuthProvider.tsx` envuelve la app con [`<ClerkProvider>`](https://clerk.com/docs/react/reference/components/clerk-provider) y le pasa la clave validada, los textos en español ([`@clerk/localizations`](https://clerk.com/docs/guides/customizing-clerk/localization), variante `es-MX`, la de vocabulario latinoamericano), la apariencia del design system, las rutas de las pantallas de acceso y `afterSignOutUrl="/"`. La página de muestra queda fuera del proveedor.
+- Pantallas: `src/pages/SignInPage.tsx` (`/iniciar-sesion`) y `src/pages/SignUpPage.tsx` (`/registro`) montan [`<SignIn />`](https://clerk.com/docs/react/reference/components/authentication/sign-in) y [`<SignUp />`](https://clerk.com/docs/react/reference/components/authentication/sign-up) dentro de un envoltorio propio (`AuthPageLayout`). Sin enrutador, Clerk lleva sus pasos internos en el hash de la URL (`routing="hash"`).
+- Enrutamiento provisional: `App.tsx` mira `location.pathname` al arrancar (como `main.tsx` con `/muestra`) y elige la pantalla; las rutas están en `src/auth/paths.ts`. Lo sustituye el enrutador del issue #57.
+- Cuenta: en la cabecera del inicio, `src/auth/AccountControls.tsx` muestra, con sesión, el [`<UserButton />`](https://clerk.com/docs/react/reference/components/user/user-button) de Clerk (avatar con el menú para administrar la cuenta) y un botón "Cerrar sesión" ([`<SignOutButton>`](https://clerk.com/docs/react/reference/components/unstyled/sign-out-button) con el `Button` del sistema); sin sesión, enlaces a "Iniciar sesión" y "Crear cuenta". La sesión se distingue con [`<Show when="signed-in">`](https://clerk.com/docs/react/reference/components/control/show), que en Core 3 sustituye a `<SignedIn>` y `<SignedOut>`.
+- Apariencia: `src/auth/appearance.ts` define el prop [`appearance`](https://clerk.com/docs/react/guides/customizing-clerk/appearance-prop/overview) con [`variables`](https://clerk.com/docs/react/guides/customizing-clerk/appearance-prop/variables) y `elements`, y cada valor es una variable de `tokens.css` (`var(--color-primary)`, `var(--font-body)`, `var(--radius-md)`...). `appearance.test.ts` falla si aparece un valor suelto o una variable que no existe en `tokens.css`. Clerk calcula sus tonos con `color-mix()` y color relativo, que con variables CSS piden Safari 16.4+ (el mismo mínimo que ya exige Tailwind 4).
+- Pruebas: ninguna carga Clerk ni necesita clave. `src/test/clerk-mock.tsx` sustituye a `@clerk/react` (`vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))`) y permite fijar el estado: cargando, listo, fallo de carga, con o sin sesión. Las pantallas propias (envoltorio, estados de carga y de error, controles de cuenta) pasan axe con el helper `src/test/axe.ts`.
+
+### Sin conexión
+
+La app instalada abre sin red: el service worker sirve `index.html`, el JavaScript y las fuentes desde su precache, la pantalla pública se pinta enseguida y el acceso no bloquea el arranque.
+
+Qué hace Clerk sin red. **Verificado en la documentación de Clerk:**
+
+- `<ClerkProvider>` no carga Clerk en el bundle: descarga en el navegador el script de ClerkJS (y el de su interfaz, `@clerk/ui`) desde el CDN, en el dominio de Frontend API de la instancia. Sin conexión, o si el CDN está bloqueado, Clerk no carga ([Script loading](https://clerk.com/docs/guides/development/troubleshooting/script-loading)). La interfaz se puede empaquetar con la app pasando `ui` al proveedor ([`ui`](https://clerk.com/docs/react/reference/components/clerk-provider#ui)).
+- El objeto Clerk tiene un [`status`](https://clerk.com/docs/react/reference/objects/clerk#status): `loading` al iniciar, `ready`, `degraded` (parcialmente operativo) y `error` cuando falla la carga del script o `Clerk.load()`. `loaded` es `true` con `ready` o `degraded`. Los componentes de control [`<ClerkLoading>`, `<ClerkLoaded>`, `<ClerkDegraded>` y `<ClerkFailed>`](https://clerk.com/docs/react/reference/components/control/clerk-failed) siguen ese estado.
+- Desde Core 3, `getToken()` lanza `ClerkOfflineError` sin conexión en lugar de devolver `null` ([guía de Core 3](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3)). Afecta al issue #58, que pedirá el token para Supabase.
+- El modo sin conexión documentado de Clerk es solo para Expo (`__experimental_resourceCache`, con caché de recursos y de tokens; [Offline support](https://clerk.com/docs/guides/development/offline-support)). Para web, `<ClerkProvider>` acepta un prop [`experimental`](https://clerk.com/docs/react/reference/components/clerk-provider#experimental) con las opciones `persistClient` y `rethrowOfflineNetworkErrors`, pero la documentación no explica qué hacen ni las garantiza.
+
+**Comprobado en el código de `@clerk/react` 6.19 y `@clerk/shared` 4.48 (no está en la documentación):** el script de ClerkJS se pide a `https://<frontend-api>/npm/@clerk/clerk-js@6/dist/clerk.browser.js` y Clerk espera hasta 15 s a que aparezca antes de pasar a `error`, aunque la petición falle antes; mientras tanto `status` sigue en `loading`. `<ClerkProvider>` pinta sus hijos desde el principio, sin esperar.
+
+**Supuesto, sin verificar con una instancia real:** que una sesión iniciada no sirve sin red en web. Sin el script no hay objeto Clerk, así que la app no puede saber quién es el usuario aunque el navegador conserve las cookies de sesión; y aunque el script estuviera en la caché HTTP del navegador, `Clerk.load()` necesita consultar la API de Clerk.
+
+Cómo arranca la app, en consecuencia (`src/auth/useAuthAvailability.ts`):
+
+- Mientras Clerk carga, las pantallas de acceso muestran "Cargando el acceso…" (`role="status"`) y la cabecera del inicio, el mismo texto en lugar de los controles de cuenta.
+- Si el navegador dice que no hay red (`navigator.onLine === false`), no se espera: se muestra enseguida "Sin conexión".
+- Si Clerk falla (`status: error`) o tarda más de 10 s (`AUTH_LOAD_TIMEOUT_MS`), se da el acceso por no disponible. Las pantallas de acceso muestran una alerta (`role="alert"`) con "Volver a intentar", que recarga la página; el inicio muestra un aviso breve (`role="status"`) y se sigue viendo entero.
+- Si Clerk termina cargando más tarde, todo pasa al estado normal sin recargar.
+
+Qué haría falta para el modo de solo lectura del issue #18 (colección visible sin conexión con la sesión iniciada):
+
+- Que la app sepa sin red quién era el usuario: guardar en el dispositivo, al tener sesión, el id de usuario de Clerk y los datos necesarios, y borrarlos al cerrar sesión. No hay una opción documentada de Clerk para web que lo haga; `experimental.persistClient` habría que probarlo con una instancia real y aceptar que puede cambiar en cualquier versión.
+- Guardar en el dispositivo una copia de la colección (por ejemplo en IndexedDB) al consultarla con conexión, porque sin red no hay token de Clerk para Supabase (`getToken()` lanza `ClerkOfflineError`) ni Supabase al que preguntar.
+- Opcionalmente, empaquetar la interfaz de Clerk (`ui`) para que el precache la incluya; no basta por sí solo, porque `Clerk.load()` sigue necesitando la red.
+
+### Service worker y autenticación
+
+El service worker (configuración en `apps/web/vite.config.ts`) no tiene `runtimeCaching`: solo responde a los archivos del precache y a las navegaciones dentro de la app. Las peticiones a Clerk (script y API, en su dominio de Frontend API) y a Google son de otro origen y van siempre a la red, sin guardarse. Las redirecciones de inicio de sesión ocurren en esos dominios; a la vuelta llegan a rutas de la app, que reciben `index.html` para que Clerk termine en el navegador. Clerk no tiene rutas propias en el dominio de la app, así que no hace falta `navigateFallbackDenylist`; haría falta si algún día se usara el proxy de Clerk (`proxyUrl`).
 
 ## Base de datos y migraciones
 
@@ -370,13 +419,13 @@ Se hace una sola vez, desde el panel de Vercel (Add New > Project, importando el
 
 ### Variables por ambiente
 
-Las tres variables de la app (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)) se definen en Settings > Environment Variables, con un valor distinto según el ambiente de Vercel:
+Las cuatro variables de la app (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)) se definen en Settings > Environment Variables, con un valor distinto según el ambiente de Vercel:
 
-| Ambiente de Vercel | `VITE_SUPABASE_URL`            | `VITE_SUPABASE_PUBLISHABLE_KEY`             | `VITE_APP_ENV` |
-| ------------------ | ------------------------------ | ------------------------------------------- | -------------- |
-| Production         | URL del proyecto de producción | Clave publicable del proyecto de producción | `prod`         |
-| Preview            | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          |
-| Development        | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          |
+| Ambiente de Vercel | `VITE_SUPABASE_URL`            | `VITE_SUPABASE_PUBLISHABLE_KEY`             | `VITE_APP_ENV` | `VITE_CLERK_PUBLISHABLE_KEY`                     |
+| ------------------ | ------------------------------ | ------------------------------------------- | -------------- | ------------------------------------------------ |
+| Production         | URL del proyecto de producción | Clave publicable del proyecto de producción | `prod`         | Clave de la instancia de producción (`pk_live_`) |
+| Preview            | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          | Clave de la instancia de desarrollo (`pk_test_`) |
+| Development        | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          | Clave de la instancia de desarrollo (`pk_test_`) |
 
 Vite escribe estos valores en el JavaScript durante el build, así que un cambio de variable solo se aplica en el siguiente despliegue: después de cambiarla hay que volver a desplegar (Redeploy). Si falta alguna, el build termina bien, pero la app muestra la pantalla de error de configuración. El ambiente Development de Vercel solo se usa con la CLI de Vercel (`vercel env pull`, `vercel dev`), que este proyecto no necesita; se rellena igual para que los tres ambientes estén completos. Ninguna de estas variables es secreta: al crearlas se elige el tipo Config, no Secret, para que sus valores sigan siendo legibles en el panel.
 

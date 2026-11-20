@@ -30,6 +30,7 @@ const CONFIG = {
   supabaseUrl: 'https://ejemplo.supabase.co',
   supabasePublishableKey: 'sb_publishable_clave_de_prueba',
   appEnv: 'dev',
+  clerkPublishableKey: 'pk_test_clave_de_prueba',
 } as const
 
 // Solo se compila: describe usos válidos e inválidos del cliente tipado.

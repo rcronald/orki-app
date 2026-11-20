@@ -12,10 +12,14 @@ export interface AppConfig {
   supabaseUrl: string
   supabasePublishableKey: string
   appEnv: AppEnv
+  clerkPublishableKey: string
 }
 
 export type EnvVarName =
-  'VITE_SUPABASE_URL' | 'VITE_SUPABASE_PUBLISHABLE_KEY' | 'VITE_APP_ENV'
+  | 'VITE_SUPABASE_URL'
+  | 'VITE_SUPABASE_PUBLISHABLE_KEY'
+  | 'VITE_APP_ENV'
+  | 'VITE_CLERK_PUBLISHABLE_KEY'
 
 export interface EnvIssue {
   variable: EnvVarName
@@ -47,6 +51,39 @@ function isHttpsUrl(value: string): boolean {
 
 function isAppEnv(value: string): value is AppEnv {
   return (APP_ENVS as readonly string[]).includes(value)
+}
+
+// Prefijo de la clave publicable de Clerk que corresponde a cada ambiente: la
+// instancia de desarrollo de Clerk sirve a dev y la de producción a prod.
+const CLERK_KEY_PREFIX: Record<AppEnv, string> = {
+  dev: 'pk_test_',
+  prod: 'pk_live_',
+}
+
+/**
+ * Problema de la clave publicable de Clerk, o undefined si es válida. Sin un
+ * ambiente válido solo se comprueba el formato.
+ */
+function clerkKeyProblem(
+  key: string,
+  appEnv: AppEnv | undefined,
+): string | undefined {
+  if (key.startsWith('sk_')) {
+    // Todo lo que empieza por VITE_ acaba en el JavaScript público del build.
+    return 'Es una clave secreta de Clerk; usa la clave publicable (pk_test_ o pk_live_).'
+  }
+  const prefix = Object.values(CLERK_KEY_PREFIX).find(
+    (candidate) => key.startsWith(candidate) && key.length > candidate.length,
+  )
+  if (prefix === undefined) {
+    return 'Tiene que empezar por pk_test_ o pk_live_.'
+  }
+  if (appEnv !== undefined && prefix !== CLERK_KEY_PREFIX[appEnv]) {
+    return appEnv === 'dev'
+      ? 'Es una clave de producción (pk_live_); con VITE_APP_ENV=dev usa la de desarrollo (pk_test_).'
+      : 'Es una clave de desarrollo (pk_test_); con VITE_APP_ENV=prod usa la de producción (pk_live_).'
+  }
+  return undefined
 }
 
 export function parseEnv(source: EnvSource): EnvParseResult {
@@ -88,14 +125,31 @@ export function parseEnv(source: EnvSource): EnvParseResult {
     )
   }
 
+  const clerkPublishableKey = readString(source, 'VITE_CLERK_PUBLISHABLE_KEY')
+  if (clerkPublishableKey === undefined) {
+    fail('VITE_CLERK_PUBLISHABLE_KEY', MISSING)
+  } else {
+    const problem = clerkKeyProblem(clerkPublishableKey, appEnv)
+    if (problem !== undefined) fail('VITE_CLERK_PUBLISHABLE_KEY', problem)
+  }
+
   if (
     issues.length > 0 ||
     supabaseUrl === undefined ||
     supabasePublishableKey === undefined ||
-    appEnv === undefined
+    appEnv === undefined ||
+    clerkPublishableKey === undefined
   ) {
     return { ok: false, issues }
   }
 
-  return { ok: true, config: { supabaseUrl, supabasePublishableKey, appEnv } }
+  return {
+    ok: true,
+    config: {
+      supabaseUrl,
+      supabasePublishableKey,
+      appEnv,
+      clerkPublishableKey,
+    },
+  }
 }

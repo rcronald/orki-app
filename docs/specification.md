@@ -72,7 +72,7 @@ Panel web para administradores (rutas protegidas dentro de la misma app) que man
 
 ### 3.5 Cuentas
 
-Autenticación con Clerk: correo (enlace mágico) y Google. El rol (usuario o administrador de catálogo) se guarda en los metadatos públicos del usuario en Clerk, que el propio usuario no puede modificar. En Fase 1 el rol de administrador se asigna a mano desde el panel de Clerk.
+Autenticación con Clerk: correo (código de verificación) y Google. El rol (usuario o administrador de catálogo) se guarda en los metadatos públicos del usuario en Clerk, que el propio usuario no puede modificar. En Fase 1 el rol de administrador se asigna a mano desde el panel de Clerk.
 
 ### 3.6 Fuera de alcance en v1
 

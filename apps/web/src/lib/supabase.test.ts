@@ -5,6 +5,7 @@ const CONFIG = {
   supabaseUrl: 'https://ejemplo.supabase.co',
   supabasePublishableKey: 'sb_publishable_clave_de_prueba',
   appEnv: 'dev',
+  clerkPublishableKey: 'pk_test_clave_de_prueba',
 } as const
 
 describe('cliente de Supabase', () => {

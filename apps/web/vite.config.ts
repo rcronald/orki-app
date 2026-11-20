@@ -58,6 +58,19 @@ export default defineConfig({
         // se vea con su tipografía sin conexión.
         globPatterns: ['**/*.{js,css,html,woff2}'],
         // Cualquier navegación sin coincidencia en caché responde con index.html.
+        //
+        // Autenticación (Clerk y Google): a propósito no hay runtimeCaching, así
+        // que el service worker solo responde a los archivos precacheados y a
+        // las navegaciones dentro de la app. Las peticiones a Clerk (su script
+        // y su API, en el dominio de Frontend API de cada instancia) y a Google
+        // son de otro origen y van siempre a la red, sin guardarse. Las
+        // redirecciones de inicio de sesión ocurren en esos dominios y, a la
+        // vuelta, llegan a rutas de la app (/iniciar-sesion con los pasos en el
+        // hash, o la raíz con parámetros de Clerk en la URL), que deben recibir
+        // index.html para que Clerk termine el proceso en el navegador. Por eso
+        // no hace falta navigateFallbackDenylist: Clerk no tiene rutas propias
+        // en este dominio. Haría falta si algún día se usa el proxy de Clerk
+        // (proxyUrl), que sí sirve rutas bajo el dominio de la app.
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
         // Con el registro por script no hay aviso en la interfaz: la versión

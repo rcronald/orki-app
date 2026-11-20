@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { AuthProvider } from './auth/AuthProvider.tsx'
 import { ConfigError } from './components/ConfigError.tsx'
 import { EnvironmentBadge } from './components/EnvironmentBadge.tsx'
 import { parseEnv } from './config/env.ts'
@@ -31,7 +32,11 @@ if (env.ok) {
           <ShowcasePage />
         </Suspense>
       ) : (
-        <App />
+        // La muestra queda fuera de Clerk: no necesita sesión ni cargar su
+        // script.
+        <AuthProvider publishableKey={env.config.clerkPublishableKey}>
+          <App />
+        </AuthProvider>
       )}
       <EnvironmentBadge env={env.config.appEnv} />
     </StrictMode>,
