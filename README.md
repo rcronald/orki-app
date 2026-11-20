@@ -301,6 +301,10 @@ Detalle de supabase-js: las lecturas (`GET`) que fallan antes de enviarse se rei
 
 Carga diferida: supabase-js (unos 230 kB) no va en el chunk inicial. `main.tsx` solo guarda la configuración con `initSupabase()`, y `getSupabase()` (asíncrona) carga supabase-js y crea el cliente la primera vez que se pide. El service worker precachea ese chunk como los demás, así que sin conexión también carga.
 
+#### Perfil en el primer ingreso
+
+La fila del usuario en `profiles` la crea la app sola la primera vez que ve una sesión iniciada; no hace falta ningún paso en Clerk ni en Supabase. `src/auth/ProfileBootstrap.tsx`, montado justo después de `SupabaseSessionBridge`, llama a `ensureProfile()` (`src/lib/profile.ts`), que hace un `upsert` con `ignoreDuplicates` sobre `id` (en Postgres, `insert ... on conflict (id) do nothing`): si el perfil ya existe no da error ni lo modifica (el idioma elegido se conserva). Se hace una vez por usuario y carga de la página, en segundo plano y sin bloquear la interfaz. Si falla (sin conexión, error de red o del servidor) no se muestra nada; se reintenta al recuperar la conexión, en el siguiente ingreso o al recargar.
+
 #### Panel de diagnóstico
 
 Fuera de producción, `/diagnostico` (<http://localhost:5173/diagnostico> con `npm run dev`, o `/diagnostico` en una vista previa) muestra el id de usuario según Clerk y según Postgres (llamando a `requesting_user_id()` con el cliente de la app), si coinciden, el valor del claim `app_role` y el error si la llamada falla. "Volver a consultar" repite la llamada. Sirve con y sin sesión: sin sesión, Postgres devuelve vacío y los dos coinciden "sin sesión". Nunca muestra el token ni lo escribe en la consola.

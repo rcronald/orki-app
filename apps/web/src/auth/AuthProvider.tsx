@@ -4,6 +4,7 @@ import { useCallback, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { internalPathOf, PATHS } from '../routes/paths.ts'
 import { clerkAppearance } from './appearance.ts'
+import { ProfileBootstrap } from './ProfileBootstrap.tsx'
 import { SupabaseSessionBridge } from './SupabaseSessionBridge.tsx'
 
 interface AuthProviderProps {
@@ -30,6 +31,8 @@ interface AuthProviderProps {
 //
 // SupabaseSessionBridge pasa el token de sesión al cliente de Supabase; va
 // antes de los hijos para que su efecto corra antes que los de las páginas.
+// ProfileBootstrap va justo después: crea el perfil en el primer ingreso, ya
+// con la fuente del token registrada.
 export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
   const navigate = useNavigate()
   const routerPush = useCallback(
@@ -53,6 +56,7 @@ export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
       routerReplace={routerReplace}
     >
       <SupabaseSessionBridge />
+      <ProfileBootstrap />
       {children}
     </ClerkProvider>
   )
