@@ -4,9 +4,10 @@
 -- Las pruebas crean sus propios datos (no usan los de supabase/datos-ejemplo). Algunos nombres
 -- son inventados para provocar un caso concreto de orden; se señalan con "ficticio".
 
--- Datos de partida: un género además de los cinco de acceso rápido, especies con distintos
--- estados, sinónimos y nombres comunes, y una planta de user_a que no es del catálogo.
-insert into public.genera (name) values ('Guarianthe');
+-- Datos de partida: el género Guarianthe (lo carga ya la migración de abreviaturas del #69;
+-- se crea si falta para no depender de ella), especies con distintos estados, sinónimos y
+-- nombres comunes, y una planta de user_a que no es del catálogo.
+insert into public.genera (name) values ('Guarianthe') on conflict do nothing;
 
 insert into public.species (scientific_name, genus_id, type, status, source)
 values
@@ -374,7 +375,7 @@ create policy orki_pruebas_sin_normalizar_genera on public.genera
 set local role orki_pruebas_sin_normalizar;
 select pruebas.debe_fallar(
   'sin permiso sobre normalize_search_text ni el esquema extensions',
-  $$insert into public.genera (name) values ('Masdevallia')$$,
+  $$insert into public.genera (name) values ('Restrepia')$$,
   '42501'
 );
 

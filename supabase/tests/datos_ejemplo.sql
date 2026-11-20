@@ -4,8 +4,10 @@
 
 -- prueba: los datos de ejemplo se cargan sobre el esquema recién migrado
 \i supabase/datos-ejemplo/catalogo.sql
-select pruebas.iguales('géneros', (select count(*) from public.genera), 8::bigint);
-select pruebas.iguales('abreviaturas', (select count(*) from public.genus_abbreviations), 8::bigint);
+-- Los géneros de los datos de ejemplo (Guarianthe, Paphiopedilum y Brassia) y sus abreviaturas
+-- ya los carga la migración de abreviaturas: no se duplican.
+select pruebas.iguales('géneros', (select count(*) from public.genera), 43::bigint);
+select pruebas.iguales('abreviaturas', (select count(*) from public.genus_abbreviations), 43::bigint);
 select pruebas.iguales('especies', (select count(*) from public.species), 40::bigint);
 select pruebas.iguales(
   'sinónimos',
@@ -88,4 +90,57 @@ select pruebas.iguales(
   'plantas',
   (select string_agg(p::text, '|') from public.plants p),
   (select plantas from antes)
+);
+
+-- prueba: la migración de abreviaturas se aplica sobre los datos de ejemplo ya cargados, como en desarrollo
+-- En el proyecto de desarrollo los datos de ejemplo se cargaron antes que la migración de
+-- abreviaturas (#69). Se reproduce quitando lo que cargó esa migración (los géneros que no son
+-- de acceso rápido, sin especies todavía, y sus abreviaturas en cascada), cargando los datos de
+-- ejemplo y volviendo a ejecutar la migración entera, que está escrita para poder repetirse.
+-- Además, un género ya existente con otras mayúsculas y una de sus abreviaturas ya usada por
+-- otro género: la migración no los duplica ni falla.
+delete from public.genera where not is_quick_access;
+\i supabase/datos-ejemplo/catalogo.sql
+insert into public.genera (name) values ('CYMBIDIUM');
+insert into public.genus_abbreviations (genus_id, abbreviation) values (pruebas.genero('Vanda'), 'masd');
+\i supabase/migrations/20261120200000_abreviaturas_y_busqueda_de_generos.sql
+select pruebas.iguales('géneros', (select count(*) from public.genera), 43::bigint);
+select pruebas.iguales('abreviaturas', (select count(*) from public.genus_abbreviations), 43::bigint);
+select pruebas.iguales(
+  'abreviaturas de los géneros de los datos de ejemplo',
+  (select string_agg(g.name || '=' || a.abbreviation, ', ' order by g.name)
+     from public.genera g join public.genus_abbreviations a on a.genus_id = g.id
+     where g.name in ('Brassia', 'Guarianthe', 'Paphiopedilum')),
+  'Brassia=Brs., Guarianthe=Gur., Paphiopedilum=Paph.'
+);
+select pruebas.iguales(
+  'el género con otras mayúsculas no se duplica y recibe su abreviatura',
+  (select string_agg(g.name || '=' || a.abbreviation, ', ')
+     from public.genera g join public.genus_abbreviations a on a.genus_id = g.id
+     where lower(g.name) = 'cymbidium'),
+  'CYMBIDIUM=Cym.'
+);
+select pruebas.iguales(
+  'la abreviatura ya usada se queda en su género y Masdevallia se crea sin ella',
+  (select string_agg(g.name || '=' || coalesce(a.abbreviation, '-'), ', ' order by g.name)
+     from public.genera g left join public.genus_abbreviations a on a.genus_id = g.id
+     where g.name in ('Masdevallia') or a.abbreviation = 'masd'),
+  'Masdevallia=-, Vanda=masd'
+);
+select pruebas.iguales(
+  'los géneros de acceso rápido no cambian',
+  (select string_agg(name, ', ' order by name) from public.genera where is_quick_access),
+  'Cattleya, Dendrobium, Oncidium, Phalaenopsis, Vanda'
+);
+\i supabase/migrations/20261120200000_abreviaturas_y_busqueda_de_generos.sql
+select pruebas.iguales(
+  'recuentos tras aplicarla otra vez',
+  (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
+              (select count(*) from public.species))::text),
+  '(43,43,40)'
+);
+select pruebas.iguales(
+  'la búsqueda expande la abreviatura sobre los datos de ejemplo',
+  (select string_agg(s.scientific_name, ', ') from public.search_species('Paph. ins', 1) s),
+  'Paphiopedilum insigne'
 );

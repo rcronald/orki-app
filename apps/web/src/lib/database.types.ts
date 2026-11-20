@@ -267,6 +267,15 @@ export type Database = {
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       normalize_search_text: { Args: { value: string }; Returns: string }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
+      search_genera: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          id: string
+          is_quick_access: boolean
+          matched_abbreviation: string
+          name: string
+        }[]
+      }
       search_species: {
         Args: { max_results?: number; query: string }
         Returns: {

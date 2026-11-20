@@ -16,11 +16,11 @@ El flujo completo (crear una migración, aplicarla en desarrollo, qué pasa en p
 
 Las tablas viven en el esquema `public` y sus identificadores están en inglés:
 
-- Catálogo, de lectura pública (también sin sesión): `genera` (géneros, con la marca de acceso rápido), `genus_abbreviations` (abreviaturas de género, como Phal.), `species` (especies e híbridos, con su estado, su fuente y la referencia externa de la fuente) y `species_names` (sinónimos y nombres comunes). La migración del catálogo carga los cinco géneros de acceso rápido y sus abreviaturas estándar de la RHS. Desde la API solo lo escriben (insertar, editar y borrar) los administradores del catálogo: `authenticated` tiene el permiso y las políticas RLS exigen `(select public.is_catalog_admin())`.
+- Catálogo, de lectura pública (también sin sesión): `genera` (géneros, con la marca de acceso rápido), `genus_abbreviations` (abreviaturas de género, como Phal.), `species` (especies e híbridos, con su estado, su fuente y la referencia externa de la fuente) y `species_names` (sinónimos y nombres comunes). La migración del catálogo carga los cinco géneros de acceso rápido y sus abreviaturas estándar de la RHS, y la de abreviaturas (#69) las de otros 38 géneros y nothogéneros comunes en cultivo (ver [Abreviaturas de género](#abreviaturas-de-género)). Desde la API solo lo escriben (insertar, editar y borrar) los administradores del catálogo: `authenticated` tiene el permiso y las políticas RLS exigen `(select public.is_catalog_admin())`.
 - Inventario: `profiles` (perfil de cada usuario de Clerk) y `plants` (ejemplares). El usuario es el id de Clerk, de tipo texto, y por defecto se toma del claim `sub` del token de sesión. Con sesión (`authenticated`), cada usuario lee, crea, actualiza y borra solo su perfil y sus plantas: las políticas comparan con `(select public.requesting_user_id())`, no dejan crear una planta a nombre de otro ni cambiar su dueño, y no dan más acceso al administrador de catálogo. `authenticated` puede escribir todas las columnas de `plants` menos `validation`, que solo ajustan el disparador de sincronización, `service_role` y las futuras funciones de administrador; así un usuario no puede marcar sus plantas como "no identificable" ni validarlas sin especie. Una columna nueva de `plants` hay que concedérsela explícitamente a `authenticated`. Sin sesión (`anon`) no hay ningún acceso.
 - Identidad: `public.requesting_user_id()` devuelve el id de usuario de Clerk de la petición (`auth.jwt()->>'sub'`), o `null` sin sesión. Es `stable`, `security invoker` y con `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role` (la API la expone en `/rest/v1/rpc/requesting_user_id`) y no lee ninguna tabla. La usan el panel de diagnóstico de la app y las políticas RLS de perfiles y plantas (#64).
 - Rol de administrador: `public.is_catalog_admin()` es verdadera solo si el claim de primer nivel `app_role` del token vale exactamente `catalog_admin` (falsa sin sesión, sin el claim, con otro valor o con el rol en otro claim); nunca devuelve `null`. Mismas propiedades y permisos que `requesting_user_id()`. No hay columna de rol en la base de datos: el rol vive en Clerk (ver [Rol de administrador del catálogo](../README.md#rol-de-administrador-del-catálogo)). El guardián `private.require_catalog_admin()` lanza el error `42501` si la petición no es de un administrador; lo usan las [funciones de administrador](#funciones-de-administrador).
-- Búsqueda: `public.search_species(query, max_results)` busca especies por nombre científico, sinónimo o nombre común, tolerando errores de tipeo, tildes, mayúsculas y espacios de más. Se puede llamar sin sesión. Ver [Búsqueda de especies](#búsqueda-de-especies).
+- Búsqueda: `public.search_species(query, max_results)` busca especies por nombre científico, sinónimo o nombre común, tolerando errores de tipeo, tildes, mayúsculas y espacios de más, y expande una abreviatura de género al principio (`Phal. amab`). `public.search_genera(query, max_results)` busca géneros por nombre o abreviatura, para el chip "Otro" del registro. Se pueden llamar sin sesión. Ver [Búsqueda de especies](#búsqueda-de-especies) y [Búsqueda de géneros](#búsqueda-de-géneros).
 - Disparadores, con sus funciones en el esquema `private` (no expuesto en la API): al enlazar una planta a una especie, la planta toma el género y el tipo de la especie y queda validada; al desenlazarla vuelve a "por validar"; si cambian el género o el tipo de una especie, se propagan a sus plantas; y `updated_at` se actualiza solo en todas las tablas.
 
 Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` solo puede leer el catálogo; `authenticated` lee el catálogo, lo escribe solo si es administrador (lo deciden las políticas) y gestiona su propio perfil y sus plantas; y `service_role` puede leer y escribir todo.
@@ -40,22 +40,23 @@ Todas las tablas tienen Row Level Security activada y privilegios explícitos: `
 
 Las pruebas están organizadas por tema, un archivo por tema:
 
-| Archivo                            | Qué comprueba                                                                                                                                                        |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `esquema.sql`                      | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.                                                     |
-| `datos_referencia.sql`             | Los cinco géneros de acceso rápido con su abreviatura, y que las migraciones no cargan perfiles ni plantas.                                                          |
-| `catalogo_unicidad.sql`            | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.                                                    |
-| `borrados.sql`                     | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                                                                 |
-| `plantas_y_perfiles.sql`           | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto.                                               |
-| `sincronizacion.sql`               | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                                                          |
-| `acceso_por_rol.sql`               | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.                                                      |
-| `identidad.sql`                    | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas a `anon`.                                |
-| `politicas_plantas_y_perfiles.sql` | Políticas y permisos de `profiles` y `plants`: cada usuario solo lo suyo, sin cambiar el dueño ni escribir `validation`; el administrador no ve más; `anon` cerrado. |
-| `politicas_catalogo.sql`           | Escritura del catálogo: anónimo, usuario sin rol y administrador; tokens que no dan el rol; `is_catalog_admin()`.                                                    |
-| `funciones_administrador.sql`      | El guardián `private.require_catalog_admin()` y el patrón de las funciones de administrador, con ejemplos que la regla general acepta y rechaza.                     |
-| `busqueda_especies.sql`            | Normalización, índices de trigramas y `search_species()`: errores de tipeo, tildes, prefijos, sinónimos, orden, límites, permisos y que el plan usa los índices.     |
-| `datos_ejemplo.sql`                | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario.                                         |
-| `seguridad_general.sql`            | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.                                                 |
+| Archivo                               | Qué comprueba                                                                                                                                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `esquema.sql`                         | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.                                                                                         |
+| `datos_referencia.sql`                | Los cinco géneros de acceso rápido con su abreviatura, el número de géneros y abreviaturas cargados, y que las migraciones no cargan perfiles ni plantas.                                                |
+| `catalogo_unicidad.sql`               | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.                                                                                        |
+| `borrados.sql`                        | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                                                                                                     |
+| `plantas_y_perfiles.sql`              | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto.                                                                                   |
+| `sincronizacion.sql`                  | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                                                                                              |
+| `acceso_por_rol.sql`                  | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.                                                                                          |
+| `identidad.sql`                       | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas a `anon`.                                                                    |
+| `politicas_plantas_y_perfiles.sql`    | Políticas y permisos de `profiles` y `plants`: cada usuario solo lo suyo, sin cambiar el dueño ni escribir `validation`; el administrador no ve más; `anon` cerrado.                                     |
+| `politicas_catalogo.sql`              | Escritura del catálogo: anónimo, usuario sin rol y administrador; tokens que no dan el rol; `is_catalog_admin()`.                                                                                        |
+| `funciones_administrador.sql`         | El guardián `private.require_catalog_admin()` y el patrón de las funciones de administrador, con ejemplos que la regla general acepta y rechaza.                                                         |
+| `busqueda_especies.sql`               | Normalización, índices de trigramas y `search_species()`: errores de tipeo, tildes, prefijos, sinónimos, orden, límites, permisos y que el plan usa los índices.                                         |
+| `busqueda_generos_y_abreviaturas.sql` | Abreviaturas en `search_species()` (con o sin punto, desconocidas, solas, ambiguas) y `search_genera()`: tipeo, tildes, prefijo, abreviatura, límites, permisos, índices y la lista cargada sin choques. |
+| `datos_ejemplo.sql`                   | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada, que no tocan el inventario y que la migración de abreviaturas se aplica sobre ellos.                     |
+| `seguridad_general.sql`               | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.                                                                                     |
 
 `seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon`, deja una función de `private` ejecutable desde la API o expone una función `security definer` de `public` sin seguir el patrón de las [funciones de administrador](#funciones-de-administrador).
 
@@ -119,9 +120,10 @@ Por HTTP es `POST /rest/v1/rpc/search_species` con `{"query": "phal amab", "max_
 
 Cómo busca:
 
-- La consulta y los nombres se comparan normalizados con `public.normalize_search_text()`: minúsculas, sin tildes y con los espacios unificados. Es `immutable` y la usan también los índices; la búsqueda de géneros (#69) la reutilizará.
+- La consulta y los nombres se comparan normalizados con `public.normalize_search_text()`: minúsculas, sin tildes y con los espacios unificados. Es `immutable` y la usan también los índices y la búsqueda de géneros.
 - Un nombre coincide si se parece a la consulta (`word_similarity` de `pg_trgm` de al menos 0,3, fijado en la función) o si la consulta es su prefijo por palabras (`phal amab` es prefijo de `Phalaenopsis amabilis`).
-- Orden: primero las especies cuyo nombre científico empieza por la consulta; después, de mayor a menor similitud; a igualdad, el nombre científico gana a los sinónimos y estos a los nombres comunes; y al final, por nombre científico.
+- Abreviaturas (#69, migración `20261120200000_abreviaturas_y_busqueda_de_generos.sql`): si la primera palabra de la consulta, sin el punto y sin importar mayúsculas, es una abreviatura de género conocida, se busca también con el nombre del género en su lugar: `Phal. amab`, `phal amab` y `PHAL. AMAB` encuentran `Phalaenopsis amabilis`, y `phal.` sola devuelve las Phalaenopsis. Se buscan las dos formas, la expandida y la escrita, porque una abreviatura puede ser también el comienzo de otro nombre (`cal bul` encuentra Calypso bulbosa aunque `Cal.` sea Calanthe); a igual clase de coincidencia gana la expandida. Una abreviatura desconocida se busca como texto normal, y solo cuenta la primera palabra separada por un espacio (`Phal.amab` no se expande). `matched_name` sigue siendo el nombre del catálogo.
+- Orden: primero las especies cuyo nombre científico empieza por la consulta (expandida o escrita; dentro, primero las de la expandida); después, de mayor a menor similitud; a igualdad, el nombre científico gana a los sinónimos y estos a los nombres comunes; y al final, por nombre científico.
 - Los índices GIN de trigramas `species_scientific_name_trgm_idx`, `species_names_name_trgm_idx` y `genera_name_trgm_idx` están sobre `public.normalize_search_text(columna)`. Una consulta nueva los usa solo si escribe esa misma expresión con un operador de `extensions.gin_trgm_ops` (`operator(extensions.%>)`, `like`...).
 - Postgres calcula esos índices con los permisos de quien escribe la fila: un rol que inserte o actualice en `species`, `species_names` o `genera` necesita ejecutar `normalize_search_text()` y `usage` sobre el esquema `extensions`. `postgres`, `service_role` y `authenticated` ya los tienen; un rol nuevo que escriba el catálogo tendrá que recibirlos.
 
@@ -131,6 +133,36 @@ Límites, porque es pública (fuera de ellos devuelve vacío, sin error):
 - `max_results`: 10 por defecto y 20 como máximo; si es nulo, cero o negativo se usan 10.
 
 Es `security invoker`, `stable` y con `search_path` vacío: lee el catálogo con los permisos de quien llama, que ya es de lectura pública, y no toca perfiles ni plantas. La pueden ejecutar `anon`, `authenticated` y `service_role`, igual que `normalize_search_text()`, que no lee ninguna tabla.
+
+## Búsqueda de géneros
+
+`public.search_genera(query, max_results)`, de la migración `20261120200000_abreviaturas_y_busqueda_de_generos.sql`, busca géneros para el chip "Otro" del registro:
+
+```ts
+const { data, error } = await supabase.rpc('search_genera', {
+  query: 'masdevalia',
+  max_results: 10,
+})
+```
+
+Devuelve una fila por género:
+
+| Columna                | Qué es                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `id`                   | Id del género.                                                                                            |
+| `name`                 | Nombre del género.                                                                                        |
+| `is_quick_access`      | Si es uno de los géneros de acceso rápido.                                                                |
+| `matched_abbreviation` | La abreviatura tal como está guardada (`Phal.`) si coincidió por ella; `null` si coincidió por su nombre. |
+
+- Un género coincide si su nombre se parece a la consulta o empieza por ella (como en `search_species()`, con el índice `genera_name_trgm_idx`), o si la consulta entera, sin el punto final y sin importar mayúsculas, es una de sus abreviaturas (`Mps.`, `mps` o `MPS` encuentran Miltoniopsis).
+- Orden: primero los prefijos (una abreviatura cuenta como prefijo con similitud 1, así que `phal` devuelve Phalaenopsis con `Phal.`), después de mayor a menor similitud y al final por nombre.
+- Mismos límites, propiedades y permisos que `search_species()`: mínimo 2 caracteres normalizados, como mucho 100 caracteres, 10 resultados por defecto y 20 como máximo; `security invoker`, `stable`, `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role`.
+
+## Abreviaturas de género
+
+`genus_abbreviations` guarda cada abreviatura con su punto (`Phal.`) y cada una pertenece a un solo género. Dos índices únicos lo garantizan: `genus_abbreviations_abbreviation_key`, sin distinguir mayúsculas, y `genus_abbreviations_search_key`, sobre la clave de búsqueda (`normalize_search_text(rtrim(abbreviation, '.'))`), que impide además guardar `Phal` o `Phál.` junto a `Phal.` y que usan las dos búsquedas para resolver la abreviatura.
+
+Las migraciones cargan las abreviaturas estándar de la RHS (las de las etiquetas de vivero) de 43 géneros: los cinco de acceso rápido y 38 géneros y nothogéneros comunes en cultivo, algunos ya fusionados en otros pero todavía presentes en etiquetas (Blc., Slc., Dtps., Ascda., Soph.). La carga crea el género si no existe, sin marcarlo de acceso rápido, y no duplica ni falla si el género o la abreviatura ya existen (por ejemplo, con los datos de ejemplo). El criterio para los choques y las abreviaturas que conviene revisar contra la lista de la RHS están anotados en la migración. Una abreviatura nueva o corregida va en una migración nueva.
 
 ## Funciones de administrador
 

@@ -5,8 +5,8 @@
 -- especies con plantas).
 
 -- Datos de partida: un género sin especies con su abreviatura, y dos especies con nombres.
-insert into public.genera (name) values ('Masdevallia');
-insert into public.genus_abbreviations (genus_id, abbreviation) values (pruebas.genero('Masdevallia'), 'Masd.');
+insert into public.genera (name) values ('Restrepia');
+insert into public.genus_abbreviations (genus_id, abbreviation) values (pruebas.genero('Restrepia'), 'Rstp.');
 insert into public.species (scientific_name, genus_id, type, status, source)
 values
   ('Cattleya labiata', pruebas.genero('Cattleya'), 'species', 'validated', 'curated'),
@@ -25,13 +25,13 @@ select pruebas.debe_fallar(
 );
 
 -- prueba: al borrar un género sin especies se borran sus abreviaturas
-delete from public.genera where name = 'Masdevallia';
+delete from public.genera where name = 'Restrepia';
 select pruebas.iguales(
-  'abreviaturas de Masdevallia que quedan',
-  (select count(*) from public.genus_abbreviations where abbreviation = 'Masd.'),
+  'abreviaturas de Restrepia que quedan',
+  (select count(*) from public.genus_abbreviations where abbreviation = 'Rstp.'),
   0::bigint
 );
-select pruebas.iguales('abreviaturas de otros géneros', (select count(*) from public.genus_abbreviations), 5::bigint);
+select pruebas.iguales('abreviaturas de otros géneros', (select count(*) from public.genus_abbreviations), 43::bigint);
 
 -- prueba: al borrar una especie se borran sus nombres alternativos y solo los suyos
 delete from public.species where scientific_name = 'Cattleya labiata';
@@ -58,10 +58,10 @@ select pruebas.debe_funcionar(
 
 -- prueba: un género usado por una planta sin especie no se puede borrar
 insert into public.plants (user_id, entered_name, genus_id, type)
-values ('user_borrados', 'Mi masdevallia', pruebas.genero('Masdevallia'), 'unknown');
+values ('user_borrados', 'Mi restrepia', pruebas.genero('Restrepia'), 'unknown');
 select pruebas.debe_fallar(
-  'borrar Masdevallia, que tiene una planta',
-  $$delete from public.genera where name = 'Masdevallia'$$,
+  'borrar Restrepia, que tiene una planta',
+  $$delete from public.genera where name = 'Restrepia'$$,
   '23503', 'plants_genus_id_fkey'
 );
 

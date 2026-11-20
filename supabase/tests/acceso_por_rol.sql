@@ -23,7 +23,7 @@ select pruebas.iguales(
   'filas visibles de genera, genus_abbreviations, species y species_names',
   (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
               (select count(*) from public.species), (select count(*) from public.species_names))::text),
-  '(5,5,1,1)'
+  '(43,43,1,1)'
 );
 
 -- prueba: authenticated lee las cuatro tablas del catálogo
@@ -33,7 +33,7 @@ select pruebas.iguales(
   'filas visibles de genera, genus_abbreviations, species y species_names',
   (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
               (select count(*) from public.species), (select count(*) from public.species_names))::text),
-  '(5,5,1,1)'
+  '(43,43,1,1)'
 );
 
 -- prueba: anon no puede insertar, actualizar ni borrar en el catálogo, y ni anon ni authenticated pueden vaciarlo
@@ -105,7 +105,7 @@ select pruebas.iguales('plantas visibles', (select count(*) from public.plants),
 select pruebas.iguales('perfiles visibles', (select count(*) from public.profiles), 1::bigint);
 select pruebas.debe_funcionar(
   'escribir en el catálogo',
-  $$insert into public.genera (name) values ('Masdevallia');
+  $$insert into public.genera (name) values ('Restrepia');
     update public.species set status = 'observed';
     delete from public.species_names$$
 );
