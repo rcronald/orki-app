@@ -397,12 +397,11 @@ grant execute on function public.search_genera(text, integer) to anon, authentic
 --   - Ninguna clave de abreviatura es el nombre entero de un género del catálogo (lo
 --     comprueba busqueda_generos_y_abreviaturas.sql).
 --
--- REVISAR (una persona, contra la lista de la RHS): estas abreviaturas se escribieron sin poder
--- consultar la lista en el momento. Las más seguras son las de uso diario en etiquetas
--- (Paph., Cym., Mps., Masd., Rlc., Blc., Lc., Bc., Milt., Odm., Phrag., Cyp., Epi., Bulb.,
--- Coel., las de una letra...). Conviene comprobar sobre todo las marcadas con "(revisar)":
--- Aer., Angcm., Ang., Ble., Ctt., Drac., Lyc., Max., Pln., Rhy., Stan. y Tolu. Si alguna está
--- mal, se corrige con una migración nueva (update de la abreviatura).
+-- Revisión: estas abreviaturas se escribieron sin poder consultar la lista de la RHS en el
+-- momento. El 20 nov 2026 el responsable del producto revisó y confirmó las doce que estaban
+-- en duda: Aer., Angcm., Ang., Ble., Ctt., Drac., Lyc., Max., Pln., Rhy., Stan. y Tolu. Si más
+-- adelante alguna resulta estar mal, se corrige con una migración nueva (update de la
+-- abreviatura).
 --
 -- Idempotente y sin depender de mayúsculas:
 --   - Crea el género si no existe (sin marcarlo de acceso rápido); si ya existe, con
@@ -414,10 +413,10 @@ grant execute on function public.search_genera(text, integer) to anon, authentic
 with abbreviations (genus_name, abbreviation) as (
   values
     -- Géneros botánicos.
-    ('Aerides', 'Aer.'), -- (revisar)
-    ('Angraecum', 'Angcm.'), -- (revisar)
-    ('Anguloa', 'Ang.'), -- (revisar)
-    ('Bletilla', 'Ble.'), -- (revisar)
+    ('Aerides', 'Aer.'),
+    ('Angraecum', 'Angcm.'),
+    ('Anguloa', 'Ang.'),
+    ('Bletilla', 'Ble.'),
     ('Brassavola', 'B.'),
     ('Brassia', 'Brs.'),
     ('Bulbophyllum', 'Bulb.'),
@@ -425,30 +424,30 @@ with abbreviations (genus_name, abbreviation) as (
     ('Coelogyne', 'Coel.'),
     ('Cymbidium', 'Cym.'),
     ('Cypripedium', 'Cyp.'),
-    ('Dracula', 'Drac.'), -- (revisar)
+    ('Dracula', 'Drac.'),
     ('Encyclia', 'E.'),
     ('Epidendrum', 'Epi.'),
     ('Guarianthe', 'Gur.'),
     ('Laelia', 'L.'),
-    ('Lycaste', 'Lyc.'), -- (revisar)
+    ('Lycaste', 'Lyc.'),
     ('Masdevallia', 'Masd.'),
-    ('Maxillaria', 'Max.'), -- (revisar)
+    ('Maxillaria', 'Max.'),
     ('Miltonia', 'Milt.'),
     ('Miltoniopsis', 'Mps.'),
     ('Odontoglossum', 'Odm.'),
     ('Paphiopedilum', 'Paph.'),
     ('Phragmipedium', 'Phrag.'),
-    ('Pleione', 'Pln.'), -- (revisar)
-    ('Rhynchostylis', 'Rhy.'), -- (revisar)
+    ('Pleione', 'Pln.'),
+    ('Rhynchostylis', 'Rhy.'),
     ('Sophronitis', 'Soph.'), -- histórico
-    ('Stanhopea', 'Stan.'), -- (revisar)
-    ('Tolumnia', 'Tolu.'), -- (revisar)
+    ('Stanhopea', 'Stan.'),
+    ('Tolumnia', 'Tolu.'),
     ('Zygopetalum', 'Z.'),
     -- Nothogéneros (géneros híbridos).
     ('Ascocenda', 'Ascda.'), -- histórico
     ('Brassocattleya', 'Bc.'),
     ('Brassolaeliocattleya', 'Blc.'), -- histórico
-    ('Cattlianthe', 'Ctt.'), -- (revisar)
+    ('Cattlianthe', 'Ctt.'),
     ('Doritaenopsis', 'Dtps.'), -- histórico
     ('Laeliocattleya', 'Lc.'),
     ('Rhyncholaeliocattleya', 'Rlc.'),
