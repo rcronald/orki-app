@@ -124,8 +124,19 @@ Cómo busca:
 - El signo de híbrido no cuenta (migración `20261120210000_ajustes_de_busqueda.sql`): los nothogéneros y los híbridos naturales se guardan como los da la fuente (`× Rhyncholaeliocattleya`, `Phalaenopsis × intermedia`), y la normalización sustituye cada `×` por un espacio y quita la `x` que es una palabra entera seguida de otra palabra (al principio o en medio). Así `rhyncholaeliocattleya`, `×Rhyncholaeliocattleya`, `phalaenopsis x intermedia` y `phal x intermedia` encuentran esos nombres. La `x` dentro de una palabra (`xanthina`) o al final de la consulta (`phal x`, que puede ser el comienzo de un epíteto) no se toca. Una consulta puede quedarse corta al quitarla: `x a` queda en `a` y no busca nada. Si la normalización vuelve a cambiar, hay que reconstruir los índices que la usan (`reindex`), como hace esa migración.
 - Un nombre coincide si se parece a la consulta (`word_similarity` de `pg_trgm` de al menos 0,3, fijado en la función) o si la consulta es su prefijo por palabras (`phal amab` es prefijo de `Phalaenopsis amabilis`). Con menos de 3 caracteres normalizados solo cuenta el prefijo: `ph` encuentra los nombres (científicos, sinónimos o comunes) que empiezan por `ph`, pero no los que solo tienen otra palabra que empieza así; con 2 caracteres la similitud coincidía con casi cualquier nombre y era la consulta más lenta (ver "Rendimiento de la búsqueda").
 - Abreviaturas (#69, migración `20261120200000_abreviaturas_y_busqueda_de_generos.sql`): si la primera palabra de la consulta, sin el punto y sin importar mayúsculas, es una abreviatura de género conocida, se busca también con el nombre del género en su lugar: `Phal. amab`, `phal amab` y `PHAL. AMAB` encuentran `Phalaenopsis amabilis`, y `phal.` sola devuelve las Phalaenopsis. Se buscan las dos formas, la expandida y la escrita, porque una abreviatura puede ser también el comienzo de otro nombre (`cal bul` encuentra Calypso bulbosa aunque `Cal.` sea Calanthe); a igual clase de coincidencia gana la expandida. Una abreviatura desconocida se busca como texto normal, y solo cuenta la primera palabra separada por un espacio (`Phal.amab` no se expande). `matched_name` sigue siendo el nombre del catálogo.
-- Orden: primero las especies cuyo nombre científico empieza por la consulta (expandida o escrita; dentro, primero las de la expandida); después, de mayor a menor similitud; a igualdad, el nombre científico gana a los sinónimos y estos a los nombres comunes; y al final, por nombre científico.
+- Orden (migración `20261120230000_busqueda_con_catalogo_real.sql`, que explica cada decisión). Cada especie sale una vez, en la primera de estas clases en la que entra:
+  1. Su nombre científico empieza por la consulta, por palabras (`phal amab` → `Phalaenopsis amabilis`).
+  2. Uno de sus sinónimos o nombres comunes empieza por la consulta (`laelia purpurata` → Cattleya purpurata, por su sinónimo).
+  3. Solo se parece (errores de tipeo, palabras de en medio). Solo rellena lo que falte hasta el tope.
+
+  En las clases 1 y 2, primero lo que coincidió con la consulta expandida (abreviatura), después las especies antes que los híbridos (`type = 'hybrid'`), y al final el nombre por el que coincidió normalizado (sin tildes, mayúsculas ni signo de híbrido) con intercalación `C`: el nombre exacto va antes que sus variedades y el `×` no cambia el orden (`ph` devuelve Phalaenopsis amabilis, amboinensis, aphrodite..., y los híbridos naturales detrás). En la clase 3, de mayor a menor puntuación; a igualdad, el nombre científico antes que los sinónimos y estos antes que los nombres comunes, y después las especies antes que los híbridos y el nombre normalizado. El desempate final es el id.
+
+- Similitud con varias palabras: el nombre tiene que parecerse (con el umbral 0,3) a la consulta entera y también a su segunda palabra, el epíteto, si tiene al menos 3 caracteres. La puntuación es la menor de las dos similitudes (con una sola palabra, la de la consulta), y a igualdad decide la de la consulta entera. Así `dendrobum nobile` ya no deja pasar todos los Dendrobium por compartir la palabra del género.
+- Por etapas: cada clase es una consulta aparte que pide solo lo que falta hasta el tope, y las siguientes no se ejecutan si ya está lleno. La similitud va en dos pasadas, con umbral 0,6 y, si no llena el tope, con 0,3; como la puntuación es la menor de las dos similitudes, da exactamente lo mismo que una sola pasada (lo comprueba `tests/busqueda_orden_y_etapas.sql` contra una referencia sin etapas).
 - Los índices GIN de trigramas `species_scientific_name_trgm_idx`, `species_names_name_trgm_idx` y `genera_name_trgm_idx` están sobre `public.normalize_search_text(columna)`. Una consulta nueva los usa solo si escribe esa misma expresión con un operador de `extensions.gin_trgm_ops` (`operator(extensions.%>)`, `like`...).
+- El índice btree `species_scientific_name_prefix_idx`, sobre `public.normalize_search_text(scientific_name)` con intercalación `C`, resuelve la clase 1 de una sola palabra: lee en orden el rango de los nombres que empiezan por la consulta (`>= 'dendrob'` y `< 'dendrob' || U+10FFFF`) y para en el tope, sin normalizar ni ordenar todo el género. Ocupa 1,3 MB.
+- `search_species()` fija `plan_cache_mode = force_generic_plan`: con planes a medida, Postgres deducía del patrón `LIKE` constante un rango del btree y recorría el género entero en las consultas de varias palabras (`den nob`, 10 ms en lugar de menos de 1).
+- Si la normalización vuelve a cambiar, hay que reconstruir (`reindex`) todos los índices que la usan: los tres de trigramas, `genus_abbreviations_search_key` y `species_scientific_name_prefix_idx`.
 - Postgres calcula esos índices con los permisos de quien escribe la fila: un rol que inserte o actualice en `species`, `species_names` o `genera` necesita ejecutar `normalize_search_text()` y `usage` sobre el esquema `extensions`. `postgres`, `service_role` y `authenticated` ya los tienen; un rol nuevo que escriba el catálogo tendrá que recibirlos.
 
 Límites, porque es pública (fuera de ellos devuelve vacío, sin error):
@@ -156,7 +167,7 @@ Devuelve una fila por género:
 | `matched_abbreviation` | La abreviatura tal como está guardada (`Phal.`) si coincidió por ella; `null` si coincidió por su nombre. |
 
 - Un género coincide si su nombre se parece a la consulta o empieza por ella (como en `search_species()`, con el índice `genera_name_trgm_idx`), o si la consulta entera, sin el punto final y sin importar mayúsculas, es una de sus abreviaturas (`Mps.`, `mps` o `MPS` encuentran Miltoniopsis).
-- Orden: primero los prefijos (una abreviatura cuenta como prefijo con similitud 1, así que `phal` devuelve Phalaenopsis con `Phal.`), después de mayor a menor similitud y al final por nombre.
+- Orden (migración `20261120230000_busqueda_con_catalogo_real.sql`): primero los que coinciden por abreviatura (`ang` devuelve Anguloa, por `Ang.`, antes que Angraecum; `phal` devuelve Phalaenopsis con `Phal.`), después los que empiezan por la consulta y al final los que solo se parecen, de mayor a menor similitud. A igualdad, primero los de acceso rápido (`catl` y `cat` devuelven Cattleya antes que Catasetum), después los géneros botánicos antes que los nothogéneros (los guardados con `×` delante), y al final el nombre normalizado, sin el signo, con intercalación `C`. Se prefirió «no nothogénero» a «más especies» porque se ve en el propio nombre, sin contar filas, y en la práctica coincide: los nothogéneros de COL tienen pocas especies.
 - Como en `search_species()`, con menos de 3 caracteres normalizados solo cuentan el prefijo y la abreviatura (`ph` devuelve Phalaenopsis y Phragmipedium, no cualquier género que empiece por `p`), y el signo de híbrido no cuenta (`rhyncholaeliocattleya` encuentra `× Rhyncholaeliocattleya`).
 - Mismos límites, propiedades y permisos que `search_species()`: mínimo 2 caracteres normalizados, como mucho 100 caracteres, 10 resultados por defecto y 20 como máximo; `security invoker`, `stable`, `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role`.
 
@@ -225,32 +236,34 @@ La app usa tipos generados a partir de estas migraciones (`apps/web/src/lib/data
 
 ## Rendimiento de la búsqueda
 
-`npm run db:perf` mide `public.search_species()` con un catálogo sintético del tamaño del real (#70). No corre en el CI: es una orden aparte, para repetirla cuando cambie la búsqueda, sus índices o el tamaño previsto del catálogo.
+`npm run db:perf` mide `public.search_species()` con un catálogo sintético del tamaño del real (#70) o, con `--catalogo-real`, con la exportación real de COL. No corre en el CI: es una orden aparte, para repetirla cuando cambie la búsqueda, sus índices o el catálogo.
 
 Qué hace, siempre sobre la base desechable de las pruebas (nunca sobre los proyectos de Supabase):
 
-1. Aplica todas las migraciones y carga el catálogo sintético de `scripts/db-perf/catalogo-sintetico.sql`, y después hace `vacuum analyze`.
-2. Ejecuta como `anon` catorce consultas típicas del autocompletado (prefijos de 2 y 3 letras, prefijo de género, género e inicio de epíteto, abreviatura de género, híbrido natural escrito con «x», nombre con errores, sin tildes, sinónimo, nombre común, sin resultados, epítetos muy frecuentes y una consulta larga), cada una 3 veces para calentar y 30 veces medidas, con el tope de resultados por defecto (10).
-3. Reporta por consulta la mediana, el p95 y el máximo del tiempo dentro de la base de datos (con `clock_timestamp()` alrededor de la llamada, sin la red ni PostgREST), las filas devueltas y cuántas veces por llamada se recorrieron los índices de trigramas y, de forma secuencial, `species` y `species_names` (diferencia de `pg_stat_user_indexes` y `pg_stat_user_tables`; hace falta PostgreSQL 15 o posterior).
+1. Aplica todas las migraciones y carga el catálogo sintético de `scripts/db-perf/catalogo-sintetico.sql` (o, con `--catalogo-real RUTA`, la exportación de COL con `orki-catalogo cargar --ambiente local --escribir`; ver [su README](../scripts/catalog-import/README.md)), y después hace `vacuum analyze`.
+2. Ejecuta como `anon` 31 consultas típicas del autocompletado (prefijos de 2 y 3 letras, prefijo de género, abreviaturas solas y con epíteto, género e inicio de epíteto, híbrido natural con y sin «x», nombres con errores, sin tildes, sinónimos, nombre común, sin resultados, epítetos muy frecuentes y una consulta larga), cada una 3 veces para calentar y 30 veces medidas, con el tope de resultados por defecto (10).
+3. Reporta por consulta la mediana, el p95 y el máximo del tiempo dentro de la base de datos (con `clock_timestamp()` alrededor de la llamada, sin la red ni PostgREST), las filas devueltas y cuántas veces por llamada se recorrieron los índices de búsqueda (el btree de prefijo y los dos de trigramas) y, de forma secuencial, `species` y `species_names` (diferencia de `pg_stat_user_indexes` y `pg_stat_user_tables`; hace falta PostgreSQL 15 o posterior).
 4. Imprime el tamaño de las tablas e índices del catálogo y de la base completa.
 
-Termina con código 1 si el p95 de alguna consulta supera el objetivo o si alguna no recorre los dos índices de trigramas.
+Termina con código 1 si el p95 de alguna consulta supera el objetivo, si alguna no recorre ningún índice de búsqueda o si recorre `species_names` de forma secuencial. Desde la búsqueda por etapas, una consulta que se resuelve por prefijo de una palabra (`dendrob`) solo recorre el btree de prefijo.
 
 ```sh
 npm run db:perf
 npm run db:perf -- --especies 60000 --sinonimos 160000 --planes
+npm run db:perf -- --catalogo-real /ruta/a/export.zip   # necesita uv
 ```
 
-| Opción             | Por defecto | Qué es                                                                                                            |
-| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------- |
-| `--generos N`      | 900         | Géneros del catálogo sintético.                                                                                   |
-| `--especies N`     | 30000       | Especies e híbridos aceptados.                                                                                    |
-| `--sinonimos N`    | 80000       | Sinónimos.                                                                                                        |
-| `--comunes N`      | 3000        | Nombres comunes.                                                                                                  |
-| `--semilla TEXTO`  | `orki`      | Semilla del generador: la misma semilla con las mismas cifras da exactamente el mismo catálogo.                   |
-| `--repeticiones N` | 30          | Ejecuciones medidas de cada consulta, después de 3 de calentamiento.                                              |
-| `--umbral-ms N`    | 300         | Objetivo por consulta, comparado con el p95.                                                                      |
-| `--planes`         | no          | Muestra además el plan (`explain analyze, buffers`) de la consulta interna de `search_species`, con auto_explain. |
+| Opción                 | Por defecto | Qué es                                                                                                                                                     |
+| ---------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--generos N`          | 900         | Géneros del catálogo sintético.                                                                                                                            |
+| `--especies N`         | 30000       | Especies e híbridos aceptados.                                                                                                                             |
+| `--sinonimos N`        | 80000       | Sinónimos.                                                                                                                                                 |
+| `--comunes N`          | 3000        | Nombres comunes.                                                                                                                                           |
+| `--semilla TEXTO`      | `orki`      | Semilla del generador: la misma semilla con las mismas cifras da exactamente el mismo catálogo.                                                            |
+| `--repeticiones N`     | 30          | Ejecuciones medidas de cada consulta, después de 3 de calentamiento.                                                                                       |
+| `--umbral-ms N`        | 300         | Objetivo por consulta, comparado con el p95.                                                                                                               |
+| `--planes`             | no          | Muestra además el plan (`explain analyze, buffers`) de las consultas internas de `search_species` que tardan 1 ms o más (una por etapa), con auto_explain. |
+| `--catalogo-real RUTA` | no          | Carga la exportación de COL indicada (`export.zip`) en lugar del catálogo sintético; las cinco opciones del generador no se usan.                          |
 
 Las cifras por defecto son una estimación del catálogo de orquídeas; se ajustarán cuando la importación del #8 dé las reales. El generador imita los nombres reales en longitud y trigramas, porque de eso depende el rendimiento: unos cincuenta géneros reales y el resto compuestos con sílabas y terminaciones botánicas, epítetos latinizados con muchos repetidos entre géneros (`alba`, `grandiflora`, `speciosa`...), un reparto de especies por género muy desigual (como Bulbophyllum o Dendrobium frente a géneros de una especie), un 10 % de híbridos con nombre de grex, un 2 % de híbridos naturales y un 3 % de los géneros compuestos escritos con el signo de híbrido (`Phalaenopsis × intermedia`, `× Rhyncholaeliocattleya`), sinónimos que repiten el epíteto en otro género y nombres comunes en español e inglés. Incluye unas especies reales fijas (Phalaenopsis amabilis, Cattleya labiata, Phalaenopsis × intermedia, Doritis pulcherrima...) para que las consultas tengan una respuesta conocida. Cumple todas las restricciones del esquema.
 
@@ -296,3 +309,57 @@ Cuidado al leer estas cifras:
 - Son de una máquina local rápida y sin carga, no del plan gratuito de Supabase, que usa CPU compartida: allí los tiempos pueden ser bastante mayores. El objetivo se debe comprobar también en el proyecto real cuando esté el catálogo importado (#8).
 - El tiempo crece con el número de candidatos (nombres que pasan el filtro de similitud o de prefijo antes de quedarse con la mejor coincidencia de cada especie), no con el de resultados. Antes de los ajustes la consulta más cara era la de 2 letras: `ph` dejaba pasar unos 21 000 nombres, porque `word_similarity` con una consulta tan corta coincide con cualquier nombre que tenga una palabra que empiece por esas letras. Por eso, con menos de 3 caracteres la búsqueda ya no usa la similitud, solo el prefijo.
 - El resto de consultas tarda entre un 10 % y un 25 % más después de los ajustes: la normalización hace ahora una sustitución y una expresión regular más (para el signo de híbrido), y se calcula para cada candidato. `phal x interm` no es comparable: antes se buscaba tal cual (con la «x») y ahora como `phal interm`, que encuentra `Phalaenopsis × intermedia` y tiene más candidatos.
+
+### Resultados con el catálogo real
+
+20 de noviembre de 2026, con COL26.10 XR cargado con `orki-catalogo cargar` (752 géneros de la fuente más 3 de las migraciones, 32 464 especies, de ellas 1408 híbridos naturales, 60 000 sinónimos y ningún nombre común). PostgreSQL 17.12 en un contenedor `postgres:17` (Podman, máquina virtual de 4 CPU y 3,7 GB) sobre un Apple M4 Pro, como `anon`, 30 ejecuciones medidas por consulta tras 3 de calentamiento:
+
+```sh
+podman run -d --rm --name orki-perf -e POSTGRES_USER=supabase_admin -e POSTGRES_PASSWORD=desechable -p 127.0.0.1:55417:5432 postgres:17
+ORKI_TEST_DB_URL=postgresql://supabase_admin:desechable@127.0.0.1:55417/postgres npm run db:perf -- --catalogo-real /ruta/a/export.zip
+podman stop orki-perf
+```
+
+"Antes" es la búsqueda sin la migración `20261120230000_busqueda_con_catalogo_real.sql` (el mismo día, con la misma orden y el archivo de la migración apartado); "después", con ella. "Desarrollo" es la latencia de la base en el proyecto de desarrollo (plan gratuito de Supabase, CPU compartida) antes de la migración, medida a través de la API restando el viaje de red, mediana de 9. El catálogo no tiene nombres comunes, así que `orquidea mariposa` y `dancing lady` solo prueban la búsqueda sin coincidencias exactas. La última columna son los recorridos por llamada del btree de prefijo, del índice de trigramas de `species` y del de `species_names`, después de la migración.
+
+| Texto                                                        | Desarrollo, antes (ms) | Antes: mediana (ms) | Antes: p95 (ms) | Mediana (ms) | p95 (ms) | Filas | Índices (prefijo / trigramas sp / nombres) |
+| ------------------------------------------------------------ | ---------------------: | ------------------: | --------------: | -----------: | -------: | ----: | ------------------------------------------ |
+| `ph`                                                         |                     74 |                16,3 |            17,0 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `cat`                                                        |                        |                42,8 |            46,1 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `dendrob`                                                    |                    296 |                41,0 |            42,9 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `phal`                                                       |                        |                36,2 |            40,1 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `onc`                                                        |                        |                43,8 |            46,1 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `paph`                                                       |                        |                35,2 |            38,3 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `bulb`                                                       |                        |                46,9 |            48,7 |          0,1 |      0,1 |    10 | 1 / 0 / 0                                  |
+| `phal amab`                                                  |                     79 |                16,5 |            19,0 |          8,5 |      9,2 |    10 | 0 / 6 / 6                                  |
+| `Phal. amab`                                                 |                        |                16,2 |            17,5 |          8,5 |      8,7 |    10 | 0 / 6 / 6                                  |
+| `den nob`                                                    |                    338 |                40,5 |            41,9 |          3,8 |      4,0 |    10 | 0 / 6 / 6                                  |
+| `epi rad`                                                    |                        |                46,9 |            47,8 |          5,3 |      6,1 |    10 | 0 / 6 / 6                                  |
+| `cattleya lab`                                               |                        |                14,6 |            15,4 |          0,6 |      0,6 |    10 | 0 / 2 / 2                                  |
+| `oncidium sph`                                               |                        |                44,0 |            46,3 |          4,4 |      4,6 |    10 | 0 / 6 / 6                                  |
+| `vanda coer`                                                 |                        |                15,0 |            16,9 |          8,9 |      9,3 |    10 | 0 / 6 / 6                                  |
+| `phal x interm`                                              |                        |                12,3 |            13,2 |         11,0 |     11,5 |    10 | 0 / 6 / 6                                  |
+| `phalaenopsis intermedia`                                    |                        |                11,6 |            12,7 |          6,7 |      7,8 |    10 | 0 / 6 / 6                                  |
+| `catleya labiata`                                            |                     45 |                17,2 |            17,7 |          1,8 |      2,0 |    10 | 0 / 4 / 4                                  |
+| `catleya labiatta`                                           |                        |                13,0 |            14,6 |          1,7 |      2,0 |    10 | 0 / 4 / 4                                  |
+| `dendrobum nobile`                                           |                        |                30,0 |            31,7 |          3,0 |      3,5 |    10 | 0 / 6 / 6                                  |
+| `masdevalia`                                                 |                        |                16,7 |            17,8 |         15,3 |     15,7 |    10 | 2 / 2 / 4                                  |
+| `catl`                                                       |                        |                59,1 |            63,8 |         19,7 |     20,0 |    10 | 2 / 2 / 4                                  |
+| `grandiflora`                                                |                     77 |                24,1 |            26,1 |          7,7 |      7,9 |    10 | 2 / 2 / 4                                  |
+| `alba`                                                       |                        |                20,7 |            22,4 |         16,7 |     17,4 |    10 | 2 / 2 / 4                                  |
+| `doritis pulch`                                              |                        |                 5,3 |             5,5 |          6,4 |      6,6 |    10 | 0 / 6 / 6                                  |
+| `doritis pulcherrima`                                        |                        |                 6,8 |             7,1 |          1,6 |      1,8 |    10 | 0 / 4 / 4                                  |
+| `laelia purpurata`                                           |                        |                18,7 |            19,1 |         13,8 |     14,5 |    10 | 0 / 6 / 6                                  |
+| `sophronitis coccinea`                                       |                        |                 6,0 |             6,4 |          4,7 |      5,0 |    10 | 0 / 6 / 6                                  |
+| `orquidea mariposa`                                          |                        |                 3,2 |             3,4 |          2,3 |      2,6 |     2 | 0 / 6 / 6                                  |
+| `dancing lady`                                               |                        |                 2,2 |             2,3 |          1,9 |      2,2 |     0 | 0 / 6 / 6                                  |
+| `xqzvkjw`                                                    |                        |                 0,2 |             0,2 |          0,1 |      0,1 |     0 | 2 / 4 / 6                                  |
+| `phalaenopsis amabilis subsp. rosenstromii var. grandiflora` |                        |                16,6 |            19,8 |         16,6 |     17,1 |     6 | 0 / 6 / 6                                  |
+
+Lectura:
+
+- Todas quedan en un p95 de 20 ms o menos en esta máquina. Las que más bajan son las que pasaban por un género grande: los prefijos de una palabra (`dendrob`, `bulb`, `onc`, de 40-50 ms a 0,1 ms) leen solo 10 filas del btree, y `den nob`, `epi rad`, `oncidium sph` o `dendrobum nobile` ya no recorren el género entero gracias al epíteto. Las más lentas ahora son las de una sola palabra que solo coinciden por similitud con muchos nombres (`catl`, `alba`, `masdevalia`): cada candidato paga la normalización y la similitud.
+- Factor del plan gratuito: en las consultas pesadas, desarrollo tardaba unas 7 u 8 veces lo de esta máquina (`dendrob` 296 frente a 41 ms, `den nob` 338 frente a 40,5 ms); en las ligeras, de 3 a 5 veces. Con un factor 7, el peor p95 de aquí (20 ms) serían unos 140 ms en desarrollo, por debajo del objetivo de 300 ms. Hay que confirmarlo midiendo en el proyecto cuando se aplique la migración.
+- Ninguna recorre `species` ni `species_names` de forma secuencial. No se cuentan los candidatos por consulta: los recorridos de los índices y el tiempo bastan para ver lo que cambia.
+- Tamaño: el índice nuevo ocupa 1,3 MB; el catálogo pasa de 33,4 a 34,7 MB y la base completa de 41,4 a 42,7 MB.
+- La tabla de "Resultados" de arriba es del catálogo sintético y de la búsqueda anterior a esta migración, con las 14 consultas que había entonces; `npm run db:perf` mide ahora también las de esta tabla.

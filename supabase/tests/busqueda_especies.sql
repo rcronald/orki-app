@@ -328,6 +328,8 @@ select pruebas.iguales(
 );
 
 -- prueba: propiedades: invoker, search_path vacío, volatilidad y dueño
+-- search_species fija además plan_cache_mode = force_generic_plan desde la migración
+-- 20261120230000_busqueda_con_catalogo_real.sql (allí se explica por qué).
 select pruebas.iguales(
   'normalize_search_text',
   (select p.provolatile::text || ' strict=' || p.proisstrict || ' parallel=' || p.proparallel::text
@@ -340,7 +342,7 @@ select pruebas.iguales(
   (select p.provolatile::text || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ',')
           || ' ' || pg_get_userbyid(p.proowner)
      from pg_proc p where p.oid = 'public.search_species(text, integer)'::regprocedure),
-  's definer=false search_path="",pg_trgm.word_similarity_threshold=0.3 postgres'
+  's definer=false search_path="",pg_trgm.word_similarity_threshold=0.3,plan_cache_mode=force_generic_plan postgres'
 );
 select pruebas.iguales(
   'columnas del resultado de search_species',

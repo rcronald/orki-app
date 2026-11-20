@@ -179,7 +179,10 @@ select pruebas.iguales(
 -- prueba: géneros: un nothogénero con el signo se encuentra por nombre y por abreviatura
 select pruebas.iguales('rhyncholaeliocattleya', pg_temp.generos('rhyncholaeliocattleya', 1), '× Rhyncholaeliocattleya');
 select pruebas.iguales('×Rhyncholaeliocattleya', pg_temp.generos('×Rhyncholaeliocattleya', 1), '× Rhyncholaeliocattleya');
-select pruebas.iguales('x rhyncho', pg_temp.generos('x rhyncho', 1), '× Rhyncholaeliocattleya');
+-- "x rhyncholaelio" y no "x rhyncho": desde la migración 20261120230000 los nothogéneros van
+-- detrás de los géneros a igual clase de coincidencia, y "rhyncho" es también prefijo de
+-- Rhynchostylis, que ahora sale antes.
+select pruebas.iguales('x rhyncholaelio', pg_temp.generos('x rhyncholaelio', 1), '× Rhyncholaeliocattleya');
 select pruebas.iguales('Rlc.', pg_temp.generos('Rlc.', 1), '× Rhyncholaeliocattleya (Rlc.)');
 select pruebas.iguales('× rlc', pg_temp.generos('× rlc', 1), '× Rhyncholaeliocattleya (Rlc.)');
 -- "laelio" es prefijo de Laeliocattleya; × Rhyncholaeliocattleya sale después, por similitud.
@@ -240,11 +243,15 @@ select pruebas.comprobar(
 
 -- prueba: el plan de una consulta de 2 caracteres solo recorre el índice para el prefijo
 -- Con la condición de similitud nula, Postgres la descarta al planificar y solo queda el LIKE.
+-- Se comprueba sobre species_names: desde la migración 20261120230000, el prefijo del nombre
+-- científico de una sola palabra usa el índice btree species_scientific_name_prefix_idx, que el
+-- planificador elige también para este LIKE, y la similitud ya no comparte sentencia con los
+-- prefijos.
 set local enable_seqscan = off;
 prepare candidatos_cortos (text, text) as
-  select s.id from public.species s
-  where public.normalize_search_text(s.scientific_name) operator(extensions.%>) $1
-     or public.normalize_search_text(s.scientific_name) like $2;
+  select n.species_id from public.species_names n
+  where public.normalize_search_text(n.name) operator(extensions.%>) $1
+     or public.normalize_search_text(n.name) like $2;
 create temp table planes (plan text);
 do $$
 declare
@@ -257,7 +264,7 @@ end;
 $$;
 select pruebas.comprobar(
   'recorre el índice de trigramas',
-  exists (select from planes where plan like '%Bitmap Index Scan on species\_scientific\_name\_trgm\_idx%')
+  exists (select from planes where plan like '%Bitmap Index Scan on species\_names\_name\_trgm\_idx%')
 );
 select pruebas.comprobar(
   'sin la condición de similitud',
@@ -294,6 +301,11 @@ insert into public.species_names (species_id, name, type)
 values (pruebas.especie('× Ficticiocattleya Prueba Antigua'), 'Ficticia × antigua', 'synonym');
 select pruebas.iguales('antes, con la normalización anterior', public.normalize_search_text('× Ficticiocattleya'), '* ficticiocattleya');
 \i supabase/migrations/20261120210000_ajustes_de_busqueda.sql
+-- El índice species_scientific_name_prefix_idx lo crea una migración posterior
+-- (20261120230000), que en una base real se aplica después y lo calcula ya con la
+-- normalización nueva. Aquí existía antes y quedó calculado con la anterior, así que se
+-- reconstruye también.
+reindex index public.species_scientific_name_prefix_idx;
 set local enable_seqscan = off;
 select pruebas.iguales('especie por prefijo', pg_temp.primera('ficticiocattleya prueba'), '× Ficticiocattleya Prueba Antigua');
 select pruebas.iguales('especie por similitud', pg_temp.primera('ficticiocatleya prueva antigua'), '× Ficticiocattleya Prueba Antigua');

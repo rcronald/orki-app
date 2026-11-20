@@ -6,7 +6,7 @@
 // (scripts/db-perf/catalogo-sintetico.sql), hace vacuum analyze y ejecuta un conjunto de
 // consultas típicas contra public.search_species() como anon, cada una varias veces. Reporta
 // por consulta la mediana y el p95 del tiempo dentro de la base de datos, las filas devueltas
-// y los recorridos de los índices de trigramas y secuenciales de species y species_names
+// y los recorridos de los índices de búsqueda y secuenciales de species y species_names
 // (diferencia de pg_stat_user_indexes y pg_stat_user_tables, desde PostgreSQL 15), y el
 // tamaño de las tablas e índices del catálogo. Nunca toca los proyectos de Supabase.
 //
@@ -15,7 +15,8 @@
 // supabase/README.md, "Rendimiento de la búsqueda").
 //
 // No corre en el CI: es una orden aparte. Termina con código 1 si el p95 de alguna consulta
-// supera el umbral o si alguna no usa los índices de trigramas, y con 0 si todas cumplen.
+// supera el umbral, si alguna no usa ningún índice de búsqueda o si recorre species_names de
+// forma secuencial, y con 0 si todas cumplen.
 //
 // Opciones (todas opcionales):
 //   --generos N        géneros del catálogo sintético (900)
@@ -27,8 +28,16 @@
 //   --umbral-ms N      objetivo de tiempo por consulta, en ms, comparado con el p95 (300)
 //   --planes           muestra además el plan (explain analyze, buffers) de la consulta
 //                      interna de search_species para cada consulta, con auto_explain
+//   --catalogo-real RUTA
+//                      en lugar del catálogo sintético, carga en la base desechable la
+//                      exportación de COL indicada (export.zip) con "orki-catalogo cargar"
+//                      (scripts/catalog-import, necesita uv); --generos, --especies,
+//                      --sinonimos, --comunes y --semilla no se usan
 
-import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import {
   conBaseDesechable,
@@ -65,9 +74,31 @@ const consultas = [
     descripcion: 'Consulta larga',
     texto: 'phalaenopsis amabilis subsp. rosenstromii var. grandiflora',
   },
+  // Añadidas al medir con el catálogo real (migración 20261120230000).
+  { descripcion: 'Abreviatura sola', texto: 'phal' },
+  { descripcion: 'Abreviatura con punto', texto: 'Phal. amab' },
+  { descripcion: 'Prefijo que no es de género', texto: 'catl' },
+  { descripcion: 'Género + inicio de epíteto', texto: 'cattleya lab' },
+  { descripcion: 'Nombre completo con error', texto: 'catleya labiata' },
+  { descripcion: 'Género grande con error', texto: 'dendrobum nobile' },
+  { descripcion: 'Género con error', texto: 'masdevalia' },
+  { descripcion: 'Híbrido natural sin «x»', texto: 'phalaenopsis intermedia' },
+  { descripcion: 'Abreviatura sola', texto: 'onc' },
+  { descripcion: 'Género + inicio de epíteto', texto: 'oncidium sph' },
+  { descripcion: 'Género + inicio de epíteto', texto: 'vanda coer' },
+  { descripcion: 'Abreviatura sola', texto: 'paph' },
+  { descripcion: 'Abreviatura sola (género grande)', texto: 'bulb' },
+  { descripcion: 'Abreviatura + inicio de epíteto', texto: 'epi rad' },
+  { descripcion: 'Sinónimo completo', texto: 'doritis pulcherrima' },
+  { descripcion: 'Sinónimo completo', texto: 'laelia purpurata' },
+  { descripcion: 'Sinónimo completo', texto: 'sophronitis coccinea' },
 ]
 
-const indicesTrigramas = [
+// Índices de búsqueda de species y species_names. Cada consulta debe recorrer al menos uno:
+// desde la migración 20261120230000, las que se resuelven por prefijo de una palabra solo usan
+// el btree de prefijo, y las demás, los de trigramas.
+const indicesBusqueda = [
+  'species_scientific_name_prefix_idx',
   'species_scientific_name_trgm_idx',
   'species_names_name_trgm_idx',
 ]
@@ -100,11 +131,20 @@ function leerOpciones(argumentos) {
     repeticiones: 30,
     umbralMs: 300,
     planes: false,
+    catalogoReal: null,
   }
   for (let i = 0; i < argumentos.length; i += 1) {
     const argumento = argumentos[i]
     if (argumento === '--planes') {
       opciones.planes = true
+    } else if (argumento === '--catalogo-real') {
+      const valor = argumentos[(i += 1)]
+      if (!valor || !existsSync(valor)) {
+        throw new ErrorDeBaseDesechable(
+          '--catalogo-real necesita la ruta de una exportación de COL que exista (export.zip).',
+        )
+      }
+      opciones.catalogoReal = resolve(valor)
     } else if (argumento === '--semilla') {
       const valor = argumentos[(i += 1)]
       if (!valor || !/^[A-Za-z0-9_-]{1,40}$/.test(valor)) {
@@ -123,7 +163,7 @@ function leerOpciones(argumentos) {
       opciones[opcionesNumericas[argumento]] = Number(valor)
     } else {
       throw new ErrorDeBaseDesechable(
-        `opción desconocida: ${argumento}. Opciones: ${[...Object.keys(opcionesNumericas), '--semilla', '--planes'].join(', ')}.`,
+        `opción desconocida: ${argumento}. Opciones: ${[...Object.keys(opcionesNumericas), '--semilla', '--planes', '--catalogo-real'].join(', ')}.`,
       )
     }
   }
@@ -148,7 +188,7 @@ function literal(texto) {
 // Script de psql que mide cada consulta como anon: primero las ejecuciones de
 // calentamiento y luego las medidas, con el tiempo tomado con clock_timestamp() alrededor de
 // la llamada, dentro de la base de datos. Con "contarRecorridos", anota también los
-// recorridos de los índices de trigramas y los secuenciales de species y species_names que
+// recorridos de los índices de búsqueda y los secuenciales de species y species_names que
 // hizo la consulta, por llamada: la diferencia de pg_stat_user_indexes y
 // pg_stat_user_tables antes y después, forzando que la sesión vuelque sus estadísticas
 // pendientes (pg_stat_force_next_flush, desde PostgreSQL 15) para que no se pierda ninguna.
@@ -169,7 +209,7 @@ select ${indice}, r.objeto, ${signo} * r.recorridos::double precision / ${total}
 from (
   select indexrelname::text as objeto, idx_scan as recorridos
   from pg_catalog.pg_stat_user_indexes
-  where schemaname = 'public' and indexrelname in (${lista(indicesTrigramas)})
+  where schemaname = 'public' and indexrelname in (${lista(indicesBusqueda)})
   union all
   select relname::text, seq_scan
   from pg_catalog.pg_stat_user_tables
@@ -227,8 +267,9 @@ from (
 
 const marcaPlan = '=== consulta '
 
-// Script de psql que muestra con auto_explain el plan de la consulta interna de
-// search_species para cada consulta (una ejecución, como anon, tras el calentamiento).
+// Script de psql que muestra con auto_explain los planes de las consultas internas de
+// search_species (una por etapa) para cada consulta (una ejecución, como anon, tras el
+// calentamiento).
 // auto_explain escribe el plan como aviso (NOTICE) y \warn escribe la cabecera de cada
 // consulta; los dos van a stderr, en orden. Solo se registran las sentencias de al menos
 // 1 ms: así no salen las miles de llamadas a normalize_search_text, pero tampoco las
@@ -260,26 +301,34 @@ function scriptDePlanes() {
   return lineas.join('\n')
 }
 
-// Extrae de la salida de scriptDePlanes() el plan de la consulta de candidatos de cada
-// consulta (no el de la llamada ni los de normalize_search_text), sin el texto de la
-// sentencia: la línea de duración y el plan desde su primer nodo (la primera línea con
-// costes).
+// Extrae de la salida de scriptDePlanes() los planes de las consultas internas de cada
+// consulta (no el de la llamada a search_species ni los de normalize_search_text), sin el
+// texto de la sentencia: la línea de duración y el plan desde su primer nodo (la primera
+// línea con costes). Desde la migración 20261120230000 la búsqueda va por etapas, así que
+// puede haber varios.
 function planesPorConsulta(stderr) {
   const planes = new Map()
   for (const bloque of stderr
     .split(new RegExp(`^${marcaPlan}`, 'm'))
     .slice(1)) {
     const indice = Number(bloque.slice(0, bloque.indexOf('\n')))
-    const aviso = bloque
+    const avisos = bloque
       .split(/^.*NOTICE: {2}/m)
-      .find((texto) => texto.includes('with candidates'))
-    if (!aviso) continue
-    const lineas = aviso.trimEnd().split('\n')
-    const primeraDelPlan = lineas.findIndex((linea) => linea.includes('(cost='))
-    planes.set(
-      indice,
-      [lineas[0], ...lineas.slice(Math.max(primeraDelPlan, 1))].join('\n'),
-    )
+      .filter(
+        (texto) =>
+          texto.includes('(cost=') &&
+          !texto.includes('Function Scan on search_species'),
+      )
+      .map((aviso) => {
+        const lineas = aviso.trimEnd().split('\n')
+        const primeraDelPlan = lineas.findIndex((linea) =>
+          linea.includes('(cost='),
+        )
+        return [lineas[0], ...lineas.slice(Math.max(primeraDelPlan, 1))].join(
+          '\n',
+        )
+      })
+    if (avisos.length > 0) planes.set(indice, avisos.join('\n\n'))
   }
   return planes
 }
@@ -327,6 +376,60 @@ function megas(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+// Catálogo real --------------------------------------------------------------------------
+
+// Carga la exportación de COL en la base desechable con "orki-catalogo cargar --ambiente
+// local --escribir" (scripts/catalog-import, con uv). La URL, con la contraseña, va solo en
+// ORKI_CATALOG_DB_URL, que el comando nunca imprime; el reporte CSV se escribe en un
+// directorio temporal que se borra al terminar.
+function cargarCatalogoReal(conexion, archivo) {
+  const usuario = encodeURIComponent(conexion.user)
+  const clave = conexion.password
+    ? `:${encodeURIComponent(conexion.password)}`
+    : ''
+  const host = conexion.host.includes(':')
+    ? `[${conexion.host}]`
+    : conexion.host
+  const url = `postgresql://${usuario}${clave}@${host}:${conexion.port}/${encodeURIComponent(conexion.database)}`
+  const directorio = mkdtempSync(join(tmpdir(), 'orki-perf-'))
+  try {
+    const resultado = spawnSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        '--project',
+        join(raizRepositorio, 'scripts', 'catalog-import'),
+        'orki-catalogo',
+        'cargar',
+        archivo,
+        '--ambiente',
+        'local',
+        '--escribir',
+        '--reporte',
+        join(directorio, 'reporte.csv'),
+      ],
+      {
+        env: { ...process.env, ORKI_CATALOG_DB_URL: url },
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    )
+    if (resultado.error) {
+      throw new ErrorDeBaseDesechable(
+        `no se pudo ejecutar uv (hace falta para --catalogo-real): ${resultado.error.message}`,
+      )
+    }
+    if (resultado.status !== 0) {
+      throw new ErrorDeBaseDesechable(
+        `falló la carga del catálogo real:\n${`${resultado.stdout}${resultado.stderr}`.trim()}`,
+      )
+    }
+  } finally {
+    rmSync(directorio, { recursive: true, force: true })
+  }
+}
+
 // Principal ------------------------------------------------------------------------------
 
 async function principal() {
@@ -334,7 +437,7 @@ async function principal() {
   const inicio = Date.now()
   console.log('Preparando la base de datos desechable')
   return conBaseDesechable(
-    async ({ descripcion, version, consultar, ejecutarPsql }) => {
+    async ({ conexion, descripcion, version, consultar, ejecutarPsql }) => {
       console.log(`  PostgreSQL ${version}, ${descripcion}`)
 
       const exigir = (resultado, que) => {
@@ -344,30 +447,37 @@ async function principal() {
         return resultado
       }
 
-      console.log(
-        `\nCargando el catálogo sintético (semilla "${opciones.semilla}"): ` +
-          `${opciones.generos} géneros, ${opciones.especies} especies, ` +
-          `${opciones.sinonimos} sinónimos, ${opciones.comunes} nombres comunes`,
-      )
       const inicioCarga = Date.now()
-      exigir(
-        ejecutarPsql([
-          '-1',
-          '-v',
-          `semilla=${opciones.semilla}`,
-          '-v',
-          `generos=${opciones.generos}`,
-          '-v',
-          `especies=${opciones.especies}`,
-          '-v',
-          `sinonimos=${opciones.sinonimos}`,
-          '-v',
-          `comunes=${opciones.comunes}`,
-          '-f',
-          archivoGenerador,
-        ]),
-        'no se pudo cargar el catálogo sintético',
-      )
+      if (opciones.catalogoReal) {
+        console.log(
+          `\nCargando el catálogo real con orki-catalogo cargar: ${opciones.catalogoReal}`,
+        )
+        cargarCatalogoReal(conexion, opciones.catalogoReal)
+      } else {
+        console.log(
+          `\nCargando el catálogo sintético (semilla "${opciones.semilla}"): ` +
+            `${opciones.generos} géneros, ${opciones.especies} especies, ` +
+            `${opciones.sinonimos} sinónimos, ${opciones.comunes} nombres comunes`,
+        )
+        exigir(
+          ejecutarPsql([
+            '-1',
+            '-v',
+            `semilla=${opciones.semilla}`,
+            '-v',
+            `generos=${opciones.generos}`,
+            '-v',
+            `especies=${opciones.especies}`,
+            '-v',
+            `sinonimos=${opciones.sinonimos}`,
+            '-v',
+            `comunes=${opciones.comunes}`,
+            '-f',
+            archivoGenerador,
+          ]),
+          'no se pudo cargar el catálogo sintético',
+        )
+      }
       exigir(
         ejecutarPsql([
           '-c',
@@ -412,9 +522,11 @@ async function principal() {
       const filas = resultados.map((resultado) => {
         const consulta = consultas[resultado.consulta]
         const recorridosDe = (objeto) => resultado.recorridos?.[objeto] ?? 0
-        const usosIndice = indicesTrigramas.map(recorridosDe)
+        const usosIndice = indicesBusqueda.map(recorridosDe)
         const usaIndices =
-          !contarRecorridos || usosIndice.every((uso) => uso > 0)
+          !contarRecorridos ||
+          (usosIndice.some((uso) => uso > 0) &&
+            recorridosDe('species_names') === 0)
         const cumple = resultado.p95 <= opciones.umbralMs
         if (!cumple) {
           fallos.push(
@@ -422,7 +534,9 @@ async function principal() {
           )
         }
         if (!usaIndices) {
-          fallos.push(`"${consulta.texto}": no usa los índices de trigramas`)
+          fallos.push(
+            `"${consulta.texto}": no usa ningún índice de búsqueda o recorre species_names entera`,
+          )
         }
         return [
           consulta.descripcion,
@@ -449,7 +563,7 @@ async function principal() {
             'p95 ms',
             'Máx ms',
             'Filas',
-            'Trigramas sp/nombres',
+            'Prefijo / trigramas sp / nombres',
             'Seq sp/nombres',
             '',
           ],
@@ -458,10 +572,11 @@ async function principal() {
         ),
       )
       console.log(
-        '\n  Trigramas sp/nombres: recorridos por llamada de species_scientific_name_trgm_idx y\n' +
-          '  species_names_name_trgm_idx (2 = las dos ramas del "or", similitud y prefijo; 1 con\n' +
-          '  menos de 3 caracteres, que solo busca por prefijo; el doble con una abreviatura, que\n' +
-          '  busca también la forma expandida).\n' +
+        '\n  Prefijo / trigramas sp / nombres: recorridos por llamada de\n' +
+          '  species_scientific_name_prefix_idx (btree, prefijo de una palabra), de\n' +
+          '  species_scientific_name_trgm_idx y de species_names_name_trgm_idx. La búsqueda va por\n' +
+          '  etapas y para en cuanto llena el tope, así que una consulta que se resuelve por prefijo\n' +
+          '  no recorre los de trigramas.\n' +
           '  Seq sp/nombres: recorridos secuenciales por llamada de species y species_names. En\n' +
           '  species puede haber uno: el hash join que añade los datos de la especie a los\n' +
           '  candidatos, si el planificador lo prefiere al índice; en species_names debe ser 0.',
@@ -522,7 +637,8 @@ async function principal() {
         consultas.forEach((consulta, indice) => {
           console.log(`\n=== ${consulta.descripcion}: ${consulta.texto}`)
           console.log(
-            porConsulta.get(indice) ?? '(sin plan: tardó menos de 1 ms)',
+            porConsulta.get(indice) ??
+              '(sin planes: ninguna etapa tardó 1 ms o más)',
           )
         })
       }
@@ -530,7 +646,7 @@ async function principal() {
       const segundos = ((Date.now() - inicio) / 1000).toFixed(1)
       if (fallos.length === 0) {
         console.log(
-          `\nTodas las consultas cumplen: p95 ≤ ${opciones.umbralMs} ms y usan los índices de trigramas (${segundos} s).`,
+          `\nTodas las consultas cumplen: p95 ≤ ${opciones.umbralMs} ms y usan los índices de búsqueda (${segundos} s).`,
         )
         return 0
       }
