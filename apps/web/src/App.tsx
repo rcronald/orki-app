@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router'
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { RequireAuth, RequireCatalogAdmin } from './auth/RouteGuards.tsx'
@@ -10,9 +11,23 @@ import { NewPlantPage } from './pages/NewPlantPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { SignInPage } from './pages/SignInPage.tsx'
 import { SignUpPage } from './pages/SignUpPage.tsx'
+import type { AppEnv } from './config/env.ts'
 import { PATHS } from './routes/paths.ts'
 
+// Panel de diagnóstico de la identidad (/diagnostico), solo fuera de
+// producción. Misma técnica que la muestra (ver routes/AppRouter.tsx): con
+// VITE_APP_ENV=prod la comparación es estática, Vite la sustituye por false y
+// el import dinámico desaparece del build; además, la ruta solo se registra si
+// el ambiente ya validado no es prod. Va dentro de Clerk porque muestra el
+// usuario según Clerk, pero no exige sesión.
+const IdentityDiagnosticsPage =
+  import.meta.env.VITE_APP_ENV === 'prod'
+    ? null
+    : lazy(() => import('./diagnostics/IdentityDiagnosticsPage.tsx'))
+
 interface AppProps {
+  /** Ambiente ya validado por parseEnv. */
+  appEnv: AppEnv
   /** Clave publicable de Clerk ya validada por parseEnv. */
   clerkPublishableKey: string
 }
@@ -24,13 +39,23 @@ interface AppProps {
 //
 // Las rutas de acceso terminan en /* porque Clerk (routing="path") monta sus
 // pasos como subrutas: /iniciar-sesion/factor-one, /iniciar-sesion/sso-callback.
-function App({ clerkPublishableKey }: AppProps) {
+function App({ appEnv, clerkPublishableKey }: AppProps) {
   return (
     <AuthProvider publishableKey={clerkPublishableKey}>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
           <Route path={PATHS.catalog} element={<CatalogPage />} />
+          {IdentityDiagnosticsPage && appEnv !== 'prod' && (
+            <Route
+              path={PATHS.identityDiagnostics}
+              element={
+                <Suspense fallback={null}>
+                  <IdentityDiagnosticsPage />
+                </Suspense>
+              }
+            />
+          )}
           <Route element={<RequireAuth />}>
             <Route path={PATHS.collection} element={<CollectionPage />} />
             <Route path={PATHS.newPlant} element={<NewPlantPage />} />

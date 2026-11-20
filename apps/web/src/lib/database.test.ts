@@ -18,20 +18,13 @@ import {
   type SpeciesStatus,
   type SpeciesType,
 } from './database.ts'
-import { createSupabase, type OrkiSupabaseClient } from './supabase.ts'
+import { getSupabase, type OrkiSupabaseClient } from './supabase.ts'
 
 // Pruebas de los tipos del esquema. Lo importante pasa al compilar (npm run typecheck): cada
 // `@ts-expect-error` marca un uso incorrecto que TypeScript debe rechazar; si dejara de ser un
 // error (por ejemplo, porque el cliente perdiera el tipo Database), el typecheck fallaría.
 // Ninguna prueba hace consultas: los constructores de consultas de supabase-js no envían nada
 // hasta que se esperan con await, y aquí nunca se esperan.
-
-const CONFIG = {
-  supabaseUrl: 'https://ejemplo.supabase.co',
-  supabasePublishableKey: 'sb_publishable_clave_de_prueba',
-  appEnv: 'dev',
-  clerkPublishableKey: 'pk_test_clave_de_prueba',
-} as const
 
 // Solo se compila: describe usos válidos e inválidos del cliente tipado.
 function usosDelCliente(supabase: OrkiSupabaseClient) {
@@ -78,12 +71,19 @@ function usosDelCliente(supabase: OrkiSupabaseClient) {
   void supabase.from('plants').update({ flower_color: 'green' })
   // @ts-expect-error: falta la columna obligatoria entered_name.
   void supabase.from('plants').insert({ genus_id: 'x', type: 'species' })
+
+  // Funciones expuestas en la API.
+  void supabase.rpc('requesting_user_id')
+  // @ts-expect-error: la función no existe.
+  void supabase.rpc('no_existe')
 }
 void usosDelCliente
 
 describe('tipos del esquema', () => {
   it('el cliente se crea con el tipo Database', () => {
-    expectTypeOf(createSupabase(CONFIG)).toEqualTypeOf<OrkiSupabaseClient>()
+    expectTypeOf(
+      getSupabase,
+    ).returns.resolves.toEqualTypeOf<OrkiSupabaseClient>()
   })
 
   it('exporta los alias de las tablas', () => {

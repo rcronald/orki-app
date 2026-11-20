@@ -8,8 +8,9 @@ import { vi } from 'vitest'
 //   vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 //
 // y fija el estado con setFakeClerk() antes de pintar. Solo simula lo que usa
-// la app: el estado de carga (useClerk().status), la sesión (<Show>) y los
-// componentes, que aquí son marcadores sin la interfaz real de Clerk.
+// la app: el estado de carga (useClerk().status), la sesión (<Show> y
+// useAuth(), con su getToken()) y los componentes, que aquí son marcadores sin
+// la interfaz real de Clerk.
 
 export type FakeClerkStatus = 'loading' | 'ready' | 'degraded' | 'error'
 
@@ -24,6 +25,25 @@ export const fakeClerk: FakeClerkState = {
   status: 'ready',
   signedIn: false,
   appRole: null,
+}
+
+/** Id de usuario de la sesión simulada (userId y claim sub). */
+export const FAKE_USER_ID = 'user_prueba'
+
+/** Token de sesión que devuelve getToken() por defecto con sesión. */
+export const FAKE_SESSION_TOKEN = 'token_de_sesion_de_prueba'
+
+/**
+ * getToken() de useAuth(). Como el real, es la misma función en cada pintado y
+ * devuelve null sin sesión. Una prueba puede cambiar su comportamiento con
+ * mockImplementation (por ejemplo, lanzar ClerkOfflineError).
+ */
+export const getToken = vi.fn<() => Promise<string | null>>(defaultGetToken)
+
+function defaultGetToken() {
+  return Promise.resolve(
+    isLoaded() && fakeClerk.signedIn ? FAKE_SESSION_TOKEN : null,
+  )
 }
 
 /** Llamadas a cerrar sesión desde <SignOutButton>. */
@@ -47,6 +67,8 @@ export function setFakeClerk(next: Partial<FakeClerkState>) {
 export function resetFakeClerk() {
   setFakeClerk({ status: 'ready', signedIn: false, appRole: null })
   signOut.mockReset()
+  getToken.mockReset()
+  getToken.mockImplementation(defaultGetToken)
   lastProviderProps = undefined
   authComponentRendered.mockReset()
 }
@@ -71,18 +93,36 @@ export function useClerk() {
 }
 
 // Como el real (tabla de valores de la documentación de useAuth): mientras
-// carga, isLoaded false e isSignedIn y sessionClaims undefined; sin sesión,
-// false y null; con sesión, los claims del token.
+// carga, isLoaded false e isSignedIn, userId y sessionClaims undefined; sin
+// sesión, false y null; con sesión, el id y los claims del token.
 export function useAuth() {
   if (!isLoaded()) {
-    return { isLoaded: false, isSignedIn: undefined, sessionClaims: undefined }
+    return {
+      isLoaded: false,
+      isSignedIn: undefined,
+      userId: undefined,
+      sessionClaims: undefined,
+      getToken,
+    }
   }
   if (!fakeClerk.signedIn) {
-    return { isLoaded: true, isSignedIn: false, sessionClaims: null }
+    return {
+      isLoaded: true,
+      isSignedIn: false,
+      userId: null,
+      sessionClaims: null,
+      getToken,
+    }
   }
-  const sessionClaims: Record<string, unknown> = { sub: 'user_prueba' }
+  const sessionClaims: Record<string, unknown> = { sub: FAKE_USER_ID }
   if (fakeClerk.appRole !== null) sessionClaims.app_role = fakeClerk.appRole
-  return { isLoaded: true, isSignedIn: true, sessionClaims }
+  return {
+    isLoaded: true,
+    isSignedIn: true,
+    userId: FAKE_USER_ID,
+    sessionClaims,
+    getToken,
+  }
 }
 
 // Como el real: no pinta nada hasta que Clerk ha cargado.

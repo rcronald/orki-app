@@ -15,6 +15,8 @@ export const PATHS = {
   signUp: '/registro',
   /** Página interna del design system; solo existe fuera de producción. */
   showcase: '/muestra',
+  /** Diagnóstico de la identidad (Clerk y Postgres); solo fuera de producción. */
+  identityDiagnostics: '/diagnostico',
 } as const
 
 /** Parámetro con el que Clerk recibe la página a la que volver tras entrar. */

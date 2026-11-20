@@ -4,6 +4,7 @@ import { useCallback, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { internalPathOf, PATHS } from '../routes/paths.ts'
 import { clerkAppearance } from './appearance.ts'
+import { SupabaseSessionBridge } from './SupabaseSessionBridge.tsx'
 
 interface AuthProviderProps {
   /** Clave publicable de Clerk ya validada por parseEnv. */
@@ -26,6 +27,9 @@ interface AuthProviderProps {
 // sin recargar la página. Un destino de otro origen se abre con una carga
 // normal.
 // https://clerk.com/docs/react/guides/development/declarative-mode
+//
+// SupabaseSessionBridge pasa el token de sesión al cliente de Supabase; va
+// antes de los hijos para que su efecto corra antes que los de las páginas.
 export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
   const navigate = useNavigate()
   const routerPush = useCallback(
@@ -48,6 +52,7 @@ export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
       routerPush={routerPush}
       routerReplace={routerReplace}
     >
+      <SupabaseSessionBridge />
       {children}
     </ClerkProvider>
   )

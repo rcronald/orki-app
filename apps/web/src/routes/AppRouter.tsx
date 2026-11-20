@@ -43,7 +43,9 @@ export function AppRouter({ appEnv, clerkPublishableKey }: AppRouterProps) {
           )}
           <Route
             path="*"
-            element={<App clerkPublishableKey={clerkPublishableKey} />}
+            element={
+              <App appEnv={appEnv} clerkPublishableKey={clerkPublishableKey} />
+            }
           />
         </Routes>
       </Suspense>

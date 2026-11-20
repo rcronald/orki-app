@@ -86,11 +86,12 @@ orki-app/
 │       ├── scripts/           Utilidades de la app (generación de iconos)
 │       ├── src/               Código fuente y pruebas
 │       │   ├── assets/        Marcador sin-foto.svg del design system
-│       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol y rutas protegidas
+│       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol, rutas protegidas y token para Supabase
 │       │   ├── components/    Componentes de la app (estructura con la navegación, página)
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
-│       │   ├── lib/           Cliente de Supabase y tipos del esquema
+│       │   ├── diagnostics/   Panel de diagnóstico de la identidad (solo fuera de producción)
+│       │   ├── lib/           Cliente de Supabase (con el token de Clerk) y tipos del esquema
 │       │   ├── pages/         Pantallas (provisionales salvo las de acceso)
 │       │   ├── routes/        Rutas de la app, enrutador de primer nivel, foco y título por página
 │       │   ├── showcase/      Página interna de muestra (solo fuera de producción)
@@ -203,7 +204,7 @@ Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clav
 
 Fuera de producción, la app muestra en la esquina inferior izquierda una etiqueta pequeña con el ambiente ("Desarrollo"), para comprobar a simple vista a qué ambiente apunta una vista previa o el servidor local. Con `VITE_APP_ENV=prod` no aparece.
 
-El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada. No guarda sesión de Supabase Auth: la autenticación es de Clerk (ver [Autenticación](#autenticación)); el envío del token de Clerk a Supabase llega en el issue #58.
+El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada, y se carga de forma diferida (ver [Identidad: de Clerk a Postgres](#identidad-de-clerk-a-postgres)). No usa Supabase Auth: la sesión es de Clerk y el cliente envía su token de sesión en cada petición.
 
 Las pruebas no leen estas variables (la validación se prueba con objetos de entorno de ejemplo), así que `npm test` y `npm run build` funcionan sin ningún `.env`, también en la integración continua.
 
@@ -233,6 +234,7 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 | `/iniciar-sesion/*`        | Inicio de sesión (Clerk)                  | Pública                    |
 | `/registro/*`              | Crear cuenta (Clerk)                      | Pública                    |
 | `/muestra`                 | Muestra del design system                 | Solo fuera de producción   |
+| `/diagnostico`             | Diagnóstico de identidad                  | Solo fuera de producción   |
 | Cualquier otra             | Página no encontrada                      | Pública                    |
 
 - Navegación: `src/components/AppShell.tsx` pinta la cabecera, un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. El enlace "Administración" solo aparece con el rol de administrador.
@@ -257,6 +259,45 @@ Las pantallas de acceso leen `redirect_url` (`src/auth/useAuthRedirectDestinatio
 - La app lo lee de `sessionClaims` de [`useAuth()`](https://clerk.com/docs/react/reference/hooks/use-auth), sin peticiones extra (`useIsCatalogAdmin`). Un cambio de rol llega con el siguiente token de sesión, no al instante.
 - Ocultar el enlace y la pantalla es **solo comodidad de la interfaz**: el token está en el navegador y la interfaz se puede manipular. La protección real son las políticas RLS de la base de datos (#6), que leen el mismo claim del token que verifica Supabase.
 
+### Identidad: de Clerk a Postgres
+
+Supabase no tiene usuarios propios: Clerk está registrado en cada proyecto de Supabase como proveedor de autenticación externo ([integración de terceros con Clerk](https://supabase.com/docs/guides/auth/third-party/clerk), #55) y Supabase valida el token de sesión de Clerk en cada petición. No se usa la plantilla JWT antigua de Clerk ni Supabase Auth.
+
+1. **Clerk** emite el token de sesión: un JWT corto que Clerk renueva solo. Lleva `sub` (el id de usuario de Clerk, `user_...`), `role: authenticated` (lo añade la integración y Supabase lo usa para elegir el rol de Postgres) y `app_role` (el rol de la app, ver [Rol de administrador del catálogo](#rol-de-administrador-del-catálogo)).
+2. **La app** se lo pasa al cliente de Supabase con la opción [`accessToken`](https://supabase.com/docs/reference/javascript/initializing) de supabase-js para tokens de terceros, como indica la [guía de Clerk para Supabase](https://clerk.com/docs/guides/development/integrations/databases/supabase). Antes de cada petición, el cliente pide el token y lo envía en `Authorization: Bearer`, junto con la clave publicable en `apikey`.
+3. **Supabase** comprueba la firma con las claves públicas de la instancia de Clerk, y PostgREST ejecuta la consulta con el rol del claim `role` y deja las claims en la transacción.
+4. **Postgres** lee el usuario con `public.requesting_user_id()`, que devuelve `auth.jwt()->>'sub'` (texto) o `null` sin sesión. Es la función que usarán las políticas RLS de perfiles y plantas (#6): `user_id = (select public.requesting_user_id())`.
+
+Cómo llega el token al cliente (`src/lib/supabase.ts` y `src/auth/SupabaseSessionBridge.tsx`): el cliente vive en el chunk inicial y Clerk en el chunk diferido de la app, así que el cliente no importa Clerk. Pide el token a una _fuente_ registrable: `SupabaseSessionBridge`, montado dentro de `<ClerkProvider>` (en `AuthProvider`), registra una con `setSessionTokenSource()` mientras Clerk tiene sesión y la quita al cerrarla o al desmontarse. La fuente llama a `getToken()` de [`useAuth()`](https://clerk.com/docs/react/reference/hooks/use-auth). Sigue habiendo un único cliente, creado en un único módulo.
+
+Qué pasa en cada caso:
+
+| Situación                                                 | Qué hace el cliente                                                                                                                         |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Con sesión                                                | Envía el token de Clerk. Postgres ve el usuario.                                                                                            |
+| Sin sesión, Clerk cargando o sin cargar, o fuera de Clerk | Sin fuente registrada: envía solo la clave publicable y la petición va como `anon`. El catálogo se lee igual.                               |
+| Tras cerrar sesión                                        | La fuente desaparece al cambiar `useAuth()`: la petición siguiente ya no lleva el token.                                                    |
+| Con sesión y sin conexión                                 | `getToken()` lanza `ClerkOfflineError` (Core 3). La petición no se envía y devuelve un error con motivo `offline`.                          |
+| Sesión caducada o cerrada en otra pestaña                 | `getToken()` devuelve `null` mientras la app aún cree tener sesión. La petición no se envía y devuelve un error con motivo `session-ended`. |
+| Cualquier otro fallo de `getToken()`                      | La petición no se envía y devuelve un error con motivo `failed`.                                                                            |
+
+La regla: **con sesión, una petición nunca sale como anónima ni falla en silencio.** Si no hay token, no se envía. El error es un `SessionTokenError` con su motivo (`reason`); como supabase-js convierte los fallos previos al envío en un `{ error }` con el texto del error, `sessionTokenFailure(error)` reconoce los dos y devuelve el motivo, y `SESSION_TOKEN_ERROR_TEXT` tiene el texto para la pantalla. Cuando Clerk propaga el cierre de sesión, las peticiones siguientes vuelven a ir como `anon` y el catálogo se lee de nuevo. Mientras Clerk carga, la app no sabe aún si hay sesión y las peticiones van como `anon`: las rutas que exigen sesión no se pintan hasta que Clerk está listo (`RequireAuth`), y para que una petición a datos privados hecha como `anon` falle de forma visible en lugar de devolver una lista vacía, `anon` no debe tener privilegios sobre perfiles ni plantas (hoy no los tiene; #6 debe mantenerlo).
+
+Detalle de supabase-js: las lecturas (`GET`) que fallan antes de enviarse se reintentan hasta tres veces (1, 2 y 4 s), pidiendo el token de nuevo en cada intento; las escrituras y las llamadas a funciones (`rpc`, `POST`) fallan enseguida.
+
+Carga diferida: supabase-js (unos 230 kB) no va en el chunk inicial. `main.tsx` solo guarda la configuración con `initSupabase()`, y `getSupabase()` (asíncrona) carga supabase-js y crea el cliente la primera vez que se pide. El service worker precachea ese chunk como los demás, así que sin conexión también carga.
+
+#### Panel de diagnóstico
+
+Fuera de producción, `/diagnostico` (<http://localhost:5173/diagnostico> con `npm run dev`, o `/diagnostico` en una vista previa) muestra el id de usuario según Clerk y según Postgres (llamando a `requesting_user_id()` con el cliente de la app), si coinciden, el valor del claim `app_role` y el error si la llamada falla. "Volver a consultar" repite la llamada. Sirve con y sin sesión: sin sesión, Postgres devuelve vacío y los dos coinciden "sin sesión". Nunca muestra el token ni lo escribe en la consola.
+
+- Con sesión y "Sí": el token llega a Postgres y Supabase lo valida. Es la comprobación de extremo a extremo del #60.
+- Con sesión y Postgres vacío: Supabase no reconoce el token (revisa la integración con Clerk en el proyecto de Supabase, #55) o la petición salió sin él.
+- Error `PGRST202`: la migración de la función no está aplicada en ese proyecto (`npm run db:push`).
+- Sin `app_role` con el rol puesto en Clerk: falta el claim en la personalización del token de sesión, o el token aún no se ha renovado.
+
+Como la muestra, solo existe con `VITE_APP_ENV` distinto de `prod`: `src/App.tsx` lo carga de forma diferida detrás de la comparación estática con `import.meta.env.VITE_APP_ENV` y en el build de producción no entra. Va dentro de `<ClerkProvider>` porque necesita el usuario de Clerk, pero no exige sesión.
+
 ### Sin conexión
 
 La app instalada abre sin red: el service worker sirve `index.html`, el JavaScript y las fuentes desde su precache, la pantalla pública se pinta enseguida y el acceso no bloquea el arranque.
@@ -265,7 +306,7 @@ Qué hace Clerk sin red. **Verificado en la documentación de Clerk:**
 
 - `<ClerkProvider>` no carga Clerk en el bundle: descarga en el navegador el script de ClerkJS (y el de su interfaz, `@clerk/ui`) desde el CDN, en el dominio de Frontend API de la instancia. Sin conexión, o si el CDN está bloqueado, Clerk no carga ([Script loading](https://clerk.com/docs/guides/development/troubleshooting/script-loading)). La interfaz se puede empaquetar con la app pasando `ui` al proveedor ([`ui`](https://clerk.com/docs/react/reference/components/clerk-provider#ui)).
 - El objeto Clerk tiene un [`status`](https://clerk.com/docs/react/reference/objects/clerk#status): `loading` al iniciar, `ready`, `degraded` (parcialmente operativo) y `error` cuando falla la carga del script o `Clerk.load()`. `loaded` es `true` con `ready` o `degraded`. Los componentes de control [`<ClerkLoading>`, `<ClerkLoaded>`, `<ClerkDegraded>` y `<ClerkFailed>`](https://clerk.com/docs/react/reference/components/control/clerk-failed) siguen ese estado.
-- Desde Core 3, `getToken()` lanza `ClerkOfflineError` sin conexión en lugar de devolver `null` ([guía de Core 3](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3)). Afecta al issue #58, que pedirá el token para Supabase.
+- Desde Core 3, `getToken()` lanza `ClerkOfflineError` sin conexión en lugar de devolver `null` ([guía de Core 3](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3)). Qué hace entonces el cliente de Supabase está en [Identidad: de Clerk a Postgres](#identidad-de-clerk-a-postgres).
 - El modo sin conexión documentado de Clerk es solo para Expo (`__experimental_resourceCache`, con caché de recursos y de tokens; [Offline support](https://clerk.com/docs/guides/development/offline-support)). Para web, `<ClerkProvider>` acepta un prop [`experimental`](https://clerk.com/docs/react/reference/components/clerk-provider#experimental) con las opciones `persistClient` y `rethrowOfflineNetworkErrors`, pero la documentación no explica qué hacen ni las garantiza.
 
 **Comprobado en el código de `@clerk/react` 6.19 y `@clerk/shared` 4.48 (no está en la documentación):** el script de ClerkJS se pide a `https://<frontend-api>/npm/@clerk/clerk-js@6/dist/clerk.browser.js` y Clerk espera hasta 15 s a que aparezca antes de pasar a `error`, aunque la petición falle antes; mientras tanto `status` sigue en `loading`. `<ClerkProvider>` pinta sus hijos desde el principio, sin esperar.
