@@ -52,6 +52,8 @@ const consultas = [
   { descripcion: 'Prefijo de 3 letras', texto: 'cat' },
   { descripcion: 'Prefijo de género', texto: 'dendrob' },
   { descripcion: 'Género + inicio de epíteto', texto: 'phal amab' },
+  { descripcion: 'Abreviatura de género', texto: 'den nob' },
+  { descripcion: 'Híbrido natural con «x»', texto: 'phal x interm' },
   { descripcion: 'Nombre completo con error', texto: 'catleya labiatta' },
   { descripcion: 'Sin tildes (nombre común)', texto: 'orquidea mariposa' },
   { descripcion: 'Sinónimo', texto: 'doritis pulch' },
@@ -457,7 +459,9 @@ async function principal() {
       )
       console.log(
         '\n  Trigramas sp/nombres: recorridos por llamada de species_scientific_name_trgm_idx y\n' +
-          '  species_names_name_trgm_idx (2 = las dos ramas del "or", similitud y prefijo).\n' +
+          '  species_names_name_trgm_idx (2 = las dos ramas del "or", similitud y prefijo; 1 con\n' +
+          '  menos de 3 caracteres, que solo busca por prefijo; el doble con una abreviatura, que\n' +
+          '  busca también la forma expandida).\n' +
           '  Seq sp/nombres: recorridos secuenciales por llamada de species y species_names. En\n' +
           '  species puede haber uno: el hash join que añade los datos de la especie a los\n' +
           '  candidatos, si el planificador lo prefiere al índice; en species_names debe ser 0.',

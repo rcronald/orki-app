@@ -18,12 +18,15 @@
 -- rendimiento de los índices de trigramas:
 --   - Géneros: unos cincuenta reales (los más grandes y los de acceso rápido) y el resto
 --     compuestos con sílabas y terminaciones de géneros de orquídeas (-bium, -thallis,
---     -glossum, -anthe...).
+--     -glossum, -anthe...). Un 3 % de los compuestos son nothogéneros escritos con el signo
+--     de híbrido delante, como los da el Catalogue of Life ("× Rhyncholaeliocattleya").
 --   - Especies: género + epíteto. Algo menos de la mitad de los epítetos sale de una lista de
 --     epítetos reales que se repiten mucho entre géneros (alba, grandiflora, speciosa...),
 --     con unos pocos mucho más frecuentes que el resto; los demás se componen con sílabas y
 --     terminaciones latinas (-ensis, -iana, -ii, -ifolia, -oides...). Un 10 % son híbridos con
---     nombre de grex ("Phalaenopsis Sogo Yukidian") y un 3 % lleva variedad o subespecie.
+--     nombre de grex ("Phalaenopsis Sogo Yukidian"), un 2 % son híbridos naturales con el
+--     signo de híbrido delante del epíteto ("Phalaenopsis × intermedia") y un 3 % lleva
+--     variedad o subespecie.
 --   - El reparto de especies por género es muy desigual, como en la realidad (Bulbophyllum y
 --     Dendrobium tienen miles; muchos géneros, una o ninguna).
 --   - Sinónimos: sobre todo el mismo epíteto en otro género (a veces con otra terminación),
@@ -32,11 +35,12 @@
 --   - Nombres comunes en español (con tildes) e inglés, muy repetidos entre especies y
 --     concentrados en las especies más populares.
 --   - Unas especies fijas con nombres reales (Phalaenopsis amabilis, Cattleya labiata,
---     Doritis pulcherrima, "orquídea mariposa"...), para que las consultas de la medición
+--     Phalaenopsis × intermedia, Doritis pulcherrima, "orquídea mariposa"...), para que las consultas de la medición
 --     tengan una respuesta conocida.
 --
 -- Cumple las restricciones del esquema: nombres sin espacios sobrantes, unicidad sin
--- distinguir mayúsculas (se descartan los repetidos antes de insertar), un nombre alternativo
+-- distinguir mayúsculas (se descartan los repetidos antes de insertar, también los que solo se
+-- diferencian por el signo de híbrido), un nombre alternativo
 -- una sola vez por especie, enumerados válidos y referencia de la fuente única en GBIF.
 
 -- Parámetros y ayudantes -----------------------------------------------------------------
@@ -185,10 +189,14 @@ unicos as (
   order by lower(c.name), c.prioridad, c.n
 ),
 ordenados as (
-  select row_number() over (order by prioridad, n)::integer as orden, name
+  select row_number() over (order by prioridad, n)::integer as orden, prioridad, n, name
   from unicos
 )
-select o.orden, o.name
+-- El signo de híbrido se añade al final, a algunos compuestos: no cambia qué géneros salen.
+select
+  o.orden,
+  case when o.prioridad = 1 and pg_temp.azar(p.semilla, 'notogenero', o.n) < 0.03
+    then '× ' || o.name else o.name end as name
 from ordenados o, parametros p
 where o.orden <= p.generos;
 
@@ -211,6 +219,7 @@ insert into fijas_especies values
   ('Phalaenopsis', 'pulcherrima', 'species'),
   ('Phalaenopsis', 'schilleriana', 'species'),
   ('Phalaenopsis', 'Sogo Yukidian', 'hybrid'),
+  ('Phalaenopsis', '× intermedia', 'hybrid'),
   ('Cattleya', 'labiata', 'species'),
   ('Cattleya', 'trianae', 'species'),
   ('Dendrobium', 'nobile', 'species'),
@@ -249,14 +258,15 @@ with candidatos as (
              )
              else '' end
       else
-        c.epiteto
+        case when c.natural then '× ' else '' end
+        || c.epiteto
         || case when pg_temp.azar(p.semilla, 'infra', c.n) < 0.03
              then case when pg_temp.azar(p.semilla, 'infra-rango', c.n) < 0.5
                     then ' var. ' else ' subsp. ' end
                || pg_temp.elegir(l.epitetos_reales, pg_temp.azar(p.semilla, 'infra-epiteto', c.n))
              else '' end
     end,
-    case when c.hibrido then 'hybrid' else 'species' end::public.species_type
+    case when c.hibrido or c.natural then 'hybrid' else 'species' end::public.species_type
   from parametros p, listas l,
   lateral (
     select
@@ -265,6 +275,9 @@ with candidatos as (
       1 + floor(p.generos * power(pg_temp.azar(p.semilla, 'especie-genero', n), 2.5))::integer
         as genero,
       pg_temp.azar(p.semilla, 'hibrido', n) < 0.10 as hibrido,
+      -- Híbridos naturales: con nombre de especie y el signo de híbrido.
+      pg_temp.azar(p.semilla, 'hibrido', n) >= 0.10
+        and pg_temp.azar(p.semilla, 'hibrido-natural', n) < 0.02 as natural,
       case
         when pg_temp.azar(p.semilla, 'epiteto-real', n) < 0.45 then
           -- Unos pocos epítetos reales se repiten mucho más que el resto.
@@ -286,9 +299,10 @@ con_nombre as (
   join sint_generos g on g.orden = c.genero
 ),
 unicos as (
-  select distinct on (lower(scientific_name)) *
+  -- Sin distinguir mayúsculas ni el signo de híbrido, que la búsqueda ignora.
+  select distinct on (lower(replace(scientific_name, '× ', ''))) *
   from con_nombre
-  order by lower(scientific_name), prioridad, n
+  order by lower(replace(scientific_name, '× ', '')), prioridad, n
 ),
 ordenados as (
   select row_number() over (order by prioridad, n)::integer as orden, *

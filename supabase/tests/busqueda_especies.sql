@@ -107,7 +107,7 @@ select pruebas.iguales('el primero', pg_temp.posicion('   phalaenopsis    amabil
 select pruebas.iguales('phal amab', pg_temp.posicion('phal amab', 'Phalaenopsis amabilis'), 1::bigint);
 select pruebas.iguales('cattleya lab', pg_temp.posicion('cattleya lab', 'Cattleya labiata'), 1::bigint);
 select pruebas.iguales('guaria mor', pg_temp.posicion('guaria mor', 'Guarianthe skinneri'), 1::bigint);
-select pruebas.comprobar('ph encuentra las Phalaenopsis', pg_temp.posicion('ph', 'Phalaenopsis amabilis') is not null);
+select pruebas.comprobar('ph encuentra las Phalaenopsis (solo por prefijo)', pg_temp.posicion('ph', 'Phalaenopsis amabilis') is not null);
 select pruebas.iguales('phal yuki, con una palabra en medio', pg_temp.posicion('phal yuki', 'Phalaenopsis Sogo Yukidian'), 1::bigint);
 select pruebas.iguales('phal a', pg_temp.posicion('phal a', 'Phalaenopsis amabilis'), 1::bigint);
 select pruebas.iguales('phal ap', pg_temp.posicion('phal ap', 'Phalaenopsis aphrodite'), 1::bigint);
@@ -217,7 +217,7 @@ select pruebas.iguales('solo espacios', (select count(*) from public.search_spec
 select pruebas.iguales('una letra', (select count(*) from public.search_species('p')), 0::bigint);
 select pruebas.iguales('una letra entre espacios', (select count(*) from public.search_species('   p   ')), 0::bigint);
 select pruebas.iguales('sin letras ni números', (select count(*) from public.search_species('%%')), 0::bigint);
-select pruebas.comprobar('dos letras sí buscan', (select count(*) from public.search_species('ph')) > 0);
+select pruebas.comprobar('dos letras sí buscan (por prefijo)', (select count(*) from public.search_species('ph')) > 0);
 
 -- prueba: los comodines de LIKE de la consulta no se interpretan
 -- Si "_" y "%" fueran comodines, "d_ndro" y "d%ro" serían prefijos de "dendrobium nobile" y
