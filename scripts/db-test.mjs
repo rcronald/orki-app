@@ -11,7 +11,8 @@
 // del archivo y se ejecutan al comienzo de cada una. Cada prueba corre en su propia sesión de
 // psql, dentro de una transacción que se revierte al final, con el rol "postgres" (dueño de
 // las tablas, como en el editor SQL de Supabase); la prueba puede cambiar de rol con
-// "set local role". Si una sentencia da error, la prueba falla con ese mensaje.
+// "set local role". Si una sentencia da error, la prueba falla con ese mensaje. Una prueba
+// puede incluir otro archivo SQL con \i, con la ruta relativa a la raíz del repositorio.
 //
 // Termina con código 0 si todas las pruebas pasan y 1 si alguna falla o no se pudo preparar
 // la base.
@@ -124,6 +125,8 @@ async function principal() {
     )
   }
 
+  // psql resuelve las rutas de \i desde el directorio actual.
+  process.chdir(raizRepositorio)
   const inicio = Date.now()
   console.log('Preparando la base de datos desechable')
   return conBaseDesechable(
