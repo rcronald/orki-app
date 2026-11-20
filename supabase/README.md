@@ -4,6 +4,7 @@ Esta carpeta contiene lo que la CLI de Supabase necesita para gestionar la base 
 
 - `config.toml`: configuración mínima de la CLI. Orki no usa el entorno local de Supabase con Docker, así que aquí no se configuran servicios locales; la configuración de autenticación, almacenamiento y demás servicios vive en cada proyecto remoto.
 - `migrations/`: las migraciones SQL, en orden. Cada archivo se aplica una sola vez en cada ambiente y la CLI registra cuáles ya se aplicaron.
+- `datos-ejemplo/`: datos de ejemplo del catálogo, solo para el proyecto de desarrollo. Los carga `npm run db:seed:dev` (ver [Datos de ejemplo en desarrollo](../README.md#datos-de-ejemplo-en-desarrollo)); no son migraciones y no llegan a producción.
 - `tests/`: las pruebas de base de datos, en SQL, que ejecuta `npm run db:test` (ver [Pruebas de base de datos](#pruebas-de-base-de-datos)).
 - `.env.example`: plantilla de las credenciales del proyecto de desarrollo. Se copia a `supabase/.env`, que git ignora.
 
@@ -47,6 +48,7 @@ Las pruebas están organizadas por tema, un archivo por tema:
 | `sincronizacion.sql`     | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                  |
 | `acceso_por_rol.sql`     | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.              |
 | `identidad.sql`          | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas. |
+| `datos_ejemplo.sql`      | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario. |
 | `seguridad_general.sql`  | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.         |
 
 `seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon` o deja una función de `private` ejecutable desde la API.
@@ -55,7 +57,7 @@ Las pruebas están organizadas por tema, un archivo por tema:
 
 Cada prueba empieza con una línea `-- prueba: <qué comprueba>` y llega hasta la siguiente. Lo que haya antes de la primera prueba son los datos de partida del archivo, que se ejecutan al comienzo de cada prueba.
 
-Cada prueba corre en su propia sesión, dentro de una transacción que se revierte al terminar, con el rol `postgres` (el dueño de las tablas). Por eso las pruebas son independientes entre sí y no dejan datos, y pueden usar `set local role anon` (o `authenticated`, `service_role`) y `set local request.jwt.claims = '{"sub": "user_a"}'` para actuar como una petición de la API. Una prueba no puede abrir, confirmar ni revertir transacciones (`begin`, `commit`, `rollback`); el comando la rechaza.
+Cada prueba corre en su propia sesión, dentro de una transacción que se revierte al terminar, con el rol `postgres` (el dueño de las tablas). Por eso las pruebas son independientes entre sí y no dejan datos, y pueden usar `set local role anon` (o `authenticated`, `service_role`) y `set local request.jwt.claims = '{"sub": "user_a"}'` para actuar como una petición de la API. Una prueba no puede abrir, confirmar ni revertir transacciones (`begin`, `commit`, `rollback`); el comando la rechaza. Puede incluir otro archivo SQL con `\i`, con la ruta relativa a la raíz del repositorio (por ejemplo `\i supabase/datos-ejemplo/catalogo.sql`).
 
 Una prueba falla en cuanto una sentencia da error. Para comprobar resultados se usan las funciones del esquema `pruebas` (`tests/soporte/ayudantes.sql`), que solo existen en la base desechable:
 
