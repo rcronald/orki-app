@@ -22,6 +22,7 @@
     "db:status": "node scripts/supabase-db.mjs estado",
     "db:push": "node scripts/supabase-db.mjs aplicar",
     "db:seed:dev": "node scripts/supabase-db.mjs datos-ejemplo",
+    "db:seed:plants": "node scripts/supabase-db.mjs plantas-ejemplo",
     "db:test": "node scripts/db-test.mjs",
     "db:perf": "node scripts/db-perf.mjs",
     "db:types": "node scripts/db-types.mjs",

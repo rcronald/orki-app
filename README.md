@@ -66,6 +66,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run db:status`      | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                                                                                  |
 | `npm run db:push`        | Aplica las migraciones pendientes en el proyecto de desarrollo.                                                                                                            |
 | `npm run db:seed:dev`    | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.                                                                 |
+| `npm run db:seed:plants` | Carga plantas de ejemplo para un usuario en el proyecto de desarrollo (`-- <id de usuario> [cantidad]`), o las borra con `--borrar`.                                       |
 | `npm run db:test`        | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.                                                                  |
 | `npm run db:perf`        | Mide la búsqueda con un catálogo sintético en un Postgres desechable. No corre en el CI (ver [Rendimiento de la búsqueda](supabase/README.md#rendimiento-de-la-búsqueda)). |
 | `npm run db:types`       | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.                                                                 |
@@ -112,7 +113,7 @@ orki-app/
 │   ├── db-desechable/         Base Postgres desechable con el esquema aplicado
 │   ├── db-test.mjs            Pruebas de base de datos (db:test)
 │   ├── db-types.mjs           Tipos de TypeScript del esquema (db:types, db:types:check)
-│   └── supabase-db.mjs        Scripts de migraciones y datos de ejemplo (db:new, db:status, db:push, db:seed:dev)
+│   └── supabase-db.mjs        Scripts de migraciones y datos de ejemplo (db:new, db:status, db:push, db:seed:dev, db:seed:plants)
 ├── supabase/
 │   ├── config.toml            Configuración de la CLI de Supabase
 │   ├── datos-ejemplo/         Datos de ejemplo del catálogo, solo para desarrollo (db:seed:dev)
@@ -618,6 +619,21 @@ Carga en el proyecto de desarrollo unas pocas especies e híbridos reales del ca
 **Es solo para desarrollo.** No es una migración ni el `seed.sql` de la CLI, así que `db:push` y el workflow de producción no lo aplican nunca. Además, el comando se niega a ejecutarse si `SUPABASE_PROJECT_REF` no es el proyecto de desarrollo (`xaitolsnmjlpyptntfwi`), y lo dice expresamente si es el de producción. Usa las mismas credenciales que `db:push` (ver [Credenciales](#credenciales)): enlaza el proyecto, ejecuta el archivo con `supabase db query --remote --yes` y muestra un resumen de lo que hay en el catálogo.
 
 Se puede repetir: todas las inserciones usan `on conflict ... do nothing` sobre las claves únicas del esquema, así que volver a cargarlo no duplica nada ni cambia lo que ya existe (tampoco las especies editadas a mano; si cambias en el archivo el género o el tipo de una especie ya cargada, ese cambio no se aplica). Todo va en un único bloque `do`, de modo que o se carga entero o no se carga nada. No toca `plants` ni `profiles`. Las pruebas de base de datos (`supabase/tests/datos_ejemplo.sql`) lo cargan sobre la base desechable y comprueban los recuentos, que una segunda carga no cambia nada y que no toca el inventario.
+
+#### Plantas de ejemplo para un usuario
+
+Para probar el inventario con una colección grande (por ejemplo, la prueba de fluidez con 100 plantas) hay un segundo conjunto de datos, también solo para desarrollo:
+
+```bash
+npm run db:seed:plants -- <id de usuario de Clerk> [cantidad]   # 100 por defecto, 1000 como mucho
+npm run db:seed:plants -- <id de usuario de Clerk> --borrar     # quita solo las de ejemplo
+```
+
+- El id de usuario es el de la instancia de **desarrollo** de Clerk (`user_...`). Se ve en `/diagnostico` con la sesión iniciada, en local o en una vista previa.
+- Carga `supabase/datos-ejemplo/plantas.sql`: un 85 % de plantas enlazadas a especies del catálogo, repartidas entre los géneros más comunes en cultivo, y un 15 % con nombre libre, que quedan "por validar"; con fechas, orígenes, ubicaciones, algunos apodos y colores, y unas pocas dadas de baja. Conviene tener cargado antes el catálogo (el real o los datos de ejemplo).
+- Todas llevan un origen terminado en " (prueba)". Por eso `--borrar` no toca las plantas reales del usuario.
+- Cada ejecución añade plantas; no sustituye las anteriores.
+- Como `db:seed:dev`, se niega a ejecutarse si el proyecto no es el de desarrollo. Escribe con la conexión de administración, que no pasa por las políticas RLS: por eso exige el id exacto del usuario.
 
 ### Pruebas de la base de datos
 
