@@ -10,6 +10,7 @@
 
 import {
   Constants,
+  type Database,
   type Enums,
   type Tables,
   type TablesInsert,
@@ -40,9 +41,18 @@ export type Profile = Tables<'profiles'>
 export type ProfileInsert = TablesInsert<'profiles'>
 export type ProfileUpdate = TablesUpdate<'profiles'>
 
+// La auditoría del catálogo solo se lee: nadie la escribe por la API.
+export type CatalogAuditLogRow = Tables<'catalog_audit_log'>
+
 export type Plant = Tables<'plants'>
 export type PlantInsert = TablesInsert<'plants'>
 export type PlantUpdate = TablesUpdate<'plants'>
+
+// Funciones ----------------------------------------------------------------------------
+
+/** Una entrada del historial de una especie (species_history). */
+export type SpeciesHistoryRow =
+  Database['public']['Functions']['species_history']['Returns'][number]
 
 // Enumerados ---------------------------------------------------------------------------
 

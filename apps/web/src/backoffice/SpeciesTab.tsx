@@ -496,6 +496,7 @@ export function SpeciesTab({
               detail={detail}
               focusRequest={focusRequest}
               source={source}
+              revision={revision}
               onChanged={onCatalogChanged}
               onDeleted={(message) => {
                 setReturnFocusTo(detailId)

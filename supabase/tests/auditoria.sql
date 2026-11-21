@@ -476,5 +476,7 @@ select pruebas.iguales(
   'catalog_audit_log_action_id_idx: (action_id); '
   'catalog_audit_log_created_at_idx: (created_at); '
   'catalog_audit_log_pkey: (id); '
-  'catalog_audit_log_row_idx: (table_name, row_id, id)'
+  'catalog_audit_log_row_idx: (table_name, row_id, id); '
+  -- De la migración del historial de una especie (historial_especie.sql).
+  'catalog_audit_log_species_idx: (species_id, id)'
 );

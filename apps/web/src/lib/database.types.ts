@@ -24,6 +24,7 @@ export type Database = {
           new_values: Json | null
           old_values: Json | null
           row_id: string | null
+          species_id: string | null
           table_name: string | null
         }
         ComputedFields: never
@@ -37,6 +38,7 @@ export type Database = {
           new_values?: Json | null
           old_values?: Json | null
           row_id?: string | null
+          species_id?: string | null
           table_name?: string | null
         }
         Update: {
@@ -49,6 +51,7 @@ export type Database = {
           new_values?: Json | null
           old_values?: Json | null
           row_id?: string | null
+          species_id?: string | null
           table_name?: string | null
         }
         Relationships: []
@@ -532,6 +535,25 @@ export type Database = {
           target_species_ids: string[]
         }
         Returns: number
+      }
+      species_history: {
+        Args: {
+          before_entry_id?: number
+          page_size?: number
+          target_species_id: string
+        }
+        Returns: {
+          action: string
+          action_id: string
+          actor: string
+          changes: Json
+          created_at: string
+          details: Json
+          entry_id: number
+          genus_names: Json
+          has_more: boolean
+          other_change_count: number
+        }[]
       }
       update_catalog_genus: {
         Args: {

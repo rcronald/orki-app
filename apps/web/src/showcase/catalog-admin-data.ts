@@ -2,11 +2,15 @@ import type { CatalogAdminSource } from '../backoffice/source.ts'
 import {
   CATALOG_PAGE_SIZE,
   CatalogAdminError,
+  SPECIES_HISTORY_PAGE_SIZE,
+  type AuditRowChange,
+  type AuditValues,
   type CatalogAdminFailure,
   type CatalogGenusRow,
   type CatalogGenusDetail,
   type CatalogSpeciesDetail,
   type CatalogSpeciesRow,
+  type SpeciesHistoryEntry,
 } from '../lib/catalogAdmin.ts'
 import {
   cleanCatalogText,
@@ -36,7 +40,9 @@ import type {
 // tolera errores de tipeo como la de verdad. Las escrituras cambian el
 // catálogo en memoria con las mismas reglas que la base (nombre único sin
 // distinguir mayúsculas ni el signo «×», baja solo sin plantas...), hasta que
-// se cambia de escenario.
+// se cambia de escenario. Cada escritura deja su entrada en el historial de
+// la especie, como la auditoría de la base; la primera especie trae además
+// unas entradas de ejemplo (una carga, una edición y una fusión).
 
 interface SampleGenus {
   id: string
@@ -355,6 +361,46 @@ function abbreviationId(genusId: string, index: number): string {
   return `${genusId}-a${index}`
 }
 
+/** Id de usuario de Clerk inventado para el historial de muestra. */
+const SAMPLE_ADMIN = 'user_2NxbVd1QeR5ZkT9mFh3LpA7sW8c'
+
+/** Valores de una fila como los guarda la auditoría: solo los distintos. */
+function diff(
+  before: AuditValues,
+  after: AuditValues,
+): [AuditValues, AuditValues] | null {
+  const oldValues: AuditValues = {}
+  const newValues: AuditValues = {}
+  for (const key of Object.keys(after)) {
+    if (before[key] !== after[key]) {
+      oldValues[key] = before[key] ?? null
+      newValues[key] = after[key] ?? null
+    }
+  }
+  return Object.keys(newValues).length === 0 ? null : [oldValues, newValues]
+}
+
+function speciesValues(item: SampleSpecies): AuditValues {
+  return {
+    id: item.id,
+    scientific_name: item.scientificName,
+    genus_id: item.genusId,
+    type: item.type,
+    status: item.status,
+    source: item.source,
+    source_ref: item.sourceRef,
+  }
+}
+
+function nameValues(speciesId: string, name: SampleName): AuditValues {
+  return {
+    species_id: speciesId,
+    name: name.name,
+    type: name.type,
+    language: name.language,
+  }
+}
+
 const CREATED_AT = '2026-11-20T14:37:00Z'
 const UPDATED_AT = '2026-11-21T08:15:00Z'
 
@@ -406,6 +452,79 @@ export function createSampleCatalogSource(
         compareKey(normalize(a.scientificName), normalize(b.scientificName)) ||
         compareKey(a.id, b.id),
     )
+
+  // Historial: una entrada por escritura, de la especie a la que se refiere.
+  const history: { speciesId: string; entry: SpeciesHistoryEntry }[] = []
+  const record = (
+    speciesId: string,
+    changes: AuditRowChange[],
+    extra: Partial<SpeciesHistoryEntry> = {},
+  ) => {
+    const id = history.length + 1
+    history.push({
+      speciesId,
+      entry: {
+        id,
+        actionId: `accion-de-muestra-${id}`,
+        actor: SAMPLE_ADMIN,
+        action: null,
+        details: null,
+        createdAt: new Date().toISOString(),
+        changes,
+        otherChangeCount: 0,
+        genusNames: Object.fromEntries(
+          genera.map((genus) => [genus.id, genus.name]),
+        ),
+        ...extra,
+      },
+    })
+  }
+  const firstSpecies = species[0]
+  if (firstSpecies) {
+    record(firstSpecies.id, [], {
+      actor: 'carga-col26.10',
+      action: 'catalog_import',
+      createdAt: '2026-11-19T10:02:00Z',
+    })
+    record(
+      firstSpecies.id,
+      [
+        {
+          table: 'species',
+          rowId: firstSpecies.id,
+          action: 'update',
+          // Una errata corregida.
+          oldValues: {
+            scientific_name: firstSpecies.scientificName.replace(/s$/, ''),
+          },
+          newValues: { scientific_name: firstSpecies.scientificName },
+        },
+      ],
+      { createdAt: '2026-11-20T16:40:00Z' },
+    )
+    record(
+      firstSpecies.id,
+      [
+        {
+          table: 'species_names',
+          rowId: `${firstSpecies.id}-fusion`,
+          action: 'insert',
+          oldValues: null,
+          newValues: {
+            species_id: firstSpecies.id,
+            name: `${firstSpecies.scientificName} var. ficticia`,
+            type: 'synonym',
+            language: null,
+          },
+        },
+      ],
+      {
+        action: 'merge_species',
+        otherChangeCount: 2,
+        createdAt: '2026-11-21T08:15:00Z',
+      },
+    )
+  }
 
   const reject = (
     problem: CatalogWriteProblem,
@@ -711,6 +830,20 @@ export function createSampleCatalogSource(
         options.signal,
         () => species.find((item) => item.id === id)?.plants ?? 0,
       ),
+    speciesHistory: (id, options = {}) =>
+      respond(options.signal, () => {
+        const size = options.pageSize ?? SPECIES_HISTORY_PAGE_SIZE
+        const before = options.before
+        const list = history
+          .filter(
+            (item) =>
+              item.speciesId === id &&
+              (before === undefined || item.entry.id < before),
+          )
+          .map((item) => item.entry)
+          .sort((a, b) => b.id - a.id)
+        return { entries: list.slice(0, size), hasMore: list.length > size }
+      }),
     genus: (id, options = {}) =>
       respond(options.signal, () => {
         const genus = genera.find((candidate) => candidate.id === id)
@@ -766,6 +899,15 @@ export function createSampleCatalogSource(
             input.type === 'common' ? input.language?.trim() || null : null,
         }
         item.names.push(entry)
+        record(item.id, [
+          {
+            table: 'species_names',
+            rowId: nameId(item.id, item.names.length - 1),
+            action: 'insert',
+            oldValues: null,
+            newValues: nameValues(item.id, entry),
+          },
+        ])
         return {
           id: nameId(item.id, item.names.length - 1),
           speciesId: item.id,
@@ -782,13 +924,37 @@ export function createSampleCatalogSource(
           language:
             input.type === 'common' ? input.language?.trim() || null : null,
         }
+        const before = item.names[index]
+        const changed = before
+          ? diff(nameValues(item.id, before), nameValues(item.id, entry))
+          : null
         item.names[index] = entry
+        if (changed)
+          record(item.id, [
+            {
+              table: 'species_names',
+              rowId: id,
+              action: 'update',
+              oldValues: changed[0],
+              newValues: changed[1],
+            },
+          ])
         return { id, speciesId: item.id, ...entry }
       }),
     deleteName: (id) =>
       respond(undefined, () => {
         const [item, index] = findName(id)
-        item.names.splice(index, 1)
+        const [removed] = item.names.splice(index, 1)
+        if (removed)
+          record(item.id, [
+            {
+              table: 'species_names',
+              rowId: id,
+              action: 'delete',
+              oldValues: nameValues(item.id, removed),
+              newValues: null,
+            },
+          ])
       }),
     createGenus: (input) =>
       respond(undefined, () => {
@@ -859,6 +1025,15 @@ export function createSampleCatalogSource(
           plants: 0,
         }
         species.push(item)
+        record(item.id, [
+          {
+            table: 'species',
+            rowId: item.id,
+            action: 'insert',
+            oldValues: null,
+            newValues: speciesValues(item),
+          },
+        ])
         return written(item)
       }),
     updateSpecies: (id, input) =>
@@ -870,6 +1045,7 @@ export function createSampleCatalogSource(
           const invalid = validateSpeciesInput(input)
           if (invalid) throw invalid
         }
+        const before = speciesValues(item)
         const changed =
           name !== item.scientificName ||
           input.genusId !== item.genusId ||
@@ -882,6 +1058,17 @@ export function createSampleCatalogSource(
           changed && item.status === 'imported' && input.status === 'imported'
             ? 'validated'
             : input.status
+        const values = diff(before, speciesValues(item))
+        if (values)
+          record(item.id, [
+            {
+              table: 'species',
+              rowId: item.id,
+              action: 'update',
+              oldValues: values[0],
+              newValues: values[1],
+            },
+          ])
         return written(item)
       }),
     setSpeciesStatus: (ids, status) =>
@@ -896,7 +1083,22 @@ export function createSampleCatalogSource(
             missingCount: unique.length - items.length,
           })
         const changing = items.filter((item) => item.status !== status)
-        for (const item of changing) item.status = status
+        for (const item of changing) {
+          record(
+            item.id,
+            [
+              {
+                table: 'species',
+                rowId: item.id,
+                action: 'update',
+                oldValues: { status: item.status },
+                newValues: { status },
+              },
+            ],
+            { otherChangeCount: changing.length - 1 },
+          )
+          item.status = status
+        }
         return changing.length
       }),
     deleteSpecies: (id) =>
@@ -904,6 +1106,15 @@ export function createSampleCatalogSource(
         const item = findSpecies(id)
         if (item.plants > 0)
           reject('species-has-plants', { plantCount: item.plants })
+        record(item.id, [
+          {
+            table: 'species',
+            rowId: item.id,
+            action: 'delete',
+            oldValues: speciesValues(item),
+            newValues: null,
+          },
+        ])
         species.splice(species.indexOf(item), 1)
       }),
   }

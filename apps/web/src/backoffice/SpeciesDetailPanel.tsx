@@ -11,6 +11,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { LoadError, SpeciesStatusBadge } from './parts.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesForm } from './SpeciesForm.tsx'
+import { SpeciesHistory } from './SpeciesHistory.tsx'
 import { SpeciesNames } from './SpeciesNames.tsx'
 import {
   formatCount,
@@ -38,13 +39,16 @@ export interface SpeciesDetailPanelProps {
   onChanged: (message: string) => void
   /** Se borró la especie: la pantalla cierra el detalle. */
   onDeleted: (message: string) => void
+  /** Cambia tras cada escritura: el historial se vuelve a leer. */
+  revision?: number
 }
 
 // Detalle de una especie, en un panel junto a la tabla (debajo en pantallas
 // estrechas): nombres alternativos, referencia de la fuente con enlace a la
 // ficha del Catalogue of Life, fechas y número de plantas enlazadas. Desde
 // aquí se edita (nombre, género, tipo y estado), se borra si no tiene plantas
-// enlazadas y se editan sus sinónimos y nombres comunes (SpeciesNames).
+// enlazadas y se editan sus sinónimos y nombres comunes (SpeciesNames). Al
+// final, su historial de cambios (SpeciesHistory), también mientras se edita.
 export function SpeciesDetailPanel({
   detail,
   onClose,
@@ -52,6 +56,7 @@ export function SpeciesDetailPanel({
   source,
   onChanged,
   onDeleted,
+  revision = 0,
 }: SpeciesDetailPanelProps) {
   const headingId = useId()
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -153,6 +158,9 @@ export function SpeciesDetailPanel({
           onDeleted={onDeleted}
           onChanged={onChanged}
         />
+      )}
+      {species && (
+        <SpeciesHistory species={species} source={source} revision={revision} />
       )}
     </section>
   )
