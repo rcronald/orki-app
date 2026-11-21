@@ -1,8 +1,9 @@
-import { memo } from 'react'
+import { memo, useRef } from 'react'
 import type { CollectionPlant } from '../collection/model.ts'
 import { SpecimenCard } from '../components/ui/SpecimenCard.tsx'
-import { plantThumbnail, plantValidationStatus } from './plant-display.ts'
+import { plantValidationStatus } from './plant-display.ts'
 import type { InventoryView } from './preferences.ts'
+import { usePlantThumbnail } from './usePlantThumbnail.ts'
 
 interface PlantCardProps {
   plant: CollectionPlant
@@ -12,7 +13,8 @@ interface PlantCardProps {
 
 // Tarjeta de una planta del inventario: nombre (en cursiva si es del
 // catálogo; el ingresado, sin cursiva, si está por validar), apodo, género e
-// insignia de validación.
+// insignia de validación. La miniatura se pide solo cuando la tarjeta está
+// cerca de la pantalla (usePlantThumbnail).
 //
 // Será el punto de entrada al detalle (#16): cuando exista la ruta, basta con
 // pasar a SpecimenCard renderName={(name) => <Link to={...}>{name}</Link>}; el
@@ -24,8 +26,11 @@ export const PlantCard = memo(function PlantCard({
   view,
   headingLevel,
 }: PlantCardProps) {
+  const ref = useRef<HTMLElement>(null)
+  const photo = usePlantThumbnail(plant, ref)
   return (
     <SpecimenCard
+      ref={ref}
       // Más compacta que la tarjeta por defecto (cuerpo con space-3 y nombre a
       // 16 px): en la cuadrícula de 360 px caben dos por fila sin partir
       // "Phalaenopsis". El cuerpo es el <div> hijo y el nombre, el encabezado.
@@ -37,7 +42,7 @@ export const PlantCard = memo(function PlantCard({
       commonName={plant.nickname ?? undefined}
       status={plantValidationStatus(plant)}
       meta={plant.genus.name}
-      photo={plantThumbnail(plant)}
+      photo={photo}
     />
   )
 })
