@@ -44,6 +44,9 @@ export type ProfileUpdate = TablesUpdate<'profiles'>
 // La auditoría del catálogo solo se lee: nadie la escribe por la API.
 export type CatalogAuditLogRow = Tables<'catalog_audit_log'>
 
+// La memoria de las fusiones de especies solo se lee: la escribe merge_species().
+export type SpeciesMergeKey = Tables<'species_merge_keys'>
+
 export type Plant = Tables<'plants'>
 export type PlantInsert = TablesInsert<'plants'>
 export type PlantUpdate = TablesUpdate<'plants'>
@@ -53,6 +56,14 @@ export type PlantUpdate = TablesUpdate<'plants'>
 /** Una entrada del historial de una especie (species_history). */
 export type SpeciesHistoryRow =
   Database['public']['Functions']['species_history']['Returns'][number]
+
+/** La vista previa de una fusión de especies (preview_species_merge). */
+export type SpeciesMergePreviewRow =
+  Database['public']['Functions']['preview_species_merge']['Returns'][number]
+
+/** El resultado de una fusión de especies (merge_species). */
+export type SpeciesMergeResultRow =
+  Database['public']['Functions']['merge_species']['Returns'][number]
 
 // Enumerados ---------------------------------------------------------------------------
 
