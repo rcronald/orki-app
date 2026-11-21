@@ -83,3 +83,28 @@ select pruebas.iguales(
        and not exists (select from unnest(p.proconfig) c where c like 'search_path=%')),
   'ninguna'
 );
+
+-- prueba: ningún bucket de Storage es público salvo los declarados aquí
+-- Un bucket público sirve sus archivos a cualquiera que tenga la URL, sin pasar por las
+-- políticas. Hoy no hay ninguno declarado; un bucket público nuevo (por ejemplo, el de fotos
+-- de género del #13) tiene que añadirse a esta lista en el mismo pull request.
+select pruebas.iguales(
+  'buckets públicos no declarados',
+  (select coalesce(string_agg(b.id, ', ' order by b.id), 'ninguno')
+     from storage.buckets b
+     where b.public
+       and b.id <> all (array[]::text[])),
+  'ninguno'
+);
+
+-- prueba: las políticas de Storage son para authenticated, una por orden y nunca para anon ni PUBLIC
+-- Sin sesión no se lee ni se sube nada a Storage; "for all" mezclaría órdenes que la app
+-- necesita por separado (leer no es borrar).
+select pruebas.iguales(
+  'políticas de storage para anon o PUBLIC, o para todas las órdenes',
+  (select coalesce(string_agg(p.tablename || '.' || p.policyname, ', ' order by p.tablename, p.policyname), 'ninguna')
+     from pg_policies p
+     where p.schemaname = 'storage'
+       and (p.roles && array['public', 'anon']::name[] or p.cmd = 'ALL')),
+  'ninguna'
+);

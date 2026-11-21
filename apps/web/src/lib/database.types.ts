@@ -286,6 +286,10 @@ export type Database = {
         Returns: number
       }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      is_pending_plant_photo: {
+        Args: { object_name: string }
+        Returns: boolean
+      }
       list_catalog_genera: {
         Args: {
           page_number?: number

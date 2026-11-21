@@ -428,6 +428,33 @@ Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `Co
 
 **Cursiva de los nombres** (`src/components/ui/scientific-name.ts`): solo va en cursiva un nombre del catálogo (`displayNameIsScientific`); el nombre que ingresó la persona para una planta por validar va en redonda y en la fuente de cuerpo. Dentro del nombre científico, el género y los epítetos van en cursiva y en redonda el signo "×" (también una "x" suelta), las abreviaturas de rango ("var.") y, desde la primera palabra con mayúscula o comilla después del género, el grex y el cultivar: _Phalaenopsis_ Sogo Yukidian, × _Rhyncholaeliocattleya_ Memoria Anna Balmores, _Phalaenopsis_ × _intermedia_. Los tramos en redonda van en la fuente de cuerpo, porque de Playfair Display solo se cargan la cursiva 400 y la redonda 600. El nombre se muestra tal como está guardado. Los géneros como etiqueta (encabezados de grupo, línea de la tarjeta) van sin cursiva, como en los chips del sistema.
 
+## Fotos: compresión en el navegador
+
+`apps/web/src/photos/` prepara una foto antes de subirla (#81): la recodifica con canvas, la orienta, la reduce hasta los topes y genera su miniatura. No usa dependencias ni las transformaciones de imagen de Supabase (no están en el plan gratuito).
+
+```ts
+import { loadPhotoProcessing } from '../photos/load.ts'
+
+const { processPhoto, PhotoProcessingError } = await loadPhotoProcessing()
+const { photo, thumbnail } = await processPhoto(file, { signal })
+// photo.blob, photo.type ('image/webp' | 'image/jpeg'), photo.width, photo.height,
+// photo.bytes, photo.quality, photo.withinBudget; lo mismo en thumbnail.
+// Error: PhotoProcessingError con reason 'empty' | 'not-an-image' | 'unsupported-format'
+// | 'too-large' | 'decode-failed' | 'encode-failed' | 'unsupported-browser' | 'aborted'
+// y message en español, listo para mostrar.
+```
+
+- **Carga diferida:** las pantallas solo importan `load.ts`; el resto va en un chunk propio que se descarga con la primera foto (y el service worker lo precachea).
+- **Topes** (`DEFAULT_PHOTO_LIMITS` en `process.ts`): foto de 1600 px de lado mayor y menos de 300 000 bytes; miniatura de 400 px de lado mayor, sin recortar (la tarjeta la recorta con `object-fit: cover`, cuadrada en la lista y 4:3 en la cuadrícula) y menos de 30 000 bytes. La calidad empieza en 0,8 (0,75 la miniatura); si no cabe, prueba la mínima (0,5 y 0,45) y afina por bisección; si ni la mínima cabe, reduce las dimensiones. Como mucho 8 codificaciones por imagen; si no llega, devuelve la más ligera con `withinBudget: false`.
+- **Entrada:** hasta 50 MB y 50 megapíxeles (un JPEG de 48 MP del iPhone cabe). El formato y el tamaño se leen de los primeros bytes, así que una imagen enorme se rechaza sin decodificarla. Se reduce por mitades, sin ningún lienzo mayor que la mitad del original (el tope de iOS es de 16,7 MP por lienzo).
+- **Formato:** WebP donde el navegador lo codifica de verdad (Chrome, Edge, Firefox) y JPEG en Safari (macOS e iOS), que pide WebP y devuelve PNG sin avisar. Se averigua una vez por sesión codificando un lienzo de 2 × 2 y mirando el tipo y la firma del resultado, sin mirar el user agent.
+- **Privacidad:** se devuelve siempre una imagen recodificada, nunca el archivo original, aunque ya sea pequeño. Al recodificar se pierden EXIF (cámara, fecha, GPS, miniatura embebida), XMP, IPTC y las imágenes adicionales (MPF). Cada resultado se inspecciona (`findMetadata()` en `metadata.ts`, sobre los bytes de JPEG y WebP); si llevara algo, se retira con `stripMetadata()` y se vuelve a comprobar. Solo queda el perfil de color ICC que escribe el navegador, que no identifica a nadie.
+- **Orientación:** los navegadores actuales ya giran la foto según EXIF al decodificarla (`createImageBitmap`, Chrome 52, Firefox 93, Safari 15). Una prueba de una vez por sesión (un JPEG de 2 × 1 con orientación 6) lo confirma; solo si el navegador no gira, gira el módulo. Así nunca se gira dos veces.
+- **Sin bloquear la interfaz:** `createImageBitmap` decodifica fuera del hilo principal, se dibuja en `OffscreenCanvas` donde existe y se cede el hilo entre pasos. Medido en Chrome 157 de escritorio (Mac): una foto de 12 MP tarda 180-400 ms con una sola tarea larga de unos 190 ms la primera vez y ninguna después; una de 48 MP, 360 ms con una tarea larga de 107 ms. No compensa un Web Worker.
+- **Limitaciones por navegador:** HEIC solo lo abre Safari 17 o posterior; en Chrome, Edge, Firefox y Android da `unsupported-format` con un mensaje que lo explica. En el iPhone, al elegir de la galería con `accept="image/*"`, Safari entrega normalmente un JPEG (convierte el HEIC), según los informes de WebKit; falta comprobarlo en un iPhone real (#84). Safari siempre genera JPEG, algo más pesado que WebP a la misma calidad.
+- **Prueba a mano:** fuera de producción, la sección "Fotos" de `/muestra` deja elegir una foto (o hacerla con la cámara en el celular) y muestra el original, el formato, las dimensiones, el peso y la calidad de la foto y la miniatura, los intentos, el tiempo y los metadatos que quedan. Es la que sirve para la prueba en iPhone y Android (#84).
+- **Pruebas:** jsdom no tiene canvas, así que la lógica pura (tamaños, orientación, búsqueda de calidad, formato, metadatos, errores) se prueba directamente y la orquestación con un doble de la capa del navegador (`ImageBackend`). Los accesorios de `src/photos/fixtures/` son imágenes sintéticas de 48 × 32 px, entre ellas un JPEG con EXIF, GPS inventado y orientación 6, y un WebP con EXIF y XMP.
+
 ## Base de datos y migraciones
 
 Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.
