@@ -4,13 +4,13 @@
 -- orden sobre una base vacía. Estas pruebas comprueban además que el resultado tiene las
 -- piezas que el resto de pruebas y la app dan por hechas.
 
--- prueba: existen las ocho tablas del esquema en public
+-- prueba: existen las nueve tablas del esquema en public
 select pruebas.iguales(
   'tablas de public',
   (select string_agg(c.relname, ', ' order by c.relname)
      from pg_class c
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')),
-  'catalog_audit_log, genera, genus_abbreviations, plants, profiles, species, species_merge_keys, species_names'
+  'catalog_audit_log, genera, genus_abbreviations, plants, product_events, profiles, species, species_merge_keys, species_names'
 );
 
 -- prueba: los enumerados tienen los valores acordados, en orden
@@ -27,6 +27,8 @@ select pruebas.iguales(
   enum_range(null::public.flower_color)::text,
   '{white,pink,purple,yellow,orange,bicolor}'
 );
+select pruebas.iguales('product_event_type', enum_range(null::public.product_event_type)::text, '{plant_registered,have_it_search}');
+select pruebas.iguales('product_event_result', enum_range(null::public.product_event_result)::text, '{owned,not_owned,similar}');
 
 -- prueba: pg_trgm y unaccent están instaladas en el esquema extensions, no en public
 select pruebas.iguales(
@@ -45,7 +47,7 @@ select pruebas.iguales(
      where c.relnamespace = 'public'::regnamespace and not t.tgisinternal),
   'catalog_audit_log.fill_species_id:O, genera.audit_change:O, genera.set_updated_at:O, genus_abbreviations.audit_change:O, '
     || 'genus_abbreviations.set_updated_at:O, plants.set_updated_at:O, '
-    || 'plants.sync_with_species:O, profiles.set_updated_at:O, species.audit_change:O, '
+    || 'plants.sync_with_species:O, profiles.delete_product_events:O, profiles.set_updated_at:O, species.audit_change:O, '
     || 'species.propagate_to_plants:O, species.set_updated_at:O, '
     || 'species.validate_edited_imported:O, species_names.audit_change:O, '
     || 'species_names.set_updated_at:O'
@@ -67,6 +69,7 @@ select pruebas.iguales(
     || 'clean_genus_name definer=false search_path=""; '
     || 'clean_name_language definer=false search_path=""; '
     || 'current_catalog_action_id definer=false search_path=""; '
+    || 'delete_profile_events definer=true search_path=""; '
     || 'log_catalog_action definer=false search_path=""; '
     || 'propagate_species_to_plants definer=true search_path=""; '
     || 'raise_catalog_error definer=false search_path=""; '
