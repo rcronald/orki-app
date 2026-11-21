@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
 import type { PlantImageSource } from '../photos/read.ts'
@@ -54,9 +55,11 @@ const withPhoto = (): CollectionPlant =>
 
 function renderCard(source: PlantImageSource, value: CollectionPlant) {
   return render(
-    <PlantImagesContext value={source}>
-      <PlantCard plant={value} view="grid" headingLevel={2} />
-    </PlantImagesContext>,
+    <MemoryRouter>
+      <PlantImagesContext value={source}>
+        <PlantCard plant={value} view="grid" headingLevel={2} />
+      </PlantImagesContext>
+    </MemoryRouter>,
   )
 }
 
@@ -69,6 +72,20 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   observed.clear()
+})
+
+describe('enlace al detalle', () => {
+  it('el nombre es el enlace al detalle y el nombre accesible de la tarjeta', async () => {
+    const { source } = fakeSource()
+    const value = withPhoto()
+    renderCard(source, value)
+    const link = screen.getByRole('link', { name: 'Cattleya labiata' })
+    expect(link).toHaveAttribute('href', `/coleccion/${value.id}`)
+    expect(
+      screen.getByRole('article', { name: 'Cattleya labiata' }),
+    ).toContainElement(link)
+    await expectNoAxeViolations()
+  })
 })
 
 describe('miniatura de la tarjeta', () => {

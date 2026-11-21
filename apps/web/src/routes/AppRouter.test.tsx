@@ -49,7 +49,7 @@ function currentLocation() {
 }
 
 // El h1 de la página; espera a que cargue el chunk diferido de la app.
-function findHeading(name: string) {
+function findHeading(name: string | RegExp) {
   return screen.findByRole('heading', { level: 1, name })
 }
 
@@ -150,6 +150,25 @@ describe('rutas con sesión', () => {
     expect(currentLocation()).toBe('/coleccion/nueva')
     expect(document.title).toBe('Registrar una orquídea · Orki')
     await expectNoAxeViolations()
+  })
+
+  it('el detalle de una planta exige sesión y vuelve a él al entrar', async () => {
+    const path = '/coleccion/6f1c2a4e-8b3d-4e5f-9a7b-0c1d2e3f4a5b'
+    renderAt(path)
+
+    expect(await screen.findByTestId('clerk-sign-in')).toBeInTheDocument()
+    expect(lastAuthComponentProps()?.forceRedirectUrl).toBe(path)
+
+    // Con sesión, abrir la dirección (una recarga) llega al detalle, no a
+    // "no encontrado": la pantalla espera a la colección.
+    setFakeClerk({ signedIn: true })
+    await routerPush(path)
+    expect(
+      await findHeading(
+        /^(Cargando la planta…|No se pudo cargar la planta|Planta no encontrada)$/,
+      ),
+    ).toBeInTheDocument()
+    expect(currentLocation()).toBe(path)
   })
 
   it('mientras Clerk carga: estado de carga, sin redirigir', async () => {
