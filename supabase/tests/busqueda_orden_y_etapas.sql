@@ -346,7 +346,8 @@ select pruebas.iguales(
 select pruebas.iguales(
   'definición del índice',
   pg_get_indexdef('public.species_scientific_name_prefix_idx'::regclass),
-  'CREATE INDEX species_scientific_name_prefix_idx ON public.species USING btree (normalize_search_text(scientific_name) COLLATE "C")'
+  -- Con el id como segunda columna desde la migración del listado del backoffice (#99).
+  'CREATE INDEX species_scientific_name_prefix_idx ON public.species USING btree (normalize_search_text(scientific_name) COLLATE "C", id)'
 );
 -- La consulta de un paso de la clase 1, con los valores como parámetros (como en la función,
 -- que fuerza el plan genérico) usa el índice por su rango. Con tan pocas filas el planificador

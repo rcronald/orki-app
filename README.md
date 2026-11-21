@@ -92,6 +92,7 @@ orki-app/
 │       │   ├── assets/        Marcador sin-foto.svg del design system
 │       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol, rutas protegidas y token para Supabase
 │       │   ├── collection/    Colección del usuario en memoria: lectura, almacén compartido, búsqueda, agrupación y contadores
+│       │   ├── backoffice/    Backoffice del catálogo (/administracion/catalogo, chunk propio)
 │       │   ├── components/    Componentes de la app (estructura con la navegación, página)
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
@@ -191,6 +192,22 @@ La app busca especies y géneros con las funciones de la API `search_species` y 
 
 Las funciones son públicas: sin sesión, la petición va con la clave publicable, como anon. Con sesión lleva el token de Clerk como cualquier otra; si no se puede obtener por falta de conexión, el error es `offline`.
 
+## Backoffice del catálogo
+
+`/administracion/catalogo` (#99, primer paso del #20) muestra el catálogo completo en una tabla de solo lectura: ningún alta, edición, baja ni cambio de estado. Solo la ven los administradores del catálogo (`RequireCatalogAdmin`); la protección real está en la base: las funciones que usa exigen el rol y responden `42501` a cualquier otro (ver [Listado del catálogo para el backoffice](supabase/README.md#listado-del-catálogo-para-el-backoffice)). Va en su propio chunk (`src/backoffice/CatalogAdminPage.tsx`, cargado de forma diferida desde `App.tsx`), que solo descarga quien abre la ruta.
+
+- **Resumen** arriba: géneros, especies, híbridos, sinónimos y nombres comunes, y especies (con los híbridos) por estado y por fuente.
+- **Pestañas "Especies" y "Géneros"** (patrón de pestañas de WAI-ARIA: flechas, Inicio y Fin).
+- **Especies:** buscador (con la tolerancia del autocompletado: tildes, errores de tipeo, abreviaturas, signo "×"), filtros por estado, tipo y fuente (chips) y por género (el buscador de géneros del registro), y una tabla con el nombre científico (cursiva botánica), el género, el tipo, el estado, la fuente y el número de sinónimos y de nombres comunes. Con búsqueda, bajo el nombre se dice si coincidió por un sinónimo o un nombre común. Sin texto la tabla es el catálogo en orden alfabético, paginado por clave; con texto, por relevancia, paginado por número. Cada petición trae una sola página de 50 filas, con el total.
+- **Detalle de una especie** en un panel junto a la tabla (debajo en pantallas estrechas): sinónimos, nombres comunes, referencia de la fuente con enlace a su ficha en el Catalogue of Life (en otra pestaña, `rel="noopener noreferrer"`), fechas de alta y de última modificación y cuántas plantas de usuarios la tienen enlazada (solo el número). El nombre de cada especie es un enlace al detalle: se puede abrir en otra pestaña o compartir. Al abrirlo, el foco va a su título; al cerrarlo, vuelve al nombre en la tabla.
+- **Géneros:** abreviaturas, si son de acceso rápido y número de especies (enlace a la pestaña de especies filtrada por ese género), con búsqueda por nombre o abreviatura y el filtro "Solo de acceso rápido".
+- **Todo va en la URL** (`src/backoffice/url-state.ts`): pestaña (`pestana`), texto (`q`), filtros (`estado`, `genero`, `tipo`, `fuente`), página (`pagina`, y sin texto `desde`, `antes` o `ultima` para la página por clave), detalle (`especie`) y, en géneros, `gq`, `rapido` y `gpagina`. Recargar o compartir el enlace muestra lo mismo; un valor que no se reconoce se ignora. Cambiar el texto o un filtro vuelve a la primera página. Escribir sustituye la entrada del historial; cambiar de página, de filtro, de pestaña o abrir un detalle añade una.
+- **Estados:** mientras carga, un esqueleto con el tamaño de la página anterior y "Cargando especies…" en una región `role="status"` que también anuncia el resultado ("32.464 especies. Página 1 de 650."); nunca se ven filas de una petición anterior (ni mientras se escribe). Catálogo vacío, sin resultados (con "Limpiar búsqueda y filtros"), página que ya no existe y error con "Reintentar", con un texto distinto sin conexión, con la sesión terminada o sin el rol en la base.
+- **Atribución** del Catalogue of Life (versión, DOI y licencia CC BY 4.0, como pide `scripts/catalog-import/FUENTE.md`) al pie. Los datos salen de `scripts/catalog-import/fuente.json`, el archivo que fija la versión de la importación: Vite lo lee al compilar (`src/backoffice/attribution.ts`), así que al cambiar de versión no hay que tocar la app.
+- **Capa de datos:** `src/lib/catalogAdmin.ts` (`listCatalogSpecies`, `searchCatalogSpecies`, `listCatalogGenera`, `getCatalogSummary`, `getSpeciesDetail`, `countSpeciesPlants`, `getGenus`), con `AbortSignal`, tipos sacados de `database.types.ts` y errores `CatalogAdminError` con motivo (`aborted`, `offline`, `session-ended`, `forbidden`, `failed`). `src/backoffice/useRemoteData.ts` hace cada lectura con cancelación y descarta las respuestas de otra clave.
+- **Sin base de datos:** la página de muestra (`/muestra`, sección "Backoffice del catálogo") pinta la misma vista (`CatalogAdminView`) con unas 150 especies en memoria (`src/showcase/catalog-admin-data.ts`) y los estados de carga, vacío, sin conexión y fallo. Su búsqueda es solo una aproximación (prefijo o contener el texto).
+- **Pruebas:** `src/lib/catalogAdmin.test.ts` (peticiones y errores) y `src/backoffice/CatalogAdminPage.test.tsx` (la pantalla con `fetch` simulado, la URL, el teclado y axe en cada estado).
+
 ## Variables de entorno de la app
 
 La app web lee cuatro variables de entorno. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
@@ -242,18 +259,18 @@ La autenticación es de [Clerk](https://clerk.com/docs), con su SDK de React vig
 
 El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (`<BrowserRouter>`, `<Routes>`, `<Route>`), sin el modo framework. Todas las rutas están en `src/routes/paths.ts` (`PATHS`); el mapa está en `src/App.tsx`, y la muestra, en `src/routes/AppRouter.tsx`. Van en español y sin acentos. "Registro" a secas es el de la cuenta; el de una planta cuelga de la colección.
 
-| Ruta                       | Pantalla                                  | Acceso                     |
-| -------------------------- | ----------------------------------------- | -------------------------- |
-| `/`                        | Inicio                                    | Pública                    |
-| `/catalogo`                | Catálogo (provisional)                    | Pública                    |
-| `/coleccion`               | Mi colección (provisional)                | Con sesión                 |
-| `/coleccion/nueva`         | Registrar una planta (provisional)        | Con sesión                 |
-| `/administracion/catalogo` | Administración del catálogo (provisional) | Con sesión y rol de admin. |
-| `/iniciar-sesion/*`        | Inicio de sesión (Clerk)                  | Pública                    |
-| `/registro/*`              | Crear cuenta (Clerk)                      | Pública                    |
-| `/muestra`                 | Muestra del design system                 | Solo fuera de producción   |
-| `/diagnostico`             | Diagnóstico de identidad                  | Solo fuera de producción   |
-| Cualquier otra             | Página no encontrada                      | Pública                    |
+| Ruta                       | Pantalla                                                                                                     | Acceso                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| `/`                        | Inicio                                                                                                       | Pública                    |
+| `/catalogo`                | Catálogo (provisional)                                                                                       | Pública                    |
+| `/coleccion`               | Mi colección (provisional)                                                                                   | Con sesión                 |
+| `/coleccion/nueva`         | Registrar una planta (provisional)                                                                           | Con sesión                 |
+| `/administracion/catalogo` | Administración del catálogo: vista de solo lectura (ver [Backoffice del catálogo](#backoffice-del-catálogo)) | Con sesión y rol de admin. |
+| `/iniciar-sesion/*`        | Inicio de sesión (Clerk)                                                                                     | Pública                    |
+| `/registro/*`              | Crear cuenta (Clerk)                                                                                         | Pública                    |
+| `/muestra`                 | Muestra del design system                                                                                    | Solo fuera de producción   |
+| `/diagnostico`             | Diagnóstico de identidad                                                                                     | Solo fuera de producción   |
+| Cualquier otra             | Página no encontrada                                                                                         | Pública                    |
 
 - Navegación: `src/components/AppShell.tsx` pinta la cabecera, un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. El enlace "Administración" solo aparece con el rol de administrador.
 - Cada página pone el título de la pestaña ("Catálogo · Orki") y, al llegar navegando dentro de la app (no al cargarla), el foco va a su título (`h1` con `tabIndex={-1}`) para que el lector de pantalla anuncie la página nueva; en las pantallas de acceso, al contenido principal. Ver `src/routes/navigation.ts`.

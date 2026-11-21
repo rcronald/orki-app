@@ -3,6 +3,8 @@
   "clave": 316691,
   "doi": "10.48580/dgzlf",
   "publicada": "2026-10-16",
+  "licencia": "CC BY 4.0",
+  "licencia_url": "https://creativecommons.org/licenses/by/4.0/",
   "url": "https://api.checklistbank.org/dataset/316691/export.zip?format=ColDP",
   "sha256": "6f2a6b6a645ea8306cea2149027c84dd7f08cd781b1079c5aee453a0a13adc73"
 }
