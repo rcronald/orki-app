@@ -7,6 +7,10 @@ Uso::
 
     # Carga (simulación por defecto). La URL de la base va en ORKI_CATALOG_DB_URL.
     uv run orki-catalogo cargar RUTA/export.zip --ambiente local|dev|prod [--escribir]
+
+    # Lista curada de híbridos: validación sin conexión y carga (mismo flujo y opciones).
+    uv run orki-catalogo validar-hibridos data/hibridos.csv
+    uv run orki-catalogo cargar-hibridos data/hibridos.csv --ambiente local|dev|prod [--escribir]
 """
 
 from __future__ import annotations
@@ -83,12 +87,22 @@ def main(argv: list[str] | None = None) -> int:
         from .load_cli import main as load_main
 
         return load_main(args_list[1:])
+    if args_list[:1] == ['cargar-hibridos']:
+        from .hybrids_cli import load_main as load_hybrids_main
+
+        return load_hybrids_main(args_list[1:])
+    if args_list[:1] == ['validar-hibridos']:
+        from .hybrids_cli import validate_main
+
+        return validate_main(args_list[1:])
     parser = argparse.ArgumentParser(
         prog='orki-catalogo',
         description=(
             'Lee la exportación de ChecklistBank (zip o TSV), filtra Orchidaceae, normaliza '
             'y muestra un resumen. Solo lectura: no se conecta a ninguna base de datos. '
-            'Para cargar el catálogo en la base: orki-catalogo cargar --help.'
+            'Para cargar el catálogo en la base: orki-catalogo cargar --help. Para la lista '
+            'curada de híbridos: orki-catalogo validar-hibridos --help y '
+            'orki-catalogo cargar-hibridos --help.'
         ),
     )
     parser.add_argument('archivo', type=Path, help='export.zip de ChecklistBank o su TSV.')

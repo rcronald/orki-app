@@ -52,7 +52,13 @@ const archivoSupabaseMinimo = join(
 )
 
 // Roles que crea supabase-minimo.sql si no existen.
-const rolesSimulados = ['anon', 'authenticated', 'service_role', 'postgres']
+const rolesSimulados = [
+  'anon',
+  'authenticated',
+  'service_role',
+  'postgres',
+  'supabase_storage_admin',
+]
 
 const hostsLocales = new Set(['localhost', '::1'])
 const dominiosSupabase = ['supabase.co', 'supabase.com', 'supabase.net']

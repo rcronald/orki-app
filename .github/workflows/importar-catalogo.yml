@@ -1,16 +1,25 @@
 name: Importar catálogo
 
-# Carga el catálogo de especies del Catalogue of Life en el proyecto de Supabase de un
-# ambiente, con `orki-catalogo cargar` (scripts/catalog-import). Solo se lanza a mano, desde
-# la pestaña Actions o con `gh workflow run`: nunca por push, pull request ni calendario.
-# Por defecto es una simulación (la transacción se revierte); escribir es una elección
-# explícita y, en producción, exige además escribir el identificador del proyecto.
+# Carga en el proyecto de Supabase de un ambiente el catálogo de especies del Catalogue of
+# Life (`orki-catalogo cargar`) o la lista curada de híbridos versionada en
+# scripts/catalog-import/data/hibridos.csv (`orki-catalogo cargar-hibridos`), según la
+# entrada «carga». Las dos usan las mismas protecciones de este workflow. Solo se lanza a
+# mano, desde la pestaña Actions o con `gh workflow run`: nunca por push, pull request ni
+# calendario. Por defecto es una simulación (la transacción se revierte); escribir es una
+# elección explícita y, en producción, exige además escribir el identificador del proyecto.
 # Guía completa: scripts/catalog-import/README.md, sección «Ejecución por ambiente».
-run-name: Importar catálogo (${{ inputs.ambiente }}, ${{ inputs.modo }})
+run-name: Importar catálogo (${{ inputs.carga }}, ${{ inputs.ambiente }}, ${{ inputs.modo }})
 
 on:
   workflow_dispatch:
     inputs:
+      carga:
+        description: Qué cargar, el catálogo del Catalogue of Life o la lista curada de híbridos
+        type: choice
+        options:
+          - catalogo
+          - hibridos
+        default: catalogo
       ambiente:
         description: Ambiente donde cargar el catálogo
         type: choice
@@ -34,15 +43,15 @@ on:
 permissions:
   contents: read
 
-# Una sola importación a la vez por ambiente; la siguiente espera, no se cancela la que está
-# en curso.
+# Una sola carga a la vez por ambiente (del catálogo o de los híbridos, que bloquean las
+# mismas tablas); la siguiente espera, no se cancela la que está en curso.
 concurrency:
   group: importar-catalogo-${{ inputs.ambiente }}
   cancel-in-progress: false
 
 jobs:
   importar:
-    name: Importar catálogo (${{ inputs.ambiente }}, ${{ inputs.modo }})
+    name: Importar catálogo (${{ inputs.carga }}, ${{ inputs.ambiente }}, ${{ inputs.modo }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: ${{ inputs.ambiente }}
@@ -55,6 +64,7 @@ jobs:
     # Las entradas llegan a los scripts solo por variables de entorno, nunca interpoladas en
     # el texto de «run», para que no se puedan inyectar órdenes.
     env:
+      CARGA: ${{ inputs.carga }}
       AMBIENTE: ${{ inputs.ambiente }}
       MODO: ${{ inputs.modo }}
       PYTHONUNBUFFERED: '1'
@@ -68,6 +78,11 @@ jobs:
           RAMA: ${{ github.ref_name }}
           REF_GIT: ${{ github.ref }}
         run: |
+          case "$CARGA" in catalogo | hibridos) ;; *)
+            echo "::error::Carga no válida: tiene que ser catalogo o hibridos."
+            exit 1
+            ;;
+          esac
           case "$AMBIENTE" in dev | prod) ;; *)
             echo "::error::Ambiente no válido."
             exit 1
@@ -98,16 +113,19 @@ jobs:
           elif [[ -n "$CONFIRMACION" ]]; then
             echo "::notice::confirmar_produccion solo se usa al escribir en producción; en esta ejecución se ignora."
           fi
-          echo "Ambiente: ${AMBIENTE}. Modo: ${MODO}."
+          echo "Carga: ${CARGA}. Ambiente: ${AMBIENTE}. Modo: ${MODO}."
 
       - name: Obtener el código
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      # La versión, la URL y el SHA-256 de la exportación están fijados en fuente.json.
+      # La versión, la URL y el SHA-256 de la exportación están fijados en fuente.json. Los
+      # cinco pasos de la exportación solo corren al cargar el catálogo; la lista de híbridos
+      # es el CSV versionado del propio commit.
       - name: Leer la fuente fijada
         id: fuente
+        if: inputs.carga == 'catalogo'
         run: |
           clave="$(jq -er '.clave' fuente.json)"
           url="$(jq -er '.url' fuente.json)"
@@ -129,13 +147,14 @@ jobs:
       # descargado, y solo se guarda en la caché un archivo ya verificado.
       - name: Restaurar la exportación de la caché
         id: cache
+        if: inputs.carga == 'catalogo'
         uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/fuente/export.zip
           key: col-export-${{ steps.fuente.outputs.clave }}-${{ steps.fuente.outputs.sha256 }}
 
       - name: Descargar la exportación
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: inputs.carga == 'catalogo' && steps.cache.outputs.cache-hit != 'true'
         env:
           URL: ${{ steps.fuente.outputs.url }}
           ARCHIVO: ${{ runner.temp }}/fuente/export.zip
@@ -146,6 +165,7 @@ jobs:
           ls -l "$ARCHIVO"
 
       - name: Verificar el SHA-256 de la exportación
+        if: inputs.carga == 'catalogo'
         env:
           SHA256: ${{ steps.fuente.outputs.sha256 }}
           ARCHIVO: ${{ runner.temp }}/fuente/export.zip
@@ -158,7 +178,7 @@ jobs:
           echo "SHA-256 verificado: ${real} ($(stat -c %s "$ARCHIVO") bytes)"
 
       - name: Guardar la exportación en la caché
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: inputs.carga == 'catalogo' && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: ${{ runner.temp }}/fuente/export.zip
@@ -181,6 +201,8 @@ jobs:
       # en el mismo paso que la usa, con la contraseña codificada para URL y enmascarada; no
       # se escribe en ningún archivo ni en GITHUB_ENV. orki-catalogo comprueba que la URL es
       # del proyecto del ambiente pedido y no la imprime nunca.
+      # cargar-hibridos valida el CSV antes de conectarse: con un solo error de formato
+      # termina sin conectar a nada.
       - name: Cargar el catálogo
         id: carga
         env:
@@ -204,12 +226,19 @@ jobs:
 
           mkdir -p "$REPORTE_DIR"
           if [[ "$MODO" == escribir ]]; then sufijo=escritura; else sufijo=simulacion; fi
-          reporte="${REPORTE_DIR}/reporte-carga-${AMBIENTE}-${sufijo}-$(date -u +%Y%m%dT%H%M%SZ).csv"
+          if [[ "$CARGA" == hibridos ]]; then
+            prefijo=reporte-carga-hibridos
+            argumentos=(cargar-hibridos data/hibridos.csv)
+          else
+            prefijo=reporte-carga
+            argumentos=(cargar "$ARCHIVO")
+          fi
+          reporte="${REPORTE_DIR}/${prefijo}-${AMBIENTE}-${sufijo}-$(date -u +%Y%m%dT%H%M%SZ).csv"
           echo "reporte=${reporte}" >> "$GITHUB_OUTPUT"
 
           # --escribir solo se añade si el modo es exactamente «escribir»; cualquier otro valor
           # deja la simulación. La confirmación solo se pasa al escribir en producción.
-          argumentos=(cargar "$ARCHIVO" --ambiente "$AMBIENTE" --reporte "$reporte")
+          argumentos+=(--ambiente "$AMBIENTE" --reporte "$reporte")
           if [[ "$MODO" == escribir ]]; then
             argumentos+=(--escribir)
             if [[ "$AMBIENTE" == prod ]]; then
@@ -226,8 +255,11 @@ jobs:
           FUENTE: ${{ steps.fuente.outputs.alias }}
           REPORTE_DIR: ${{ runner.temp }}/reporte
         run: |
+          if [[ "$CARGA" == hibridos ]]; then
+            FUENTE="lista curada de híbridos, data/hibridos.csv (SHA-256 $(sha256sum data/hibridos.csv | cut -d' ' -f1))"
+          fi
           {
-            echo "## Importación del catálogo: ${AMBIENTE}, ${MODO}"
+            echo "## Importación del catálogo (${CARGA}): ${AMBIENTE}, ${MODO}"
             echo
             echo "Fuente: ${FUENTE}. Resultado del paso de carga: **${RESULTADO}**."
             echo
@@ -265,7 +297,7 @@ jobs:
         if: ${{ always() && steps.carga.outcome != 'skipped' }}
         uses: actions/upload-artifact@v7
         with:
-          name: reporte-carga-${{ inputs.ambiente }}-${{ inputs.modo }}-${{ github.run_id }}
+          name: reporte-carga-${{ inputs.carga }}-${{ inputs.ambiente }}-${{ inputs.modo }}-${{ github.run_id }}
           path: ${{ runner.temp }}/reporte/
           if-no-files-found: warn
           retention-days: 30
