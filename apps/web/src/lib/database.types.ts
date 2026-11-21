@@ -264,9 +264,105 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      catalog_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          col_source_count: number
+          common_name_count: number
+          curated_source_count: number
+          gbif_source_count: number
+          genus_count: number
+          hybrid_count: number
+          imported_count: number
+          observed_count: number
+          species_count: number
+          synonym_count: number
+          user_proposal_source_count: number
+          validated_count: number
+        }[]
+      }
+      count_species_plants: {
+        Args: { target_species_id: string }
+        Returns: number
+      }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      list_catalog_genera: {
+        Args: {
+          page_number?: number
+          page_size?: number
+          query?: string
+          quick_access_only?: boolean
+        }
+        Returns: {
+          abbreviations: string[]
+          current_page: number
+          id: string
+          is_quick_access: boolean
+          name: string
+          species_count: number
+          total_count: number
+        }[]
+      }
+      list_catalog_species: {
+        Args: {
+          after_id?: string
+          before_id?: string
+          filter_genus_id?: string
+          filter_source?: Database['public']['Enums']['species_source']
+          filter_status?: Database['public']['Enums']['species_status']
+          filter_type?: Database['public']['Enums']['species_type']
+          last_page?: boolean
+          page_size?: number
+        }
+        Returns: {
+          common_name_count: number
+          created_at: string
+          genus_id: string
+          genus_name: string
+          has_next: boolean
+          has_previous: boolean
+          id: string
+          scientific_name: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string
+          status: Database['public']['Enums']['species_status']
+          synonym_count: number
+          total_count: number
+          type: Database['public']['Enums']['species_type']
+          updated_at: string
+        }[]
+      }
       normalize_search_text: { Args: { value: string }; Returns: string }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
+      search_catalog_species: {
+        Args: {
+          filter_genus_id?: string
+          filter_source?: Database['public']['Enums']['species_source']
+          filter_status?: Database['public']['Enums']['species_status']
+          filter_type?: Database['public']['Enums']['species_type']
+          page_number?: number
+          page_size?: number
+          query: string
+        }
+        Returns: {
+          common_name_count: number
+          created_at: string
+          current_page: number
+          genus_id: string
+          genus_name: string
+          id: string
+          matched_name: string
+          matched_name_type: Database['public']['Enums']['species_match_type']
+          scientific_name: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string
+          status: Database['public']['Enums']['species_status']
+          synonym_count: number
+          total_count: number
+          type: Database['public']['Enums']['species_type']
+          updated_at: string
+        }[]
+      }
       search_genera: {
         Args: { max_results?: number; query: string }
         Returns: {

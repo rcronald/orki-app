@@ -39,20 +39,20 @@ También acepta el TSV suelto. Imprime los recuentos de géneros, especies, híb
 
 ## Código
 
-| Archivo                           | Qué hace                                                                                                       |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `src/catalog_import/reader.py`    | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia    |
-| `src/catalog_import/names.py`     | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)           |
-| `src/catalog_import/normalize.py` | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste          |
-| `src/catalog_import/model.py`     | Modelo intermedio y códigos de motivo                                                                          |
-| `src/catalog_import/cli.py`       | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`)                                   |
-| `src/catalog_import/load_cli.py`  | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales                                           |
-| `src/catalog_import/target.py`    | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                     |
-| `src/catalog_import/load.py`      | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                    |
-| `src/catalog_import/report.py`    | Reporte CSV y resumen por pantalla                                                                             |
-| `fuente.json`                     | Versión fijada de la fuente: clave, DOI, URL y SHA-256 de la exportación (la usa el workflow)                  |
-| `tests/`                          | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md)) |
-| `tests/basedatos.py`              | Bases desechables con las migraciones para las pruebas de la carga                                             |
+| Archivo                           | Qué hace                                                                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/catalog_import/reader.py`    | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia                             |
+| `src/catalog_import/names.py`     | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)                                    |
+| `src/catalog_import/normalize.py` | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste                                   |
+| `src/catalog_import/model.py`     | Modelo intermedio y códigos de motivo                                                                                                   |
+| `src/catalog_import/cli.py`       | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`)                                                            |
+| `src/catalog_import/load_cli.py`  | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales                                                                    |
+| `src/catalog_import/target.py`    | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                                              |
+| `src/catalog_import/load.py`      | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                                             |
+| `src/catalog_import/report.py`    | Reporte CSV y resumen por pantalla                                                                                                      |
+| `fuente.json`                     | Versión fijada de la fuente: clave, DOI, licencia, URL y SHA-256 de la exportación (la usan el workflow y la atribución del backoffice) |
+| `tests/`                          | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md))                          |
+| `tests/basedatos.py`              | Bases desechables con las migraciones para las pruebas de la carga                                                                      |
 
 ### Modelo intermedio
 
@@ -434,7 +434,7 @@ Si la carga falla (error de la base, esquema incompleto, conexión), la transacc
 
 ### Nueva versión de la fuente
 
-La versión está fijada en [`fuente.json`](fuente.json): `alias`, `clave` de ChecklistBank, `doi`, `publicada`, `url` y `sha256` del zip. El workflow descarga esa URL y se niega a cargar si el SHA-256 no coincide. Para pasar a una versión nueva de COL XR:
+La versión está fijada en [`fuente.json`](fuente.json): `alias`, `clave` de ChecklistBank, `doi`, `publicada`, `licencia` y `licencia_url`, `url` y `sha256` del zip. El workflow descarga esa URL y se niega a cargar si el SHA-256 no coincide. La pantalla del backoffice (`/administracion/catalogo`) lee de este mismo archivo, al compilar, la versión, el DOI y la licencia de la atribución, así que no hay que cambiarlos en ningún otro sitio. Para pasar a una versión nueva de COL XR:
 
 1. Busca la versión en ChecklistBank (`https://api.checklistbank.org/dataset?releasedFrom=3&origin=xrelease`) y anota su clave, alias, DOI y fecha.
 2. Descárgala fuera del repositorio, calcula su SHA-256 (`shasum -a 256`) y ejecuta `uv run orki-catalogo <zip>`: el resumen dice la clave y el alias que trae `metadata.yaml`, que tienen que coincidir. Compara los recuentos con los de [Resultado con COL26.10 XR frente a FUENTE.md](#resultado-con-col2610-xr-frente-a-fuentemd).

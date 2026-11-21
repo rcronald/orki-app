@@ -1,0 +1,592 @@
+import type { CatalogAdminSource } from '../backoffice/source.ts'
+import {
+  CATALOG_PAGE_SIZE,
+  CatalogAdminError,
+  type CatalogAdminFailure,
+  type CatalogGenusRow,
+  type CatalogSpeciesDetail,
+  type CatalogSpeciesRow,
+} from '../lib/catalogAdmin.ts'
+import type { GenusSearchResult } from '../lib/catalogSearch.ts'
+import type {
+  SpeciesNameType,
+  SpeciesSource,
+  SpeciesStatus,
+  SpeciesType,
+} from '../lib/database.ts'
+
+// Catálogo de muestra para ver la pantalla del backoffice (/muestra) sin base
+// de datos: unas 150 especies de nueve géneros con nombres reales, sinónimos y
+// nombres comunes, y una fuente en memoria con la misma forma que la de
+// Supabase (CatalogAdminSource). Pagina como la base (por clave sin texto, por
+// número con texto), pero la búsqueda es solo una aproximación: compara por
+// prefijo de palabras y, si nada empieza así, por contener el texto; no
+// tolera errores de tipeo como la de verdad.
+
+interface SampleGenus {
+  id: string
+  name: string
+  abbreviations: string[]
+  isQuickAccess: boolean
+}
+
+interface SampleName {
+  name: string
+  type: SpeciesNameType
+  language: string | null
+}
+
+interface SampleSpecies {
+  id: string
+  scientificName: string
+  genusId: string
+  type: SpeciesType
+  status: SpeciesStatus
+  source: SpeciesSource
+  sourceRef: string | null
+  names: SampleName[]
+  plants: number
+}
+
+function uuid(prefix: number, index: number): string {
+  const hex = (prefix * 10000 + index).toString(16).padStart(12, '0')
+  return `00000000-0000-4000-8000-${hex}`
+}
+
+const GENERA: SampleGenus[] = [
+  ['Phalaenopsis', ['Phal.'], true],
+  ['Cattleya', ['C.'], true],
+  ['Dendrobium', ['Den.'], true],
+  ['Oncidium', ['Onc.'], true],
+  ['Vanda', ['V.'], true],
+  ['Masdevallia', ['Masd.'], false],
+  ['Paphiopedilum', ['Paph.'], false],
+  ['Bulbophyllum', ['Bulb.'], false],
+  ['× Rhyncholaeliocattleya', ['Rlc.'], false],
+].map(([name, abbreviations, isQuickAccess], index) => ({
+  id: uuid(1, index),
+  name: name as string,
+  abbreviations: abbreviations as string[],
+  isQuickAccess: isQuickAccess as boolean,
+}))
+
+const EPITHETS: Record<string, string[]> = {
+  Phalaenopsis: [
+    'amabilis',
+    'aphrodite',
+    'bellina',
+    'cornu-cervi',
+    'equestris',
+    '× intermedia',
+    'lueddemanniana',
+    'pulcherrima',
+    'schilleriana',
+    'stuartiana',
+    'violacea',
+    'gigantea',
+    'lobbii',
+    'mannii',
+    'tetraspis',
+    'wilsonii',
+  ],
+  Cattleya: [
+    'labiata',
+    'mossiae',
+    'purpurata',
+    'trianae',
+    'warscewiczii',
+    'walkeriana',
+    'intermedia',
+    'aclandiae',
+    'dowiana',
+    '× elegans',
+    'percivaliana',
+    'skinneri',
+    'aurantiaca',
+    'bicolor',
+    'guttata',
+    'jenmanii',
+    'lueddemanniana',
+    'maxima',
+    'nobilior',
+    'schilleriana',
+  ],
+  Dendrobium: [
+    'nobile',
+    'aphyllum',
+    'chrysotoxum',
+    'densiflorum',
+    'farmeri',
+    'fimbriatum',
+    'kingianum',
+    'lindleyi',
+    'moschatum',
+    'parishii',
+    'speciosum',
+    'thyrsiflorum',
+    'anosmum',
+    'bigibbum',
+    'cuthbertsonii',
+    'crumenatum',
+    'formosum',
+    'harveyanum',
+    'lituiflorum',
+    'primulinum',
+    'secundum',
+    'spectabile',
+    'victoriae-reginae',
+    'wardianum',
+    '× delicatum',
+  ],
+  Oncidium: [
+    'sphacelatum',
+    'flexuosum',
+    'ornithorhynchum',
+    'cheirophorum',
+    'maculatum',
+    'leucochilum',
+    'altissimum',
+    'baueri',
+    'hastatum',
+    'tigrinum',
+    'cebolleta',
+    'excavatum',
+  ],
+  Vanda: [
+    'coerulea',
+    'tricolor',
+    'sanderiana',
+    'tessellata',
+    'luzonica',
+    'denisoniana',
+    'falcata',
+    'lamellata',
+    'liouvillei',
+    'merrillii',
+  ],
+  Masdevallia: [
+    'veitchiana',
+    'coccinea',
+    'ignea',
+    'tovarensis',
+    'infracta',
+    'caudata',
+    'davisii',
+    'barlaeana',
+    'herradurae',
+    'mejiana',
+  ],
+  Paphiopedilum: [
+    'insigne',
+    'rothschildianum',
+    'callosum',
+    'barbatum',
+    'fairrieanum',
+    'spicerianum',
+    'villosum',
+    'delenatii',
+    'armeniacum',
+    'malipoense',
+    'micranthum',
+    'sukhakulii',
+  ],
+  Bulbophyllum: [
+    'lobbii',
+    'medusae',
+    'echinolabium',
+    'falcatum',
+    'fascinator',
+    'graveolens',
+    'longissimum',
+    'phalaenopsis',
+    'rothschildianum',
+    'wendlandianum',
+    'ambrosia',
+    'auricomum',
+    'barbigerum',
+    'blumei',
+    'careyanum',
+  ],
+  '× Rhyncholaeliocattleya': [
+    'Memoria Anna Balmores',
+    'George King',
+    'Hsinying Excell',
+    'Owen Holmes',
+  ],
+}
+
+const SYNONYMS: Record<string, string[]> = {
+  'Phalaenopsis pulcherrima': ['Doritis pulcherrima', 'Doritis buyssoniana'],
+  'Phalaenopsis amabilis': ['Phalaenopsis grandiflora', 'Epidendrum amabile'],
+  'Cattleya purpurata': ['Laelia purpurata', 'Sophronitis purpurata'],
+  'Cattleya skinneri': ['Guarianthe skinneri'],
+  'Vanda coerulea': ['Vanda coerulea var. alba'],
+  'Dendrobium nobile': ['Callista nobilis', 'Dendrobium coerulescens'],
+  'Oncidium flexuosum': ['Oncidium haematochilum'],
+}
+
+const COMMON_NAMES: Record<string, [string, string][]> = {
+  'Phalaenopsis amabilis': [
+    ['orquídea mariposa', 'es'],
+    ['moth orchid', 'en'],
+  ],
+  'Cattleya trianae': [['flor de mayo', 'es']],
+  'Vanda coerulea': [
+    ['vanda azul', 'es'],
+    ['blue vanda', 'en'],
+  ],
+  'Oncidium sphacelatum': [['lluvia de oro', 'es']],
+  'Masdevallia veitchiana': [['flor del inca', 'es']],
+}
+
+function buildSpecies(): SampleSpecies[] {
+  const all: SampleSpecies[] = []
+  let index = 0
+  for (const genus of GENERA) {
+    for (const epithet of EPITHETS[genus.name] ?? []) {
+      index += 1
+      const scientificName = `${genus.name} ${epithet}`
+      const grex = /^[A-Z]/.test(epithet)
+      const hybrid =
+        grex || epithet.startsWith('×') || genus.name.startsWith('×')
+      const status: SpeciesStatus =
+        index % 11 === 0
+          ? 'observed'
+          : index % 7 === 0
+            ? 'validated'
+            : 'imported'
+      const source: SpeciesSource = grex
+        ? 'curated'
+        : index % 23 === 0
+          ? 'user_proposal'
+          : index % 31 === 0
+            ? 'gbif'
+            : 'col'
+      all.push({
+        id: uuid(2, index),
+        scientificName,
+        genusId: genus.id,
+        type: hybrid ? 'hybrid' : 'species',
+        status,
+        source,
+        sourceRef:
+          source === 'col'
+            ? `4F${(index * 37).toString(36).toUpperCase()}`
+            : source === 'gbif'
+              ? String(2828000 + index)
+              : null,
+        names: [
+          ...(SYNONYMS[scientificName] ?? []).map((name) => ({
+            name,
+            type: 'synonym' as const,
+            language: null,
+          })),
+          ...(COMMON_NAMES[scientificName] ?? []).map(([name, language]) => ({
+            name,
+            type: 'common' as const,
+            language,
+          })),
+        ],
+        plants: index % 5 === 0 ? (index % 4) + 1 : 0,
+      })
+    }
+  }
+  return all
+}
+
+/** Texto para comparar y ordenar, como normalize_search_text() en la base. */
+function normalize(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/×/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/(^| )x(?= )/g, '')
+    .trim()
+}
+
+function compareKey(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+function startsByWords(name: string, query: string): boolean {
+  const words = normalize(name).split(' ')
+  const parts = query.split(' ')
+  let position = 0
+  return parts.every((part, index) => {
+    if (index === 0) {
+      if (!words[0]?.startsWith(part)) return false
+      position = 1
+      return true
+    }
+    while (position < words.length) {
+      const word = words[position]
+      position += 1
+      if (word?.startsWith(part)) return true
+    }
+    return false
+  })
+}
+
+const CREATED_AT = '2026-11-20T14:37:00Z'
+const UPDATED_AT = '2026-11-21T08:15:00Z'
+
+function toRow(
+  species: SampleSpecies,
+  match?: SampleName | null,
+): CatalogSpeciesRow {
+  const genus = GENERA.find((candidate) => candidate.id === species.genusId)
+  return {
+    id: species.id,
+    scientificName: species.scientificName,
+    genusId: species.genusId,
+    genusName: genus?.name ?? '',
+    type: species.type,
+    status: species.status,
+    source: species.source,
+    sourceRef: species.sourceRef,
+    synonymCount: species.names.filter((name) => name.type === 'synonym')
+      .length,
+    commonNameCount: species.names.filter((name) => name.type === 'common')
+      .length,
+    createdAt: CREATED_AT,
+    updatedAt: UPDATED_AT,
+    ...(match !== undefined && {
+      matchedName: match?.name ?? species.scientificName,
+      matchedNameType: match?.type ?? 'scientific',
+    }),
+  }
+}
+
+export type SampleScenario =
+  'ejemplo' | 'cargando' | 'vacio' | 'sin-conexion' | 'fallo'
+
+/**
+ * Fuente en memoria para la muestra. Cada respuesta tarda `delayMs` (para ver
+ * el estado de carga); "cargando" no responde nunca y los escenarios de error
+ * fallan con ese motivo.
+ */
+export function createSampleCatalogSource(
+  scenario: SampleScenario,
+  delayMs = 400,
+): CatalogAdminSource {
+  const species = scenario === 'vacio' ? [] : buildSpecies()
+  const genera = scenario === 'vacio' ? [] : GENERA
+  const sorted = [...species].sort(
+    (a, b) =>
+      compareKey(normalize(a.scientificName), normalize(b.scientificName)) ||
+      compareKey(a.id, b.id),
+  )
+
+  function respond<T>(signal: AbortSignal | undefined, value: () => T) {
+    return new Promise<T>((resolve, reject) => {
+      if (scenario === 'cargando') return
+      const fail = (reason: CatalogAdminFailure) =>
+        reject(new CatalogAdminError(reason))
+      const timer = setTimeout(() => {
+        if (scenario === 'sin-conexion') fail('offline')
+        else if (scenario === 'fallo') fail('failed')
+        else resolve(value())
+      }, delayMs)
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        fail('aborted')
+      })
+    })
+  }
+
+  const matches = (
+    filters: Parameters<CatalogAdminSource['listSpecies']>[0],
+  ) => {
+    const f = filters?.filters ?? {}
+    return (item: SampleSpecies) =>
+      (!f.status || item.status === f.status) &&
+      (!f.genusId || item.genusId === f.genusId) &&
+      (!f.type || item.type === f.type) &&
+      (!f.source || item.source === f.source)
+  }
+
+  return {
+    listSpecies: (options = {}) =>
+      respond(options.signal, () => {
+        const list = sorted.filter(matches(options))
+        const size = options.pageSize ?? CATALOG_PAGE_SIZE
+        const cursor = options.cursor ?? { kind: 'first' }
+        let start = 0
+        let end = size
+        if (cursor.kind === 'after') {
+          const at = list.findIndex((item) => item.id === cursor.id)
+          start = at + 1
+          end = start + size
+        } else if (cursor.kind === 'before') {
+          const at = list.findIndex((item) => item.id === cursor.id)
+          end = at === -1 ? size : at
+          start = Math.max(end - size, 0)
+        } else if (cursor.kind === 'last') {
+          end = list.length
+          start =
+            list.length === 0
+              ? 0
+              : list.length - (((list.length - 1) % size) + 1)
+        }
+        const page = list.slice(start, end)
+        return {
+          rows: page.map((item) => toRow(item)),
+          total: page.length === 0 ? 0 : list.length,
+          hasPrevious: start > 0,
+          hasNext: end < list.length,
+        }
+      }),
+    searchSpecies: (query, options = {}) =>
+      respond(options.signal, () => {
+        const text = normalize(query)
+        const filter = matches(options)
+        const found: { item: SampleSpecies; match: SampleName | null }[] = []
+        for (const item of sorted.filter(filter)) {
+          if (startsByWords(item.scientificName, text)) {
+            found.push({ item, match: null })
+          }
+        }
+        for (const item of sorted.filter(filter)) {
+          if (found.some((entry) => entry.item === item)) continue
+          const name = item.names.find((candidate) =>
+            startsByWords(candidate.name, text),
+          )
+          if (name) found.push({ item, match: name })
+        }
+        if (found.length === 0) {
+          for (const item of sorted.filter(filter)) {
+            if (normalize(item.scientificName).includes(text)) {
+              found.push({ item, match: null })
+            }
+          }
+        }
+        const size = options.pageSize ?? CATALOG_PAGE_SIZE
+        const pageCount = Math.max(Math.ceil(found.length / size), 1)
+        const page = Math.min(Math.max(options.page ?? 1, 1), pageCount)
+        return {
+          rows: found
+            .slice((page - 1) * size, page * size)
+            .map(({ item, match }) => toRow(item, match)),
+          total: found.length,
+          page,
+        }
+      }),
+    listGenera: (options = {}) =>
+      respond(options.signal, () => {
+        const text = normalize(options.query ?? '')
+        const list = [...genera]
+          .sort((a, b) => compareKey(normalize(a.name), normalize(b.name)))
+          .filter(
+            (genus) =>
+              (!options.quickAccessOnly || genus.isQuickAccess) &&
+              (text === '' ||
+                normalize(genus.name).includes(text) ||
+                genus.abbreviations.some(
+                  (abbreviation) =>
+                    normalize(abbreviation).replace(/\.$/, '') ===
+                    text.replace(/\.$/, ''),
+                )),
+          )
+        const size = options.pageSize ?? CATALOG_PAGE_SIZE
+        const pageCount = Math.max(Math.ceil(list.length / size), 1)
+        const page = Math.min(Math.max(options.page ?? 1, 1), pageCount)
+        return {
+          rows: list
+            .slice((page - 1) * size, page * size)
+            .map((genus): CatalogGenusRow => ({
+              id: genus.id,
+              name: genus.name,
+              isQuickAccess: genus.isQuickAccess,
+              abbreviations: genus.abbreviations,
+              speciesCount: species.filter((item) => item.genusId === genus.id)
+                .length,
+            })),
+          total: list.length,
+          page,
+        }
+      }),
+    summary: (options = {}) =>
+      respond(options.signal, () => {
+        const count = (test: (item: SampleSpecies) => boolean) =>
+          species.filter(test).length
+        const names = species.flatMap((item) => item.names)
+        return {
+          genusCount: genera.length,
+          speciesCount: count((item) => item.type === 'species'),
+          hybridCount: count((item) => item.type === 'hybrid'),
+          synonymCount: names.filter((name) => name.type === 'synonym').length,
+          commonNameCount: names.filter((name) => name.type === 'common')
+            .length,
+          byStatus: {
+            imported: count((item) => item.status === 'imported'),
+            validated: count((item) => item.status === 'validated'),
+            observed: count((item) => item.status === 'observed'),
+          },
+          bySource: {
+            col: count((item) => item.source === 'col'),
+            curated: count((item) => item.source === 'curated'),
+            user_proposal: count((item) => item.source === 'user_proposal'),
+            gbif: count((item) => item.source === 'gbif'),
+          },
+        }
+      }),
+    speciesDetail: (id, options = {}) =>
+      respond(options.signal, (): CatalogSpeciesDetail | null => {
+        const item = species.find((candidate) => candidate.id === id)
+        if (!item) return null
+        const row = toRow(item)
+        return {
+          id: row.id,
+          scientificName: row.scientificName,
+          genusId: row.genusId,
+          genusName: row.genusName,
+          type: row.type,
+          status: row.status,
+          source: row.source,
+          sourceRef: row.sourceRef,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          names: item.names.map((name, index) => ({
+            id: `${item.id}-${index}`,
+            ...name,
+          })),
+        }
+      }),
+    plantCount: (id, options = {}) =>
+      respond(
+        options.signal,
+        () => species.find((item) => item.id === id)?.plants ?? 0,
+      ),
+    genus: (id, options = {}) =>
+      respond(options.signal, () => {
+        const genus = genera.find((candidate) => candidate.id === id)
+        return genus ? { id: genus.id, name: genus.name } : null
+      }),
+    searchGenera: (query, options = {}) =>
+      respond(options.signal, () => {
+        const text = normalize(query).replace(/\.$/, '')
+        return genera
+          .filter(
+            (genus) =>
+              normalize(genus.name).startsWith(text) ||
+              genus.abbreviations.some(
+                (abbreviation) =>
+                  normalize(abbreviation).replace(/\.$/, '') === text,
+              ),
+          )
+          .map((genus): GenusSearchResult => ({
+            id: genus.id,
+            name: genus.name,
+            isQuickAccess: genus.isQuickAccess,
+            matchedAbbreviation:
+              genus.abbreviations.find(
+                (abbreviation) =>
+                  normalize(abbreviation).replace(/\.$/, '') === text,
+              ) ?? null,
+          }))
+      }),
+  }
+}

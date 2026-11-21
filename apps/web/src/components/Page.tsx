@@ -8,11 +8,18 @@ interface PageProps {
   tabTitle?: string | null
   /**
    * Ancho máximo: narrow (por defecto, 512 px) para textos y formularios;
-   * wide (1024 px) para listas y cuadrículas que aprovechan el escritorio.
+   * wide (1024 px) para listas y cuadrículas que aprovechan el escritorio;
+   * full (1280 px) para las tablas del backoffice.
    */
-  width?: 'narrow' | 'wide'
+  width?: 'narrow' | 'wide' | 'full'
   children?: ReactNode
 }
+
+const WIDTH_CLASSES = {
+  narrow: 'max-w-lg',
+  wide: 'max-w-5xl',
+  full: 'max-w-7xl',
+} as const
 
 // Contenido de una página dentro de AppShell: pone el título de la pestaña y
 // el h1, que recibe el foco al llegar navegando (tabIndex -1 lo hace enfocable
@@ -28,9 +35,7 @@ export function Page({
   useFocusOnNavigation(headingRef)
 
   return (
-    <div
-      className={`flex w-full flex-col gap-space-3 ${width === 'wide' ? 'max-w-5xl' : 'max-w-lg'}`}
-    >
+    <div className={`flex w-full flex-col gap-space-3 ${WIDTH_CLASSES[width]}`}>
       <h1
         ref={headingRef}
         tabIndex={-1}

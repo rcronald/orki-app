@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import tokensCss from '../styles/tokens.css?raw'
 import { parseTokens } from '../styles/tokens.ts'
+import { CatalogAdminSection } from './CatalogAdminSection.tsx'
 import { ComponentSections } from './ComponentSections.tsx'
 import { InventorySection } from './InventorySection.tsx'
 import { TokenSections } from './TokenSections.tsx'
@@ -28,6 +29,7 @@ const SECTIONS = [
   { id: 'buscador', label: 'Buscador' },
   { id: 'plegable', label: 'Sección plegable' },
   { id: 'inventario', label: 'Pantalla de inventario' },
+  { id: 'backoffice', label: 'Backoffice del catálogo' },
 ] as const
 
 export default function ShowcasePage() {
@@ -79,6 +81,7 @@ export default function ShowcasePage() {
           <TokenSections tokens={tokens} />
           <ComponentSections />
           <InventorySection />
+          <CatalogAdminSection />
         </main>
       </div>
     </div>
