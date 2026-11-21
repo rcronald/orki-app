@@ -16,6 +16,11 @@ Pasos, todos dentro de una única transacción (o entra todo o nada):
 6. Confirma la transacción o, en modo de prueba (el modo por defecto), la revierte. En los dos
    casos el reporte es el mismo, porque todo el trabajo se hizo de verdad dentro de ella.
 
+Entre los pasos 3 y 4 deja además una fila de resumen en la auditoría del catálogo
+(:mod:`catalog_import.audit`), en la misma transacción: al escribir se confirma con la carga y
+en una simulación se revierte con ella. Si la base no tiene la auditoría, una carga que escribe
+se niega antes de tocar nada.
+
 Reglas de casamiento y de conflicto: ver el README de la carpeta ("Reglas de la carga").
 
 La lista curada de híbridos (:mod:`catalog_import.hybrids_load`) usa este mismo flujo: su
@@ -29,12 +34,15 @@ import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 
 from .model import Catalog, Code, Species
 from .names import HYBRID_SIGN, match_key
+
+if TYPE_CHECKING:
+    from .audit import LoadAudit
 
 # Entidades y resultados del reporte.
 GENUS = 'genero'
@@ -857,11 +865,25 @@ class LoadResult:
     measures: Measures
     written: bool
     timings: dict[str, float]
+    # ¿Tiene la base la auditoría del catálogo? Una simulación sin ella avisa de que la
+    # escritura se negaría.
+    audit_ready: bool = True
+    # action_id de la fila de resumen de la auditoría (en una simulación, el de la fila que
+    # se insertó y se revirtió).
+    audit_action_id: str | None = None
 
 
-def run_load(conn: psycopg.Connection[Any], catalog: Catalog, *, write: bool) -> LoadResult:
+def run_load(
+    conn: psycopg.Connection[Any],
+    catalog: Catalog,
+    *,
+    write: bool,
+    audit: LoadAudit | None = None,
+) -> LoadResult:
     """Carga el catálogo de COL en una transacción. Sin ``write``, la revierte al terminar."""
-    return run_plan(conn, lambda snapshot: plan_load(catalog, snapshot), COL_POLICY, write=write)
+    return run_plan(
+        conn, lambda snapshot: plan_load(catalog, snapshot), COL_POLICY, write=write, audit=audit
+    )
 
 
 def run_plan(
@@ -870,15 +892,29 @@ def run_plan(
     policy: SourcePolicy,
     *,
     write: bool,
+    audit: LoadAudit | None = None,
 ) -> LoadResult:
     """Lee la base, planifica con ``planner`` y aplica el plan, todo en una transacción.
 
     Sin ``write``, la revierte al terminar. ``conn`` debe estar sin transacción abierta y sin
     autocommit. Si algo falla, la transacción se revierte y la excepción sigue su camino: no
     queda nada escrito.
+
+    Con ``write``, ``audit`` es obligatorio: la carga deja su fila de resumen en la auditoría
+    (:func:`catalog_import.audit.log_load`) antes de escribir el catálogo, en la misma
+    transacción. Si la base no tiene la auditoría, falla antes de escribir nada. En una
+    simulación con ``audit``, la fila se inserta si la base tiene la auditoría y se revierte
+    con lo demás; si no la tiene, el resultado lo dice (``audit_ready``).
     """
+    # Importación diferida: audit usa las constantes y el Plan de este módulo.
+    from .audit import audit_ready, log_load, missing_audit_message
+
     if conn.autocommit:
         raise LoadError('La conexión no debe estar en autocommit: la carga es una transacción.')
+    if write and audit is None:
+        raise LoadError(
+            'Una carga que escribe necesita el identificador de la carga para la auditoría.'
+        )
     timings: dict[str, float] = {}
     started = time.perf_counter()
     try:
@@ -890,6 +926,9 @@ def run_plan(
             'in share row exclusive mode'
         )
         check_schema(conn)
+        ready = audit_ready(conn)
+        if write and not ready:
+            raise LoadError(missing_audit_message())
         snapshot = read_snapshot(conn)
         timings['lectura_base'] = time.perf_counter() - started
 
@@ -898,6 +937,12 @@ def run_plan(
         timings['plan'] = time.perf_counter() - mark
 
         mark = time.perf_counter()
+        action_id = None
+        if audit is not None and ready:
+            # Antes de escribir, como pide private.log_catalog_action(): los recuentos salen
+            # del plan, y apply_plan comprueba que se escribe exactamente eso. En una
+            # simulación también se inserta, para ensayarlo, y se revierte con todo lo demás.
+            action_id = log_load(conn, audit, plan)
         applied = apply_plan(conn, plan, policy)
         if write:
             # Estadísticas al día para la búsqueda. Dentro de la transacción: si se revierte,
@@ -916,4 +961,4 @@ def run_plan(
         conn.rollback()
         raise
     timings['total_base'] = time.perf_counter() - started
-    return LoadResult(plan, applied, measures, write, timings)
+    return LoadResult(plan, applied, measures, write, timings, ready, action_id)

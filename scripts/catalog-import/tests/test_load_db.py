@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from catalog_import.audit import CATALOG_LOAD, LoadAudit
 from catalog_import.cli import main
 from catalog_import.load import LoadResult, run_load
 from catalog_import.model import Action, Catalog, Code, Issue
@@ -77,9 +78,12 @@ def names_of(db: Target, scientific_name: str) -> list[tuple[str, str]]:
     )
 
 
+TEST_AUDIT = LoadAudit('local:pruebas', CATALOG_LOAD, 'local', {'name': 'pruebas'}, None)
+
+
 def run_catalog(db: Target, catalog: Catalog, *, write: bool = True) -> LoadResult:
     with connect(db, autocommit=False) as conn:
-        return run_load(conn, catalog, write=write)
+        return run_load(conn, catalog, write=write, audit=TEST_AUDIT)
 
 
 # Carga de la muestra ------------------------------------------------------------------------
