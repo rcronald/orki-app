@@ -3,6 +3,7 @@ import tokensCss from '../styles/tokens.css?raw'
 import { parseTokens } from '../styles/tokens.ts'
 import { ComponentSections } from './ComponentSections.tsx'
 import { InventorySection } from './InventorySection.tsx'
+import { RegistrationSection } from './RegistrationSection.tsx'
 import { TokenSections } from './TokenSections.tsx'
 
 // Página interna de muestra del design system (issue #45). Solo existe fuera
@@ -28,6 +29,7 @@ const SECTIONS = [
   { id: 'buscador', label: 'Buscador' },
   { id: 'plegable', label: 'Sección plegable' },
   { id: 'inventario', label: 'Pantalla de inventario' },
+  { id: 'registro', label: 'Formulario de registro' },
 ] as const
 
 export default function ShowcasePage() {
@@ -79,6 +81,7 @@ export default function ShowcasePage() {
           <TokenSections tokens={tokens} />
           <ComponentSections />
           <InventorySection />
+          <RegistrationSection />
         </main>
       </div>
     </div>

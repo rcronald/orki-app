@@ -343,6 +343,35 @@ describe('Autocomplete', () => {
     )
   })
 
+  it('renderLabel cambia el contenido del texto principal y no su nombre', () => {
+    render(
+      <Autocomplete
+        label="Nombre científico"
+        labelStyle="scientific"
+        value="rlc"
+        onValueChange={() => {}}
+        options={[
+          { id: 'rlc', label: '× Rhyncholaeliocattleya Memoria Anna Balmores' },
+        ]}
+        renderLabel={(option) => (
+          <>
+            <span data-testid="propio">×</span>
+            {option.label.slice(1)}
+          </>
+        )}
+        onOptionSelect={() => {}}
+      />,
+    )
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    const option = screen.getByRole('option', {
+      name: '× Rhyncholaeliocattleya Memoria Anna Balmores',
+    })
+    expect(option).toContainElement(screen.getByTestId('propio'))
+    expect(screen.getByTestId('propio').parentElement).toHaveClass(
+      'orki-autocomplete__label--scientific',
+    )
+  })
+
   it('reenvía ref, atributos nativos y manejadores del campo', () => {
     const ref = createRef<HTMLInputElement>()
     const onKeyDown = vi.fn()

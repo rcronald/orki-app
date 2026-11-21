@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -184,6 +184,56 @@ describe('ShowcasePage', () => {
     expect(within(inventory).getByRole('alert')).toHaveTextContent(
       'Sin conexión',
     )
+    await expectNoAxeViolations()
+  })
+
+  it('muestra el formulario de registro con datos fijos', async () => {
+    const user = userEvent.setup()
+    renderShowcase()
+
+    const section = screen.getByRole('region', {
+      name: 'Formulario de registro',
+    })
+    await user.click(
+      within(section).getByRole('button', { name: 'Ver el formulario' }),
+    )
+    const form = within(section).getByRole('form', {
+      name: 'Registrar una orquídea',
+    })
+    await user.type(
+      within(form).getByRole('combobox', { name: 'Nombre' }),
+      'wakanki',
+    )
+    await user.click(
+      await within(form).findByRole('option', {
+        name: /^Masdevallia veitchiana,/,
+      }),
+    )
+    expect(
+      within(form).getByRole('button', { name: 'Masdevallia' }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    await expectNoAxeViolations()
+
+    await user.click(
+      within(form).getByRole('button', { name: 'Registrar orquídea' }),
+    )
+    await waitFor(() =>
+      expect(within(section).getByRole('status')).toHaveTextContent(
+        'Guardada: «Masdevallia veitchiana», validada.',
+      ),
+    )
+    expect(within(section).getByText(/"species_id"/)).toBeInTheDocument()
+
+    // Sin conexión: el formulario se ve desactivado con el motivo.
+    await user.click(
+      within(section).getByRole('button', { name: 'Registrar otra' }),
+    )
+    await user.click(
+      within(section).getByRole('button', { name: 'Sin conexión' }),
+    )
+    expect(
+      within(section).getByRole('combobox', { name: 'Nombre' }),
+    ).toBeDisabled()
     await expectNoAxeViolations()
   })
 

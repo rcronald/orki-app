@@ -146,9 +146,9 @@ describe('rutas con sesión', () => {
     await expectNoAxeViolations()
 
     await user.click(screen.getByRole('link', { name: 'Registrar orquídea' }))
-    expect(await findHeading('Registrar una planta')).toBeInTheDocument()
+    expect(await findHeading('Registrar una orquídea')).toBeInTheDocument()
     expect(currentLocation()).toBe('/coleccion/nueva')
-    expect(document.title).toBe('Registrar una planta · Orki')
+    expect(document.title).toBe('Registrar una orquídea · Orki')
     await expectNoAxeViolations()
   })
 
