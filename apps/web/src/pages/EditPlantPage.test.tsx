@@ -419,7 +419,8 @@ describe('EditPlantPage', () => {
 
   it('sin conexión, el formulario se desactiva con el motivo', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
-    await renderEdit([amabilis()])
+    // Sin conexión el detalle no ofrece editar: se abre la dirección.
+    await renderEdit([amabilis()], [`/coleccion/${AMABILIS_ID}/editar`])
     expect(screen.getByText(PLANT_EDIT_TEXT.offline)).toBeInTheDocument()
     expect(nameInput()).toBeDisabled()
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true')

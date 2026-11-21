@@ -8,7 +8,13 @@ import {
   sessionTokenFailure,
   type OrkiSupabaseClient,
 } from '../lib/supabase.ts'
+import type { PlantStatus } from '../lib/database.ts'
 import type { NewPlantInsert, PlantPatch } from './form-state.ts'
+
+/** Dar de baja o reactivar una planta (#16): solo el estado. */
+export interface PlantStatusPatch {
+  status: PlantStatus
+}
 
 // Guardado de una planta nueva en Supabase (#85).
 //
@@ -223,7 +229,7 @@ export async function insertPlant(
 
 /**
  * Guarda los cambios de una planta (#16): actualización parcial con solo las
- * columnas que cambiaron, filtrada también por usuario (con el token de otra
+ * columnas que cambiaron (o solo el estado, al dar de baja o reactivar), filtrada también por usuario (con el token de otra
  * cuenta no toca nada), y la devuelve como planta de la colección. Sin
  * cambios no se llama. Se rechaza con PlantSaveError (los textos de
  * PLANT_UPDATE_ERROR_TEXT); not-found si la planta no existe o no es suya.
@@ -234,7 +240,7 @@ export async function insertPlant(
 export async function updatePlant(
   plantId: string,
   userId: string,
-  patch: PlantPatch,
+  patch: PlantPatch | PlantStatusPatch,
   { getClient = getSupabase }: InsertPlantOptions = {},
 ): Promise<CollectionPlant> {
   let supabase: OrkiSupabaseClient
