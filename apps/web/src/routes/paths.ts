@@ -10,6 +10,10 @@ export const PATHS = {
   catalog: '/catalogo',
   collection: '/coleccion',
   newPlant: '/coleccion/nueva',
+  /** Detalle de un ejemplar (#16); construir con plantDetailPath(). */
+  plantDetail: '/coleccion/:plantId',
+  /** Edición de un ejemplar (#16); construir con plantEditPath(). */
+  editPlant: '/coleccion/:plantId/editar',
   catalogAdmin: '/administracion/catalogo',
   signIn: '/iniciar-sesion',
   signUp: '/registro',
@@ -18,6 +22,16 @@ export const PATHS = {
   /** Diagnóstico de la identidad (Clerk y Postgres); solo fuera de producción. */
   identityDiagnostics: '/diagnostico',
 } as const
+
+/** Dirección del detalle de una planta: /coleccion/<id>. */
+export function plantDetailPath(plantId: string): string {
+  return `${PATHS.collection}/${encodeURIComponent(plantId)}`
+}
+
+/** Dirección de la edición de una planta: /coleccion/<id>/editar. */
+export function plantEditPath(plantId: string): string {
+  return `${plantDetailPath(plantId)}/editar`
+}
 
 /** Parámetro con el que Clerk recibe la página a la que volver tras entrar. */
 export const REDIRECT_PARAM = 'redirect_url'

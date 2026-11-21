@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { internalPathOf, PATHS } from '../routes/paths.ts'
 import { clerkAppearance } from './appearance.ts'
+import { ObservedUser } from './ObservedUser.tsx'
 import { ProfileBootstrap } from './ProfileBootstrap.tsx'
 import { SupabaseSessionBridge } from './SupabaseSessionBridge.tsx'
 
@@ -32,8 +33,9 @@ interface AuthProviderProps {
 //
 // SupabaseSessionBridge pasa el token de sesión al cliente de Supabase; va
 // antes de los hijos para que su efecto corra antes que los de las páginas.
-// ProfileBootstrap va justo después: crea el perfil en el primer ingreso, ya
-// con la fuente del token registrada. CollectionProvider comparte la colección
+// ObservedUser pasa a Sentry solo el id de Clerk del usuario. ProfileBootstrap
+// va justo después: crea el perfil en el primer ingreso, ya con la fuente del
+// token registrada. CollectionProvider comparte la colección
 // del usuario entre pantallas; no lee nada hasta que una pantalla la pide.
 export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
   const navigate = useNavigate()
@@ -58,6 +60,7 @@ export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
       routerReplace={routerReplace}
     >
       <SupabaseSessionBridge />
+      <ObservedUser />
       <ProfileBootstrap />
       <CollectionProvider>{children}</CollectionProvider>
     </ClerkProvider>

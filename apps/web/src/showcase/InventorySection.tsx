@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { DEFAULT_FILTERS, type PlantFilters } from '../collection/filters.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import {
   CollectionLoadError,
@@ -13,8 +14,8 @@ import { Example, Section } from './layout.tsx'
 
 // La pantalla de inventario (/coleccion) con datos fijos, para verla sin base
 // de datos ni sesión, en cada uno de sus estados. Las preferencias de vista se
-// guardan en este navegador, igual que en la app; la búsqueda, en el estado
-// de la sección (en la app va en la URL).
+// guardan en este navegador, igual que en la app; la búsqueda y los filtros,
+// en el estado de la sección (en la app van en la URL).
 
 const SCENARIOS = [
   { id: 'ejemplo', label: 'Colección de ejemplo' },
@@ -44,6 +45,7 @@ const failed = (reason: CollectionErrorReason): ScenarioState => ({
 export function InventorySection() {
   const [scenario, setScenario] = useState<ScenarioId>('ejemplo')
   const [query, setQuery] = useState('')
+  const [filters, setFilters] = useState<PlantFilters>(DEFAULT_FILTERS)
   const large = useMemo(() => largeSampleCollection(300), [])
 
   const state: ScenarioState = (() => {
@@ -75,7 +77,7 @@ export function InventorySection() {
     <Section
       id="inventario"
       title="Pantalla de inventario"
-      description="InventoryView, la pantalla de /coleccion, con datos fijos. Solo cuenta las plantas activas: la regalada de la muestra no aparece. Reintentar no hace nada aquí."
+      description="InventoryView, la pantalla de /coleccion, con datos fijos. Por defecto solo cuenta las plantas activas: la regalada y la perdida de la muestra se ven con el filtro de estado. «Filtros» abre el panel de estado, género, color y origen. Reintentar no hace nada aquí."
     >
       <ChipGroup aria-label="Estado del inventario">
         {SCENARIOS.map((option) => (
@@ -96,6 +98,8 @@ export function InventorySection() {
           onRetry={() => {}}
           query={query}
           onQueryChange={setQuery}
+          filters={filters}
+          onFiltersChange={setFilters}
         />
       </Example>
     </Section>

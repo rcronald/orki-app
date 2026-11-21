@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import type { PlantFilters } from '../collection/filters.ts'
 import { useCollection } from '../collection/useCollection.ts'
 import { Page } from '../components/Page.tsx'
+import { ScientificName } from '../components/ui/ScientificName.tsx'
+import { ActionNotice } from '../detail/ActionNotice.tsx'
+import { clearPlantNotice, peekPlantNotice } from '../detail/notice.ts'
+import { DETAIL_TEXT } from '../detail/texts.ts'
+import { readFilters, writeFilters } from '../inventory/filter-params.ts'
 import { InventoryView } from '../inventory/InventoryView.tsx'
 import { readRegisteredPlant } from '../inventory/registered-plant.ts'
 import { RegisteredNotice } from '../inventory/RegisteredNotice.tsx'
@@ -13,15 +19,26 @@ const SEARCH_PARAM = 'q'
 // Inventario de la colección del usuario (#14): conecta la pantalla con la
 // colección compartida (useCollection). Exige sesión.
 //
-// El texto buscado vive en la URL (?q=): se conserva al volver con "atrás"
-// desde el registro o el detalle, al recargar y al compartir el enlace, sin
-// estado propio que sincronizar. Cada pulsación sustituye la entrada del
-// historial en lugar de añadir una. Los filtros del #15 irán igual. La
-// posición de desplazamiento la guarda useScrollMemory.
+// El texto buscado (?q=) y los filtros del #15 (?estado=, ?genero=, ?color=,
+// ?origen=; ver inventory/filter-params.ts) viven en la URL: se conservan al
+// volver con "atrás" desde el registro o el detalle, al recargar y al
+// compartir el enlace, sin estado propio que sincronizar. Cada pulsación y
+// cada toque de un filtro sustituyen la entrada del historial (replace) en
+// lugar de añadir una: "atrás" sale del inventario en vez de deshacer los
+// toques uno a uno, y la entrada del inventario guarda siempre el último
+// estado, que es el que se recupera al volver del detalle. La posición de
+// desplazamiento la guarda useScrollMemory.
 //
 // Al volver del registro (#85), el estado de la navegación trae la planta
 // recién registrada: se muestra un aviso de confirmación y se borra ese
 // estado del historial, para que recargar o volver con "atrás" no lo repita.
+// Al volver de eliminar una planta (#16), "Eliminaste…" (detail/notice.ts).
+
+function deletedNotice() {
+  const notice = peekPlantNotice()
+  return notice?.kind === 'deleted' ? notice : null
+}
+
 export function CollectionPage() {
   const { status, plants, error, reload } = useCollection()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -32,6 +49,11 @@ export function CollectionPage() {
     readRegisteredPlant(location.state),
   )
   const hasRegisteredState = readRegisteredPlant(location.state) !== null
+  const [pendingDeleted] = useState(deletedNotice)
+  const [deleted, setDeleted] = useState(pendingDeleted)
+  useEffect(() => {
+    if (pendingDeleted !== null) clearPlantNotice(pendingDeleted)
+  }, [pendingDeleted])
 
   useEffect(() => {
     if (!hasRegisteredState) return
@@ -56,6 +78,26 @@ export function CollectionPage() {
     [setSearchParams],
   )
 
+  // Un objeto nuevo solo cuando cambian los filtros, no al escribir en el
+  // buscador: los derivados de la vista dependen de su identidad.
+  const filterSearch = writeFilters(
+    new URLSearchParams(),
+    readFilters(searchParams),
+  ).toString()
+  const filters = useMemo(
+    () => readFilters(new URLSearchParams(filterSearch)),
+    [filterSearch],
+  )
+  const setFilters = useCallback(
+    (next: PlantFilters) => {
+      setSearchParams((current) => writeFilters(current, next), {
+        replace: true,
+        preventScrollReset: true,
+      })
+    },
+    [setSearchParams],
+  )
+
   useScrollMemory(plants !== null)
 
   return (
@@ -67,6 +109,19 @@ export function CollectionPage() {
           onDismiss={() => setRegistered(null)}
         />
       )}
+      {deleted && (
+        <ActionNotice key={deleted.plantId} onDismiss={() => setDeleted(null)}>
+          {DETAIL_TEXT.deleted}{' '}
+          {deleted.scientific ? (
+            <span className="font-display italic">
+              <ScientificName name={deleted.name} />
+            </span>
+          ) : (
+            <span className="font-semibold">{deleted.name}</span>
+          )}
+          .{!deleted.photosDeleted && ` ${DETAIL_TEXT.deletedPhotosLeft}`}
+        </ActionNotice>
+      )}
       <InventoryView
         status={status}
         plants={plants}
@@ -74,6 +129,8 @@ export function CollectionPage() {
         onRetry={reload}
         query={query}
         onQueryChange={setQuery}
+        filters={filters}
+        onFiltersChange={setFilters}
       />
     </Page>
   )

@@ -1,7 +1,9 @@
+import type { CollectionPlant } from '../collection/model.ts'
 import type {
   FlowerColor,
   PlantInsert,
   PlantType,
+  PlantUpdate,
   SpeciesType,
 } from '../lib/database.ts'
 import { isCalendarDate } from '../lib/localDate.ts'
@@ -316,4 +318,125 @@ export function toPlantInsert(
   if (values.flowerColor !== null) insert.flower_color = values.flowerColor
   if (values.photoInBloom) insert.photo_in_bloom = true
   return insert
+}
+
+// Edición (#16) ------------------------------------------------------------
+//
+// El mismo formulario edita una planta ya guardada: se precarga con sus datos
+// (plantFormValuesFrom, que entra con la acción "restored" o como estado
+// inicial) y al guardar se envía solo lo que cambió (plantPatch).
+
+/** Formulario con los datos de una planta de la colección, para editarla. */
+export function plantFormValuesFrom(plant: CollectionPlant): PlantFormValues {
+  return {
+    // Enlazada, el campo muestra el nombre de la especie, como al elegirla en
+    // el registro; si no, el que escribió la persona.
+    name: plant.species?.scientificName ?? plant.enteredName,
+    species: plant.species
+      ? {
+          id: plant.species.id,
+          scientificName: plant.species.scientificName,
+          genus: { id: plant.genus.id, name: plant.genus.name },
+          type: plant.species.type,
+        }
+      : null,
+    genus: { id: plant.genus.id, name: plant.genus.name },
+    otherGenusOpen: false,
+    type: plant.type,
+    acquiredOn: plant.acquiredOn,
+    origin: plant.origin ?? '',
+    location: plant.location ?? '',
+    nickname: plant.nickname ?? '',
+    flowerColor: plant.flowerColor,
+    photoInBloom: plant.photoInBloom,
+  }
+}
+
+/**
+ * Columnas que la edición puede cambiar. Como en la inserción, nunca lleva
+ * `validation` ni `user_id`: al quitar la especie, el disparador de la base
+ * devuelve la planta a "por validar" (y con especie, pone su género y su tipo).
+ */
+export type PlantPatch = Partial<
+  Pick<
+    PlantUpdate,
+    | 'entered_name'
+    | 'species_id'
+    | 'genus_id'
+    | 'type'
+    | 'acquired_on'
+    | 'origin'
+    | 'location'
+    | 'nickname'
+    | 'flower_color'
+    | 'photo_in_bloom'
+  >
+>
+
+type PlantPatchColumn = keyof PlantPatch
+
+/** Todas las columnas editables de un formulario ya validado; vacío es null. */
+function toPlantColumns(
+  values: PlantFormValues,
+): Required<{ [Column in PlantPatchColumn]: PlantPatch[Column] }> {
+  const optional = (text: string) => {
+    const normalized = normalizePlantName(text)
+    return normalized === '' ? null : normalized
+  }
+  return {
+    entered_name: normalizePlantName(values.name),
+    species_id: values.species?.id ?? null,
+    genus_id: values.genus?.id,
+    type: values.type ?? undefined,
+    acquired_on: values.acquiredOn,
+    origin: optional(values.origin),
+    location: optional(values.location),
+    nickname: optional(values.nickname),
+    flower_color: values.flowerColor,
+    photo_in_bloom: values.photoInBloom,
+  }
+}
+
+const PATCH_COLUMNS: readonly PlantPatchColumn[] = [
+  'entered_name',
+  'species_id',
+  'genus_id',
+  'type',
+  'acquired_on',
+  'origin',
+  'location',
+  'nickname',
+  'flower_color',
+  'photo_in_bloom',
+]
+
+/**
+ * Lo que cambió entre el formulario con el que se abrió la edición (`initial`)
+ * y el actual, como actualización parcial de plants. Vacío si no cambió nada.
+ * Cambiar solo el apodo envía solo el apodo: ni la especie ni la foto.
+ */
+export function plantPatch(
+  values: PlantFormValues,
+  initial: PlantFormValues,
+): PlantPatch {
+  const next = toPlantColumns(values)
+  const before = toPlantColumns(initial)
+  const patch: PlantPatch = {}
+  for (const column of PATCH_COLUMNS) {
+    if (next[column] !== before[column] && next[column] !== undefined) {
+      Object.assign(patch, { [column]: next[column] })
+    }
+  }
+  return patch
+}
+
+/**
+ * Si se quitará el enlace con una especie al guardar: la planta estaba
+ * enlazada y el nombre ya no lo está. La base la devolverá a "por validar".
+ */
+export function unlinksSpecies(
+  values: PlantFormValues,
+  initial: PlantFormValues,
+): boolean {
+  return initial.species !== null && values.species === null
 }

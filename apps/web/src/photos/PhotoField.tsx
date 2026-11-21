@@ -67,6 +67,11 @@ export interface PhotoFieldProps {
   upload?: PhotoUploadState
   onRetryUpload?: () => void
   onCancelUpload?: () => void
+  /**
+   * Avisa al empezar y al terminar de preparar una foto, para que el
+   * formulario no guarde mientras tanto (#87).
+   */
+  onProcessingChange?: (processing: boolean) => void
 }
 
 type Work =
@@ -117,6 +122,7 @@ export function PhotoField({
   upload,
   onRetryUpload,
   onCancelUpload,
+  onProcessingChange,
 }: PhotoFieldProps) {
   const descriptionId = useId()
   const [work, setWork] = useState<Work>({ status: 'idle' })
@@ -153,6 +159,10 @@ export function PhotoField({
   const processing = work.status === 'processing'
   const uploading = upload?.status === 'uploading'
   const locked = disabled || processing || uploading
+
+  useEffect(() => {
+    onProcessingChange?.(processing)
+  }, [processing, onProcessingChange])
 
   /** Si el foco se perdió (botón que desaparece), lo devuelve al primero. */
   function restoreFocus() {

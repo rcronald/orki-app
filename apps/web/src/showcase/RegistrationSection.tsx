@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { CollectionPlant } from '../collection/model.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
@@ -11,6 +11,9 @@ import {
   type SpeciesSearchResult,
 } from '../lib/catalogSearch.ts'
 import { normalizeSearchText } from '../collection/normalize.ts'
+import { createMemoryPhotoStorage } from '../photos/memory-storage.ts'
+import { PhotoStorageError } from '../photos/storage.ts'
+import { replacePlantPhoto } from '../photos/upload.ts'
 import type { FormGenus, NewPlantInsert } from '../registration/form-state.ts'
 import {
   PlantForm,
@@ -31,8 +34,10 @@ import { Example, Section } from './layout.tsx'
 // Las sugerencias de origen y el aviso de duplicado salen de la colección de
 // ejemplo del inventario, con Phalaenopsis amabilis enlazada a la especie de
 // esta muestra: dos ejemplares activos y uno regalado (que no cuenta).
-// El borrador es real (localStorage, usuario "muestra"): recargar la página a
-// mitad lo recupera.
+// El borrador es real (localStorage y, la foto, IndexedDB, usuario
+// "muestra"): recargar la página a mitad lo recupera. La foto se sube con
+// replacePlantPhoto a un bucket en memoria (memory-storage.ts), como en la
+// sección "Fotos", y puede fallar a voluntad.
 
 const AMABILIS_SPECIES = {
   id: 'especie-amabilis',
@@ -197,6 +202,16 @@ const OUTCOMES = [
 
 type OutcomeId = (typeof OUTCOMES)[number]['id']
 
+const PHOTO_OUTCOMES = [
+  { id: 'ok', label: 'La foto sube bien' },
+  { id: 'offline', label: 'La foto falla sin conexión' },
+  { id: 'session-ended', label: 'La foto falla por la sesión' },
+] as const
+
+type PhotoOutcomeId = (typeof PHOTO_OUTCOMES)[number]['id']
+
+const photoStorage = createMemoryPhotoStorage(700)
+
 /** La planta que devolvería la base para `insert`. */
 function samplePlant(insert: NewPlantInsert): CollectionPlant {
   const linked = SPECIES.find((item) => item.id === insert.species_id) ?? null
@@ -237,6 +252,12 @@ function samplePlant(insert: NewPlantInsert): CollectionPlant {
 
 export function RegistrationSection() {
   const [outcome, setOutcome] = useState<OutcomeId>('ok')
+  const [photoOutcome, setPhotoOutcome] = useState<PhotoOutcomeId>('ok')
+  // El reintento repite la tarea de la primera subida (usePhotoUpload), con
+  // los servicios de entonces: el resultado elegido se lee de una ref para
+  // que valga el que esté elegido al reintentar.
+  const photoOutcomeRef = useRef(photoOutcome)
+  const [photoFirst, setPhotoFirst] = useState(false)
   const [online, setOnline] = useState(true)
   const [result, setResult] = useState<string | null>(null)
   // Cambiar la clave vuelve a montar el formulario vacío.
@@ -261,6 +282,32 @@ export function RegistrationSection() {
           throw new PlantSaveError(outcome)
       }
     },
+    uploadPhoto: (files, options) => {
+      // El fallo elegido se aplica justo antes de cada subida, así el
+      // reintento usa el que esté elegido entonces.
+      const failure = photoOutcomeRef.current
+      photoStorage.failUploads =
+        failure === 'ok'
+          ? undefined
+          : () =>
+              new PhotoStorageError(failure, {
+                uncertain: failure === 'offline',
+              })
+      return replacePlantPhoto(files, {
+        ...options,
+        storage: photoStorage,
+        // La planta "en la base" es la que devolvió el guardado.
+        records: {
+          setPhotoPaths: (_plantId, _userId, paths) =>
+            Promise.resolve({
+              ...options.plant,
+              photoPath: paths?.photoPath ?? null,
+              thumbnailPath: paths?.thumbnailPath ?? null,
+            }),
+          deletePlant: () => Promise.resolve(),
+        },
+      })
+    },
   }
 
   const restart = () => {
@@ -273,7 +320,7 @@ export function RegistrationSection() {
     <Section
       id="registro"
       title="Formulario de registro"
-      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). Lo escrito se conserva como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
+      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). La foto es opcional: se sube después de guardar la planta a un bucket simulado, y si falla se puede reintentar o continuar sin ella. Lo escrito y la foto se conservan como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
     >
       <Collapsible title="Ver el formulario" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -287,6 +334,31 @@ export function RegistrationSection() {
                 {item.label}
               </Chip>
             ))}
+          </ChipGroup>
+          <ChipGroup aria-label="Resultado al subir la foto">
+            {PHOTO_OUTCOMES.map((item) => (
+              <Chip
+                key={item.id}
+                selected={photoOutcome === item.id}
+                onClick={() => {
+                  photoOutcomeRef.current = item.id
+                  setPhotoOutcome(item.id)
+                }}
+              >
+                {item.label}
+              </Chip>
+            ))}
+          </ChipGroup>
+          <ChipGroup aria-label="Entrada al registro">
+            <Chip
+              selected={photoFirst}
+              onClick={() => {
+                setPhotoFirst(!photoFirst)
+                restart()
+              }}
+            >
+              Empezar por la foto (?foto=1)
+            </Chip>
           </ChipGroup>
           <ChipGroup aria-label="Conexión del dispositivo">
             <Chip selected={!online} onClick={() => setOnline(!online)}>
@@ -305,13 +377,14 @@ export function RegistrationSection() {
                 online={online}
                 knownPlants={KNOWN_PLANTS}
                 draftUserId={SHOWCASE_DRAFT_USER}
+                photoFirst={photoFirst}
                 onSaved={(plant) =>
                   setResult(
                     `Guardada: «${plant.displayName}», ${
                       plant.validation === 'validated'
                         ? 'validada'
                         : 'nombre por validar'
-                    }.`,
+                    }, ${plant.photoPath ? `con foto (${plant.photoPath})` : 'sin foto'}.`,
                   )
                 }
                 onCancel={() => setResult('Cancelado sin guardar.')}

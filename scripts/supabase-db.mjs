@@ -7,8 +7,11 @@
 //   node scripts/supabase-db.mjs aplicar [--yes]   Aplica las migraciones pendientes.
 //   node scripts/supabase-db.mjs datos-ejemplo     Carga los datos de ejemplo del catálogo
 //                                                  (supabase/datos-ejemplo/catalogo.sql).
+//   node scripts/supabase-db.mjs plantas-ejemplo <usuario> [cantidad] [--borrar]
+//                                                  Carga plantas de ejemplo para un usuario
+//                                                  (supabase/datos-ejemplo/plantas.sql), o las borra.
 //
-// "estado", "aplicar" y "datos-ejemplo" actúan sobre el proyecto indicado por
+// "estado", "aplicar", "datos-ejemplo" y "plantas-ejemplo" actúan sobre el proyecto indicado por
 // SUPABASE_PROJECT_REF y necesitan además SUPABASE_ACCESS_TOKEN y SUPABASE_DB_PASSWORD. Se
 // leen del entorno y, si no están ahí, del archivo supabase/.env (ignorado por git). El
 // entorno tiene prioridad.
@@ -19,13 +22,19 @@
 // que no está disponible en muchas redes ni en los ejecutores de GitHub Actions. La
 // contraseña se lee de SUPABASE_DB_PASSWORD y nunca aparece en la línea de comandos.
 //
-// "datos-ejemplo" solo funciona contra el proyecto de desarrollo: se niega a ejecutarse si
+// "datos-ejemplo" y "plantas-ejemplo" solo funcionan contra el proyecto de desarrollo: se niega a ejecutarse si
 // SUPABASE_PROJECT_REF no es el ref de desarrollo, y en particular si es el de producción.
 // Los datos de ejemplo nunca deben llegar a producción, donde el catálogo real llega con la
 // importación (issue #8).
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,6 +43,10 @@ import { parseEnv } from 'node:util'
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..')
 const archivoEnv = join(raiz, 'supabase', '.env')
 const archivoDatosEjemplo = 'supabase/datos-ejemplo/catalogo.sql'
+const archivoPlantasEjemplo = 'supabase/datos-ejemplo/plantas.sql'
+// Las plantas de ejemplo se reconocen por su origen (ver plantas.sql).
+const marcaPlantasEjemplo = '% (prueba)'
+const maximoPlantasEjemplo = 1000
 const resumenCatalogo = `select
   (select count(*) from public.genera) as genera,
   (select count(*) from public.genus_abbreviations) as genus_abbreviations,
@@ -123,9 +136,8 @@ function ejecutarEnProyecto(argumentos) {
   process.exit(ejecutarCli(argumentos, entorno))
 }
 
-function cargarDatosEjemplo(sobrantes) {
-  if (sobrantes.length > 0)
-    fallar('"datos-ejemplo" no admite argumentos: npm run db:seed:dev')
+/** Credenciales del proyecto de desarrollo; se niega a seguir con cualquier otro. */
+function entornoDeDesarrollo() {
   const entorno = entornoConCredenciales()
   const ref = entorno.SUPABASE_PROJECT_REF.trim()
   if (ref === refProduccion) {
@@ -140,6 +152,14 @@ function cargarDatosEjemplo(sobrantes) {
         `Los datos de ejemplo solo se cargan en desarrollo. No se ha ejecutado nada.`,
     )
   }
+  return entorno
+}
+
+function cargarDatosEjemplo(sobrantes) {
+  if (sobrantes.length > 0)
+    fallar('"datos-ejemplo" no admite argumentos: npm run db:seed:dev')
+  const entorno = entornoDeDesarrollo()
+  const ref = entorno.SUPABASE_PROJECT_REF.trim()
   console.log(
     `Cargando ${archivoDatosEjemplo} en el proyecto de desarrollo (${ref})`,
   )
@@ -158,6 +178,90 @@ function cargarDatosEjemplo(sobrantes) {
   process.exit(
     ejecutarCli(
       ['db', 'query', '--remote', '--read-only', resumenCatalogo],
+      entorno,
+      opciones,
+    ),
+  )
+}
+
+// Plantas de ejemplo de un usuario, para probar el inventario con una colección grande
+// (issue #96). El id de usuario es el de Clerk de la instancia de desarrollo: se ve en
+// /diagnostico con la sesión iniciada.
+function cargarPlantasEjemplo(argumentos) {
+  const uso =
+    'npm run db:seed:plants -- <id de usuario de Clerk> [cantidad] [--borrar]'
+  const borrar = argumentos.includes('--borrar')
+  const [usuario, cantidadTexto, ...sobrantes] = argumentos.filter(
+    (argumento) => argumento !== '--borrar',
+  )
+  // El id y la cantidad se insertan en la consulta: solo se aceptan con este formato exacto.
+  if (!usuario || !/^user_[A-Za-z0-9]{10,64}$/.test(usuario))
+    fallar(`indica el id de usuario de Clerk (user_...). Uso: ${uso}`)
+  if (sobrantes.length > 0 || (borrar && cantidadTexto !== undefined))
+    fallar(`argumentos de más. Uso: ${uso}`)
+  const cantidad = cantidadTexto === undefined ? 100 : Number(cantidadTexto)
+  if (
+    !Number.isInteger(cantidad) ||
+    cantidad < 1 ||
+    cantidad > maximoPlantasEjemplo
+  )
+    fallar(
+      `la cantidad tiene que ser un entero entre 1 y ${maximoPlantasEjemplo}. Uso: ${uso}`,
+    )
+
+  const entorno = entornoDeDesarrollo()
+  const ref = entorno.SUPABASE_PROJECT_REF.trim()
+  const opciones = { sinEntrada: true }
+  enlazarProyecto(entorno, opciones)
+
+  const consulta = borrar
+    ? `delete from public.plants where user_id = '${usuario}' and origin like '${marcaPlantasEjemplo}' returning id`
+    : readFileSync(join(raiz, archivoPlantasEjemplo), 'utf8')
+        .replaceAll(":'usuario'", `'${usuario}'`)
+        .replaceAll(':cantidad', String(cantidad))
+  console.log(
+    borrar
+      ? `Borrando las plantas de ejemplo de ${usuario} en el proyecto de desarrollo (${ref})`
+      : `Cargando ${cantidad} plantas de ejemplo para ${usuario} en el proyecto de desarrollo (${ref})`,
+  )
+  // La CLI lee la consulta de un archivo; va en supabase/.temp, que git ignora.
+  const carpetaTemporal = join(raiz, 'supabase', '.temp')
+  mkdirSync(carpetaTemporal, { recursive: true })
+  const archivoTemporal = join(carpetaTemporal, 'plantas-ejemplo.sql')
+  writeFileSync(archivoTemporal, consulta)
+  let estado
+  try {
+    // Sin mostrar las filas devueltas (una por planta): basta con el resumen de después.
+    const require = createRequire(import.meta.url)
+    const cli = require.resolve('supabase/dist/supabase.js')
+    const resultado = spawnSync(
+      process.execPath,
+      [
+        cli,
+        'db',
+        'query',
+        '--remote',
+        '--yes',
+        '-f',
+        relative(raiz, archivoTemporal),
+      ],
+      { cwd: raiz, env: entorno, stdio: ['ignore', 'ignore', 'inherit'] },
+    )
+    estado = resultado.status ?? 1
+  } finally {
+    rmSync(archivoTemporal, { force: true })
+  }
+  if (estado !== 0) process.exit(estado)
+  console.log('Hecho. Plantas del usuario ahora:')
+  process.exit(
+    ejecutarCli(
+      [
+        'db',
+        'query',
+        '--remote',
+        '--read-only',
+        `select count(*) as plantas, count(*) filter (where origin like '${marcaPlantasEjemplo}') as de_ejemplo, count(*) filter (where status = 'active') as activas, count(*) filter (where validation = 'pending') as por_validar, count(distinct genus_id) as generos from public.plants where user_id = '${usuario}'`,
+      ],
       entorno,
       opciones,
     ),
@@ -186,8 +290,11 @@ switch (accion) {
   case 'datos-ejemplo':
     cargarDatosEjemplo(resto)
     break
+  case 'plantas-ejemplo':
+    cargarPlantasEjemplo(resto)
+    break
   default:
     fallar(
-      `acción desconocida${accion ? ` "${accion}"` : ''}. Usa "nueva <nombre>", "estado", "aplicar" o "datos-ejemplo".`,
+      `acción desconocida${accion ? ` "${accion}"` : ''}. Usa "nueva <nombre>", "estado", "aplicar", "datos-ejemplo" o "plantas-ejemplo".`,
     )
 }
