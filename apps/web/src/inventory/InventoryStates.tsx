@@ -127,7 +127,8 @@ export function ReloadErrorBanner({
 
 /**
  * Sin orquídeas activas: invitación a registrar la primera. Si solo hay
- * plantas dadas de baja, lo dice (se verán con el filtro de estado del #15).
+ * plantas dadas de baja (hasInactive), la pantalla ya muestra el acceso a
+ * registrar y los filtros: aquí solo se dice dónde verlas.
  */
 export function EmptyCollection({ hasInactive }: { hasInactive: boolean }) {
   return (
@@ -140,37 +141,72 @@ export function EmptyCollection({ hasInactive }: { hasInactive: boolean }) {
       </h2>
       <p className="text-md text-neutral-900">
         {hasInactive
-          ? 'Las que perdiste o regalaste no se cuentan aquí. Registra una nueva cuando llegue.'
+          ? 'Las que perdiste o regalaste no se cuentan aquí: para verlas, elige su estado en «Filtros».'
           : 'Registra tu primera orquídea para empezar tu inventario.'}
       </p>
-      <Link
-        to={PATHS.newPlant}
-        className="orki-btn orki-btn--primary orki-btn--block sm:w-auto"
-      >
-        <Icon name="plus" />
-        {hasInactive ? 'Registrar orquídea' : 'Registrar mi primera orquídea'}
-      </Link>
+      {!hasInactive && (
+        <Link
+          to={PATHS.newPlant}
+          className="orki-btn orki-btn--primary orki-btn--block sm:w-auto"
+        >
+          <Icon name="plus" />
+          Registrar mi primera orquídea
+        </Link>
+      )}
     </div>
   )
 }
 
-/** La búsqueda no encontró nada: lo dice y ofrece limpiarla. */
+/**
+ * Nada que mostrar con la búsqueda y los filtros elegidos: lo dice y ofrece
+ * quitar los filtros y limpiar la búsqueda (lo que haya).
+ */
 export function NoResults({
   query,
-  onClear,
+  filtered,
+  emptyStatusText,
+  onClearQuery,
+  onClearFilters,
 }: {
+  /** Texto buscado, ya recortado; vacío si no se busca. */
   query: string
-  onClear: () => void
+  /** Si hay filtros activos. */
+  filtered: boolean
+  /**
+   * Si el estado elegido no tiene ninguna planta y no hay más filtros ni
+   * búsqueda, el texto que lo dice ("No tienes orquídeas perdidas.").
+   */
+  emptyStatusText?: string | null
+  onClearQuery: () => void
+  onClearFilters: () => void
 }) {
   return (
     <div className="flex flex-col items-start gap-space-3 rounded-lg bg-neutral-50 p-space-5">
       <p className="text-md text-neutral-900">
-        Ninguna orquídea de tu colección coincide con «
-        <span className="[overflow-wrap:anywhere]">{query.trim()}</span>».
+        {emptyStatusText ? (
+          emptyStatusText
+        ) : query !== '' ? (
+          <>
+            Ninguna orquídea de tu colección coincide con «
+            <span className="[overflow-wrap:anywhere]">{query}</span>»
+            {filtered ? ' con los filtros elegidos.' : '.'}
+          </>
+        ) : (
+          'Ninguna orquídea de tu colección coincide con los filtros elegidos.'
+        )}
       </p>
-      <Button icon="x" onClick={onClear}>
-        Limpiar la búsqueda
-      </Button>
+      <div className="flex flex-wrap gap-space-3">
+        {filtered && (
+          <Button icon="x" onClick={onClearFilters}>
+            Quitar filtros
+          </Button>
+        )}
+        {query !== '' && (
+          <Button icon="x" onClick={onClearQuery}>
+            Limpiar la búsqueda
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

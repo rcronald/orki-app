@@ -1,11 +1,28 @@
-import { useDeferredValue, useId, useMemo, type ReactNode } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { Link } from 'react-router'
+import {
+  applyFilters,
+  countActiveFilters,
+  DEFAULT_FILTERS,
+  filterOptions,
+  narrowsStatus,
+  plantsWithStatus,
+  resolveFilters,
+  type PlantFilters,
+} from '../collection/filters.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import {
   countGenera,
   filterByText,
   groupByGenus,
-  plantsByStatus,
   sortByNewest,
   type GenusGroup,
 } from '../collection/selectors.ts'
@@ -16,6 +33,13 @@ import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { PHOTO_FIRST_PATH } from '../registration/photo-first.ts'
 import { PATHS } from '../routes/paths.ts'
+import { ExportAction } from './ExportAction.tsx'
+import { activeFilterChips } from './filter-chips.ts'
+import {
+  ActiveFilters,
+  FiltersPanel,
+  FiltersToggle,
+} from './InventoryFilters.tsx'
 import {
   EmptyCollection,
   LoadErrorPanel,
@@ -31,7 +55,12 @@ import {
   type InventoryView as View,
 } from './preferences.ts'
 import { VIEW_CLASSES } from './view-classes.ts'
-import { genusCountText, matchCountText, plantCountText } from './texts.ts'
+import {
+  genusCountText,
+  matchCountText,
+  plantCountText,
+  shownCountText,
+} from './texts.ts'
 
 export interface InventoryViewProps {
   /** Estado de la colección (useCollection().status). */
@@ -46,6 +75,13 @@ export interface InventoryViewProps {
   query: string
   /** Se llama con el texto nuevo del buscador. */
   onQueryChange: (query: string) => void
+  /**
+   * Filtros (controlados: CollectionPage los guarda en la URL). Pueden traer
+   * valores que no existen en la colección: la vista los ignora.
+   */
+  filters: PlantFilters
+  /** Se llama con los filtros nuevos. */
+  onFiltersChange: (filters: PlantFilters) => void
   /** Bloque bajo el buscador; lo usará "¿Ya la tengo?" (#19). */
   searchResult?: ReactNode
 }
@@ -60,15 +96,20 @@ const TOUCH_CHIP = 'py-space-3'
 
 /**
  * Pantalla de inventario sin la carga de datos: recibe la colección y pinta
- * los contadores, el acceso a registrar, el buscador, los controles de vista y
- * la lista o cuadrícula, agrupada por género o no, con sus estados de carga,
- * error, colección vacía y búsqueda sin resultados. La usa CollectionPage con
- * useCollection() y la página de muestra con datos fijos.
+ * los contadores, el acceso a registrar, el buscador, los controles de vista,
+ * los filtros y la lista o cuadrícula, agrupada por género o no, con sus
+ * estados de carga, error, colección vacía y sin resultados. La usa
+ * CollectionPage con useCollection() y la página de muestra con datos fijos.
  *
- * Solo muestra y cuenta las plantas activas (decisión del #14); las dadas de
- * baja llegan con el filtro de estado (#15). Los contadores de cabecera son
- * siempre los de toda la colección; cuántas coinciden con la búsqueda va
- * aparte, bajo el buscador.
+ * Por defecto solo muestra y cuenta las plantas activas (decisión del #14);
+ * las dadas de baja se ven con el filtro de estado (#15).
+ *
+ * Contadores: la cabecera dice cuántas se ven. Sin búsqueda ni filtros que
+ * reduzcan la lista, el total con el estado elegido ("12 orquídeas", "2
+ * orquídeas perdidas"); con ellos, "N de M" ("3 de 12 orquídeas"). Los
+ * géneros son siempre los de las plantas que se ven. Bajo el buscador (fijo
+ * arriba) se anuncia lo mismo al buscar o filtrar, en una región de estado que
+ * el lector de pantalla lee sin mover el foco.
  */
 export function InventoryView({
   status,
@@ -77,30 +118,63 @@ export function InventoryView({
   onRetry,
   query,
   onQueryChange,
+  filters,
+  onFiltersChange,
   searchResult,
 }: InventoryViewProps) {
   const [preferences, setPreferences] = useInventoryPreferences()
   const { view, grouped } = preferences
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const panelId = useId()
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
-  // El campo muestra cada pulsación al momento; la lista se filtra con el
-  // valor diferido, que React calcula sin bloquear la escritura.
+  // Opciones de los filtros y filtros resueltos contra ellas: lo que no está
+  // en la colección (un género que ya no tiene, un valor de la URL) se ignora.
+  const options = useMemo(
+    () => (plants === null ? null : filterOptions(plants)),
+    [plants],
+  )
+  const resolved = useMemo(
+    () => (options === null ? filters : resolveFilters(filters, options)),
+    [filters, options],
+  )
+  const activeCount = countActiveFilters(resolved)
+  const chips = useMemo(
+    () => (options === null ? [] : activeFilterChips(resolved, options)),
+    [resolved, options],
+  )
+
+  // El campo y los chips muestran cada cambio al momento; la lista se calcula
+  // con los valores diferidos, que React calcula sin bloquear la escritura ni
+  // los toques.
   const deferredQuery = useDeferredValue(query)
+  const deferredFilters = useDeferredValue(resolved)
   const searching = deferredQuery.trim() !== ''
+  const narrowed = searching || narrowsStatus(deferredFilters)
+  const shownStatus = deferredFilters.status
 
   // Derivados memoizados: cambiar de vista (lista o cuadrícula) no recalcula
   // nada; agrupar o desagrupar calcula solo la forma que se pinta.
-  const active = useMemo(
-    () => (plants === null ? [] : plantsByStatus(plants)),
-    [plants],
+  const withStatus = useMemo(
+    () => (plants === null ? [] : plantsWithStatus(plants, shownStatus)),
+    [plants, shownStatus],
   )
-  const genusCount = useMemo(() => countGenera(active), [active])
+  const filtered = useMemo(
+    () => applyFilters(withStatus, deferredFilters),
+    [withStatus, deferredFilters],
+  )
   const matches = useMemo(
-    () => filterByText(active, deferredQuery),
-    [active, deferredQuery],
+    () => filterByText(filtered, deferredQuery, { includeInactive: true }),
+    [filtered, deferredQuery],
+  )
+  const genusCount = useMemo(
+    () => countGenera(matches, { includeInactive: true }),
+    [matches],
   )
   // Agrupada, los géneros sin coincidencias desaparecen solos.
   const groups = useMemo(
-    () => (grouped ? groupByGenus(matches) : null),
+    () => (grouped ? groupByGenus(matches, { includeInactive: true }) : null),
     [grouped, matches],
   )
   const newest = useMemo(
@@ -108,19 +182,33 @@ export function InventoryView({
     [grouped, matches],
   )
 
-  const clearQuery = () => onQueryChange('')
+  const focusToggle = useCallback(() => toggleRef.current?.focus(), [])
+  const closeFilters = useCallback(() => {
+    setFiltersOpen(false)
+    toggleRef.current?.focus()
+  }, [])
+  const clearQuery = () => {
+    onQueryChange('')
+    searchRef.current?.focus()
+  }
+  const clearFilters = () => {
+    onFiltersChange(DEFAULT_FILTERS)
+    focusToggle()
+  }
   const registerLink = <RegisterLink />
 
-  if (plants !== null && active.length === 0) {
+  if (plants !== null && plants.length === 0) {
     return (
       <div className={ROOT_CLASSES}>
         {status === 'error' && error && (
           <ReloadErrorBanner error={error} onRetry={onRetry} />
         )}
-        <EmptyCollection hasInactive={plants.length > 0} />
+        <EmptyCollection hasInactive={false} />
       </div>
     )
   }
+
+  const announce = plants !== null && (searching || activeCount > 0)
 
   const controls = (
     <>
@@ -128,16 +216,22 @@ export function InventoryView({
         <InventorySearch
           value={query}
           onValueChange={onQueryChange}
+          inputRef={searchRef}
           status={
-            plants !== null && searching
-              ? matchCountText(matches.length, active.length)
+            announce
+              ? matchCountText(
+                  matches.length,
+                  withStatus.length,
+                  shownStatus,
+                  narrowed,
+                )
               : null
           }
         >
           {searchResult}
         </InventorySearch>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-space-2">
+      <div className="flex flex-wrap items-center gap-space-2">
         <ChipGroup aria-label="Vista">
           <Chip
             className={TOUCH_CHIP}
@@ -161,11 +255,42 @@ export function InventoryView({
         >
           Agrupar por género
         </Chip>
+        {options !== null && (
+          <FiltersToggle
+            ref={toggleRef}
+            open={filtersOpen}
+            count={activeCount}
+            panelId={panelId}
+            onToggle={() => setFiltersOpen(!filtersOpen)}
+          />
+        )}
       </div>
+      {options !== null && (
+        <>
+          <FiltersPanel
+            id={panelId}
+            open={filtersOpen}
+            options={options}
+            filters={resolved}
+            onChange={onFiltersChange}
+            onClose={closeFilters}
+          />
+          {!filtersOpen && (
+            <ActiveFilters
+              chips={chips}
+              onChange={onFiltersChange}
+              onEmpty={focusToggle}
+            />
+          )}
+        </>
+      )}
     </>
   )
 
   const loading = plants === null && !(status === 'error' && error)
+  // Sin activas pero con plantas dadas de baja, sin buscar ni filtrar.
+  const onlyInactive =
+    withStatus.length === 0 && shownStatus === 'active' && !narrowed
 
   // Un solo árbol para todos los estados, con cada parte siempre en el mismo
   // sitio: al llegar los datos, el buscador no se vuelve a montar y conserva
@@ -180,7 +305,14 @@ export function InventoryView({
             aria-label="Resumen de tu colección"
             className="flex flex-wrap gap-x-space-4 gap-y-space-1 text-md text-neutral-700"
           >
-            <li>{plantCountText(active.length)}</li>
+            <li>
+              {shownCountText(
+                matches.length,
+                withStatus.length,
+                shownStatus,
+                narrowed,
+              )}
+            </li>
             <li>{genusCountText(genusCount)}</li>
           </ul>
         )}
@@ -197,8 +329,20 @@ export function InventoryView({
       <div aria-busy={loading} className="flex flex-col">
         {loading ? (
           <LoadingList view={view} />
-        ) : plants === null ? null : matches.length === 0 ? (
-          <NoResults query={deferredQuery} onClear={clearQuery} />
+        ) : plants === null ? null : onlyInactive ? (
+          <EmptyCollection hasInactive />
+        ) : matches.length === 0 ? (
+          <NoResults
+            query={searching ? deferredQuery.trim() : ''}
+            filtered={activeCount > 0}
+            emptyStatusText={
+              withStatus.length === 0 && !narrowed
+                ? matchCountText(0, 0, shownStatus)
+                : null
+            }
+            onClearQuery={clearQuery}
+            onClearFilters={clearFilters}
+          />
         ) : groups ? (
           <div className="flex flex-col gap-space-5">
             {groups.map((group) => (
@@ -209,6 +353,7 @@ export function InventoryView({
           <PlantList plants={newest ?? []} view={view} headingLevel={2} />
         )}
       </div>
+      {plants !== null && <ExportAction plants={plants} />}
     </div>
   )
 }
