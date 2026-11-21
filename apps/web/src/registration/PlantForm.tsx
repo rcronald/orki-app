@@ -167,6 +167,13 @@ interface PlantFormCommonProps {
    * nombre.
    */
   photoFirst?: boolean
+  /**
+   * Nombre con el que empieza el registro, como si se hubiera escrito en el
+   * campo: lo buscado en "¿Ya la tengo?" (#123, ?nombre=). Si hay un borrador
+   * guardado, gana el borrador; al descartarlo, el formulario vuelve a
+   * empezar con este nombre. Al editar no se usa.
+   */
+  initialName?: string
   /** Dónde se guarda la foto pendiente del borrador; por defecto, IndexedDB. */
   photoDraftBackend?: DraftPhotoBackend
   /**
@@ -208,6 +215,11 @@ export type PlantFormProps = PlantFormCommonProps &
 const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
 
 const deviceNow = () => new Date()
+
+/** El formulario vacío con `name` ya escrito en el nombre (si lo hay). */
+function withName(values: PlantFormValues, name: string): PlantFormValues {
+  return name === '' ? values : { ...values, name }
+}
 
 /** Si hay algo escrito dentro de "Más detalles". */
 function hasDetails(values: PlantFormValues): boolean {
@@ -319,6 +331,7 @@ export function PlantForm(props: PlantFormProps) {
     onPlantStored,
     knownPlants = null,
     draftUserId = null,
+    initialName = '',
     photoDraftBackend = appDraftPhotoBackend(),
     now = deviceNow,
   } = props
@@ -337,7 +350,13 @@ export function PlantForm(props: PlantFormProps) {
     }
     const fresh = initialPlantFormValues(localDateString(now()))
     const draft = draftUserId ? readPlantDraft(draftUserId, now()) : null
-    return { fresh, draft, values: draft?.values ?? fresh, editingPlant: null }
+    const prefilled = withName(fresh, initialName)
+    return {
+      fresh,
+      draft,
+      values: draft?.values ?? prefilled,
+      editingPlant: null,
+    }
   })
   // Con qué se abrió el formulario: vacío (registro) o con los datos de la
   // planta (edición). Es la referencia de "hay cambios".
@@ -718,7 +737,10 @@ export function PlantForm(props: PlantFormProps) {
     }
     dispatch({
       type: 'restored',
-      values: initialPlantFormValues(localDateString(now())),
+      values: withName(
+        initialPlantFormValues(localDateString(now())),
+        initialName,
+      ),
     })
     photoTouched.current = true
     setPhoto(null)

@@ -21,16 +21,24 @@ export type OwnershipAnswerProps = Omit<
   AnswerContent & {
     /** Nombre científico buscado; se muestra en cursiva dentro de <em>. */
     scientificName: string
+    /**
+     * Si es su propia región de estado (role="status"). Por defecto, sí. Con
+     * false la anuncia quien la contiene: por ejemplo, una región ya montada
+     * en la que la respuesta aparece y cambia mientras se escribe.
+     */
+    announce?: boolean
   }
 
 // Respuesta de "¿Ya la tengo?" (orki-answer). Lleva role="status" para que el
-// lector de pantalla la anuncie: déjala montada y cambia su contenido. La
-// negativa es neutra, sin rojo; debajo puede ir un Button primario
+// lector de pantalla la anuncie: déjala montada y cambia su contenido (o
+// pásale announce={false} y ponla dentro de una región que ya esté montada).
+// La negativa es neutra, sin rojo; debajo puede ir un Button primario
 // "Registrar orquídea".
 export function OwnershipAnswer({
   owned,
   specimenCount,
   scientificName,
+  announce = true,
   className,
   ...props
 }: OwnershipAnswerProps) {
@@ -40,7 +48,7 @@ export function OwnershipAnswer({
   const name = <em>{scientificName}</em>
 
   return (
-    <div {...props} className={classes} role="status">
+    <div {...props} className={classes} role={announce ? 'status' : undefined}>
       <span className="orki-answer__icon">
         <Icon name={owned ? 'check' : 'search'} />
       </span>

@@ -121,3 +121,62 @@ export const RELOAD_ERROR_TEXT: Record<CollectionErrorReason, string> = {
     'Tu sesión terminó: no se pudo actualizar tu colección. Ves la última copia cargada.',
   failed: 'No se pudo actualizar tu colección. Ves la última copia cargada.',
 }
+
+/** "¿Ya la tengo?" (#19): lo que acompaña a OwnershipAnswer bajo el buscador. */
+export const OWNERSHIP_TEXT = {
+  /** Solo coincide con errores de tipeo: se responde "Sí" para que juzgue. */
+  similar: 'No coincide exactamente: revisa si es la misma.',
+  /** La respuesta no tiene en cuenta los filtros de la lista. */
+  wholeCollection: 'La respuesta es sobre toda tu colección, sin los filtros.',
+  matchesLabel: 'Ejemplares que coinciden',
+  pastLabel: 'Ejemplares que tuviste',
+  more: (count: number) => (count === 1 ? 'Y 1 más.' : `Y ${count} más.`),
+  /** Por qué nombre coincidió, si no es el que se muestra. */
+  matchedBy: {
+    entered: (name: string) => `Por el nombre ingresado: ${name}`,
+    synonym: (name: string) => `Sinónimo: ${name}`,
+    common: (name: string) => `Nombre común: ${name}`,
+  },
+  register: 'Registrarla con este nombre',
+  registerAnyway: 'No es la misma: registrarla',
+} as const
+
+const PAST_STATUS: Record<
+  'lost' | 'gifted',
+  [singular: string, plural: string]
+> = {
+  lost: ['perdido', 'perdidos'],
+  gifted: ['regalado', 'regalados'],
+}
+
+function specimens(count: number, status: 'lost' | 'gifted'): string {
+  const [singular, plural] = PAST_STATUS[status]
+  return count === 1
+    ? `1 ejemplar ${singular}`
+    : `${count} ejemplares ${plural}`
+}
+
+/**
+ * Nota aparte de los ejemplares dados de baja que coinciden: "La tuviste: 1
+ * ejemplar perdido." si no tiene ninguno activo; "Además, tuviste…" si sí.
+ * Null si no hay ninguno.
+ */
+export function pastSpecimensText(
+  lost: number,
+  gifted: number,
+  ownedNow: boolean,
+): string | null {
+  const parts = [
+    lost > 0 ? specimens(lost, 'lost') : null,
+    gifted > 0 ? specimens(gifted, 'gifted') : null,
+  ].filter((part): part is string => part !== null)
+  if (parts.length === 0) return null
+  const list = parts.join(' y ')
+  return ownedNow ? `Además, tuviste ${list}.` : `La tuviste: ${list}.`
+}
+
+/** Varios nombres en una frase: "A", "A y B", "A, B y C". */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('')
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
+}

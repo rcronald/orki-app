@@ -10,6 +10,7 @@ import {
   type PlantFormServices,
 } from '../registration/PlantForm.tsx'
 import { isPhotoFirst } from '../registration/photo-first.ts'
+import { prefilledName } from '../registration/prefill-name.ts'
 import { loadQuickAccessGenera } from '../registration/quick-genera.ts'
 import { insertPlant } from '../registration/save-plant.ts'
 import { PLANT_FORM_TEXT } from '../registration/texts.ts'
@@ -17,7 +18,8 @@ import { PATHS } from '../routes/paths.ts'
 
 // Registro de una planta (#85), en /coleccion/nueva. Exige sesión. Va en su
 // propio chunk (App.tsx lo carga de forma diferida). Con ?foto=1 (#87), el
-// mismo formulario empieza por la foto.
+// mismo formulario empieza por la foto; con ?nombre= (#123, desde "Aún no la
+// tienes"), con ese nombre ya escrito.
 
 const SUPABASE_SERVICES: PlantFormServices = {
   searchSpecies,
@@ -56,6 +58,7 @@ export default function NewPlantPage() {
         knownPlants={knownPlants}
         draftUserId={userId}
         photoFirst={isPhotoFirst(search)}
+        initialName={prefilledName(search)}
         // En cuanto la planta existe (y otra vez al tener su foto), a la
         // colección: si la foto falla o se sale a mitad, ya está en el
         // inventario.

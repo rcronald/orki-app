@@ -707,6 +707,36 @@ describe('NewPlantPage', () => {
     expect(nameInput()).toHaveAttribute('maxlength', '200')
   })
 
+  it('desde "Aún no la tienes" (?nombre=) empieza con el nombre escrito', async () => {
+    const user = userEvent.setup()
+    await renderPage([], '/coleccion/nueva?nombre=La%20naranja%20del%20mercado')
+    expect(nameInput()).toHaveValue('La naranja del mercado')
+
+    await user.click(
+      within(genusGroup()).getByRole('button', { name: 'Cattleya' }),
+    )
+    await user.click(within(typeGroup()).getByRole('button', { name: 'No sé' }))
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'La naranja del mercado',
+    })
+  })
+
+  it('con un borrador guardado, gana el borrador; al descartarlo, el nombre de ?nombre=', async () => {
+    const user = userEvent.setup()
+    const view = await renderPage()
+    await fillFreeName(user)
+    view.unmount()
+    await renderPage([], '/coleccion/nueva?nombre=Cattleya%20maxima')
+
+    expect(nameInput()).toHaveValue('La naranja del mercado')
+    await user.click(
+      await screen.findByRole('button', { name: PLANT_FORM_TEXT.draftDiscard }),
+    )
+    expect(nameInput()).toHaveValue('Cattleya maxima')
+  })
+
   it('no envía dos veces: el botón queda en "Registrando…" mientras guarda', async () => {
     const user = userEvent.setup()
     let finish: (response: Response) => void = () => {}
