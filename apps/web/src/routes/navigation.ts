@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, type RefObject } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type RefObject,
+} from 'react'
 import { useLocation } from 'react-router'
 
 /**
@@ -14,14 +20,23 @@ export const InitialLocationKeyContext = createContext<string | null>(null)
  * anuncia la página nueva y el teclado sigue desde ahí, en lugar de quedarse
  * en el enlace pulsado de una página que ya no está.
  */
+//
+// Solo cuenta un cambio de página: al montarse la pantalla o al cambiar la
+// ruta. Cambiar la búsqueda de la URL en la misma página (el buscador del
+// inventario escribe ?q= en cada pulsación) no mueve el foco, que se queda en
+// el campo.
 export function useFocusOnNavigation(ref: RefObject<HTMLElement | null>) {
   const initialKey = useContext(InitialLocationKeyContext)
-  const { key } = useLocation()
+  const { key, pathname } = useLocation()
+  const [mounted] = useState(() => ({ key, pathname }))
 
   useEffect(() => {
-    if (initialKey === null || key === initialKey) return
+    if (initialKey === null) return
+    const isAppLoad =
+      mounted.key === initialKey && mounted.pathname === pathname
+    if (isAppLoad) return
     ref.current?.focus()
-  }, [initialKey, key, ref])
+  }, [initialKey, mounted, pathname, ref])
 }
 
 /** Título de la pestaña: "Página · Orki", o "Orki" a secas sin página. */

@@ -89,6 +89,7 @@ orki-app/
 │       ├── src/               Código fuente y pruebas
 │       │   ├── assets/        Marcador sin-foto.svg del design system
 │       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol, rutas protegidas y token para Supabase
+│       │   ├── collection/    Colección del usuario en memoria: lectura, almacén compartido, búsqueda, agrupación y contadores
 │       │   ├── components/    Componentes de la app (estructura con la navegación, página)
 │       │   │   └── ui/        Componentes del design system
 │       │   ├── config/        Lectura y validación de las variables de entorno
@@ -154,18 +155,19 @@ Los componentes usan las clases `orki-` de las hojas de estilos; Tailwind queda 
 
 Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo de índice: se importa cada uno desde su archivo.
 
-| Componente        | Para qué                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `Button`          | Acciones. Variantes `primary` (una por pantalla), `secondary` y `danger`; ancho completo con `block`.                 |
-| `Chip`            | Filtros y opciones cortas; botón de alternar con `selected`.                                                          |
-| `ChipGroup`       | Fila de chips con su nombre para el lector de pantalla.                                                               |
-| `TextField`       | Campo de texto con etiqueta visible, ayuda y error.                                                                   |
-| `StatusBadge`     | Validación del nombre: "Validada" o "Nombre por validar".                                                             |
-| `SpecimenCard`    | Tarjeta de un ejemplar; sin foto usa el marcador `sin-foto.svg`.                                                      |
-| `OwnershipAnswer` | Respuesta de "¿Ya la tengo?".                                                                                         |
-| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados, error y una acción final opcional.                   |
-| `Collapsible`     | Sección plegable.                                                                                                     |
-| `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`. |
+| Componente        | Para qué                                                                                                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`          | Acciones. Variantes `primary` (una por pantalla), `secondary` y `danger`; ancho completo con `block`.                                                                                                           |
+| `Chip`            | Filtros y opciones cortas; botón de alternar con `selected`.                                                                                                                                                    |
+| `ChipGroup`       | Fila de chips con su nombre para el lector de pantalla.                                                                                                                                                         |
+| `TextField`       | Campo de texto con etiqueta visible, ayuda y error.                                                                                                                                                             |
+| `StatusBadge`     | Validación del nombre: "Validada" o "Nombre por validar".                                                                                                                                                       |
+| `SpecimenCard`    | Tarjeta de un ejemplar; sin foto usa el marcador `sin-foto.svg`. `layout="row"` para listas, `nameStyle="plain"` para un nombre por validar y `renderName` para envolver el nombre (por ejemplo, en un enlace). |
+| `ScientificName`  | Nombre científico con cada tramo en cursiva o en redonda según la nomenclatura (ver abajo).                                                                                                                     |
+| `OwnershipAnswer` | Respuesta de "¿Ya la tengo?".                                                                                                                                                                                   |
+| `Autocomplete`    | Buscador con autocompletado de lista, con carga, sin resultados, error y una acción final opcional.                                                                                                             |
+| `Collapsible`     | Sección plegable.                                                                                                                                                                                               |
+| `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`.                                                                                           |
 
 ### Página de muestra
 
@@ -359,6 +361,53 @@ Qué haría falta para el modo de solo lectura del issue #18 (colección visible
 ### Service worker y autenticación
 
 El service worker (configuración en `apps/web/vite.config.ts`) no tiene `runtimeCaching`: solo responde a los archivos del precache y a las navegaciones dentro de la app. Las peticiones a Clerk (script y API, en su dominio de Frontend API) y a Google son de otro origen y van siempre a la red, sin guardarse. Las redirecciones de inicio de sesión ocurren en esos dominios; a la vuelta llegan a rutas de la app (subrutas de `/iniciar-sesion` o `/registro`, o la página pedida), que reciben `index.html` para que Clerk termine en el navegador. Clerk no tiene rutas propias en el dominio de la app, así que no hace falta `navigateFallbackDenylist`; haría falta si algún día se usara el proxy de Clerk (`proxyUrl`).
+
+## Colección del usuario
+
+La colección (todas las plantas del usuario con su especie y su género) se lee una vez y se comparte entre pantallas desde `apps/web/src/collection/` (#93). Filtrar, agrupar, contar y ordenar se hace en el dispositivo.
+
+Desde una pantalla:
+
+```tsx
+import { useCollection } from '../collection/useCollection.ts'
+import {
+  countGenera,
+  countPlants,
+  filterByText,
+  groupByGenus,
+} from '../collection/selectors.ts'
+
+const { status, plants, error, reload, upsertPlant, removePlant } =
+  useCollection()
+// status: 'idle' | 'loading' | 'ready' | 'error'
+// plants: todas las plantas (también las dadas de baja) o null si aún no hay datos
+// error.reason: 'offline' | 'session-ended' | 'failed'; error.message, el texto para mostrar
+const visibles = plants ? filterByText(plants, query) : []
+```
+
+- **Una lectura por usuario:** `<CollectionProvider>` (dentro de `AuthProvider`) no lee nada al arrancar; la primera pantalla que llama a `useCollection()` lanza la lectura y las demás la comparten, también con `React.StrictMode`. Al cambiar de usuario o cerrar sesión, la colección se descarta y la respuesta tardía de la cuenta anterior se ignora. Tras un error no se reintenta solo: `reload()` (botón "Reintentar").
+- **Después de escribir** (#11, #16): pide de vuelta la fila con `.select(COLLECTION_PLANT_SELECT)`, pásala por `toCollectionPlant()` (`model.ts`) y llama a `upsertPlant(planta)`; tras borrar, `removePlant(id)`. No se vuelve a leer todo.
+- **Funciones puras** (`selectors.ts`): `filterByText`, `groupByGenus`, `countPlants`, `countGenera`, `sortByName`, `sortByNewest` y `plantsByStatus`. Por defecto solo cuentan las plantas activas; `{ includeInactive: true }` incluye las perdidas y regaladas. La búsqueda usa `normalizeSearchText()` (`normalize.ts`), la misma regla que el catálogo: minúsculas, sin tildes, espacios unificados y sin el signo de híbrido (`×` o una `x` suelta).
+- **Lectura en Supabase** (`supabase-source.ts`): una consulta a `plants` con la especie y el género embebidos, filtrada por el usuario activo y paginada por id de 1 000 en 1 000 (el tope de filas de la API).
+
+Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `CollectionSource` (`source.ts`), cuyo `load({ userId, signal, provide })` devuelve todas las plantas del usuario o rechaza con un `CollectionLoadError` con su motivo. `provide(plantas)` entrega un resultado provisional (la copia del dispositivo) antes del definitivo. Pásala a `<CollectionProvider source={miFuente}>`; puede envolver a `supabaseCollectionSource`. En las pruebas, `src/test/collection-source.ts` tiene una fuente controlada a mano.
+
+### Pantalla de inventario
+
+`/coleccion` (`src/pages/CollectionPage.tsx`) conecta `useCollection()` con `InventoryView` (`src/inventory/`), que no carga datos: recibe la colección y la pinta. La página de muestra (`/muestra`, sección "Pantalla de inventario") usa la misma vista con datos fijos (`src/showcase/inventory-data.ts`), también con 300 plantas, vacía, cargando y con cada tipo de error.
+
+- **Solo plantas activas**, en los contadores de cabecera (orquídeas y géneros, en singular o plural) y en la lista.
+- **Lista o cuadrícula.** Lista: una tarjeta por fila con la miniatura a la izquierda (`SpecimenCard` con `layout="row"`). Cuadrícula: dos por fila en el celular, tres desde 640 px y cuatro desde 1024 px.
+- **Agrupar por género** o no. Agrupada: un encabezado por género con su contador ("Phalaenopsis, 3 orquídeas" para el lector de pantalla), los géneros y las plantas en orden alfabético sin tener en cuenta el signo "×". Sin agrupar: las más recientes primero (por fecha de alta).
+- **Cada tarjeta** lleva el nombre mostrado, el apodo, el género y la insignia de validación ("Nombre por validar" también para las no identificables). Sin foto, el marcador neutro: la miniatura llegará con el #10 por `plantThumbnail()` (`src/inventory/plant-display.ts`), que hoy no devuelve nada. Para el detalle (#16), la tarjeta se convierte en enlace pasando `renderName` a `SpecimenCard` en `PlantCard.tsx`.
+- **Registrar orquídea:** enlace a `/coleccion/nueva`; en el celular queda fijo abajo, al alcance del pulgar.
+- **Buscador fijo arriba** (se queda visible al desplazarse): filtra mientras se escribe con `filterByText` por nombre mostrado, nombre ingresado, género, apodo y origen, sin tildes, mayúsculas ni el signo "×". Escape o el botón de la cruz lo limpian. Los contadores de cabecera siguen siendo los de toda la colección; bajo el campo se dice cuántas coinciden, en una región `role="status"` que el lector de pantalla anuncia sin mover el foco. Agrupada, los géneros sin coincidencias desaparecen. `InventorySearch` acepta un bloque debajo (`children`), donde "¿Ya la tengo?" (#19) pondrá su respuesta.
+- **La búsqueda va en la URL** (`/coleccion?q=phal`): se conserva al volver con "atrás" desde el registro o el detalle, al recargar y al compartir el enlace. Cada pulsación sustituye la entrada del historial en vez de añadir una, y no mueve el foco (`useFocusOnNavigation` solo lo mueve al cambiar de ruta).
+- **Posición de desplazamiento:** `src/inventory/scroll-memory.ts` la guarda en memoria por entrada del historial y la restaura al volver con atrás o adelante, cuando la lista ya está pintada. Dura la sesión de la pestaña; un enlace a `/coleccion` o una recarga empiezan arriba.
+- **Estados:** sin plantas, una invitación a registrar la primera; con plantas y sin coincidencias, "sin resultados" con la opción de limpiar la búsqueda. Mientras carga, un esqueleto con la forma de la vista elegida (oculto al lector de pantalla, que oye "Cargando tu colección…"); el buscador y los controles ya están y no se vuelven a montar al llegar los datos. Si la lectura falla, el motivo en español (sin conexión, sesión terminada o fallo) y "Reintentar", que llama a `reload()`; si falla una recarga con datos en memoria, se siguen mostrando con un aviso.
+- **Preferencias del dispositivo:** la vista y la agrupación se guardan en `localStorage` con la clave `orki:inventario:preferencias:v1` (`src/inventory/preferences.ts`). Si el almacenamiento no existe o falla, funcionan igual y duran lo que la pantalla.
+
+**Cursiva de los nombres** (`src/components/ui/scientific-name.ts`): solo va en cursiva un nombre del catálogo (`displayNameIsScientific`); el nombre que ingresó la persona para una planta por validar va en redonda y en la fuente de cuerpo. Dentro del nombre científico, el género y los epítetos van en cursiva y en redonda el signo "×" (también una "x" suelta), las abreviaturas de rango ("var.") y, desde la primera palabra con mayúscula o comilla después del género, el grex y el cultivar: _Phalaenopsis_ Sogo Yukidian, × _Rhyncholaeliocattleya_ Memoria Anna Balmores, _Phalaenopsis_ × _intermedia_. Los tramos en redonda van en la fuente de cuerpo, porque de Playfair Display solo se cargan la cursiva 400 y la redonda 600. El nombre se muestra tal como está guardado. Los géneros como etiqueta (encabezados de grupo, línea de la tarjeta) van sin cursiva, como en los chips del sistema.
 
 ## Base de datos y migraciones
 

@@ -91,4 +91,71 @@ describe('SpecimenCard', () => {
     expect(card).toHaveFocus()
     expect(card).toHaveClass('orki-card', 'extra')
   })
+
+  it('el nombre científico va en cursiva y el signo "×" y el grex en redonda', () => {
+    render(
+      <SpecimenCard
+        scientificName="× Rhyncholaeliocattleya Memoria Anna Balmores"
+        status="validated"
+      />,
+    )
+
+    const name = screen.getByRole('heading', {
+      name: '× Rhyncholaeliocattleya Memoria Anna Balmores',
+    })
+    expect(name).toHaveClass('orki-card__name')
+    expect(within(name).getByText('×')).toHaveClass('not-italic')
+    expect(within(name).getByText('Rhyncholaeliocattleya')).toHaveClass(
+      'italic',
+    )
+    expect(within(name).getByText('Memoria Anna Balmores')).toHaveClass(
+      'not-italic',
+    )
+  })
+
+  it('con nameStyle="plain" el nombre va sin cursiva y en la fuente de cuerpo', () => {
+    render(
+      <SpecimenCard
+        scientificName="la naranja del mercado"
+        nameStyle="plain"
+        status="pending"
+      />,
+    )
+
+    const name = screen.getByRole('heading', { name: 'la naranja del mercado' })
+    expect(name).toHaveClass('orki-card__name', 'not-italic', 'font-body')
+    expect(name.querySelector('.italic')).toBeNull()
+  })
+
+  it('en fila pone la miniatura cuadrada a la izquierda', () => {
+    render(
+      <SpecimenCard
+        scientificName="Cattleya maxima"
+        status="validated"
+        layout="row"
+      />,
+    )
+
+    const card = screen.getByRole('article', { name: 'Cattleya maxima' })
+    expect(card).toHaveClass('orki-card', 'flex-row')
+    expect(within(card).getByRole('img', { name: 'Sin foto' })).toHaveClass(
+      'orki-card__photo',
+      'aspect-square',
+    )
+  })
+
+  it('renderName envuelve el nombre sin cambiar el nombre accesible', () => {
+    render(
+      <SpecimenCard
+        scientificName="Cattleya maxima"
+        status="validated"
+        renderName={(name) => <a href="/detalle">{name}</a>}
+      />,
+    )
+
+    const card = screen.getByRole('article', { name: 'Cattleya maxima' })
+    expect(
+      within(card).getByRole('link', { name: 'Cattleya maxima' }),
+    ).toHaveAttribute('href', '/detalle')
+  })
 })

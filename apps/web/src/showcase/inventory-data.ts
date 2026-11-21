@@ -1,0 +1,147 @@
+import type { CollectionGenus, CollectionPlant } from '../collection/model.ts'
+
+// Colección de ejemplo para ver la pantalla de inventario en la página de
+// muestra, sin base de datos ni sesión. Nombres reales del catálogo (especies,
+// grex con y sin género híbrido, un híbrido natural), plantas por validar, una
+// dada de baja (que no se cuenta) y apodos y orígenes verosímiles.
+
+const genus = (id: string, name: string): CollectionGenus => ({ id, name })
+
+const PHALAENOPSIS = genus('muestra-phal', 'Phalaenopsis')
+const CATTLEYA = genus('muestra-catt', 'Cattleya')
+const MASDEVALLIA = genus('muestra-masd', 'Masdevallia')
+const ONCIDIUM = genus('muestra-onc', 'Oncidium')
+const RLC = genus('muestra-rlc', '× Rhyncholaeliocattleya')
+const DENDROBIUM = genus('muestra-den', 'Dendrobium')
+
+let nextId = 1
+
+function samplePlant(
+  data: Pick<CollectionPlant, 'displayName' | 'genus' | 'createdAt'> &
+    Partial<CollectionPlant>,
+): CollectionPlant {
+  const id = `muestra-${String(nextId++).padStart(4, '0')}`
+  const scientific = data.displayNameIsScientific ?? true
+  return {
+    id,
+    displayNameIsScientific: scientific,
+    enteredName: data.displayName,
+    species: scientific
+      ? {
+          id: `especie-${id}`,
+          scientificName: data.displayName,
+          type: data.type === 'hybrid' ? 'hybrid' : 'species',
+          status: 'validated',
+        }
+      : null,
+    type: 'species',
+    validation: scientific ? 'validated' : 'pending',
+    status: 'active',
+    acquiredOn: data.createdAt.slice(0, 10),
+    updatedAt: data.createdAt,
+    origin: null,
+    location: null,
+    nickname: null,
+    flowerColor: null,
+    photoInBloom: false,
+    photoPath: null,
+    thumbnailPath: null,
+    ...data,
+  }
+}
+
+export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
+  samplePlant({
+    displayName: 'Phalaenopsis amabilis',
+    genus: PHALAENOPSIS,
+    nickname: 'La blanca de la sala',
+    origin: 'Vivero Moyobamba',
+    createdAt: '2026-11-19T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Phalaenopsis Sogo Yukidian',
+    genus: PHALAENOPSIS,
+    type: 'hybrid',
+    origin: 'Feria de orquídeas de Miraflores',
+    createdAt: '2026-11-12T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Phalaenopsis × intermedia',
+    genus: PHALAENOPSIS,
+    type: 'hybrid',
+    createdAt: '2026-10-02T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Cattleya maxima',
+    genus: CATTLEYA,
+    nickname: 'Flor de mayo',
+    origin: 'Orquídeas del Alto Mayo',
+    createdAt: '2026-09-21T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Cattleya rex',
+    genus: CATTLEYA,
+    createdAt: '2026-08-14T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: '× Rhyncholaeliocattleya Memoria Anna Balmores',
+    genus: RLC,
+    type: 'hybrid',
+    origin: 'Mercado de flores de Acho',
+    createdAt: '2026-11-17T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Masdevallia veitchiana',
+    genus: MASDEVALLIA,
+    nickname: 'Wakanki',
+    createdAt: '2026-07-03T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'la naranja del mercado',
+    displayNameIsScientific: false,
+    genus: MASDEVALLIA,
+    origin: 'Mercado de flores de Acho',
+    createdAt: '2026-11-08T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Oncidium Sharry Baby',
+    genus: ONCIDIUM,
+    type: 'hybrid',
+    nickname: 'La de chocolate',
+    createdAt: '2026-06-30T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'dendrobio del regalo',
+    displayNameIsScientific: false,
+    validation: 'unidentifiable',
+    genus: DENDROBIUM,
+    origin: 'Regalo de un familiar',
+    createdAt: '2026-05-11T15:00:00+00:00',
+  }),
+  samplePlant({
+    displayName: 'Dendrobium nobile',
+    genus: DENDROBIUM,
+    status: 'gifted',
+    createdAt: '2026-11-20T09:00:00+00:00',
+  }),
+]
+
+/**
+ * Colección grande para probar la fluidez (#96): `count` plantas repartidas
+ * entre los géneros de la muestra, con fechas de alta distintas.
+ */
+export function largeSampleCollection(count = 300): CollectionPlant[] {
+  const base = SAMPLE_COLLECTION.filter((plant) => plant.status === 'active')
+  return Array.from({ length: count }, (_, index) => {
+    const model = base[index % base.length] ?? SAMPLE_COLLECTION[0]
+    if (model === undefined) throw new Error('Muestra vacía.')
+    return {
+      ...model,
+      id: `muestra-grande-${String(index).padStart(4, '0')}`,
+      nickname: `Ejemplar ${index + 1}`,
+      createdAt: new Date(
+        Date.UTC(2026, 10, 20) - index * 3_600_000,
+      ).toISOString(),
+    }
+  })
+}

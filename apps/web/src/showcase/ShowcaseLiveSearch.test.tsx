@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CATALOG_SEARCH_ERROR_TEXT } from '../lib/catalogSearch.ts'
@@ -106,10 +107,19 @@ function speciesInput() {
   return screen.getByRole('combobox', { name: 'Nombre científico' })
 }
 
+// La muestra incluye la pantalla de inventario, que usa enlaces del enrutador.
+function renderShowcase() {
+  return render(
+    <MemoryRouter>
+      <ShowcasePage />
+    </MemoryRouter>,
+  )
+}
+
 describe('ShowcasePage con Supabase', () => {
   it('el buscador de especies usa la búsqueda real, sin sesión', async () => {
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
     expect(screen.queryByText(/^Datos fijos/)).not.toBeInTheDocument()
 
     // Con un carácter no se busca ni se dice "sin resultados".
@@ -153,7 +163,7 @@ describe('ShowcasePage con Supabase', () => {
 
   it('el buscador de géneros dice por qué abreviatura coincidió', async () => {
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     await user.type(
       screen.getByRole('combobox', { name: 'Otro género' }),
@@ -170,7 +180,7 @@ describe('ShowcasePage con Supabase', () => {
   it('sin resultados lo dice y ofrece la acción final', async () => {
     fetchMock.mockImplementation(() => jsonResponse([]))
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     await user.type(speciesInput(), 'stanhopea')
     expect(
@@ -190,7 +200,7 @@ describe('ShowcasePage con Supabase', () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     await user.type(speciesInput(), 'phal')
     const message = { selector: '.orki-autocomplete__message' }
@@ -219,7 +229,7 @@ describe('ShowcasePage con Supabase', () => {
       jsonResponse({ message: 'internal error' }, 500),
     )
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     await user.type(speciesInput(), 'phal')
     expect(
@@ -233,7 +243,7 @@ describe('ShowcasePage con Supabase', () => {
     // La respuesta no llega: el buscador se queda en "Buscando…".
     fetchMock.mockImplementation(() => new Promise<Response>(() => {}))
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     await user.type(speciesInput(), 'phal')
     await waitFor(() => expect(rpcCalls('search_species')).toHaveLength(1))
