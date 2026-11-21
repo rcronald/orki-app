@@ -6,7 +6,6 @@ import { AppShell } from './components/AppShell.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
 import { HomePage } from './pages/HomePage.tsx'
-import { NewPlantPage } from './pages/NewPlantPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { SignInPage } from './pages/SignInPage.tsx'
 import { SignUpPage } from './pages/SignUpPage.tsx'
@@ -24,6 +23,11 @@ const IdentityDiagnosticsPage =
     ? null
     : lazy(() => import('./diagnostics/IdentityDiagnosticsPage.tsx'))
 
+// Registro de una planta (#85): el formulario y su lógica van en un chunk
+// propio que se descarga al abrir /coleccion/nueva, así no engordan el de la
+// app ni el inicial. El service worker lo precachea como los demás.
+const NewPlantPage = lazy(() => import('./pages/NewPlantPage.tsx'))
+
 // Backoffice del catálogo (/administracion/catalogo, #99): solo para
 // administradores, así que va en su propio chunk y no lo descarga nadie más.
 const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
@@ -37,8 +41,9 @@ interface AppProps {
 
 // La app con Clerk: mapa de rutas de la Fase 1. AppRouter carga este módulo de
 // forma diferida, así Clerk y su localización van en un chunk aparte del
-// inicial (ver AppRouter.tsx). Las páginas son pequeñas y van aquí mismo: un
-// chunk por página añadiría peticiones sin ahorrar nada.
+// inicial (ver AppRouter.tsx). Las páginas pequeñas van aquí mismo: un chunk
+// por página añadiría peticiones sin ahorrar nada. El registro, más grande,
+// va aparte.
 //
 // Las rutas de acceso terminan en /* porque Clerk (routing="path") monta sus
 // pasos como subrutas: /iniciar-sesion/factor-one, /iniciar-sesion/sso-callback.
@@ -61,7 +66,14 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
           )}
           <Route element={<RequireAuth />}>
             <Route path={PATHS.collection} element={<CollectionPage />} />
-            <Route path={PATHS.newPlant} element={<NewPlantPage />} />
+            <Route
+              path={PATHS.newPlant}
+              element={
+                <Suspense fallback={null}>
+                  <NewPlantPage />
+                </Suspense>
+              }
+            />
             <Route element={<RequireCatalogAdmin />}>
               <Route
                 path={PATHS.catalogAdmin}
