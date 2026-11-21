@@ -28,6 +28,14 @@ const IdentityDiagnosticsPage =
 // app ni el inicial. El service worker lo precachea como los demás.
 const NewPlantPage = lazy(() => import('./pages/NewPlantPage.tsx'))
 
+// Detalle de un ejemplar (#16), en su propio chunk como el registro: la
+// lista no lo necesita hasta que se toca una tarjeta.
+const PlantDetailPage = lazy(() => import('./pages/PlantDetailPage.tsx'))
+
+// Edición de un ejemplar (#16): comparte con el registro el formulario, que
+// Vite deja en un chunk común a los dos.
+const EditPlantPage = lazy(() => import('./pages/EditPlantPage.tsx'))
+
 // Backoffice del catálogo (/administracion/catalogo, #99): solo para
 // administradores, así que va en su propio chunk y no lo descarga nadie más.
 const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
@@ -71,6 +79,23 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
               element={
                 <Suspense fallback={null}>
                   <NewPlantPage />
+                </Suspense>
+              }
+            />
+            {/* "nueva" es una ruta fija: gana a :plantId sin importar el orden. */}
+            <Route
+              path={PATHS.plantDetail}
+              element={
+                <Suspense fallback={null}>
+                  <PlantDetailPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path={PATHS.editPlant}
+              element={
+                <Suspense fallback={null}>
+                  <EditPlantPage />
                 </Suspense>
               }
             />

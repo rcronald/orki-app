@@ -9,6 +9,7 @@ import {
 import { flushSync } from 'react-dom'
 import { Link } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
+import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { Collapsible } from '../components/ui/Collapsible.tsx'
@@ -30,7 +31,8 @@ import type {
   UploadProgress,
 } from '../photos/upload.ts'
 import { canRetryUpload, usePhotoUpload } from '../photos/usePhotoUpload.ts'
-import { PATHS, signInPathFor } from '../routes/paths.ts'
+import { usePlantImage } from '../photos/usePlantImage.ts'
+import { PATHS, plantEditPath, signInPathFor } from '../routes/paths.ts'
 import {
   ChoiceField,
   FORM_CHIP_CLASSES,
@@ -52,13 +54,17 @@ import {
   PLANT_FORM_FIELDS,
   PLANT_TEXT_MAX_LENGTH,
   plantFormReducer,
+  plantFormValuesFrom,
+  plantPatch,
   toPlantInsert,
+  unlinksSpecies,
   validatePlantForm,
   isPendingName,
   type FormGenus,
   type NewPlantInsert,
   type PlantFormField,
   type PlantFormValues,
+  type PlantPatch,
 } from './form-state.ts'
 import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField } from './NameField.tsx'
@@ -66,30 +72,68 @@ import { OriginField } from './OriginField.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
 import {
   FLOWER_COLOR_LABEL,
+  PLANT_EDIT_NOTICE_TEXT,
+  PLANT_EDIT_TEXT,
   PLANT_FORM_TEXT,
   PLANT_TYPE_LABEL,
+  type PlantFormTexts,
 } from './texts.ts'
 
 /**
- * De dónde saca el formulario los datos y dónde guarda. La pantalla de
- * registro pasa los de Supabase; la página de muestra, unos con datos fijos.
- * Deben ser estables entre pintados (funciones de módulo).
+ * De dónde saca el formulario los datos y dónde sube la foto, al registrar y
+ * al editar. Deben ser estables entre pintados (funciones de módulo).
  */
-export interface PlantFormServices {
+export interface PlantFormBaseServices {
   searchSpecies: CatalogSearchFunction<SpeciesSearchResult>
   searchGenera: CatalogSearchFunction<GenusSearchResult>
   /** Géneros de acceso rápido; se rechaza con CatalogSearchError. */
   loadQuickGenera: () => Promise<readonly FormGenus[]>
-  /** Inserta la planta; se rechaza con PlantSaveError. */
-  savePlant: (insert: NewPlantInsert) => Promise<CollectionPlant>
   /**
    * Sube la foto de la planta ya guardada y la apunta a ella
-   * (replacePlantPhoto); se rechaza con PhotoStorageError.
+   * (replacePlantPhoto, que después borra la anterior); se rechaza con
+   * PhotoStorageError.
    */
   uploadPhoto: (
     files: PhotoFiles,
     options: PlantPhotoUploadOptions,
   ) => Promise<PlantPhotoChangeResult>
+}
+
+/**
+ * Servicios del registro. La pantalla de registro pasa los de Supabase; la
+ * página de muestra, unos con datos fijos.
+ */
+export interface PlantFormServices extends PlantFormBaseServices {
+  /** Inserta la planta; se rechaza con PlantSaveError. */
+  savePlant: (insert: NewPlantInsert) => Promise<CollectionPlant>
+}
+
+/** Edición de una planta ya guardada (#16). */
+export interface PlantFormEditing {
+  /**
+   * La planta tal como está al abrir la edición: precarga el formulario y es
+   * la referencia de lo que cambió. Se lee al montarse.
+   */
+  plant: CollectionPlant
+  /**
+   * Guarda los cambios (solo las columnas que cambiaron) y devuelve la planta
+   * actualizada; se rechaza con PlantSaveError.
+   */
+  updatePlant: (plantId: string, patch: PlantPatch) => Promise<CollectionPlant>
+  /**
+   * Quita la foto (removePlantPhoto: la planta deja de apuntar a ella y se
+   * borran los archivos); se rechaza con PhotoStorageError.
+   */
+  removePhoto: (
+    options: PlantPhotoRemoveOptions,
+  ) => Promise<PlantPhotoChangeResult>
+}
+
+export interface PlantPhotoRemoveOptions {
+  userId: string
+  plant: CollectionPlant
+  signal: AbortSignal
+  onPlantUpdated: (plant: CollectionPlant) => void
 }
 
 export interface PlantPhotoUploadOptions {
@@ -101,15 +145,16 @@ export interface PlantPhotoUploadOptions {
   onPlantUpdated: (plant: CollectionPlant) => void
 }
 
-export interface PlantFormProps {
-  services: PlantFormServices
+interface PlantFormCommonProps {
   /** Si hay conexión (useOnlineStatus). Sin ella, el formulario se desactiva. */
   online: boolean
   /**
-   * El registro terminó: la planta está guardada y, si había foto, subida (o
-   * la persona eligió seguir sin ella). Para salir del formulario.
+   * El registro (o la edición) terminó: la planta está guardada y, si había
+   * foto, subida (o la persona eligió seguir sin ella). Para salir del
+   * formulario. Al editar, `changed` es false si no se escribió nada (se
+   * guardó sin cambios, o solo cambiaba la foto y se siguió sin ella).
    */
-  onSaved: (plant: CollectionPlant) => void
+  onSaved: (plant: CollectionPlant, outcome: { changed: boolean }) => void
   /**
    * La fila de la planta cambió en la base: al guardarla y, después, al
    * apuntarla a su foto. Para reflejarla en la colección (upsertPlant) en
@@ -136,15 +181,29 @@ export interface PlantFormProps {
    */
   knownPlants?: readonly CollectionPlant[] | null
   /**
-   * Dueño del borrador (id del usuario). Con él, lo escrito se guarda en el
-   * dispositivo y se recupera al volver a abrir el formulario (draft.ts); sin
-   * él, no hay borrador. Si cambia, hay que volver a montar el formulario
-   * (key), porque el borrador se lee al montarse.
+   * Usuario activo (id de Clerk): dueño de la foto y, al registrar, del
+   * borrador. Al registrar, lo escrito se guarda en el dispositivo y se
+   * recupera al volver a abrir el formulario (draft.ts); sin usuario, no hay
+   * borrador. Si cambia, hay que volver a montar el formulario (key), porque
+   * el borrador se lee al montarse. Al editar no hay borrador: los datos ya
+   * están en la base, y uno propio se mezclaría con el del registro.
    */
   draftUserId?: string | null
   /** Reloj, para las pruebas. Por defecto, la hora del dispositivo. */
   now?: () => Date
 }
+
+/**
+ * Registrar (services con savePlant) o editar una planta (editing, #16). Es
+ * el mismo formulario, con los mismos campos y el mismo estado; al editar se
+ * precarga con la planta, guarda solo lo que cambió y la foto puede ser la ya
+ * subida, una nueva que la reemplaza o ninguna.
+ */
+export type PlantFormProps = PlantFormCommonProps &
+  (
+    | { editing?: undefined; services: PlantFormServices }
+    | { editing: PlantFormEditing; services: PlantFormBaseServices }
+  )
 
 const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
 
@@ -251,26 +310,45 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
  * registrada y se ofrece reintentar con la misma foto ya preparada o
  * continuar sin ella.
  */
-export function PlantForm({
-  services,
-  online,
-  onSaved,
-  onCancel,
-  onPlantStored,
-  knownPlants = null,
-  draftUserId = null,
-  photoFirst = false,
-  photoDraftBackend = appDraftPhotoBackend(),
-  now = deviceNow,
-}: PlantFormProps) {
-  // Lo que se lee una sola vez al montarse: el formulario vacío de hoy y el
-  // borrador, si lo hay.
+export function PlantForm(props: PlantFormProps) {
+  const {
+    services,
+    online,
+    onSaved,
+    onCancel,
+    onPlantStored,
+    knownPlants = null,
+    draftUserId = null,
+    photoDraftBackend = appDraftPhotoBackend(),
+    now = deviceNow,
+  } = props
+  // Lo que se lee una sola vez al montarse: al registrar, el formulario
+  // vacío de hoy y el borrador, si lo hay; al editar, la planta y el
+  // formulario con sus datos.
   const [start] = useState(() => {
+    if (props.editing !== undefined) {
+      const values = plantFormValuesFrom(props.editing.plant)
+      return {
+        fresh: values,
+        draft: null,
+        values,
+        editingPlant: props.editing.plant,
+      }
+    }
     const fresh = initialPlantFormValues(localDateString(now()))
     const draft = draftUserId ? readPlantDraft(draftUserId, now()) : null
-    return { fresh, draft, values: draft?.values ?? fresh }
+    return { fresh, draft, values: draft?.values ?? fresh, editingPlant: null }
   })
+  // Con qué se abrió el formulario: vacío (registro) o con los datos de la
+  // planta (edición). Es la referencia de "hay cambios".
   const initial = start.fresh
+  const editingPlant = start.editingPlant
+  const editing = editingPlant !== null
+  const text: PlantFormTexts = editing ? PLANT_EDIT_TEXT : PLANT_FORM_TEXT
+  // Desde la cámara solo se registra.
+  const photoFirst = !editing && props.photoFirst === true
+  // Al editar no hay borrador; el usuario sigue siendo el dueño de la foto.
+  const draftOwner = editing ? null : draftUserId
   const [values, dispatch] = useReducer(plantFormReducer, start.values)
   const [submitted, setSubmitted] = useState(false)
   const [save, setSave] = useState<SaveState>({ status: 'idle' })
@@ -279,13 +357,16 @@ export function PlantForm({
   // respuesta, el siguiente no crea otra planta (ver save-plant.ts). Solo
   // cambia al descartar el borrador.
   const [plantId, setPlantId] = useState(
-    () => start.draft?.plantId ?? newPlantId(),
+    () => editingPlant?.id ?? start.draft?.plantId ?? newPlantId(),
   )
   const [draftRestored, setDraftRestored] = useState(start.draft !== null)
   // Cerrada por defecto; abierta si el borrador traía algo dentro.
   const [detailsOpen, setDetailsOpen] = useState(() => hasDetails(start.values))
   // Evita el doble envío antes de que React pinte el estado "guardando".
   const savingRef = useRef(false)
+  // Si ya se escribió algo en la base (al registrar, siempre; al editar, si
+  // los datos cambiaron), para onSaved.
+  const changedRef = useRef(true)
   const [quickGenera, retryQuickGenera] = useQuickGenera(
     services.loadQuickGenera,
     online,
@@ -294,13 +375,38 @@ export function PlantForm({
   // Foto elegida (ya preparada), aún sin subir. No va en el reductor: es un
   // archivo, no un dato de la fila.
   const [photo, setPhoto] = useState<PhotoFieldValue | null>(null)
-  const hasPhoto = photo !== null
+  // Al editar, la foto ya subida: se muestra mientras no se quite ni se
+  // reemplace por una nueva (que, al guardar, la borra: replacePlantPhoto).
+  const storedPhotoPath = editingPlant?.photoPath ?? null
+  const [keepStoredPhoto, setKeepStoredPhoto] = useState(
+    storedPhotoPath !== null,
+  )
+  const storedImage = usePlantImage(
+    keepStoredPhoto && photo === null ? storedPhotoPath : null,
+    'photo',
+  )
+  const fieldPhoto: PhotoFieldValue | null =
+    photo ??
+    (keepStoredPhoto && storedPhotoPath !== null
+      ? {
+          kind: 'stored',
+          src: storedImage.status === 'ready' ? storedImage.src : '',
+        }
+      : null)
+  const hasPhoto = fieldPhoto !== null
+  // Al guardar la edición, quitar la foto que tenía (sin poner otra).
+  const removesStoredPhoto =
+    storedPhotoPath !== null && !keepStoredPhoto && photo === null
   const [photoProcessing, setPhotoProcessing] = useState(false)
   // Si la persona ya eligió o quitó una foto: la del borrador, que llega
   // después (IndexedDB es asíncrono), ya no la sustituye.
   const photoTouched = useRef(false)
-  // Planta ya guardada cuya foto se está subiendo o no se pudo subir.
+  // Planta ya guardada cuya foto se está subiendo (o quitando, al editar) o
+  // no se pudo subir.
   const [registered, setRegistered] = useState<CollectionPlant | null>(null)
+  // Qué se hace con la foto tras guardar: subirla se puede cancelar; quitarla
+  // es una sola escritura y no.
+  const [photoTask, setPhotoTask] = useState<'upload' | 'remove'>('upload')
   const upload = usePhotoUpload<PlantPhotoChangeResult>()
   const primaryRef = useRef<HTMLButtonElement>(null)
   const uploadAlertRef = useRef<HTMLDivElement>(null)
@@ -310,24 +416,24 @@ export function PlantForm({
   // el borrador se conserva aunque no haya nada escrito: lleva el id de
   // planta con el que va la foto.
   useEffect(() => {
-    if (draftUserId === null || values === start.values) return
+    if (draftOwner === null || values === start.values) return
     if (isPlantFormDirty(values, initial) || hasPhoto) {
-      writePlantDraft(draftUserId, {
+      writePlantDraft(draftOwner, {
         plantId,
         values,
         savedAt: now().getTime(),
       })
     } else {
-      clearPlantDraft(draftUserId)
+      clearPlantDraft(draftOwner)
     }
-  }, [values, draftUserId, plantId, now, start.values, initial, hasPhoto])
+  }, [values, draftOwner, plantId, now, start.values, initial, hasPhoto])
 
   // La foto pendiente del borrador, si va con su id de planta. Sin borrador
   // de texto, la que hubiera se borra.
   useEffect(() => {
-    if (draftUserId === null) return
+    if (draftOwner === null) return
     let active = true
-    void readDraftPhoto(photoDraftBackend, draftUserId, {
+    void readDraftPhoto(photoDraftBackend, draftOwner, {
       plantId: start.draft?.plantId ?? null,
       now: now(),
     }).then((found) => {
@@ -337,7 +443,7 @@ export function PlantForm({
     return () => {
       active = false
     }
-  }, [draftUserId, photoDraftBackend, start.draft, now])
+  }, [draftOwner, photoDraftBackend, start.draft, now])
 
   const offlineId = useId()
   const nameRef = useRef<HTMLInputElement>(null)
@@ -387,8 +493,9 @@ export function PlantForm({
   }
 
   /** Sube la foto de la planta ya guardada; reintentar repite esta tarea. */
-  const startUpload = (plant: CollectionPlant, files: PhotoFiles) =>
-    upload.start(({ signal, onProgress }) => {
+  const startUpload = (plant: CollectionPlant, files: PhotoFiles) => {
+    setPhotoTask('upload')
+    return upload.start(({ signal, onProgress }) => {
       if (draftUserId === null) {
         return Promise.reject(new PhotoStorageError('session-ended'))
       }
@@ -400,6 +507,66 @@ export function PlantForm({
         onPlantUpdated: (updated) => onPlantStored?.(updated),
       })
     })
+  }
+
+  /** Quita la foto de la planta editada; reintentar repite esta tarea. */
+  const startRemoval = (plant: CollectionPlant, edit: PlantFormEditing) => {
+    setPhotoTask('remove')
+    return upload.start(({ signal }) => {
+      if (draftUserId === null) {
+        return Promise.reject(new PhotoStorageError('session-ended'))
+      }
+      return edit.removePhoto({
+        userId: draftUserId,
+        plant,
+        signal,
+        onPlantUpdated: (updated) => onPlantStored?.(updated),
+      })
+    })
+  }
+
+  /**
+   * Guarda la edición (#16): primero los datos que cambiaron (si cambió
+   * alguno) y después la foto, como al registrar: un fallo de la foto no
+   * pierde los cambios. Sin cambios, sale sin escribir nada.
+   */
+  const saveEdit = async (
+    edit: PlantFormEditing,
+    original: CollectionPlant,
+    files: PhotoFiles | null,
+  ) => {
+    const patch = plantPatch(
+      { ...values, photoInBloom: values.photoInBloom && hasPhoto },
+      initial,
+    )
+    let plant = original
+    changedRef.current = Object.keys(patch).length > 0
+    if (changedRef.current) {
+      savingRef.current = true
+      setSave({ status: 'saving' })
+      try {
+        plant = await edit.updatePlant(original.id, patch)
+      } catch (error) {
+        savingRef.current = false
+        setSave({ status: 'error', error: plantSaveErrorFrom(error) })
+        return
+      }
+      savingRef.current = false
+      setSave({ status: 'idle' })
+      onPlantStored?.(plant)
+    }
+    if (files !== null) {
+      setRegistered(plant)
+      const result = await startUpload(plant, files)
+      if (result) onSaved(result.plant, { changed: true })
+    } else if (removesStoredPhoto) {
+      setRegistered(plant)
+      const result = await startRemoval(plant, edit)
+      if (result) onSaved(result.plant, { changed: true })
+    } else {
+      onSaved(plant, { changed: changedRef.current })
+    }
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -420,12 +587,18 @@ export function PlantForm({
     }
 
     const files = photo?.kind === 'new' ? photo.photo : null
+    if (props.editing !== undefined) {
+      if (editingPlant !== null) {
+        await saveEdit(props.editing, editingPlant, files)
+      }
+      return
+    }
     savingRef.current = true
     setSave({ status: 'saving' })
     let plant: CollectionPlant
     try {
       // "En floración" solo tiene sentido con foto.
-      plant = await services.savePlant(
+      plant = await props.services.savePlant(
         toPlantInsert(
           { ...values, photoInBloom: values.photoInBloom && files !== null },
           plantId,
@@ -439,19 +612,19 @@ export function PlantForm({
     savingRef.current = false
     // La planta ya existe: el borrador (y su foto) sobran. La foto sigue en
     // memoria para subirla y reintentarlo.
-    if (draftUserId !== null) {
-      clearPlantDraft(draftUserId)
-      void clearDraftPhoto(photoDraftBackend, draftUserId)
+    if (draftOwner !== null) {
+      clearPlantDraft(draftOwner)
+      void clearDraftPhoto(photoDraftBackend, draftOwner)
     }
     setSave({ status: 'idle' })
     onPlantStored?.(plant)
     if (files === null) {
-      onSaved(plant)
+      onSaved(plant, { changed: true })
       return
     }
     setRegistered(plant)
     const result = await startUpload(plant, files)
-    if (result) onSaved(result.plant)
+    if (result) onSaved(result.plant, { changed: true })
   }
 
   const uploadError =
@@ -476,37 +649,39 @@ export function PlantForm({
   const retryUpload = async () => {
     if (!online || upload.state.status !== 'error') return
     const result = await upload.retry()
-    if (result) onSaved(result.plant)
+    if (result) onSaved(result.plant, { changed: true })
   }
 
-  // La planta ya está registrada; se sale sin foto.
+  // La planta ya está registrada (o editada); se sale sin la foto nueva.
   const continueWithoutPhoto = () => {
     if (registered === null || upload.state.status === 'uploading') return
-    onSaved(registered)
+    onSaved(registered, { changed: changedRef.current })
   }
 
   const changePhoto = (next: PhotoFieldValue | null) => {
     photoTouched.current = true
     const first = photo === null
     setPhoto(next)
+    // "Quitar foto" quita la que se ve: la nueva o, al editar, la ya subida.
+    if (next === null) setKeepStoredPhoto(false)
     // Sin foto, "en floración" no tiene sentido.
     if (next === null && values.photoInBloom) {
       dispatch({ type: 'photoInBloomChanged', photoInBloom: false })
     }
-    if (draftUserId !== null) {
+    if (draftOwner !== null) {
       if (next?.kind === 'new') {
         const savedAt = now().getTime()
         // El borrador de texto lleva el id de planta con el que va la foto.
-        writePlantDraft(draftUserId, { plantId, values, savedAt })
-        void writeDraftPhoto(photoDraftBackend, draftUserId, {
+        writePlantDraft(draftOwner, { plantId, values, savedAt })
+        void writeDraftPhoto(photoDraftBackend, draftOwner, {
           plantId,
           savedAt,
           fileName: next.fileName,
           photo: next.photo,
         })
       } else {
-        void clearDraftPhoto(photoDraftBackend, draftUserId)
-        if (!isPlantFormDirty(values, initial)) clearPlantDraft(draftUserId)
+        void clearDraftPhoto(photoDraftBackend, draftOwner)
+        if (!isPlantFormDirty(values, initial)) clearPlantDraft(draftOwner)
       }
     }
     // Desde la cámara, tras la primera foto se sigue por el nombre.
@@ -515,17 +690,20 @@ export function PlantForm({
     }
   }
 
+  // Si hay algo que se perdería al salir: al registrar, lo escrito o la
+  // foto; al editar, cualquier cambio respecto de la planta.
+  const dirty = editing
+    ? Object.keys(plantPatch(values, initial)).length > 0 ||
+      photo !== null ||
+      removesStoredPhoto
+    : isPlantFormDirty(values, initial) || hasPhoto
+
   const cancel = () => {
     if (saving || registered !== null) return
-    if (
-      (isPlantFormDirty(values, initial) || hasPhoto) &&
-      !window.confirm(PLANT_FORM_TEXT.confirmDiscard)
-    ) {
-      return
-    }
-    if (draftUserId !== null) {
-      clearPlantDraft(draftUserId)
-      void clearDraftPhoto(photoDraftBackend, draftUserId)
+    if (dirty && !window.confirm(text.confirmDiscard)) return
+    if (draftOwner !== null) {
+      clearPlantDraft(draftOwner)
+      void clearDraftPhoto(photoDraftBackend, draftOwner)
     }
     onCancel()
   }
@@ -534,9 +712,9 @@ export function PlantForm({
   // de planta (el del borrador pudo llegar a la base en un intento anterior).
   const discardDraft = () => {
     if (saving || registered !== null) return
-    if (draftUserId !== null) {
-      clearPlantDraft(draftUserId)
-      void clearDraftPhoto(photoDraftBackend, draftUserId)
+    if (draftOwner !== null) {
+      clearPlantDraft(draftOwner)
+      void clearDraftPhoto(photoDraftBackend, draftOwner)
     }
     dispatch({
       type: 'restored',
@@ -553,17 +731,28 @@ export function PlantForm({
     nameRef.current?.focus()
   }
 
+  // La foto ya subida tarda en llegar: mientras, el texto alternativo lo dice.
+  const storedPhotoAlt =
+    fieldPhoto?.kind !== 'stored'
+      ? undefined
+      : storedImage.status === 'ready'
+        ? PLANT_EDIT_NOTICE_TEXT.storedPhotoAlt
+        : storedImage.status === 'error'
+          ? PLANT_EDIT_NOTICE_TEXT.storedPhotoFailed
+          : PLANT_EDIT_NOTICE_TEXT.storedPhotoLoading
+
   const photoField = (
     <PhotoField
-      value={photo}
+      value={fieldPhoto}
       onChange={changePhoto}
-      label={PLANT_FORM_TEXT.photoLabel}
+      label={text.photoLabel}
+      previewAlt={storedPhotoAlt}
       description={
         isPendingName(values)
-          ? PLANT_FORM_TEXT.pendingPhotoHint
+          ? text.pendingPhotoHint
           : photoFirst
-            ? PLANT_FORM_TEXT.photoFirstHint
-            : PLANT_FORM_TEXT.photoHint
+            ? text.photoFirstHint
+            : text.photoHint
       }
       disabled={saving || registered !== null}
       onProcessingChange={setPhotoProcessing}
@@ -573,16 +762,16 @@ export function PlantForm({
   let primaryText: string
   if (registered !== null) {
     primaryText = uploading
-      ? PLANT_FORM_TEXT.photoUploadingButton
+      ? text.photoUploadingButton
       : canRetry
-        ? PLANT_FORM_TEXT.photoUploadRetry
-        : PLANT_FORM_TEXT.photoContinueWithout
+        ? text.photoUploadRetry
+        : text.photoContinueWithout
   } else if (saving) {
-    primaryText = PLANT_FORM_TEXT.submitting
+    primaryText = text.submitting
   } else if (photoProcessing) {
-    primaryText = PLANT_FORM_TEXT.photoPreparing
+    primaryText = text.photoPreparing
   } else {
-    primaryText = PLANT_FORM_TEXT.submit
+    primaryText = text.submit
   }
   const primaryBlocked =
     registered !== null
@@ -591,10 +780,25 @@ export function PlantForm({
   const progress =
     upload.state.status === 'uploading' ? upload.state.progress : null
 
+  // Al editar, el aviso de duplicado solo sale al cambiar de especie y no
+  // cuenta la propia planta.
+  const duplicateSpecies =
+    editing && values.species?.id === initial.species?.id
+      ? null
+      : values.species
+  const duplicateCandidates =
+    editingPlant === null || knownPlants === null
+      ? knownPlants
+      : knownPlants.filter((known) => known.id !== editingPlant.id)
+  const unlinkedSpecies =
+    editing && unlinksSpecies(values, initial) && isPendingName(values)
+      ? initial.species
+      : null
+
   return (
     <form
       noValidate
-      aria-label={PLANT_FORM_TEXT.title}
+      aria-label={text.title}
       className="flex flex-col gap-space-5"
       onSubmit={(event) => void handleSubmit(event)}
     >
@@ -608,7 +812,7 @@ export function PlantForm({
               name="triangle-alert"
               className="mt-[2px] size-[16px] flex-none"
             />
-            {PLANT_FORM_TEXT.offline}
+            {text.offline}
           </p>
         )}
       </div>
@@ -634,7 +838,34 @@ export function PlantForm({
             error={errors.name}
             inputRef={nameRef}
           />
-          <DuplicateNotice species={values.species} knownPlants={knownPlants} />
+          <DuplicateNotice
+            species={duplicateSpecies}
+            knownPlants={duplicateCandidates}
+            after={text.duplicateAfter}
+          />
+          {/*
+            Al editar, quitar la especie la devuelve a "por validar" (lo hace
+            la base): se avisa antes de guardar, en una región ya montada.
+          */}
+          {editing && (
+            <div role="status">
+              {unlinkedSpecies !== null && (
+                <p className="mt-space-2 flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-3 text-sm text-neutral-900">
+                  <Icon
+                    name="triangle-alert"
+                    className="mt-[2px] size-[16px] flex-none"
+                  />
+                  <span className="[overflow-wrap:anywhere]">
+                    {PLANT_EDIT_NOTICE_TEXT.unlinkBefore}
+                    <em className="font-display">
+                      <ScientificName name={unlinkedSpecies.scientificName} />
+                    </em>
+                    {PLANT_EDIT_NOTICE_TEXT.unlinkAfter}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <GenusField
@@ -799,7 +1030,11 @@ export function PlantForm({
             </Button>
             {save.error.reason === 'session-ended' && (
               <Link
-                to={signInPathFor(PATHS.newPlant)}
+                to={signInPathFor(
+                  editingPlant
+                    ? plantEditPath(editingPlant.id)
+                    : PATHS.newPlant,
+                )}
                 className="orki-btn orki-btn--secondary"
               >
                 {PLANT_FORM_TEXT.signIn}
@@ -814,11 +1049,11 @@ export function PlantForm({
         {uploading && (
           <p className="text-sm text-neutral-900">
             {progress
-              ? PLANT_FORM_TEXT.photoUploadProgress(
+              ? text.photoUploadProgress(
                   progress.filesDone,
                   progress.filesTotal,
                 )
-              : PLANT_FORM_TEXT.photoUploading}
+              : text.photoUploading}
           </p>
         )}
       </div>
@@ -835,11 +1070,11 @@ export function PlantForm({
               className="mt-[2px] size-[16px] flex-none text-danger"
             />
             {uploadError.reason === 'aborted'
-              ? PLANT_FORM_TEXT.photoUploadCancelled
-              : PLANT_FORM_TEXT.photoUploadFailed}
+              ? text.photoUploadCancelled
+              : text.photoUploadFailed}
           </p>
           {uploadError.reason !== 'aborted' && <p>{uploadError.message}</p>}
-          {canRetry && <p>{PLANT_FORM_TEXT.photoUploadRetryHint}</p>}
+          {canRetry && <p>{text.photoUploadRetryHint}</p>}
         </div>
       )}
 
@@ -851,19 +1086,21 @@ export function PlantForm({
             aria-disabled={saving || undefined}
             onClick={cancel}
           >
-            {PLANT_FORM_TEXT.cancel}
+            {text.cancel}
           </Button>
         ) : uploading ? (
-          <Button className="flex-none px-space-4" onClick={upload.cancel}>
-            {PLANT_FORM_TEXT.photoUploadCancel}
-          </Button>
+          photoTask === 'upload' && (
+            <Button className="flex-none px-space-4" onClick={upload.cancel}>
+              {text.photoUploadCancel}
+            </Button>
+          )
         ) : (
           canRetry && (
             <Button
               className="flex-none px-space-4"
               onClick={continueWithoutPhoto}
             >
-              {PLANT_FORM_TEXT.photoContinueWithout}
+              {text.photoContinueWithout}
             </Button>
           )
         )}

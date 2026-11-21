@@ -4,11 +4,15 @@ import {
   isPendingName,
   isPlantFormDirty,
   plantFormReducer,
+  plantFormValuesFrom,
+  plantPatch,
   toPlantInsert,
+  unlinksSpecies,
   validatePlantForm,
   type FormSpecies,
   type PlantFormValues,
 } from './form-state.ts'
+import { plant } from '../test/collection.ts'
 import { PLANT_FORM_ERROR_TEXT } from './texts.ts'
 
 const TODAY = '2026-11-21'
@@ -275,5 +279,98 @@ describe('isPendingName e isPlantFormDirty', () => {
     expect(
       isPlantFormDirty({ ...initial, flowerColor: 'white' }, initial),
     ).toBe(true)
+  })
+})
+
+describe('edición (#16)', () => {
+  const linked = plant({
+    enteredName: 'phalaenopsis amabilis',
+    nickname: 'La blanca',
+    origin: null,
+    flowerColor: 'white',
+    photoInBloom: true,
+  })
+
+  it('precarga el formulario con la planta: enlazada, el nombre de la especie', () => {
+    expect(plantFormValuesFrom(linked)).toEqual({
+      name: 'Phalaenopsis amabilis',
+      species: {
+        id: 'species-amabilis',
+        scientificName: 'Phalaenopsis amabilis',
+        genus: { id: 'genus-phal', name: 'Phalaenopsis' },
+        type: 'species',
+      },
+      genus: { id: 'genus-phal', name: 'Phalaenopsis' },
+      otherGenusOpen: false,
+      type: 'species',
+      acquiredOn: '2026-11-01',
+      origin: '',
+      location: '',
+      nickname: 'La blanca',
+      flowerColor: 'white',
+      photoInBloom: true,
+    })
+    const pending = plant({
+      species: null,
+      enteredName: 'La naranja',
+      displayName: 'La naranja',
+    })
+    expect(plantFormValuesFrom(pending)).toMatchObject({
+      name: 'La naranja',
+      species: null,
+    })
+  })
+
+  it('sin cambios no hay nada que enviar', () => {
+    const initial = plantFormValuesFrom(linked)
+    expect(plantPatch(initial, initial)).toEqual({})
+  })
+
+  it('envía solo lo que cambió; vaciar un opcional lo deja en null', () => {
+    const initial = plantFormValuesFrom(linked)
+    expect(
+      plantPatch({ ...initial, nickname: '  La  reina ' }, initial),
+    ).toEqual({ nickname: 'La reina' })
+    expect(plantPatch({ ...initial, nickname: '   ' }, initial)).toEqual({
+      nickname: null,
+    })
+    expect(
+      plantPatch(
+        { ...initial, origin: 'Vivero Sol', flowerColor: null },
+        initial,
+      ),
+    ).toEqual({ origin: 'Vivero Sol', flower_color: null })
+  })
+
+  it('cambiar el nombre a uno libre quita la especie y conserva género y tipo', () => {
+    const initial = plantFormValuesFrom(linked)
+    const values = plantFormReducer(initial, {
+      type: 'nameChanged',
+      name: 'Mariposa blanca',
+    })
+    expect(unlinksSpecies(values, initial)).toBe(true)
+    const patch = plantPatch(values, initial)
+    expect(patch).toEqual({ entered_name: 'Mariposa blanca', species_id: null })
+    expect(patch).not.toHaveProperty('validation')
+  })
+
+  it('elegir otra especie envía la especie con su género y su tipo', () => {
+    const initial = plantFormValuesFrom(linked)
+    const other: FormSpecies = {
+      id: 'species-maxima',
+      scientificName: 'Cattleya maxima',
+      genus: CATT,
+      type: 'species',
+    }
+    const values = plantFormReducer(initial, {
+      type: 'speciesSelected',
+      species: other,
+    })
+    expect(unlinksSpecies(values, initial)).toBe(false)
+    expect(plantPatch(values, initial)).toEqual({
+      entered_name: 'Cattleya maxima',
+      species_id: 'species-maxima',
+      genus_id: 'genus-catt',
+    })
   })
 })

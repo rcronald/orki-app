@@ -3,6 +3,10 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import type { PlantFilters } from '../collection/filters.ts'
 import { useCollection } from '../collection/useCollection.ts'
 import { Page } from '../components/Page.tsx'
+import { ScientificName } from '../components/ui/ScientificName.tsx'
+import { ActionNotice } from '../detail/ActionNotice.tsx'
+import { clearPlantNotice, peekPlantNotice } from '../detail/notice.ts'
+import { DETAIL_TEXT } from '../detail/texts.ts'
 import { readFilters, writeFilters } from '../inventory/filter-params.ts'
 import { InventoryView } from '../inventory/InventoryView.tsx'
 import { readRegisteredPlant } from '../inventory/registered-plant.ts'
@@ -28,6 +32,13 @@ const SEARCH_PARAM = 'q'
 // Al volver del registro (#85), el estado de la navegación trae la planta
 // recién registrada: se muestra un aviso de confirmación y se borra ese
 // estado del historial, para que recargar o volver con "atrás" no lo repita.
+// Al volver de eliminar una planta (#16), "Eliminaste…" (detail/notice.ts).
+
+function deletedNotice() {
+  const notice = peekPlantNotice()
+  return notice?.kind === 'deleted' ? notice : null
+}
+
 export function CollectionPage() {
   const { status, plants, error, reload } = useCollection()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -38,6 +49,11 @@ export function CollectionPage() {
     readRegisteredPlant(location.state),
   )
   const hasRegisteredState = readRegisteredPlant(location.state) !== null
+  const [pendingDeleted] = useState(deletedNotice)
+  const [deleted, setDeleted] = useState(pendingDeleted)
+  useEffect(() => {
+    if (pendingDeleted !== null) clearPlantNotice(pendingDeleted)
+  }, [pendingDeleted])
 
   useEffect(() => {
     if (!hasRegisteredState) return
@@ -92,6 +108,19 @@ export function CollectionPage() {
           plant={registered}
           onDismiss={() => setRegistered(null)}
         />
+      )}
+      {deleted && (
+        <ActionNotice key={deleted.plantId} onDismiss={() => setDeleted(null)}>
+          {DETAIL_TEXT.deleted}{' '}
+          {deleted.scientific ? (
+            <span className="font-display italic">
+              <ScientificName name={deleted.name} />
+            </span>
+          ) : (
+            <span className="font-semibold">{deleted.name}</span>
+          )}
+          .{!deleted.photosDeleted && ` ${DETAIL_TEXT.deletedPhotosLeft}`}
+        </ActionNotice>
       )}
       <InventoryView
         status={status}

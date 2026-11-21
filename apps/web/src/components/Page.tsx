@@ -7,6 +7,13 @@ interface PageProps {
   /** Título de la pestaña si difiere; null deja solo "Orki". */
   tabTitle?: string | null
   /**
+   * Contenido del h1 si no es el texto de `title` tal cual; por ejemplo, un
+   * nombre científico en cursiva. `title` sigue siendo el de la pestaña.
+   */
+  heading?: ReactNode
+  /** Lo que va antes del h1, como un enlace para volver. */
+  before?: ReactNode
+  /**
    * Ancho máximo: narrow (por defecto, 512 px) para textos y formularios;
    * wide (1024 px) para listas y cuadrículas que aprovechan el escritorio;
    * full (1280 px) para las tablas del backoffice.
@@ -27,6 +34,8 @@ const WIDTH_CLASSES = {
 export function Page({
   title,
   tabTitle = title,
+  heading,
+  before,
   width = 'narrow',
   children,
 }: PageProps) {
@@ -36,12 +45,13 @@ export function Page({
 
   return (
     <div className={`flex w-full flex-col gap-space-3 ${WIDTH_CLASSES[width]}`}>
+      {before}
       <h1
         ref={headingRef}
         tabIndex={-1}
-        className="font-display text-xl font-semibold text-neutral-900"
+        className="font-display text-xl font-semibold text-neutral-900 [overflow-wrap:anywhere]"
       >
-        {title}
+        {heading ?? title}
       </h1>
       {children}
     </div>

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   internalPathOf,
   PATHS,
+  plantDetailPath,
+  plantEditPath,
   safeRedirectPath,
   signInPathFor,
 } from './paths.ts'
@@ -13,6 +15,14 @@ describe('PATHS', () => {
     expect(PATHS.signUp).toBe('/registro')
     expect(PATHS.newPlant).toBe('/coleccion/nueva')
     expect(new Set(Object.values(PATHS)).size).toBe(Object.keys(PATHS).length)
+  })
+})
+
+describe('direcciones de una planta', () => {
+  it('cuelgan de la colección y escapan el id', () => {
+    expect(plantDetailPath('6f1c2a4e')).toBe('/coleccion/6f1c2a4e')
+    expect(plantEditPath('6f1c2a4e')).toBe('/coleccion/6f1c2a4e/editar')
+    expect(plantDetailPath('a/b?c')).toBe('/coleccion/a%2Fb%3Fc')
   })
 })
 

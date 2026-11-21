@@ -8,7 +8,13 @@ import {
   sessionTokenFailure,
   type OrkiSupabaseClient,
 } from '../lib/supabase.ts'
-import type { NewPlantInsert } from './form-state.ts'
+import type { PlantStatus } from '../lib/database.ts'
+import type { NewPlantInsert, PlantPatch } from './form-state.ts'
+
+/** Dar de baja o reactivar una planta (#16): solo el estado. */
+export interface PlantStatusPatch {
+  status: PlantStatus
+}
 
 // Guardado de una planta nueva en Supabase (#85).
 //
@@ -33,10 +39,11 @@ import type { NewPlantInsert } from './form-state.ts'
  * - offline: sin conexión (o la red falló antes de llegar a Supabase).
  * - session-ended: la sesión terminó o Supabase no la acepta.
  * - invalid: la base rechazó los datos (una restricción); `message` dice cuál.
+ * - not-found: al editar, la planta ya no existe o no es del usuario.
  * - failed: error del servidor o cualquier otro.
  */
 export type PlantSaveFailure =
-  'offline' | 'session-ended' | 'invalid' | 'failed'
+  'offline' | 'session-ended' | 'invalid' | 'not-found' | 'failed'
 
 export const PLANT_SAVE_ERROR_TEXT: Record<PlantSaveFailure, string> = {
   offline:
@@ -45,8 +52,23 @@ export const PLANT_SAVE_ERROR_TEXT: Record<PlantSaveFailure, string> = {
     'Tu sesión terminó: no se pudo registrar la orquídea. Vuelve a iniciar sesión e inténtalo de nuevo.',
   invalid:
     'La base de datos no aceptó el registro. Revisa los datos y vuelve a intentarlo.',
+  'not-found': 'Esta orquídea ya no está en tu colección.',
   failed:
     'No se pudo registrar la orquídea por un error del servidor. Vuelve a intentarlo en unos momentos.',
+}
+
+/** Los mismos motivos al guardar los cambios de una planta (#16). */
+export const PLANT_UPDATE_ERROR_TEXT: Record<PlantSaveFailure, string> = {
+  offline:
+    'Sin conexión: no se pudieron guardar los cambios. Lo que escribiste sigue aquí; vuelve a intentarlo cuando tengas conexión.',
+  'session-ended':
+    'Tu sesión terminó: no se pudieron guardar los cambios. Vuelve a iniciar sesión e inténtalo de nuevo.',
+  invalid:
+    'La base de datos no aceptó los cambios. Revisa los datos y vuelve a intentarlo.',
+  'not-found':
+    'Esta orquídea ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
+  failed:
+    'No se pudieron guardar los cambios por un error del servidor. Vuelve a intentarlo en unos momentos.',
 }
 
 /** Rechazos de la base traducidos, por restricción o por código de Postgres. */
@@ -88,6 +110,20 @@ interface PostgrestLikeError {
   details?: string | null
 }
 
+/** Los campos de texto de un error de PostgREST, sin suponer su forma. */
+function postgrestError(error: unknown): PostgrestLikeError {
+  if (typeof error !== 'object' || error === null) return {}
+  const text = (key: string) => {
+    const value: unknown = Reflect.get(error, key)
+    return typeof value === 'string' ? value : undefined
+  }
+  return {
+    code: text('code'),
+    message: text('message'),
+    details: text('details') ?? null,
+  }
+}
+
 /**
  * Traduce el `error` de supabase-js con el estado HTTP de la respuesta.
  * Estado 0: la petición no obtuvo respuesta (sin red, DNS, portal cautivo).
@@ -95,23 +131,26 @@ interface PostgrestLikeError {
 export function toPlantSaveError(
   error: unknown,
   status: number,
+  texts: Record<PlantSaveFailure, string> = PLANT_SAVE_ERROR_TEXT,
 ): PlantSaveError {
+  const failure = (reason: PlantSaveFailure, message = texts[reason]) =>
+    new PlantSaveError(reason, { message, cause: error })
   const tokenFailure = sessionTokenFailure(error)
-  if (tokenFailure !== null) {
-    return new PlantSaveError(tokenFailure, { cause: error })
-  }
-  if (status === 0) return new PlantSaveError('offline', { cause: error })
-  if (status === 401) {
-    return new PlantSaveError('session-ended', { cause: error })
-  }
-  const invalid = invalidDataText(error as PostgrestLikeError)
-  if (invalid !== null) {
-    return new PlantSaveError('invalid', { message: invalid, cause: error })
-  }
-  return new PlantSaveError('failed', { cause: error })
+  if (tokenFailure !== null) return failure(tokenFailure)
+  if (status === 0) return failure('offline')
+  if (status === 401) return failure('session-ended')
+  // .single() sin filas: al editar, la planta no existe o no es del usuario.
+  const details = postgrestError(error)
+  if (details.code === 'PGRST116') return failure('not-found')
+  const invalid = invalidDataText(details, texts.invalid)
+  if (invalid !== null) return failure('invalid', invalid)
+  return failure('failed')
 }
 
-function invalidDataText(error: PostgrestLikeError): string | null {
+function invalidDataText(
+  error: PostgrestLikeError,
+  generic: string,
+): string | null {
   const code = error.code ?? ''
   const text = `${error.message ?? ''} ${error.details ?? ''}`
   switch (code) {
@@ -122,18 +161,18 @@ function invalidDataText(error: PostgrestLikeError): string | null {
       if (text.includes('plants_acquired_on_not_future')) {
         return PLANT_INVALID_TEXT.futureDate
       }
-      return PLANT_SAVE_ERROR_TEXT.invalid
+      return generic
     case '23503': // foreign_key_violation
       if (text.includes('species_id')) return PLANT_INVALID_TEXT.species
       if (text.includes('genus_id')) return PLANT_INVALID_TEXT.genus
-      return PLANT_SAVE_ERROR_TEXT.invalid
+      return generic
     case '22007': // invalid_datetime_format
     case '22008': // datetime_field_overflow
       return PLANT_INVALID_TEXT.date
     case '22001': // string_data_right_truncation
     case '22P02': // invalid_text_representation (uuid o enumerado)
     case '23502': // not_null_violation
-      return PLANT_SAVE_ERROR_TEXT.invalid
+      return generic
     default:
       return null
   }
@@ -186,4 +225,41 @@ export async function insertPlant(
     if (existing.data) return toCollectionPlant(existing.data)
   }
   throw toPlantSaveError(error, status)
+}
+
+/**
+ * Guarda los cambios de una planta (#16): actualización parcial con solo las
+ * columnas que cambiaron (o solo el estado, al dar de baja o reactivar), filtrada también por usuario (con el token de otra
+ * cuenta no toca nada), y la devuelve como planta de la colección. Sin
+ * cambios no se llama. Se rechaza con PlantSaveError (los textos de
+ * PLANT_UPDATE_ERROR_TEXT); not-found si la planta no existe o no es suya.
+ *
+ *   PATCH /rest/v1/plants?id=eq.<id>&user_id=eq.<usuario>&select=<COLLECTION_PLANT_SELECT>
+ *   { nickname: "La blanca" }
+ */
+export async function updatePlant(
+  plantId: string,
+  userId: string,
+  patch: PlantPatch | PlantStatusPatch,
+  { getClient = getSupabase }: InsertPlantOptions = {},
+): Promise<CollectionPlant> {
+  let supabase: OrkiSupabaseClient
+  try {
+    supabase = await getClient()
+  } catch (error) {
+    const reason = navigator.onLine === false ? 'offline' : 'failed'
+    throw new PlantSaveError(reason, {
+      cause: error,
+      message: PLANT_UPDATE_ERROR_TEXT[reason],
+    })
+  }
+  const { data, error, status } = await supabase
+    .from('plants')
+    .update(patch)
+    .eq('id', plantId)
+    .eq('user_id', userId)
+    .select(COLLECTION_PLANT_SELECT)
+    .single()
+  if (error) throw toPlantSaveError(error, status, PLANT_UPDATE_ERROR_TEXT)
+  return toCollectionPlant(data)
 }
