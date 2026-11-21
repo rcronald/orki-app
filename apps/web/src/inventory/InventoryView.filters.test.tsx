@@ -458,8 +458,13 @@ describe('InventoryView: filtros', () => {
     expect(
       screen.getByRole('heading', { name: 'No tienes orquídeas activas' }),
     ).toBeInTheDocument()
-    // Una sola invitación a registrar: la de la cabecera.
-    expect(screen.getAllByRole('link', { name: /Registrar/ })).toHaveLength(1)
+    // Sin la invitación del estado vacío: bastan los accesos de la cabecera
+    // (registrar y registrar con foto).
+    expect(
+      screen
+        .getAllByRole('link', { name: /Registrar/ })
+        .map((link) => link.getAttribute('aria-label') ?? link.textContent),
+    ).toEqual(['Registrar orquídea', 'Registrar con foto'])
     await openPanel(user)
     await user.click(chip('Estado', 'Perdidas'))
     expect(cardNames()).toEqual(['Phalaenopsis aphrodite'])
