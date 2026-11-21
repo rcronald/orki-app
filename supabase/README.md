@@ -56,7 +56,8 @@ Las pruebas están organizadas por tema, un archivo por tema:
 | `busqueda_especies.sql`               | Normalización, índices de trigramas y `search_species()`: errores de tipeo, tildes, prefijos, sinónimos, orden, límites, permisos y que el plan usa los índices.                                         |
 | `busqueda_generos_y_abreviaturas.sql` | Abreviaturas en `search_species()` (con o sin punto, desconocidas, solas, ambiguas) y `search_genera()`: tipeo, tildes, prefijo, abreviatura, límites, permisos, índices y la lista cargada sin choques. |
 | `datos_ejemplo.sql`                   | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada, que no tocan el inventario y que la migración de abreviaturas se aplica sobre ellos.                     |
-| `seguridad_general.sql`               | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.                                                                                     |
+| `fotos_storage.sql`                   | Bucket `plant-photos` (privado, límite y tipos) y políticas de `storage.objects`: anónimo, dos usuarios y un administrador que solo lee las fotos de plantas por validar; otros buckets sin afectar.     |
+| `seguridad_general.sql`               | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas, ningún bucket público y políticas de Storage solo para `authenticated`.             |
 
 `seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon`, deja una función de `private` ejecutable desde la API o expone una función `security definer` de `public` sin seguir el patrón de las [funciones de administrador](#funciones-de-administrador).
 
@@ -225,6 +226,43 @@ Por qué así:
 - No se concede a `service_role`: los scripts con la clave de servicio ya pueden escribir todas las tablas, y su token no trae `app_role`, así que el guardián los rechazaría igualmente.
 
 La regla general de `tests/seguridad_general.sql` lo vigila con `pruebas.funciones_definer_expuestas()`: falla si `anon` puede ejecutar alguna función `security definer` de `public`, o si `authenticated` puede ejecutar una que no fija `search_path` vacío o que no llama primero al guardián (lo comprueba en el texto de la función, `pg_proc.prosrc`, sin contar los comentarios). Es una red para olvidos, no una barrera contra quien la quiera esquivar a propósito; la revisión del pull request sigue haciendo falta. Las funciones `security definer` que solo ejecuta `service_role` no están sujetas al patrón. `tests/funciones_administrador.sql` tiene ejemplos que la regla acepta y rechaza.
+
+## Fotos de plantas (Storage)
+
+Las fotos de las plantas (#10) viven en el bucket privado `plant-photos` de Supabase Storage, creado por la migración `20261121090000_bucket_de_fotos_de_plantas.sql` (#80), donde están explicadas las decisiones y las fuentes consultadas.
+
+Bucket:
+
+- Privado (`public = false`): nada se sirve sin token; la app lee con descarga autenticada o con URL firmadas.
+- Tope de 1 MiB por archivo (`file_size_limit = 1048576`, en bytes) y solo `image/webp` e `image/jpeg` (`allowed_mime_types`). La app comprime en el navegador (objetivo: menos de 300 KB la foto y 30 KB la miniatura); el tope deja margen y rechaza una foto sin comprimir. JPEG queda como alternativa para los navegadores que no generan WebP.
+
+Convención de rutas, dentro del bucket:
+
+```text
+<id de usuario de Clerk>/<id de la planta>/photo-<versión>.<webp|jpg>
+<id de usuario de Clerk>/<id de la planta>/thumb-<versión>.<webp|jpg>
+```
+
+- El primer segmento es el dueño (el claim `sub`, `public.requesting_user_id()`); es lo único que miran las políticas del dueño.
+- El segundo es `plants.id`, en minúsculas.
+- `<versión>` es nueva en cada subida y la misma para la foto y su miniatura. Reemplazar una foto es subir dos objetos nuevos, guardar sus rutas en `plants.photo_path` y `plants.thumbnail_path` y borrar los anteriores, así ninguna caché sirve la foto vieja.
+- `photo_path` y `thumbnail_path` guardan la ruta sin el nombre del bucket.
+
+Quién puede qué (políticas de `storage.objects`, todas para `authenticated` y limitadas a `bucket_id = 'plant-photos'`):
+
+| Política                                       | Orden    | Qué deja hacer                                                                                                           |
+| ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `plant_photos_select_own_or_pending_for_admin` | `select` | Al dueño, leer su carpeta; al administrador del catálogo, además la foto y la miniatura actuales de plantas por validar. |
+| `plant_photos_insert_own`                      | `insert` | Subir a su carpeta.                                                                                                      |
+| `plant_photos_update_own`                      | `update` | Reemplazar (upsert) sus objetos, sin moverlos a otra carpeta ni a otro bucket.                                           |
+| `plant_photos_delete_own`                      | `delete` | Borrar sus objetos.                                                                                                      |
+
+- Lo que exige cada operación del cliente de Storage: subir, `insert`; subir con `upsert`, `select`, `insert` y `update`; descargar, listar y `createSignedUrl(s)`, `select`; borrar (`remove`), `select` y `delete`.
+- Sin sesión (`anon`) no hay ninguna política: no se lee ni se sube nada. Un token sin `sub` tampoco ve nada.
+- El administrador no escribe ni borra fotos ajenas. Su lectura pasa por `public.is_pending_plant_photo(object_name)`, una [función de administrador](#funciones-de-administrador) (`security definer`, con el guardián) que solo responde verdadero o falso: la planta del segundo segmento existe, es del usuario del primero, está por validar y la ruta es exactamente su `photo_path` o su `thumbnail_path`. La política la llama dentro de un `case when (select public.is_catalog_admin())`, para que los usuarios sin rol nunca lleguen al guardián. Busca la planta por su clave primaria. La API la expone en `/rest/v1/rpc/is_pending_plant_photo`, solo para administradores.
+- `tests/seguridad_general.sql` falla si aparece un bucket público no declarado en la prueba o una política de Storage para `anon`, para `PUBLIC` o `for all`.
+
+Limitación de las pruebas: la base desechable no tiene Supabase Storage. `scripts/db-desechable/supabase-minimo.sql` simula lo mínimo del esquema `storage` (las tablas `buckets` y `objects`, `storage.foldername()`, el bloqueo de borrados directos y los permisos de los roles) a partir de las migraciones de [supabase/storage](https://github.com/supabase/storage), así que `tests/fotos_storage.sql` comprueba las políticas tal como las evalúa Postgres, con la orden SQL que corresponde a cada operación, pero no la API de Storage: ni los límites de tamaño y de tipo, ni las URL firmadas, ni cómo pasa el token de Clerk. Eso se comprueba al aplicar la migración en desarrollo. En Supabase, `postgres` crea las políticas de `storage.objects` sin ser su dueño gracias a `supautils.policy_grants`; aquí es miembro de `supabase_storage_admin`, que es más permisivo: una migración no debe alterar tablas de `storage`, porque aquí pasaría y en Supabase fallaría.
 
 ## Tipos de TypeScript
 

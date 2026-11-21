@@ -265,6 +265,10 @@ export type Database = {
     }
     Functions: {
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      is_pending_plant_photo: {
+        Args: { object_name: string }
+        Returns: boolean
+      }
       normalize_search_text: { Args: { value: string }; Returns: string }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
       search_genera: {

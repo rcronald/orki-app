@@ -6,8 +6,9 @@
 -- petición no es de un administrador. La regla general de seguridad_general.sql
 -- (pruebas.funciones_definer_expuestas()) rechaza las que no siguen el patrón.
 --
--- El esquema real no tiene ninguna función de administrador todavía: los ejemplos se crean
--- aquí, dentro de la transacción de cada prueba, y desaparecen al revertirla.
+-- Los ejemplos se crean aquí, dentro de la transacción de cada prueba, y desaparecen al
+-- revertirla. La primera función de administrador real, public.is_pending_plant_photo(), se
+-- prueba en fotos_storage.sql.
 
 -- Datos de partida: una planta de user_a y otra de user_b. authenticated no puede leer
 -- plants, así que contarlas todas solo es posible saltándose RLS.
