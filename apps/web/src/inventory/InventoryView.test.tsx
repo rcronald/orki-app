@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CollectionPlant } from '../collection/model.ts'
+import { toCollectionPlant, type CollectionPlant } from '../collection/model.ts'
 import { CollectionLoadError } from '../collection/source.ts'
 import type { CollectionStatus } from '../collection/store.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -11,6 +11,7 @@ import {
   CATTLEYA,
   PHALAENOPSIS,
   plant,
+  plantRow,
   RHYNCHOLAELIOCATTLEYA,
 } from '../test/collection.ts'
 import { InventoryView } from './InventoryView.tsx'
@@ -221,6 +222,54 @@ describe('InventoryView', () => {
     const validated = screen.getByRole('article', { name: 'Cattleya maxima' })
     expect(within(validated).getByText('Validada')).toBeInTheDocument()
     expect(within(validated).getByText('Cattleya maxima')).toHaveClass('italic')
+  })
+
+  it('al enlazarla a una especie se ve validada con el nombre del catálogo y conserva el ingresado (#12)', async () => {
+    const user = userEvent.setup()
+    const row = plantRow({
+      id: 'planta-naranja',
+      entered_name: 'la naranja del mercado',
+      species: null,
+      validation: 'pending',
+      type: 'unknown',
+      genus: CATTLEYA,
+      nickname: null,
+    })
+    const { rerenderWith } = renderInventory([toCollectionPlant(row)])
+    const before = screen.getByRole('article', {
+      name: 'la naranja del mercado',
+    })
+    expect(within(before).getByText('Nombre por validar')).toBeInTheDocument()
+
+    // Lo que devuelve la base cuando un administrador la enlaza (#22): la
+    // especie, validada, con el género y el tipo de la especie; el nombre
+    // ingresado no cambia.
+    const linked = toCollectionPlant({
+      ...row,
+      species: {
+        id: 'species-maxima',
+        scientific_name: 'Cattleya maxima',
+        type: 'species',
+        status: 'validated',
+      },
+      validation: 'validated',
+      type: 'species',
+    })
+    expect(linked.enteredName).toBe('la naranja del mercado')
+    rerenderWith([linked])
+
+    const after = screen.getByRole('article', { name: 'Cattleya maxima' })
+    expect(within(after).getByText('Validada')).toBeInTheDocument()
+    expect(within(after).getByText('Cattleya maxima')).toHaveClass('italic')
+    expect(within(after).queryByText('Nombre por validar')).toBeNull()
+    // Se sigue encontrando por el nombre que ingresó.
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Buscar en tu colección' }),
+      'naranja',
+    )
+    expect(
+      await screen.findByRole('article', { name: 'Cattleya maxima' }),
+    ).toBeInTheDocument()
   })
 
   it('un híbrido conserva el "×" en redonda y muestra género y apodo', () => {

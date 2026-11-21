@@ -18,8 +18,15 @@ export const PLANT_FORM_TEXT = {
   nameLabel: 'Nombre',
   nameHint: 'Busca por nombre científico, sinónimo o nombre común.',
   nameLinkedHint: 'Especie del catálogo.',
+  /** Qué pasará con un nombre que no está en el catálogo (#12). */
   namePendingHint:
-    'Sin especie del catálogo: se guardará con este nombre, por validar.',
+    'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
+  /**
+   * Recomendación de foto para un nombre por validar (#12). La muestra el
+   * campo de foto cuando exista (#87), sin exigirla.
+   */
+  pendingPhotoHint:
+    'Te recomendamos añadir una foto: ayuda al administrador a confirmar el nombre.',
   freeNameAction: (name: string) => `No la encuentro: guardarla como «${name}»`,
   /** Aviso de duplicado (#88), antes y después del nombre científico. */
   duplicateBefore: (count: number) =>

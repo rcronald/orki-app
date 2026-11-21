@@ -505,10 +505,47 @@ describe('NewPlantPage', () => {
       type: 'hybrid',
       acquired_on: localDateString(),
     })
-    expect(await screen.findByText(/Registraste/)).toHaveTextContent(
-      'Registraste La naranja del mercado en tu colección.',
+    // El aviso y la tarjeta lo muestran con la etiqueta (#12).
+    const notice = await screen.findByText(/Registraste/)
+    expect(notice).toHaveTextContent(
+      'Registraste La naranja del mercado en tu colección. Nombre por validar',
     )
-    expect(screen.getByText('Nombre por validar')).toBeInTheDocument()
+    const card = screen.getByRole('article', { name: 'La naranja del mercado' })
+    expect(within(card).getByText('Nombre por validar')).toBeInTheDocument()
+    await expectNoAxeViolations()
+  })
+
+  it('un nombre por validar no añade pasos y explica qué pasará (#12)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    // Los mismos pasos que con una especie: escribir, género, tipo y guardar,
+    // sin elegir la acción de la lista ni confirmar nada más.
+    await fillFreeName(user)
+    await waitFor(() =>
+      expect(nameInput()).toHaveAccessibleDescription(
+        'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
+      ),
+    )
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(plantInserts()).toHaveLength(1)
+    expect(lastInsert()).not.toHaveProperty('species_id')
+
+    // Con especie, el aviso lleva "Validada".
+    await user.click(
+      await screen.findByRole('link', { name: 'Registrar otra' }),
+    )
+    await screen.findByRole('button', { name: 'Phalaenopsis' })
+    await chooseAmabilis(user)
+    expect(nameInput()).toHaveAccessibleDescription(
+      PLANT_FORM_TEXT.nameLinkedHint,
+    )
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(await screen.findByText(/Registraste/)).toHaveTextContent(
+      'Registraste Phalaenopsis amabilis en tu colección. Validada',
+    )
   })
 
   it('"Otro" abre el buscador de géneros y guarda un género real del catálogo', async () => {

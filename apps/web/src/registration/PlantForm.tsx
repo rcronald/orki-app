@@ -444,7 +444,11 @@ export function PlantForm({
           }
         />
 
-        {/* #87: la foto va aquí, antes del origen. */}
+        {/*
+          #87: la foto va aquí, antes del origen. Con un nombre por validar
+          (isPendingName(values), #12) el campo recomienda la foto con
+          PLANT_FORM_TEXT.pendingPhotoHint, sin exigirla.
+        */}
 
         <OriginField
           value={values.origin}

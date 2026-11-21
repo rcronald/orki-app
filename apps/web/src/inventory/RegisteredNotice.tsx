@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Icon } from '../components/ui/Icon.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
+import { StatusBadge } from '../components/ui/StatusBadge.tsx'
 import { PATHS } from '../routes/paths.ts'
 import type { RegisteredPlant } from './registered-plant.ts'
 
@@ -12,6 +13,7 @@ interface RegisteredNoticeProps {
 
 /**
  * Aviso de confirmación tras registrar una planta, sobre el inventario, con
+ * su etiqueta de validación ("Validada" o "Nombre por validar", #12) y
  * "Registrar otra". La región role="status" se pinta vacía y el texto llega
  * en el pintado siguiente: un lector de pantalla anuncia un cambio dentro de
  * una región ya presente, no una región que aparece con su contenido.
@@ -42,6 +44,12 @@ export function RegisteredNotice({ plant, onDismiss }: RegisteredNoticeProps) {
                 <span className="font-semibold">{plant.name}</span>
               )}{' '}
               en tu colección.
+              {plant.status && (
+                <>
+                  {' '}
+                  <StatusBadge status={plant.status} className="align-middle" />
+                </>
+              )}
             </span>
           </p>
           <div className="flex items-center gap-space-2">

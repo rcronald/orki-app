@@ -39,7 +39,7 @@ Sección plegable "Más detalles" (todo opcional): ubicación del ejemplar en ca
 
 Fondo dinámico: la pantalla cambia a una foto característica del género detectado, con un velo claro para mantener legible el formulario, y solo cuando hay coincidencia clara para evitar parpadeos. Aplica solo a los géneros que tienen foto cargada (al inicio, los cinco de acceso rápido); el resto usa el fondo neutro.
 
-Especie no encontrada: el usuario la guarda con el género, el tipo y el nombre tal como la conoce. La foto sigue siendo opcional, pero el formulario la recomienda porque ayuda al administrador a validar el nombre. Queda en su inventario con estado "nombre por validar" y se propone al catálogo general. Cuando un administrador confirma el nombre exacto, el registro pasa a "validada" y se enlaza a la especie del catálogo.
+Especie no encontrada: el usuario la guarda con el género, el tipo y el nombre tal como la conoce. La foto sigue siendo opcional, pero el formulario la recomienda porque ayuda al administrador a validar el nombre. Queda en su inventario con estado "nombre por validar" y se propone al catálogo general. Cuando un administrador confirma el nombre exacto, el registro pasa a "validada" y se enlaza a la especie del catálogo. Si no puede confirmarlo, lo marca como "no identificable": sale de la cola de propuestas y el usuario lo sigue viendo en su inventario como "nombre por validar".
 
 ### 3.2 Consulta "¿Ya la tengo?"
 
@@ -88,7 +88,7 @@ Regla central: especie y ejemplar son entidades separadas. Un usuario puede tene
 | Género | nombre, foto característica (opcional; fondo del registro), acceso rápido (sí/no; define los chips del registro) | 1 género tiene N especies |
 | Especie (catálogo) | nombre científico, nombres comunes, género, tipo (especie, híbrido), estado (importada, validada, observada), fuente (Catalogue of Life, lista curada, propuesta de usuario) | 0..1 especie para N plantas |
 | Sinónimo | nombre alternativo, especie a la que apunta | N sinónimos por especie |
-| Planta (ejemplar) | usuario, especie (opcional), nombre ingresado, género, tipo (especie, híbrido, no sé), foto, fecha de adquisición, origen, estado (activa, perdida, regalada), validación (validada, nombre por validar), ubicación, apodo, color de flor (opcional), en floración | pertenece a 1 usuario |
+| Planta (ejemplar) | usuario, especie (opcional), nombre ingresado, género, tipo (especie, híbrido, no sé), foto, fecha de adquisición, origen, estado (activa, perdida, regalada), validación (validada, nombre por validar, no identificable), ubicación, apodo, color de flor (opcional), en floración | pertenece a 1 usuario |
 
 Género y tipo de la planta: mientras el ejemplar está "por validar" valen los que eligió el usuario. Al enlazarlo a una especie del catálogo, se sobrescriben con los de esa especie para que no puedan discrepar.
 

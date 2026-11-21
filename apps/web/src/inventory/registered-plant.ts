@@ -1,4 +1,6 @@
 import type { CollectionPlant } from '../collection/model.ts'
+import type { ValidationStatus } from '../components/ui/StatusBadge.tsx'
+import { plantValidationStatus } from './plant-display.ts'
 
 // Lo que el registro (#85) deja en el estado de la navegación al volver al
 // inventario, para el aviso de confirmación. La planta ya está en la
@@ -9,6 +11,11 @@ export interface RegisteredPlant {
   name: string
   /** Si el nombre es científico del catálogo (para la cursiva). */
   scientific: boolean
+  /**
+   * Etiqueta de validación (#12). Opcional: el estado de la navegación
+   * sobrevive a una recarga y puede venir de una versión sin ella.
+   */
+  status?: ValidationStatus
 }
 
 interface RegisteredPlantState {
@@ -24,6 +31,7 @@ export function registeredPlantState(
       id: plant.id,
       name: plant.displayName,
       scientific: plant.displayNameIsScientific,
+      status: plantValidationStatus(plant),
     },
   }
 }
@@ -41,5 +49,14 @@ export function readRegisteredPlant(state: unknown): RegisteredPlant | null {
   ) {
     return null
   }
-  return value
+  const status =
+    value.status === 'validated' || value.status === 'pending'
+      ? value.status
+      : undefined
+  return {
+    id: value.id,
+    name: value.name,
+    scientific: value.scientific,
+    ...(status && { status }),
+  }
 }
