@@ -20,7 +20,12 @@ import {
   MAX_BATCH_SPECIES,
   validateSpeciesInput,
   type CatalogWriteProblem,
+  type MergeName,
+  type MergeNameOrigin,
+  type RememberedKey,
+  type SkippedMergeName,
   type SpeciesInput,
+  type SpeciesMergePreview,
   type WrittenSpecies,
 } from '../lib/catalogWrites.ts'
 import type { GenusSearchResult } from '../lib/catalogSearch.ts'
@@ -42,7 +47,10 @@ import type {
 // distinguir mayúsculas ni el signo «×», baja solo sin plantas...), hasta que
 // se cambia de escenario. Cada escritura deja su entrada en el historial de
 // la especie, como la auditoría de la base; la primera especie trae además
-// unas entradas de ejemplo (una carga, una edición y una fusión).
+// unas entradas de ejemplo (una carga, una edición y una fusión). La fusión de
+// especies sigue las reglas de preview_species_merge() y merge_species():
+// nombres sin duplicar tras normalizar, plantas a la conservada, la conservada
+// validada si era importada y una memoria de las claves absorbidas.
 
 interface SampleGenus {
   id: string
@@ -431,6 +439,82 @@ function toRow(
   }
 }
 
+/** Un paso del plan de nombres de una fusión, como private.species_merge_plan(). */
+interface MergePlanItem {
+  /** Posición en los nombres de la absorbida, o null para su nombre científico. */
+  index: number | null
+  name: MergeName
+  skipped: Omit<SkippedMergeName, keyof MergeName> | null
+}
+
+function nameRank(origin: MergeNameOrigin): number {
+  return origin === 'scientific_name' ? 0 : origin === 'synonym' ? 1 : 2
+}
+
+/**
+ * Qué nombres de la absorbida pasan a la conservada y cuáles no: no pasa uno
+ * si la conservada ya tiene uno igual tras normalizar, ni si ya pasa otro
+ * igual de la absorbida (gana el científico, después los sinónimos, después
+ * los comunes y, a igualdad, el primero en orden alfabético).
+ */
+function mergePlan(
+  merged: SampleSpecies,
+  kept: SampleSpecies,
+): MergePlanItem[] {
+  const byRank = <T extends { origin: MergeNameOrigin; name: string }>(
+    a: T,
+    b: T,
+  ) => nameRank(a.origin) - nameRank(b.origin) || compareKey(a.name, b.name)
+  const keptNames = [
+    { name: kept.scientificName, origin: 'scientific_name' as const },
+    ...kept.names.map((name) => ({ name: name.name, origin: name.type })),
+  ].sort(byRank)
+  const candidates = [
+    {
+      index: null,
+      name: merged.scientificName,
+      type: 'synonym' as const,
+      language: null,
+      origin: 'scientific_name' as const,
+    },
+    ...merged.names.map((name, index) => ({
+      index,
+      name: name.name,
+      type: name.type,
+      language: name.language,
+      origin: name.type,
+    })),
+  ].sort(byRank)
+  const moving = new Map<string, { name: string; origin: MergeNameOrigin }>()
+  return candidates.map(({ index, ...name }) => {
+    const key = normalize(name.name)
+    const inKept = keptNames.find((other) => normalize(other.name) === key)
+    if (inKept)
+      return {
+        index,
+        name,
+        skipped: {
+          reason: 'already_in_kept',
+          existingName: inKept.name,
+          existingType: inKept.origin,
+        },
+      }
+    const first = moving.get(key)
+    if (first)
+      return {
+        index,
+        name,
+        skipped: {
+          reason: 'repeated_in_merged',
+          existingName: first.name,
+          existingType: first.origin,
+        },
+      }
+    moving.set(key, { name: name.name, origin: name.origin })
+    return { index, name, skipped: null }
+  })
+}
+
 export type SampleScenario =
   'ejemplo' | 'cargando' | 'vacio' | 'sin-conexion' | 'fallo'
 
@@ -525,6 +609,9 @@ export function createSampleCatalogSource(
       },
     )
   }
+
+  // Memoria de las fusiones: a qué especie fue a parar cada clave absorbida.
+  const mergeKeys: (RememberedKey & { speciesId: string })[] = []
 
   const reject = (
     problem: CatalogWriteProblem,
@@ -643,6 +730,39 @@ export function createSampleCatalogSource(
     source: item.source,
     sourceRef: item.sourceRef,
   })
+
+  /** Las dos especies de una fusión, con los rechazos de la base. */
+  const mergePair = (mergedId: string, keptId: string) => {
+    if (mergedId === keptId) reject('same-species')
+    const merged =
+      species.find((item) => item.id === mergedId) ??
+      reject('species-not-found', {
+        speciesRole: 'merged',
+        speciesId: mergedId,
+      })
+    const kept =
+      species.find((item) => item.id === keptId) ??
+      reject('species-not-found', { speciesRole: 'kept', speciesId: keptId })
+    const keys: RememberedKey[] = [
+      ...(merged.sourceRef === null
+        ? []
+        : [
+            {
+              source: merged.source,
+              sourceRef: merged.sourceRef,
+              inherited: false,
+            },
+          ]),
+      ...mergeKeys
+        .filter((key) => key.speciesId === merged.id)
+        .map((key) => ({
+          source: key.source,
+          sourceRef: key.sourceRef,
+          inherited: true,
+        })),
+    ]
+    return { merged, kept, plan: mergePlan(merged, kept), keys }
+  }
 
   function respond<T>(signal: AbortSignal | undefined, value: () => T) {
     return new Promise<T>((resolve, reject) => {
@@ -1100,6 +1220,127 @@ export function createSampleCatalogSource(
           item.status = status
         }
         return changing.length
+      }),
+    previewMerge: (mergedId, keptId, options = {}) =>
+      respond(options.signal, (): SpeciesMergePreview => {
+        const { merged, kept, plan, keys } = mergePair(mergedId, keptId)
+        const side = (item: SampleSpecies) => {
+          const row = toRow(item)
+          return {
+            id: row.id,
+            scientificName: row.scientificName,
+            genusId: row.genusId,
+            genusName: row.genusName,
+            type: row.type,
+            status: row.status,
+          }
+        }
+        return {
+          merged: {
+            ...side(merged),
+            source: merged.source,
+            sourceRef: merged.sourceRef,
+          },
+          kept: side(kept),
+          plantCount: merged.plants,
+          movedNames: plan
+            .filter((item) => item.skipped === null)
+            .map((item) => item.name),
+          existingNames: plan.flatMap((item) =>
+            item.skipped ? [{ ...item.name, ...item.skipped }] : [],
+          ),
+          genusDiffers: merged.genusId !== kept.genusId,
+          typeDiffers: merged.type !== kept.type,
+          keptBecomesValidated: kept.status === 'imported',
+          rememberedKeys: keys,
+        }
+      }),
+    mergeSpecies: (mergedId, keptId) =>
+      respond(undefined, () => {
+        const { merged, kept, plan, keys } = mergePair(mergedId, keptId)
+        const keptBefore = speciesValues(kept)
+        const moved = plan.filter((item) => item.skipped === null)
+        const changes: AuditRowChange[] = []
+        for (const item of moved) {
+          const name: SampleName = {
+            name: item.name.name,
+            type: item.name.type,
+            language: item.name.language,
+          }
+          kept.names.push(name)
+          changes.push({
+            table: 'species_names',
+            rowId: nameId(kept.id, kept.names.length - 1),
+            action: item.index === null ? 'insert' : 'update',
+            oldValues: item.index === null ? null : { species_id: merged.id },
+            newValues:
+              item.index === null
+                ? nameValues(kept.id, name)
+                : { species_id: kept.id },
+          })
+        }
+        const keptValidated = kept.status === 'imported'
+        if (keptValidated) kept.status = 'validated'
+        const values = diff(keptBefore, speciesValues(kept))
+        if (values)
+          changes.unshift({
+            table: 'species',
+            rowId: kept.id,
+            action: 'update',
+            oldValues: values[0],
+            newValues: values[1],
+          })
+        const plantCount = merged.plants
+        kept.plants += plantCount
+        for (const key of mergeKeys) {
+          if (key.speciesId === merged.id) key.speciesId = kept.id
+        }
+        if (merged.sourceRef !== null) {
+          const existing = mergeKeys.find(
+            (key) =>
+              key.source === merged.source &&
+              key.sourceRef === merged.sourceRef,
+          )
+          if (existing) existing.speciesId = kept.id
+          else
+            mergeKeys.push({
+              source: merged.source,
+              sourceRef: merged.sourceRef,
+              inherited: false,
+              speciesId: kept.id,
+            })
+        }
+        const details: AuditValues = {
+          merged_species_id: merged.id,
+          merged_scientific_name: merged.scientificName,
+          merged_source: merged.source,
+          merged_source_ref: merged.sourceRef,
+          kept_species_id: kept.id,
+          kept_scientific_name: kept.scientificName,
+          plant_count: plantCount,
+          moved_names: moved.map((item) => item.name.name),
+          skipped_names: plan
+            .filter((item) => item.skipped !== null)
+            .map((item) => item.name.name),
+          kept_validated: keptValidated,
+        }
+        const actionId = `fusion-de-muestra-${history.length + 1}`
+        record(kept.id, changes, {
+          action: 'merge_species',
+          actionId,
+          details,
+          // Las plantas y la baja de la absorbida.
+          otherChangeCount: plantCount + 1,
+        })
+        species.splice(species.indexOf(merged), 1)
+        return {
+          actionId,
+          plantCount,
+          movedNameCount: moved.length,
+          skippedNameCount: plan.length - moved.length,
+          keptValidated,
+          rememberedKeys: keys,
+        }
       }),
     deleteSpecies: (id) =>
       respond(undefined, () => {

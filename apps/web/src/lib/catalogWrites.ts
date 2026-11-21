@@ -1,6 +1,9 @@
 import { CatalogAdminError, loadClient, toAdminError } from './catalogAdmin.ts'
 import type {
   Database,
+  Json,
+  SpeciesMergePreviewRow,
+  SpeciesMergeResultRow,
   SpeciesNameType,
   SpeciesSource,
   SpeciesStatus,
@@ -42,6 +45,7 @@ export type CatalogWriteProblem =
   | 'genus-not-found'
   | 'species-not-found'
   | 'species-has-plants'
+  | 'same-species'
   | 'no-species'
   | 'too-many-species'
   | 'source-ref'
@@ -82,6 +86,13 @@ export interface CatalogWriteDetails {
   plantCount?: number
   /** Especies de un lote que ya no existen (species-not-found). */
   missingCount?: number
+  /**
+   * En una fusión, cuál de las dos especies ya no existe (species-not-found):
+   * la que se absorbe (merged) o la que se conserva (kept).
+   */
+  speciesRole?: 'merged' | 'kept'
+  /** Id de la especie que ya no existe (species-not-found de una fusión). */
+  speciesId?: string
   /** Tope del lote (too-many-species). */
   max?: number
   /** Tipo del nombre que ya tiene la especie (duplicate-alternative-name). */
@@ -157,9 +168,15 @@ export function catalogWriteMessage(
     case 'genus-not-found':
       return 'El género elegido ya no está en el catálogo. Elige otro.'
     case 'species-not-found':
+      if (details.speciesRole === 'merged')
+        return 'La especie que se absorbía ya no está en el catálogo: puede que otra persona la haya fusionado o borrado. No se cambió nada.'
+      if (details.speciesRole === 'kept')
+        return 'La especie que se conservaba ya no está en el catálogo: puede que otra persona la haya fusionado o borrado. No se cambió nada.'
       return details.missingCount
         ? `${plural(details.missingCount, 'de las especies elegidas ya no está', 'de las especies elegidas ya no están')} en el catálogo: no se cambió ninguna.`
         : 'Esta especie ya no está en el catálogo.'
+    case 'same-species':
+      return 'Elige dos especies distintas: una especie no se puede fusionar consigo misma.'
     case 'species-has-plants':
       return details.plantCount
         ? `No se puede borrar: ${plural(details.plantCount, 'planta de usuarios la tiene enlazada', 'plantas de usuarios la tienen enlazada')}.`
@@ -259,6 +276,7 @@ const REASON: Record<string, CatalogWriteProblem> = {
   genus_not_found: 'genus-not-found',
   species_not_found: 'species-not-found',
   species_has_plants: 'species-has-plants',
+  same_species: 'same-species',
   no_species: 'no-species',
   too_many_species: 'too-many-species',
   name_type_required: 'name-type-required',
@@ -339,6 +357,11 @@ export function catalogWriteErrorFromDatabase(
             existingId: stringOrUndefined(parsed.existing_id),
             plantCount: numberOrUndefined(parsed.plant_count),
             missingCount: numberOrUndefined(parsed.missing_count),
+            speciesRole:
+              parsed.species_role === 'merged' || parsed.species_role === 'kept'
+                ? parsed.species_role
+                : undefined,
+            speciesId: stringOrUndefined(parsed.species_id),
             max: numberOrUndefined(parsed.max),
             existingType:
               parsed.existing_type === 'synonym' ||
@@ -764,4 +787,280 @@ export async function deleteGenusAbbreviation(id: string): Promise<void> {
   await settleWrite(
     supabase.rpc('delete_genus_abbreviation', { target_abbreviation_id: id }),
   )
+}
+
+// Fusión de especies (#136) ----------------------------------------------------------
+//
+// preview_species_merge() y merge_species() (migración
+// 20261121160000_fusion_de_especies.sql; ver supabase/README.md, "Fusión de
+// especies"). La especie absorbida (merged) desaparece; la conservada (kept) se
+// queda con sus plantas, sus nombres y su clave de fuente.
+
+/** De dónde viene un nombre de la absorbida: su nombre científico, un sinónimo o un común. */
+export type MergeNameOrigin = 'scientific_name' | 'synonym' | 'common'
+
+/** Un nombre de la especie absorbida en la vista previa. */
+export interface MergeName {
+  name: string
+  /** El tipo que tendrá en la conservada (el nombre científico pasa como sinónimo). */
+  type: SpeciesNameType
+  language: string | null
+  origin: MergeNameOrigin
+}
+
+/** Un nombre que no pasa porque ya existe. */
+export interface SkippedMergeName extends MergeName {
+  /**
+   * already_in_kept: la conservada ya tiene uno igual tras normalizar.
+   * repeated_in_merged: pasa otro de la absorbida que se escribe igual.
+   */
+  reason: 'already_in_kept' | 'repeated_in_merged'
+  /** El nombre igual que ya existe (en la conservada o el que pasa). */
+  existingName: string
+  existingType: MergeNameOrigin
+}
+
+/** Una clave de fuente que la memoria de las fusiones asignará a la conservada. */
+export interface RememberedKey {
+  source: SpeciesSource
+  sourceRef: string
+  /** Si la absorbida la había heredado de una fusión anterior. */
+  inherited: boolean
+}
+
+/** Los datos de una de las dos especies en la vista previa. */
+export interface MergeSpeciesSide {
+  id: string
+  scientificName: string
+  genusId: string
+  genusName: string
+  type: SpeciesType
+  status: SpeciesStatus
+}
+
+export interface SpeciesMergePreview {
+  merged: MergeSpeciesSide & {
+    source: SpeciesSource
+    /**
+     * Referencia en la fuente, o null. Los tipos generados no saben que las
+     * columnas de una función que devuelve una tabla pueden ser nulas.
+     */
+    sourceRef: string | null
+  }
+  kept: MergeSpeciesSide
+  /** Plantas de usuarios (de cualquier dueño y estado) que se mueven. */
+  plantCount: number
+  /** Nombres que pasan a la conservada. */
+  movedNames: MergeName[]
+  /** Nombres que no pasan porque ya existen. */
+  existingNames: SkippedMergeName[]
+  /** Las plantas tomarán el género de la conservada, que es otro. */
+  genusDiffers: boolean
+  /** Lo mismo con el tipo (especie o híbrido). */
+  typeDiffers: boolean
+  /** La conservada pasará de importada a validada. */
+  keptBecomesValidated: boolean
+  rememberedKeys: RememberedKey[]
+}
+
+export interface SpeciesMergeResult {
+  /** La acción merge_species de la auditoría. */
+  actionId: string
+  plantCount: number
+  movedNameCount: number
+  skippedNameCount: number
+  /** La conservada pasó de importada a validada. */
+  keptValidated: boolean
+  rememberedKeys: RememberedKey[]
+}
+
+type JsonObject = { [key: string]: Json | undefined }
+
+function jsonObject(value: Json | undefined): JsonObject | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value
+    : null
+}
+
+function jsonObjects(value: Json): JsonObject[] {
+  return (Array.isArray(value) ? value : [])
+    .map(jsonObject)
+    .filter((item): item is JsonObject => item !== null)
+}
+
+function isNameType(value: unknown): value is SpeciesNameType {
+  return value === 'synonym' || value === 'common'
+}
+
+function isOrigin(value: unknown): value is MergeNameOrigin {
+  return (
+    value === 'scientific_name' || value === 'synonym' || value === 'common'
+  )
+}
+
+function isSource(value: unknown): value is SpeciesSource {
+  return (
+    value === 'col' ||
+    value === 'curated' ||
+    value === 'user_proposal' ||
+    value === 'gbif'
+  )
+}
+
+function toMergeName(item: JsonObject): MergeName | null {
+  const { name, type, language, origin } = item
+  if (typeof name !== 'string' || !isNameType(type) || !isOrigin(origin))
+    return null
+  return {
+    name,
+    type,
+    language: typeof language === 'string' ? language : null,
+    origin,
+  }
+}
+
+function toSkippedName(item: JsonObject): SkippedMergeName | null {
+  const base = toMergeName(item)
+  const {
+    reason,
+    existing_name: existingName,
+    existing_type: existingType,
+  } = item
+  if (
+    base === null ||
+    (reason !== 'already_in_kept' && reason !== 'repeated_in_merged') ||
+    typeof existingName !== 'string' ||
+    !isOrigin(existingType)
+  )
+    return null
+  return { ...base, reason, existingName, existingType }
+}
+
+function toRememberedKeys(value: Json): RememberedKey[] {
+  return jsonObjects(value).flatMap((item) =>
+    isSource(item.source) && typeof item.source_ref === 'string'
+      ? [
+          {
+            source: item.source,
+            sourceRef: item.source_ref,
+            inherited: item.inherited === true,
+          },
+        ]
+      : [],
+  )
+}
+
+/** Convierte la fila de preview_species_merge(). */
+export function toSpeciesMergePreview(
+  mergedId: string,
+  keptId: string,
+  row: SpeciesMergePreviewRow,
+): SpeciesMergePreview {
+  return {
+    merged: {
+      id: mergedId,
+      scientificName: row.merged_scientific_name,
+      genusId: row.merged_genus_id,
+      genusName: row.merged_genus_name,
+      type: row.merged_type,
+      status: row.merged_status,
+      source: row.merged_source,
+      // Puede ser null aunque los tipos generados no lo sepan (ver SpeciesMergePreview).
+      sourceRef: row.merged_source_ref,
+    },
+    kept: {
+      id: keptId,
+      scientificName: row.kept_scientific_name,
+      genusId: row.kept_genus_id,
+      genusName: row.kept_genus_name,
+      type: row.kept_type,
+      status: row.kept_status,
+    },
+    plantCount: row.plant_count,
+    movedNames: jsonObjects(row.moved_names)
+      .map(toMergeName)
+      .filter((name): name is MergeName => name !== null),
+    existingNames: jsonObjects(row.existing_names)
+      .map(toSkippedName)
+      .filter((name): name is SkippedMergeName => name !== null),
+    genusDiffers: row.genus_differs,
+    typeDiffers: row.type_differs,
+    keptBecomesValidated: row.kept_becomes_validated,
+    rememberedKeys: toRememberedKeys(row.remembered_keys),
+  }
+}
+
+/**
+ * Vista previa de la fusión de `mergedId` en `keptId`, sin cambiar nada. Es una
+ * lectura: los fallos de transporte y de permiso (sin conexión, sesión
+ * terminada, sin rol, cancelada) llegan como CatalogAdminError, igual que en
+ * las demás lecturas; los rechazos de la fusión (same-species y
+ * species-not-found, con la especie que falta en speciesRole), como
+ * CatalogWriteError, porque la pantalla los explica de otra forma.
+ */
+export async function previewSpeciesMerge(
+  mergedId: string,
+  keptId: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<SpeciesMergePreview> {
+  if (mergedId === keptId) throw new CatalogWriteError('same-species')
+  const supabase = await loadClient(signal)
+  const call = supabase.rpc('preview_species_merge', {
+    merged_species_id: mergedId,
+    kept_species_id: keptId,
+  })
+  let response: Awaited<typeof call>
+  try {
+    response = await (signal ? call.abortSignal(signal) : call)
+  } catch (error) {
+    throw toAdminError(error, 0, signal)
+  }
+  if (signal?.aborted) throw new CatalogAdminError('aborted')
+  if (response.error) {
+    const rejected = catalogWriteErrorFromDatabase(response.error)
+    if (
+      rejected &&
+      (rejected.problem === 'same-species' ||
+        rejected.problem === 'species-not-found')
+    )
+      throw rejected
+    throw toAdminError(response.error, response.status, signal)
+  }
+  const row = response.data[0]
+  if (!row) throw new CatalogAdminError('failed')
+  return toSpeciesMergePreview(mergedId, keptId, row)
+}
+
+function toSpeciesMergeResult(row: SpeciesMergeResultRow): SpeciesMergeResult {
+  return {
+    actionId: row.action_id,
+    plantCount: row.plant_count,
+    movedNameCount: row.moved_name_count,
+    skippedNameCount: row.skipped_name_count,
+    keptValidated: row.kept_validated,
+    rememberedKeys: toRememberedKeys(row.remembered_keys),
+  }
+}
+
+/**
+ * Fusiona `mergedId` en `keptId`, en una transacción: mueve las plantas y los
+ * nombres, recuerda la clave de fuente y borra la absorbida. No se puede
+ * deshacer. Falla con CatalogWriteError: same-species, species-not-found (con
+ * speciesRole) o los de transporte.
+ */
+export async function mergeCatalogSpecies(
+  mergedId: string,
+  keptId: string,
+): Promise<SpeciesMergeResult> {
+  if (mergedId === keptId) throw new CatalogWriteError('same-species')
+  const supabase = await client()
+  const rows = await settleWrite(
+    supabase.rpc('merge_species', {
+      merged_species_id: mergedId,
+      kept_species_id: keptId,
+    }),
+  )
+  const row = rows[0]
+  if (!row) throw new CatalogWriteError('failed')
+  return toSpeciesMergeResult(row)
 }
