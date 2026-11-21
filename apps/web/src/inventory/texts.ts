@@ -84,6 +84,16 @@ export const FILTERS_TEXT = {
     `Quitar el filtro ${group}: ${label}`,
 } as const
 
+/** Exportación del inventario a CSV (#17). */
+export const EXPORT_TEXT = {
+  title: 'Exportar tu inventario',
+  hint: 'Un archivo CSV con todas tus plantas, también las perdidas y regaladas, sin importar los filtros. Se abre en Excel o Google Sheets.',
+  action: 'Exportar a CSV',
+  done: (fileName: string, count: number) =>
+    `Listo: ${fileName}, con ${count === 1 ? '1 planta' : `${count} plantas`}.`,
+  failed: 'No se pudo crear el archivo. Vuelve a intentarlo.',
+} as const
+
 /** Error sin datos que mostrar: título y explicación. */
 export const LOAD_ERROR_TEXT: Record<
   CollectionErrorReason,

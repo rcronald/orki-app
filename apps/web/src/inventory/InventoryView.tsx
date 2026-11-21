@@ -32,6 +32,7 @@ import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { PATHS } from '../routes/paths.ts'
+import { ExportAction } from './ExportAction.tsx'
 import { activeFilterChips } from './filter-chips.ts'
 import {
   ActiveFilters,
@@ -351,6 +352,7 @@ export function InventoryView({
           <PlantList plants={newest ?? []} view={view} headingLevel={2} />
         )}
       </div>
+      {plants !== null && <ExportAction plants={plants} />}
     </div>
   )
 }
