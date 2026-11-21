@@ -418,7 +418,7 @@ Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `Co
 - **Solo plantas activas**, en los contadores de cabecera (orquídeas y géneros, en singular o plural) y en la lista.
 - **Lista o cuadrícula.** Lista: una tarjeta por fila con la miniatura a la izquierda (`SpecimenCard` con `layout="row"`). Cuadrícula: dos por fila en el celular, tres desde 640 px y cuatro desde 1024 px.
 - **Agrupar por género** o no. Agrupada: un encabezado por género con su contador ("Phalaenopsis, 3 orquídeas" para el lector de pantalla), los géneros y las plantas en orden alfabético sin tener en cuenta el signo "×". Sin agrupar: las más recientes primero (por fecha de alta).
-- **Cada tarjeta** lleva el nombre mostrado, el apodo, el género y la insignia de validación ("Nombre por validar" también para las no identificables). Sin foto, el marcador neutro: la miniatura llegará con el #10 por `plantThumbnail()` (`src/inventory/plant-display.ts`), que hoy no devuelve nada. Para el detalle (#16), la tarjeta se convierte en enlace pasando `renderName` a `SpecimenCard` en `PlantCard.tsx`.
+- **Cada tarjeta** lleva el nombre mostrado, el apodo, el género y la insignia de validación ("Nombre por validar" también para las no identificables). Con foto, la miniatura (`usePlantThumbnail`, ver [Lectura de fotos](#lectura-de-fotos-y-borrado-sin-huérfanos)); sin foto, el marcador neutro. Para el detalle (#16), la tarjeta se convierte en enlace pasando `renderName` a `SpecimenCard` en `PlantCard.tsx`.
 - **Registrar orquídea:** enlace a `/coleccion/nueva`; en el celular queda fijo abajo, al alcance del pulgar.
 - **Buscador fijo arriba** (se queda visible al desplazarse): filtra mientras se escribe con `filterByText` por nombre mostrado, nombre ingresado, género, apodo y origen, sin tildes, mayúsculas ni el signo "×". Escape o el botón de la cruz lo limpian. Los contadores de cabecera siguen siendo los de toda la colección; bajo el campo se dice cuántas coinciden, en una región `role="status"` que el lector de pantalla anuncia sin mover el foco. Agrupada, los géneros sin coincidencias desaparecen. `InventorySearch` acepta un bloque debajo (`children`), donde "¿Ya la tengo?" (#19) pondrá su respuesta.
 - **La búsqueda va en la URL** (`/coleccion?q=phal`): se conserva al volver con "atrás" desde el registro o el detalle, al recargar y al compartir el enlace. Cada pulsación sustituye la entrada del historial en vez de añadir una, y no mueve el foco (`useFocusOnNavigation` solo lo mueve al cambiar de ruta).
@@ -454,6 +454,84 @@ const { photo, thumbnail } = await processPhoto(file, { signal })
 - **Limitaciones por navegador:** HEIC solo lo abre Safari 17 o posterior; en Chrome, Edge, Firefox y Android da `unsupported-format` con un mensaje que lo explica. En el iPhone, al elegir de la galería con `accept="image/*"`, Safari entrega normalmente un JPEG (convierte el HEIC), según los informes de WebKit; falta comprobarlo en un iPhone real (#84). Safari siempre genera JPEG, algo más pesado que WebP a la misma calidad.
 - **Prueba a mano:** fuera de producción, la sección "Fotos" de `/muestra` deja elegir una foto (o hacerla con la cámara en el celular) y muestra el original, el formato, las dimensiones, el peso y la calidad de la foto y la miniatura, los intentos, el tiempo y los metadatos que quedan. Es la que sirve para la prueba en iPhone y Android (#84).
 - **Pruebas:** jsdom no tiene canvas, así que la lógica pura (tamaños, orientación, búsqueda de calidad, formato, metadatos, errores) se prueba directamente y la orquestación con un doble de la capa del navegador (`ImageBackend`). Los accesorios de `src/photos/fixtures/` son imágenes sintéticas de 48 × 32 px, entre ellas un JPEG con EXIF, GPS inventado y orientación 6, y un WebP con EXIF y XMP.
+
+### Campo de foto y subida
+
+`PhotoField` (`src/photos/PhotoField.tsx`, #82) es el campo de foto de los formularios: elegir, vista previa, reemplazar y quitar. Prepara la foto con el módulo anterior y la entrega ya preparada; no sube nada. El formulario decide cuándo subirla.
+
+```tsx
+import { PhotoField, type PhotoFieldValue } from '../photos/PhotoField.tsx'
+import { replacePlantPhoto, removePlantPhoto } from '../photos/upload.ts'
+import { usePhotoUpload } from '../photos/usePhotoUpload.ts'
+
+const [foto, setFoto] = useState<PhotoFieldValue | null>(null)
+// { kind: 'new', photo: ProcessedPhoto, fileName } | { kind: 'stored', src } | null
+const subida = usePhotoUpload<PlantPhotoChangeResult>()
+
+<PhotoField
+  value={foto}
+  onChange={(valor) => { subida.reset(); setFoto(valor) }}
+  upload={subida.state}            // opcional: lo muestra con "Reintentar" y "Cancelar subida"
+  onRetryUpload={() => void subida.retry()}
+  onCancelUpload={subida.cancel}
+/>
+
+// Al guardar, con la planta ya escrita (#87) o al editar (#16):
+if (foto?.kind === 'new') {
+  const files = foto.photo
+  await subida.start(({ signal, onProgress }) =>
+    replacePlantPhoto(files, { userId, plant, signal, onProgress, onPlantUpdated: upsertPlant }))
+}
+if (foto === null && plant.photoPath) await removePlantPhoto({ userId, plant, onPlantUpdated: upsertPlant })
+```
+
+- **Cámara y galería:** en el celular, dos botones: "Tomar foto" abre un `<input type="file" accept="image/*" capture="environment">` y "Elegir de la galería", uno sin `capture`. Con `capture`, iOS y Android abren directamente la cámara trasera. Sin él, el iPhone muestra su menú (fototeca, hacer foto, elegir archivo), pero Chrome en Android 14 y 15 abre el selector de fotos del sistema, que muchas veces ya no ofrece la cámara; por eso hay un botón para cada cosa. Los navegadores de escritorio ignoran `capture` (es una pista, según MDN), así que donde el puntero principal no es táctil (`(pointer: coarse)` no se cumple) queda un solo botón, "Elegir foto", que abre el selector de archivos, con cámara en el equipo o sin ella. La prop `camera` (`'auto' | 'show' | 'hide'`) lo fuerza.
+- **Estados:** preparando (con "Cancelar"), lista (con el peso) y error con el texto del motivo (formato no admitido, HEIC, no es una imagen, demasiado grande...). Los estados se anuncian en una región `role="status"` y los errores en `role="alert"`. Mientras se prepara o se sube, los botones quedan con `aria-disabled` en vez de `disabled`, para no perder el foco.
+- **Foco:** al quitar la foto, o al cancelar o terminar cuando el botón con el foco desaparece, el foco vuelve al primer botón de elegir. Todo funciona con el teclado; los `<input type="file">` están ocultos, fuera del orden de tabulación y del árbol de accesibilidad, y los abren los botones.
+- **Vista previa:** una URL de objeto de la foto preparada, que se revoca al cambiar de foto, al quitarla y al desmontar. La caja es de 4:3 fija, así que la vista previa no mueve nada al aparecer. Con `{ kind: 'stored', src }` muestra una foto ya subida (edición, #16).
+
+Subida (`src/photos/upload.ts`), sobre una interfaz mínima del bucket (`PhotoStorage`, en `storage.ts`) y otra de las escrituras de la planta (`PlantPhotoRecords`, en `plant-record.ts`), con dobles en memoria para las pruebas y la página de muestra (`memory-storage.ts`):
+
+- **`uploadPhotoFiles(files, { userId, plantId, signal, onProgress })`:** sube la foto y la miniatura a la vez con la [convención de rutas](supabase/README.md#fotos-de-plantas-storage) (`src/photos/paths.ts`): `<usuario>/<planta>/photo-<versión>.<webp|jpg>` y `thumb-<versión>`, con una versión nueva (`crypto.randomUUID()`) por foto preparada y la misma en sus reintentos. El tipo de contenido es el del Blob (con un Blob, supabase-js envía un formulario y Storage toma el tipo de la parte del archivo, no de `contentType`) y la caché es de un año (`cacheControl: '31536000'`): las rutas llevan versión y nunca cambian de contenido. Sin `upsert`; si la ruta ya existe (409), se da por subida, porque solo puede ser un intento anterior de esta misma foto cuya respuesta se perdió. Si falla una de las dos, borra las dos rutas antes de rechazar.
+- **Progreso:** archivos y bytes terminados (`UploadProgress`); supabase-js no da el progreso de cada petición.
+- **Cancelar:** supabase-js no deja abortar una subida (`upload` no acepta `AbortSignal`). Al cancelar se deja de esperar enseguida (rechaza con `aborted`) y, cuando terminan las peticiones en curso, se borra lo que haya llegado. El reintento usa otra versión para que ese borrado tardío no se lleve sus archivos.
+- **Errores** (`PhotoStorageError`, con `reason` y `message` en español): `offline`, `session-ended`, `too-large` y `unsupported-type` (rechazo del bucket por el tope de 1 MiB o el tipo), `forbidden` (políticas), `not-found`, `failed` y `aborted`. Storage a veces responde 400 con el código real en `statusCode` (`"413"`, `"403"`); se mira ese también. `uncertain` indica que la petición salió y no hubo respuesta, así que no se sabe si se aplicó.
+- **Reintentar sin volver a elegir ni preparar la foto:** `usePhotoUpload()` guarda la última tarea y `retry()` la vuelve a lanzar con la misma foto ya preparada. Con la sesión terminada o la planta borrada no se ofrece "Reintentar".
+
+Orden de las operaciones sobre una planta que ya existe (la planta nunca apunta a un archivo que no existe; lo peor que queda es un archivo sin planta, que encuentra el script de limpieza):
+
+| Operación           | Pasos                                                                                                                                                                | Si falla un paso                                                                                                                                                                                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `replacePlantPhoto` | 1. Subir foto y miniatura nuevas. 2. Apuntar la planta (`photo_path`, `thumbnail_path`). 3. Reflejarla en la colección (`onPlantUpdated`). 4. Borrar las anteriores. | 1: se borra lo subido; la planta sigue igual. 2 rechazado por la base: se borra lo nuevo y la planta sigue con la anterior. 2 sin respuesta (`uncertain`): no se borra nada, porque la planta quizá ya apunta a lo nuevo; reintentar lo termina. 4: la operación vale y las rutas viejas vuelven en `leftovers`. |
+| `removePlantPhoto`  | 1. Poner las rutas de la planta a `null`. 2. Reflejarla. 3. Borrar los archivos.                                                                                     | 1: no se borra nada. 3: la planta ya está sin foto y los archivos vuelven en `leftovers`.                                                                                                                                                                                                                        |
+
+La cancelación vale hasta que sale la escritura en la base. En `/muestra`, sección "Fotos", el campo sube a un bucket simulado en memoria (la página no tiene sesión de Clerk ni usa Supabase), con las rutas reales y la opción de simular un fallo de red, de la miniatura o de tamaño para ver el reintento.
+
+### Lectura de fotos y borrado sin huérfanos
+
+El bucket es privado (#83): las imágenes no tienen una dirección pública. Hay dos formas de leerlas: URL firmadas (`createSignedUrls`, una petición firma muchas rutas) o descarga autenticada a `Blob` (`download`, con el token de la sesión). La app usa la **descarga autenticada, guardada por ruta**:
+
+- Una URL firmada caduca y cambia en cada firma: el navegador la trata como otra dirección y la vuelve a bajar en cada sesión, y la caché sin conexión del #18 no puede usarla como clave. Firmar en lote ahorra una petición por imagen, pero las imágenes se bajan igual una a una.
+- La ruta es una clave estable y su contenido nunca cambia (lleva la versión). Cada miniatura se baja una vez por dispositivo: queda en memoria mientras dura la pestaña y en **Cache Storage**, en una caché por usuario (`orki-miniaturas-v1:<usuario>`) con clave `/_orki/plant-photos/<ruta>` (una dirección del propio origen que nadie sirve). Desde la segunda visita, una lista de cientos de miniaturas no hace ninguna petición, y Cache Storage se lee sin red y también desde el service worker, que es lo que necesita el #18.
+- Las descargas van como mucho de 6 en 6. Cada imagen se muestra con una URL de objeto que se revoca 30 s después de que ninguna pantalla la use (así no se recrea al desplazarse arriba y abajo).
+- Al cambiar de usuario o cerrar sesión, `CollectionProvider` llama a `forgetPlantImagesExcept(usuario)`: vacía la memoria y borra de Cache Storage las miniaturas de los demás usuarios.
+
+La estrategia vive en `src/photos/read.ts` detrás de `PlantImageSource` (`acquire(ruta, 'thumbnail' | 'photo')` devuelve una URL de objeto y `release(ruta)` la suelta) y de `PersistentImageCache`. Las pantallas solo usan los hooks de `src/photos/usePlantImage.ts`, así que el #18 puede cambiarla (por ejemplo, que el service worker sirva la caché) pasando otra fuente con `<PlantImagesContext value={...}>`, sin tocarlas:
+
+```ts
+const miniatura = usePlantImage(plant.thumbnailPath, 'thumbnail', visible)
+const foto = usePlantImage(plant.photoPath, 'photo') // detalle (#16), bajo demanda
+// { status: 'none' | 'loading' | 'error' } o { status: 'ready', src }
+```
+
+- **Inventario:** `PlantCard` usa `usePlantThumbnail(plant, ref)` (`src/inventory/usePlantThumbnail.ts`), que pide solo `thumbnailPath`, nunca la foto grande, y solo cuando la tarjeta está en pantalla o a menos de 300 px (`useNearViewport`, con `IntersectionObserver`). Mientras carga o si falla, el marcador neutro del sistema, con un texto alternativo que lo dice ("Foto de _Cattleya labiata_: cargando"); la caja de la foto tiene proporción fija, así que la imagen no mueve nada al llegar. Tras un fallo se reintenta al volver la conexión (evento `online`) o al volver a montar la tarjeta: el fallo no se guarda. Las plantas sin foto siguen con "Sin foto".
+- **Foto grande:** `usePlantImage(plant.photoPath, 'photo')` la baja bajo demanda y la guarda solo en memoria (no ocupa Cache Storage). Para el campo de foto de la edición: `{ kind: 'stored', src }` con la `src` que devuelve.
+
+Sin huérfanos:
+
+- **Reemplazar y quitar** borran los archivos anteriores (ver la tabla de arriba).
+- **Eliminar una planta** (lo llamará el #16): `deletePlantWithPhotos({ userId, plantId, onPlantRemoved: removePlant })` (`src/photos/delete.ts`) borra primero la fila, la quita de la colección y después toda la carpeta `<usuario>/<planta>/` (`deletePlantPhotoFolder`, que también se lleva restos de subidas anteriores). Si falla el borrado de la planta no se toca nada; si fallan los archivos, la planta ya no existe y devuelve `photosDeleted: false`.
+- **Script de limpieza:** un fallo de red a mitad puede dejar archivos sin planta. `npm run fotos:huerfanas -- --ambiente desarrollo` los lista (modo de prueba, por defecto) y con `--borrar` los borra; ver [su sección](supabase/README.md#limpieza-de-fotos-huérfanas) en el README de Supabase.
 
 ## Base de datos y migraciones
 

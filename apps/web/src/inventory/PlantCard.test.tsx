@@ -1,0 +1,149 @@
+import { act, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CollectionPlant } from '../collection/model.ts'
+import type { PlantImageSource } from '../photos/read.ts'
+import { PlantImagesContext } from '../photos/usePlantImage.ts'
+import { expectNoAxeViolations } from '../test/axe.ts'
+import { plant } from '../test/collection.ts'
+import { PlantCard } from './PlantCard.tsx'
+
+// IntersectionObserver de prueba: la prueba decide qué tarjetas entran en
+// pantalla.
+const observed = new Map<Element, IntersectionObserverCallback>()
+
+class FakeIntersectionObserver {
+  private readonly callback: IntersectionObserverCallback
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+  }
+  observe(element: Element) {
+    observed.set(element, this.callback)
+  }
+  disconnect() {
+    for (const [element, callback] of observed) {
+      if (callback === this.callback) observed.delete(element)
+    }
+  }
+}
+
+function scrollIntoView(element: Element) {
+  const callback = observed.get(element)
+  act(() => {
+    callback?.(
+      [{ isIntersecting: true, target: element } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+  })
+}
+
+function fakeSource() {
+  const acquire = vi.fn<PlantImageSource['acquire']>((path) =>
+    Promise.resolve(`blob:${path}`),
+  )
+  const release = vi.fn<PlantImageSource['release']>()
+  const source: PlantImageSource = { acquire, release, clear: vi.fn() }
+  return { source, acquire, release }
+}
+
+const withPhoto = (): CollectionPlant =>
+  plant({
+    displayName: 'Cattleya labiata',
+    photoPath: 'user_a/11111111-1111-4111-8111-111111111111/photo-v1.webp',
+    thumbnailPath: 'user_a/11111111-1111-4111-8111-111111111111/thumb-v1.webp',
+  })
+
+function renderCard(source: PlantImageSource, value: CollectionPlant) {
+  return render(
+    <PlantImagesContext value={source}>
+      <PlantCard plant={value} view="grid" headingLevel={2} />
+    </PlantImagesContext>,
+  )
+}
+
+beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
+  document.documentElement.lang = 'es'
+  document.title = 'Mi colección · Orki'
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  observed.clear()
+})
+
+describe('miniatura de la tarjeta', () => {
+  it('no pide nada hasta que la tarjeta está cerca de la pantalla', async () => {
+    const { source, acquire } = fakeSource()
+    renderCard(source, withPhoto())
+    expect(acquire).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('img', { name: 'Foto de Cattleya labiata: cargando' }),
+    ).toBeInTheDocument()
+    await expectNoAxeViolations()
+  })
+
+  it('pide solo la miniatura, nunca la foto grande', async () => {
+    const { source, acquire } = fakeSource()
+    const value = withPhoto()
+    renderCard(source, value)
+    scrollIntoView(screen.getByRole('article'))
+
+    const image = await screen.findByRole('img', {
+      name: 'Foto de Cattleya labiata',
+    })
+    expect(image).toHaveAttribute('src', `blob:${value.thumbnailPath}`)
+    expect(acquire).toHaveBeenCalledTimes(1)
+    expect(acquire).toHaveBeenCalledWith(
+      value.thumbnailPath,
+      'thumbnail',
+      expect.anything(),
+    )
+    expect(acquire).not.toHaveBeenCalledWith(
+      value.photoPath,
+      expect.anything(),
+      expect.anything(),
+    )
+    await expectNoAxeViolations()
+  })
+
+  it('una planta sin foto sigue con el marcador y no pide nada', () => {
+    const { source, acquire } = fakeSource()
+    renderCard(source, plant())
+    scrollIntoView(screen.getByRole('article'))
+    expect(screen.getByRole('img', { name: 'Sin foto' })).toBeInTheDocument()
+    expect(acquire).not.toHaveBeenCalled()
+  })
+
+  it('si falla, marcador neutro; reintenta al volver la conexión', async () => {
+    const { source, acquire } = fakeSource()
+    acquire.mockRejectedValueOnce(new Error('sin red'))
+    renderCard(source, withPhoto())
+    scrollIntoView(screen.getByRole('article'))
+
+    expect(
+      await screen.findByRole('img', {
+        name: 'Foto de Cattleya labiata: no se pudo cargar',
+      }),
+    ).toHaveAttribute('src', expect.stringContaining('svg'))
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() => {
+      expect(
+        screen.getByRole('img', { name: 'Foto de Cattleya labiata' }),
+      ).toBeInTheDocument()
+    })
+    expect(acquire).toHaveBeenCalledTimes(2)
+  })
+
+  it('suelta la miniatura al desmontar', async () => {
+    const { source, release } = fakeSource()
+    const value = withPhoto()
+    const { unmount } = renderCard(source, value)
+    scrollIntoView(screen.getByRole('article'))
+    await screen.findByRole('img', { name: 'Foto de Cattleya labiata' })
+    unmount()
+    expect(release).toHaveBeenCalledWith(value.thumbnailPath)
+  })
+})

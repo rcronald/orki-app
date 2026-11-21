@@ -323,6 +323,24 @@ Quién puede qué (políticas de `storage.objects`, todas para `authenticated` y
 
 Limitación de las pruebas: la base desechable no tiene Supabase Storage. `scripts/db-desechable/supabase-minimo.sql` simula lo mínimo del esquema `storage` (las tablas `buckets` y `objects`, `storage.foldername()`, el bloqueo de borrados directos y los permisos de los roles) a partir de las migraciones de [supabase/storage](https://github.com/supabase/storage), así que `tests/fotos_storage.sql` comprueba las políticas tal como las evalúa Postgres, con la orden SQL que corresponde a cada operación, pero no la API de Storage: ni los límites de tamaño y de tipo, ni las URL firmadas, ni cómo pasa el token de Clerk. Eso se comprueba al aplicar la migración en desarrollo. En Supabase, `postgres` crea las políticas de `storage.objects` sin ser su dueño gracias a `supautils.policy_grants`; aquí es miembro de `supabase_storage_admin`, que es más permisivo: una migración no debe alterar tablas de `storage`, porque aquí pasaría y en Supabase fallaría.
 
+### Limpieza de fotos huérfanas
+
+`scripts/fotos-huerfanas.mjs` (`npm run fotos:huerfanas`, #83) compara los objetos del bucket `plant-photos` con `photo_path` y `thumbnail_path` de todas las plantas. La app borra los archivos al reemplazar, quitar o eliminar (ver el README principal), pero un fallo de red a mitad puede dejar restos.
+
+```sh
+npm run fotos:huerfanas -- --ambiente desarrollo                    # solo lista
+npm run fotos:huerfanas -- --ambiente desarrollo --borrar           # borra
+npm run fotos:huerfanas -- --ambiente produccion --borrar --confirmar-produccion
+```
+
+- Recorre el bucket (`<usuario>/<planta>/`) y lee las plantas de 1 000 en 1 000.
+- Informa de los objetos que no son la foto ni la miniatura de ninguna planta (`sin-planta`, o `fuera-de-convencion` si la ruta no sigue la convención), de los recientes que no toca y de las plantas que apuntan a un archivo que no existe. Esto último solo se informa: el script nunca cambia una planta.
+- Por defecto es un modo de prueba: lista y no borra nada. Con `--borrar`, borra en lotes de 100 solo los huérfanos con la antigüedad mínima (`--antiguedad-minima-horas`, 24 por defecto), para no llevarse una subida en curso cuya planta aún no apunta a ella. Un objeto sin fecha nunca se borra.
+- Protección de ambiente: `--ambiente desarrollo|produccion` es obligatorio y `SUPABASE_PROJECT_REF` tiene que ser el ref de ese ambiente (los mismos que `scripts/supabase-db.mjs`); si no coincide, no se ejecuta nada. Para borrar en producción hace falta además `--confirmar-produccion`.
+- Credencial: `SUPABASE_SECRET_KEY`, la clave secreta del proyecto (`sb_secret_...`, en Project Settings > API Keys; o la `service_role` heredada), y `SUPABASE_PROJECT_REF`. Se leen del entorno o de `supabase/.env` y nunca se imprimen. Hace falta esa clave porque el script tiene que ver los objetos y las plantas de todos los usuarios y las políticas solo dejan a cada uno ver lo suyo. Leer `storage.objects` con una conexión directa a Postgres serviría para listar, pero no para borrar: Supabase no deja borrar objetos con SQL, solo con la API de Storage.
+- **Riesgo:** la clave secreta se salta RLS y puede leer y borrar todo el proyecto. No está en GitHub ni en ningún workflow; tenla en tu máquina solo mientras haces la limpieza, empieza siempre por el modo de prueba y revisa la lista antes de `--borrar`.
+- La comparación es lógica pura en `apps/web/src/photos/orphans.ts`, probada con Vitest (`orphans.test.ts`, que comprueba también que el modo de prueba no borra). Node la carga quitando los tipos de TypeScript (Node 24). El script no se ha ejecutado contra ningún proyecto real.
+
 ## Tipos de TypeScript
 
 La app usa tipos generados a partir de estas migraciones (`apps/web/src/lib/database.types.ts`), con los que el cliente de Supabase comprueba al compilar tablas, columnas y enumerados. Cuándo regenerarlos:

@@ -1,5 +1,6 @@
 import { useAuth } from '@clerk/react'
 import { useLayoutEffect, useState, type ReactNode } from 'react'
+import { forgetPlantImagesExcept } from '../photos/read.ts'
 import { CollectionStore } from './store.ts'
 import type { CollectionSource } from './source.ts'
 import { supabaseCollectionSource } from './supabase-source.ts'
@@ -40,6 +41,10 @@ export function CollectionProvider({
   useLayoutEffect(() => {
     if (keepPrevious) return
     store.setUser(activeUserId)
+    // Las fotos guardadas en el dispositivo (memoria y Cache Storage) son
+    // solo las del usuario activo: al cambiar de cuenta o cerrar sesión se
+    // olvidan las de los demás (#83, #18).
+    forgetPlantImagesExcept(activeUserId)
   }, [store, activeUserId, keepPrevious])
 
   return <CollectionContext value={store}>{children}</CollectionContext>
