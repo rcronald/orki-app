@@ -149,12 +149,13 @@ select pruebas.iguales('catleya labiata', pg_temp.primera('catleya labiata'), 'C
 select pruebas.iguales('dendro', pg_temp.primera('dendro'), 'Dendrobium nobile');
 
 -- prueba: especies: firma, propiedades y permisos se conservan al redefinirla
+-- plan_cache_mode = force_generic_plan llega con la migración 20261120230000_busqueda_con_catalogo_real.sql.
 select pruebas.iguales(
   'propiedades de search_species',
   (select p.provolatile::text || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ',')
           || ' ' || pg_get_userbyid(p.proowner) || ' rows=' || p.prorows
      from pg_proc p where p.oid = 'public.search_species(text, integer)'::regprocedure),
-  's definer=false search_path="",pg_trgm.word_similarity_threshold=0.3 postgres rows=20'
+  's definer=false search_path="",pg_trgm.word_similarity_threshold=0.3,plan_cache_mode=force_generic_plan postgres rows=20'
 );
 select pruebas.iguales(
   'firma de search_species',

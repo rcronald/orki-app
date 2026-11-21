@@ -132,6 +132,35 @@ select pruebas.debe_fallar(
   '23514', 'species_gbif_has_source_ref'
 );
 
+-- prueba: especies: lo importado del Catalogue of Life (col) siempre trae su referencia
+select pruebas.debe_fallar(
+  'especie de COL sin referencia',
+  $$insert into public.species (scientific_name, genus_id, type, status, source)
+    values ('Vanda coerulea', pruebas.genero('Vanda'), 'species', 'imported', 'col')$$,
+  '23514', 'species_col_has_source_ref'
+);
+select pruebas.debe_funcionar(
+  'especie de COL con referencia',
+  $$insert into public.species (scientific_name, genus_id, type, status, source, source_ref)
+    values ('Vanda coerulea', pruebas.genero('Vanda'), 'species', 'imported', 'col', '4G2KQ')$$
+);
+select pruebas.debe_fallar(
+  'quitar la referencia a una especie de COL',
+  $$update public.species set source_ref = null where source = 'col' and source_ref = '4G2KQ'$$,
+  '23514', 'species_col_has_source_ref'
+);
+select pruebas.debe_fallar(
+  'la misma referencia de COL en otra especie',
+  $$insert into public.species (scientific_name, genus_id, type, status, source, source_ref)
+    values ('Vanda tricolor', pruebas.genero('Vanda'), 'species', 'imported', 'col', '4G2KQ')$$,
+  '23505', 'species_source_ref_key'
+);
+select pruebas.debe_funcionar(
+  'la misma referencia en otra fuente no choca',
+  $$insert into public.species (scientific_name, genus_id, type, status, source, source_ref)
+    values ('Vanda tricolor', pruebas.genero('Vanda'), 'species', 'imported', 'gbif', '4G2KQ')$$
+);
+
 -- prueba: especies: la importación actualiza por (source, source_ref) sin duplicar
 insert into public.species (scientific_name, genus_id, type, status, source, source_ref)
 values ('Phalaenopsis amabilis', pruebas.genero('Phalaenopsis'), 'species', 'validated', 'gbif', '2817457')

@@ -1,0 +1,52 @@
+[project]
+name = "orki-catalog-import"
+version = "0.1.0"
+description = "Importación del catálogo de orquídeas de Orki desde el Catalogue of Life."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+# La lectura, el filtrado y la normalización usan solo la biblioteca estándar. La carga en la
+# base de datos usa psycopg 3; el extra «binary» trae libpq compilada, así que no hace falta
+# tener instalado el cliente de PostgreSQL.
+dependencies = [
+    "psycopg[binary]==3.3.8",
+]
+
+[project.scripts]
+orki-catalogo = "catalog_import.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "ruff==0.17.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "catalog_import"
+
+[tool.uv]
+required-version = ">=0.10.4,<0.11"
+# Fecha de corte de la resolución: solo se aceptan versiones publicadas antes de esta fecha,
+# para no adoptar una versión recién publicada. Se mueve a mano al actualizar dependencias.
+exclude-newer = "2026-11-06T00:00:00Z"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+xfail_strict = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT", "C4", "PTH"]
+# El signo de híbrido «×» (U+00D7) es parte de los nombres botánicos, no un error.
+allowed-confusables = ["×"]
+
+[tool.ruff.format]
+quote-style = "single"

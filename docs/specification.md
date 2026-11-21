@@ -86,7 +86,7 @@ Regla central: especie y ejemplar son entidades separadas. Un usuario puede tene
 | --- | --- | --- |
 | Usuario (perfil) | id de usuario de Clerk (texto), idioma preferido. El correo, el acceso con Google y el rol viven en Clerk, no en la base de datos | 1 usuario tiene N plantas |
 | Género | nombre, foto característica (opcional; fondo del registro), acceso rápido (sí/no; define los chips del registro) | 1 género tiene N especies |
-| Especie (catálogo) | nombre científico, nombres comunes, género, tipo (especie, híbrido), estado (importada, validada, observada), fuente (GBIF, lista curada, propuesta de usuario) | 0..1 especie para N plantas |
+| Especie (catálogo) | nombre científico, nombres comunes, género, tipo (especie, híbrido), estado (importada, validada, observada), fuente (Catalogue of Life, lista curada, propuesta de usuario) | 0..1 especie para N plantas |
 | Sinónimo | nombre alternativo, especie a la que apunta | N sinónimos por especie |
 | Planta (ejemplar) | usuario, especie (opcional), nombre ingresado, género, tipo (especie, híbrido, no sé), foto, fecha de adquisición, origen, estado (activa, perdida, regalada), validación (validada, nombre por validar), ubicación, apodo, color de flor (opcional), en floración | pertenece a 1 usuario |
 
@@ -109,7 +109,7 @@ SPA estática en Vercel que habla directo con Supabase; sin backend propio en Fa
 | API | Supabase (PostgREST) con Row Level Security | Sin backend que mantener |
 | Autenticación | Clerk: correo con código de verificación y Google | Conectado a Supabase como proveedor de autenticación externo; Supabase valida el token de Clerk y aplica RLS. Rol en los metadatos públicos de Clerk, incluido en el token de sesión. No se usa Supabase Auth |
 | Fotos | browser-image-compression + Supabase Storage con miniaturas | Mayor costo de almacenamiento y de carga |
-| Importación de catálogo | Scripts en Python fuera de la app. Fuentes: taxonomía base de GBIF (especies y sinónimos) y una lista curada propia en CSV (híbridos comunes) | Normalizan y cargan a Postgres con estado "importada"; se corren a demanda y generan un reporte CSV |
+| Importación de catálogo | Scripts en Python fuera de la app. Fuentes: Catalogue of Life eXtended Release, la taxonomía base que usa GBIF (especies y sinónimos), y una lista curada propia en CSV (híbridos comunes) | Normalizan y cargan a Postgres con estado "importada"; se corren a demanda y generan un reporte CSV |
 | Hosting y entrega | Vercel (frontend) + Supabase gestionado | Despliegue automático desde GitHub |
 | Observabilidad | Sentry + 2 eventos de producto | Registro completado y búsqueda "¿ya la tengo?" con su resultado |
 
@@ -174,7 +174,7 @@ El orden importa: primero el modelo, luego los datos, luego la interfaz.
 
 1. Modelo de datos y esquema: especie y ejemplar separados, tabla de sinónimos y políticas RLS. Va primero porque la carga del catálogo necesita el esquema y migrarlo después es costoso.
 2. Autenticación y roles con Clerk: integración con Supabase y políticas RLS probadas para usuario y administrador de catálogo, antes de cualquier pantalla con datos.
-3. Catálogo base: correr la carga inicial (GBIF y lista curada de híbridos) antes de construir la interfaz, porque sin datos no hay autocompletado.
+3. Catálogo base: correr la carga inicial (Catalogue of Life y lista curada de híbridos) antes de construir la interfaz, porque sin datos no hay autocompletado.
 4. Normalización de nombres: es el mayor riesgo técnico. Manejo de abreviaturas de género y búsqueda tolerante a errores de tipeo sobre nombres científicos, sinónimos y nombres comunes.
 5. Registro rápido con autocompletado, incluido el caso de especie no encontrada.
 6. Búsqueda "¿ya la tengo?": es la funcionalidad estrella; rápida desde el celular y con caché local de solo lectura del inventario propio.
@@ -192,12 +192,12 @@ El orden importa: primero el modelo, luego los datos, luego la interfaz.
 
 ## 11. Riesgos y preguntas abiertas
 
-- Cobertura de híbridos: GBIF cubre especies y sinónimos, pero casi no trae híbridos ni cultivares, que son la mayoría de lo que se vende en tiendas. Se parte con una lista curada de los 50-100 híbridos más comunes en Perú y se crece con los aportes validados de usuarios. Hasta entonces, muchos registros de híbridos quedarán como "nombre por validar".
+- Cobertura de híbridos: el Catalogue of Life cubre especies y sinónimos, pero casi no trae híbridos ni cultivares, que son la mayoría de lo que se vende en tiendas. Se parte con una lista curada de los 50-100 híbridos más comunes en Perú y se crece con los aportes validados de usuarios. Hasta entonces, muchos registros de híbridos quedarán como "nombre por validar".
 - Duplicados por nombre: una misma especie puede tener varios nombres comunes; el autocompletado debe priorizar el nombre científico y mostrar sinónimos.
 - Nombres no validados: el registro con nombre "como lo conocen" puede generar duplicados ocultos; la búsqueda "¿ya la tengo?" debe incluir esos registros pendientes.
 - Fuentes del catálogo (decidido para Fase 1):
-  - Taxonomía base de GBIF (GBIF Backbone Taxonomy), filtrada a la familia Orchidaceae: nombres aceptados y sinónimos. Es la referencia para especies. Antes de la primera carga hay que confirmar su licencia y la atribución que exige.
+  - Catalogue of Life eXtended Release (COL XR), que desde 2026 es la taxonomía principal de GBIF en lugar del GBIF Backbone Taxonomy, congelado en 2023. Se usa una versión fijada (COL26.10 XR, DOI 10.48580/dgzlf), filtrada a la familia Orchidaceae: especies aceptadas y sinónimos. Es la referencia para especies y se registra con fuente `col` y el identificador de COL. Licencia CC BY 4.0: hay que citar el Catalogue of Life con su versión y su DOI, enlazar la licencia e indicar que los datos están filtrados y normalizados; la atribución será visible en la app (propuesta: una página pública de créditos y fuentes). El detalle está en `scripts/catalog-import/FUENTE.md`.
   - Lista curada propia en CSV dentro del repositorio: híbridos y nombres comerciales comunes en Perú. Es la referencia para híbridos.
   - Registro de híbridos de la RHS: solo consulta manual del administrador al validar propuestas; no se importa.
   - Las ocurrencias de GBIF (presencia en Perú) quedan fuera de la Fase 1; pueden sumarse después para priorizar resultados locales.
-  - Conflictos de nombres: para especies manda GBIF; para híbridos manda la lista curada. Lo que no esté en ninguna entra como propuesta de usuario.
+  - Conflictos de nombres: para especies manda el Catalogue of Life; para híbridos manda la lista curada. Lo que no esté en ninguna entra como propuesta de usuario.

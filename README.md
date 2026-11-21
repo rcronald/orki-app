@@ -45,6 +45,8 @@ npm test
 npm run build
 ```
 
+El CI ejecuta además el lint, el formato y las pruebas del proyecto de Python de `scripts/catalog-import/` (con [uv](https://docs.astral.sh/uv/)), incluidas las de la carga del catálogo contra un Postgres 17 desechable; cómo instalarlo y ejecutarlos en local está en [su README](scripts/catalog-import/README.md).
+
 ## Scripts
 
 Todos se ejecutan desde la raíz del repositorio.
@@ -105,7 +107,7 @@ orki-app/
 ├── docs/
 │   └── specification.md       Especificación de la Fase 1
 ├── scripts/
-│   ├── catalog-import/        Importación del catálogo de especies (pendiente)
+│   ├── catalog-import/        Importación del catálogo de especies (Python; normalización y carga)
 │   ├── db-desechable/         Base Postgres desechable con el esquema aplicado
 │   ├── db-test.mjs            Pruebas de base de datos (db:test)
 │   ├── db-types.mjs           Tipos de TypeScript del esquema (db:types, db:types:check)
@@ -544,6 +546,10 @@ Las credenciales están registradas en GitHub (Settings > Secrets and variables 
 - `SUPABASE_ACCESS_TOKEN`: secreto del repositorio, compartido por los dos ambientes.
 - `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
 - `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
+
+### Importación del catálogo
+
+El catálogo de especies (Catalogue of Life) se carga con `orki-catalogo cargar` de `scripts/catalog-import/`, después de aplicar las migraciones. En desarrollo se puede cargar desde tu máquina o con el workflow; en producción, solo con el workflow manual `.github/workflows/importar-catalogo.yml` (Actions > Importar catálogo), que simula por defecto, exige escribir el identificador del proyecto para escribir en producción y deja el reporte como artefacto. Usa `SUPABASE_DB_PASSWORD` y `SUPABASE_PROJECT_REF` del environment y además la variable `SUPABASE_POOLER_HOST`, que hay que crear en cada environment. La guía completa (pasos por ambiente, cómo leer el reporte y qué hacer con una versión nueva de la fuente) está en [Ejecución por ambiente](scripts/catalog-import/README.md#ejecución-por-ambiente).
 
 ## Despliegue en Vercel
 

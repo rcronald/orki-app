@@ -1,0 +1,50 @@
+col:ID	col:parentID	col:status	col:rank	col:scientificName	col:authorship	col:kingdom	col:phylum	col:subphylum	col:class	col:subclass	col:order	col:suborder	col:superfamily	col:family	col:subfamily	col:tribe	col:subtribe	col:genus	col:subgenus	col:section	col:species	clb:taxGroup
+DPL	SP	accepted	family	Orchidaceae	Juss.	Plantae	Tracheophyta		Liliopsida		Asparagales											angiosperms
+LLFHH	DPL	synonym	family	Apostasiaceae	Lindl.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+SH1132364.10FU	8H9J	accepted	unranked	SH1132364.10FU		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Aa			Aa achalensis	angiosperms
+VQSPG	DPL	accepted	species	Anacamptis morio × Orchis mascula		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+VQQMR	VQSPG	synonym	species	Anacamptis morio x Orchis mascula		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae							Anacamptis morio × Orchis mascula	angiosperms
+8VTQR	DPL	accepted	genus	Anacamptis	Rich.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+VQQXL	8VTQR	accepted	species	Anacamptis morio x palustris		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Anacamptis				angiosperms
+R8WB3	VQQXL	synonym	species	Orchis × alatiflora	(Lassim.) Lassim.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Anacamptis			Anacamptis morio x palustris	angiosperms
+BOLD.AAM4945	8VVRR	accepted	unranked	BOLD:AAM4945		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Broughtonia				angiosperms
+8VRGS	DPL	accepted	genus	Bulbophyllum	Thouars	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+8W7QM	8VRGS	accepted	species	Bulbophyllum fletcherianum	J.G.Fowler	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Bulbophyllum				angiosperms
+7SXQ6	8W7QM	synonym	species	Bulbophyllum fletcherianum	Rolfe	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Bulbophyllum			Bulbophyllum fletcherianum	angiosperms
+8VW29	DPL	accepted	genus	Cattleya	Lindl.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+RWFC	8VW29	accepted	species	Cattleya labiata	Lindl.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Cattleya				angiosperms
+7THCP	RWFC	synonym	species	  Cattleya   bullieri 	Carrière  	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Cattleya			Cattleya labiata	angiosperms
+KZT8K	RWFC	synonym	infraspecific name	Cattleya labiata autumnalis	Pynaert	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Cattleya			Cattleya labiata	angiosperms
+7Z22G	RWFC	synonym	form	Cattleya labiata f. alba	(Linden & Rodigas) F.Barros & J.A.N.Bat.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Cattleya			Cattleya labiata	angiosperms
+M9K5Q	RWFC	synonym	form	Cattleya labiata f. alba	(Linden & Rodigas) M.Wolff & O.Gruss	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Cattleya			Cattleya labiata	angiosperms
+8VW5N	DPL	accepted	genus	Chamorchis	Rich.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+TLRN	8VW5N	accepted	species	Chamorchis alpina	(L.) Rich.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Chamorchis				angiosperms
+3L28K	TLRN	synonym	species	Herminium alpinum	(L.) Lindl.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Chamorchis			Chamorchis alpina	angiosperms
+3L28J	TLRN	synonym	species	Herminium alpinum	(L.) Sweet	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Chamorchis			Chamorchis alpina	angiosperms
+8VWT5	DPL	accepted	genus	Dendrobium	Sw.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+6CJK4	8VWT5	accepted	species	Dendrobium thyrsiflorum	B.S.Williams	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Dendrobium				angiosperms
+N8D5X	8VWT5	provisionally accepted	species	Dendrobium thyrsiflorum	Rchb.fil. ex André	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Dendrobium				angiosperms
+8VXXY	DPL	accepted	genus	Goodyera	R.Br.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+8VXDV	8VXXY	synonym	genus	Epipactis	Ség.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Goodyera				angiosperms
+VJRY8	8VXXY	provisionally accepted	species	Epipactis atrorubens	(Hoffm.) Besser	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Goodyera				angiosperms
+7VYRH	VJRY8	synonym	species	Epipactis atropurpurea	Raf.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Goodyera			Epipactis atrorubens	angiosperms
+7Z2JG	VJRY8	synonym	form	Epipactis atrorubens f. longibracteata	(Bordz.) Soó	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Goodyera			Epipactis atrorubens	angiosperms
+69FQ	DPL	accepted	genus	Orchiserapias	E.G.Camus	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+L2GFV	69FQ	accepted	species	× Orchiserapias dhiorii	M.Ackermann & Mar.Ackermann	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Orchiserapias				angiosperms
+8W2B9	DPL	accepted	genus	Phalaenopsis	Blume	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+4FR2J	8W2B9	accepted	species	Phalaenopsis amabilis	(L.) Blume	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis				angiosperms
+7VKDG	4FR2J	synonym	species	Cymbidium amabile	(L.) Roxb.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis			Phalaenopsis amabilis	angiosperms
+7VX9T	4FR2J	ambiguous synonym	species	Epidendrum amabile	L.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis			Phalaenopsis amabilis	angiosperms
+7YKK5	4FR2J	accepted	subspecies	Phalaenopsis amabilis subsp. moluccana	(Schltr.) Christenson	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis			Phalaenopsis amabilis	angiosperms
+7YX7Y	7YKK5	synonym	variety	Phalaenopsis amabilis var. moluccana	Schltr.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis			Phalaenopsis amabilis	angiosperms
+7XWJL	7YKK5	synonym	species	Phalaenopsis celebica	Vlooten	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis			Phalaenopsis amabilis	angiosperms
+4FR2M	8W2B9	accepted	species	Phalaenopsis aphrodite	Rchb.f.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis				angiosperms
+8X2QV	4FR2M	misapplied	species	Phalaenopsis amabilis	Lindl.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis			Phalaenopsis aphrodite	angiosperms
+VCLHC	8W2B9	accepted	form	Phalaenopsis cornu-cervi f. cornu-cervi		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis				angiosperms
+VCLHB	VCLHC	synonym	variety	Phalaenopsis cornu-cervi var. cornu-cervi		Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis				angiosperms
+4FR3H	8W2B9	accepted	species	Phalaenopsis × intermedia	Lindl.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				Phalaenopsis				angiosperms
+8VTQS	DPL	accepted	genus	× Anacamptorchis	E.G.Camus	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+66JFS	8VTQS	accepted	species	× Anacamptorchis bassoulsii	(Balayer) B.Bock	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				× Anacamptorchis				angiosperms
+8VVQS	DPL	accepted	genus	× Brassocattleya	Rolfe	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae								angiosperms
+M592X	8VVQS	accepted	species	Brassocattleya hybrida	hort.	Plantae	Tracheophyta		Liliopsida		Asparagales			Orchidaceae				× Brassocattleya				angiosperms
+56YBS	8W47T	accepted	species	Tillandsia usneoides	(L.) L.	Plantae	Tracheophyta		Liliopsida		Poales			Bromeliaceae				Tillandsia				angiosperms
