@@ -48,6 +48,11 @@ describe('AccountControls', () => {
     expect(
       screen.queryByRole('link', { name: 'Iniciar sesión' }),
     ).not.toBeInTheDocument()
+    // Pantalla de cuenta de Orki, donde se elimina la cuenta (#110).
+    expect(screen.getByRole('link', { name: 'Tu cuenta' })).toHaveAttribute(
+      'href',
+      '/cuenta',
+    )
     await expectNoAxeViolations()
 
     await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }))

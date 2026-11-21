@@ -1,3 +1,4 @@
+import { isAccountDeletionPending } from './account-deletion-marker.ts'
 import { getSupabase } from './supabase.ts'
 
 // Creación del perfil en el primer ingreso (issue #66).
@@ -30,6 +31,11 @@ import { getSupabase } from './supabase.ts'
 // reutilizan sin otra petición (así el doble montaje de React.StrictMode no
 // duplica la inserción). Si falla, se olvida, y la siguiente llamada (otro
 // ingreso, una recarga o la vuelta de la conexión) lo intenta de nuevo.
+//
+// Eliminación de la cuenta (#110): mientras hay una eliminación en curso
+// (lib/account-deletion-marker.ts), no se crea el perfil ni se envía nada. Si
+// no, entre el borrado del perfil y el de la cuenta de Clerk, una recarga o la
+// vuelta de la conexión lo volverían a crear.
 
 const attempts = new Map<string, Promise<boolean>>()
 
@@ -39,6 +45,7 @@ const attempts = new Map<string, Promise<boolean>>()
  * no se pudo comprobar (sin conexión, sin token, error de red o del servidor).
  */
 export function ensureProfile(userId: string): Promise<boolean> {
+  if (isAccountDeletionPending(userId)) return Promise.resolve(false)
   const previous = attempts.get(userId)
   if (previous !== undefined) return previous
   const attempt = insertProfile(userId).then((ok) => {
@@ -69,6 +76,16 @@ async function insertProfile(userId: string): Promise<boolean> {
 // Solo para quien depura: el usuario no ve nada y la app sigue funcionando.
 function warn(detail: string) {
   console.warn(`No se pudo asegurar el perfil; se reintentará. (${detail})`)
+}
+
+/**
+ * Olvida el intento recordado de un usuario, para que la siguiente llamada a
+ * ensureProfile() vuelva a enviar la petición. Lo usa la pantalla de cuenta
+ * cuando la persona abandona una eliminación a medias y sigue usando Orki: el
+ * perfil pudo borrarse después de que se recordara como creado.
+ */
+export function forgetEnsuredProfile(userId: string): void {
+  attempts.delete(userId)
 }
 
 /** Solo para pruebas: olvida los intentos hechos en esta carga de la página. */
