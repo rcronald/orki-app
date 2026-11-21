@@ -264,6 +264,45 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_genus_abbreviation: {
+        Args: { new_abbreviation: string; target_genus_id: string }
+        Returns: {
+          abbreviation: string
+          created_at: string
+          genus_id: string
+          id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'genus_abbreviations'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      add_species_name: {
+        Args: {
+          new_language?: string
+          new_name: string
+          new_type: Database['public']['Enums']['species_name_type']
+          target_species_id: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          language: string | null
+          name: string
+          species_id: string
+          type: Database['public']['Enums']['species_name_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'species_names'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       catalog_summary: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -284,6 +323,64 @@ export type Database = {
       count_species_plants: {
         Args: { target_species_id: string }
         Returns: number
+      }
+      create_catalog_genus: {
+        Args: { new_is_quick_access?: boolean; new_name: string }
+        Returns: {
+          created_at: string
+          id: string
+          is_quick_access: boolean
+          name: string
+          photo_path: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'genera'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_catalog_species: {
+        Args: {
+          new_genus_id: string
+          new_scientific_name: string
+          new_status?: Database['public']['Enums']['species_status']
+          new_type: Database['public']['Enums']['species_type']
+        }
+        Returns: {
+          created_at: string
+          genus_id: string
+          id: string
+          scientific_name: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string | null
+          status: Database['public']['Enums']['species_status']
+          type: Database['public']['Enums']['species_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'species'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      delete_catalog_genus: {
+        Args: { target_genus_id: string }
+        Returns: undefined
+      }
+      delete_catalog_species: {
+        Args: { target_species_id: string }
+        Returns: undefined
+      }
+      delete_genus_abbreviation: {
+        Args: { target_abbreviation_id: string }
+        Returns: undefined
+      }
+      delete_species_name: {
+        Args: { target_name_id: string }
+        Returns: undefined
       }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       is_pending_plant_photo: {
@@ -388,6 +485,99 @@ export type Database = {
           status: Database['public']['Enums']['species_status']
           type: Database['public']['Enums']['species_type']
         }[]
+      }
+      set_catalog_species_status: {
+        Args: {
+          new_status: Database['public']['Enums']['species_status']
+          target_species_ids: string[]
+        }
+        Returns: number
+      }
+      update_catalog_genus: {
+        Args: {
+          new_is_quick_access: boolean
+          new_name: string
+          target_genus_id: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          is_quick_access: boolean
+          name: string
+          photo_path: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'genera'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_catalog_species: {
+        Args: {
+          new_genus_id: string
+          new_scientific_name: string
+          new_status: Database['public']['Enums']['species_status']
+          new_type: Database['public']['Enums']['species_type']
+          target_species_id: string
+        }
+        Returns: {
+          created_at: string
+          genus_id: string
+          id: string
+          scientific_name: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string | null
+          status: Database['public']['Enums']['species_status']
+          type: Database['public']['Enums']['species_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'species'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_genus_abbreviation: {
+        Args: { new_abbreviation: string; target_abbreviation_id: string }
+        Returns: {
+          abbreviation: string
+          created_at: string
+          genus_id: string
+          id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'genus_abbreviations'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_species_name: {
+        Args: {
+          new_language?: string
+          new_name: string
+          new_type: Database['public']['Enums']['species_name_type']
+          target_name_id: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          language: string | null
+          name: string
+          species_id: string
+          type: Database['public']['Enums']['species_name_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'species_names'
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

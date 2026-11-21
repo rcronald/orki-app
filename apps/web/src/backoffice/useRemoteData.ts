@@ -17,22 +17,34 @@ import {
 //   actuales. Mientras llega el nuevo, el estado es "loading". `previous` da
 //   el último resultado de otra clave solo para que quien pinta reserve su
 //   sitio (el número de filas del esqueleto), nunca para mostrarlo.
+// - Revisión opcional (revision): cuando cambia, se vuelve a pedir la misma
+//   clave sin pasar por "loading": se siguen mostrando los datos de antes
+//   (con refreshing) hasta que llegan los nuevos. Es lo que usa la pantalla
+//   tras guardar un cambio, para actualizar sin parpadeos ni perder la página.
 
 export type RemoteFailure = Exclude<CatalogAdminFailure, 'aborted'>
 
 export type RemoteData<T> =
   | { status: 'idle' }
   | { status: 'loading'; previous: T | null }
-  | { status: 'success'; data: T }
+  | { status: 'success'; data: T; refreshing?: boolean }
   | { status: 'error'; reason: RemoteFailure; message: string }
 
 type Outcome<T> =
-  | { key: string; attempt: number; ok: true; data: T }
-  | { key: string; attempt: number; ok: false; reason: RemoteFailure }
+  | { key: string; attempt: number; revision: number; ok: true; data: T }
+  | {
+      key: string
+      attempt: number
+      revision: number
+      ok: false
+      reason: RemoteFailure
+    }
 
 export interface UseRemoteDataOptions {
   /** Espera antes de pedir, en milisegundos. Por defecto 0. */
   debounceMs?: number
+  /** Al cambiar, se vuelve a pedir mostrando mientras tanto lo de antes. */
+  revision?: number
 }
 
 /**
@@ -43,7 +55,7 @@ export interface UseRemoteDataOptions {
 export function useRemoteData<T>(
   key: string | null,
   load: (signal: AbortSignal) => Promise<T>,
-  { debounceMs = 0 }: UseRemoteDataOptions = {},
+  { debounceMs = 0, revision = 0 }: UseRemoteDataOptions = {},
 ): RemoteData<T> & { retry: () => void } {
   const [attempt, setAttempt] = useState(0)
   const [outcome, setOutcome] = useState<Outcome<T> | null>(null)
@@ -56,12 +68,12 @@ export function useRemoteData<T>(
       run(controller.signal).then(
         (data) => {
           if (controller.signal.aborted) return
-          setOutcome({ key, attempt, ok: true, data })
+          setOutcome({ key, attempt, revision, ok: true, data })
         },
         (error: unknown) => {
           const reason = catalogAdminFailure(error)
           if (controller.signal.aborted || reason === 'aborted') return
-          setOutcome({ key, attempt, ok: false, reason })
+          setOutcome({ key, attempt, revision, ok: false, reason })
         },
       )
     }
@@ -71,12 +83,25 @@ export function useRemoteData<T>(
       if (timer !== null) clearTimeout(timer)
       controller.abort()
     }
-  }, [key, attempt, debounceMs])
+  }, [key, attempt, debounceMs, revision])
 
   const retry = useCallback(() => setAttempt((value) => value + 1), [])
 
   if (key === null) return { status: 'idle', retry }
-  if (outcome === null || outcome.key !== key || outcome.attempt !== attempt) {
+  const stale =
+    outcome !== null &&
+    outcome.key === key &&
+    outcome.attempt === attempt &&
+    outcome.revision !== revision
+  if (stale && outcome.ok) {
+    return { status: 'success', data: outcome.data, refreshing: true, retry }
+  }
+  if (
+    outcome === null ||
+    outcome.key !== key ||
+    outcome.attempt !== attempt ||
+    stale
+  ) {
     return {
       status: 'loading',
       previous: outcome?.ok ? outcome.data : null,

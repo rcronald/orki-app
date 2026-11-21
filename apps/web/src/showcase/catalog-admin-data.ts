@@ -4,9 +4,21 @@ import {
   CatalogAdminError,
   type CatalogAdminFailure,
   type CatalogGenusRow,
+  type CatalogGenusDetail,
   type CatalogSpeciesDetail,
   type CatalogSpeciesRow,
 } from '../lib/catalogAdmin.ts'
+import {
+  cleanCatalogText,
+  cleanGenusName,
+  CatalogWriteError,
+  withFinalDot,
+  MAX_BATCH_SPECIES,
+  validateSpeciesInput,
+  type CatalogWriteProblem,
+  type SpeciesInput,
+  type WrittenSpecies,
+} from '../lib/catalogWrites.ts'
 import type { GenusSearchResult } from '../lib/catalogSearch.ts'
 import type {
   SpeciesNameType,
@@ -21,7 +33,10 @@ import type {
 // Supabase (CatalogAdminSource). Pagina como la base (por clave sin texto, por
 // número con texto), pero la búsqueda es solo una aproximación: compara por
 // prefijo de palabras y, si nada empieza así, por contener el texto; no
-// tolera errores de tipeo como la de verdad.
+// tolera errores de tipeo como la de verdad. Las escrituras cambian el
+// catálogo en memoria con las mismas reglas que la base (nombre único sin
+// distinguir mayúsculas ni el signo «×», baja solo sin plantas...), hasta que
+// se cambia de escenario.
 
 interface SampleGenus {
   id: string
@@ -330,6 +345,16 @@ function startsByWords(name: string, query: string): boolean {
   })
 }
 
+let nextId = 0
+
+function nameId(speciesId: string, index: number): string {
+  return `${speciesId}-n${index}`
+}
+
+function abbreviationId(genusId: string, index: number): string {
+  return `${genusId}-a${index}`
+}
+
 const CREATED_AT = '2026-11-20T14:37:00Z'
 const UPDATED_AT = '2026-11-21T08:15:00Z'
 
@@ -372,13 +397,133 @@ export function createSampleCatalogSource(
   scenario: SampleScenario,
   delayMs = 400,
 ): CatalogAdminSource {
-  const species = scenario === 'vacio' ? [] : buildSpecies()
-  const genera = scenario === 'vacio' ? [] : GENERA
-  const sorted = [...species].sort(
-    (a, b) =>
-      compareKey(normalize(a.scientificName), normalize(b.scientificName)) ||
-      compareKey(a.id, b.id),
-  )
+  const species: SampleSpecies[] = scenario === 'vacio' ? [] : buildSpecies()
+  const genera: SampleGenus[] =
+    scenario === 'vacio' ? [] : GENERA.map((genus) => ({ ...genus }))
+  const sorted = () =>
+    [...species].sort(
+      (a, b) =>
+        compareKey(normalize(a.scientificName), normalize(b.scientificName)) ||
+        compareKey(a.id, b.id),
+    )
+
+  const reject = (
+    problem: CatalogWriteProblem,
+    details?: ConstructorParameters<typeof CatalogWriteError>[1],
+  ): never => {
+    throw new CatalogWriteError(problem, details)
+  }
+  const findSpecies = (id: string) =>
+    species.find((item) => item.id === id) ?? reject('species-not-found')
+  const checkSpecies = (input: SpeciesInput, exceptId: string | null) => {
+    const invalid = validateSpeciesInput(input)
+    if (invalid) throw invalid
+    const name = cleanCatalogText(input.scientificName)
+    if (!genera.some((genus) => genus.id === input.genusId))
+      reject('genus-not-found')
+    const others = species.filter((item) => item.id !== exceptId)
+    const same = others.find(
+      (item) => item.scientificName.toLowerCase() === name.toLowerCase(),
+    )
+    if (same) reject('duplicate-name', { existingName: same.scientificName })
+    const similar = others.find(
+      (item) => normalize(item.scientificName) === normalize(name),
+    )
+    if (similar)
+      reject('similar-name', { existingName: similar.scientificName })
+    return name
+  }
+  // Nombres y abreviaturas no tienen id propio en la muestra: se identifican
+  // por su posición, que la pantalla vuelve a leer tras cada cambio.
+  const findName = (id: string): [SampleSpecies, number] => {
+    for (const item of species) {
+      const index = item.names.findIndex(
+        (_, position) => nameId(item.id, position) === id,
+      )
+      if (index !== -1) return [item, index]
+    }
+    return reject('name-not-found')
+  }
+  const checkName = (
+    item: SampleSpecies,
+    value: string,
+    exceptIndex: number | null,
+  ) => {
+    const name = cleanCatalogText(value)
+    if (name === '') reject('name-required')
+    if (name.toLowerCase() === item.scientificName.toLowerCase())
+      reject('name-is-scientific-name')
+    const others = item.names.filter((_, index) => index !== exceptIndex)
+    const same = others.find(
+      (other) => other.name.toLowerCase() === name.toLowerCase(),
+    )
+    if (same)
+      reject('duplicate-alternative-name', {
+        existingName: same.name,
+        existingType: same.type,
+      })
+    const similar = others.find(
+      (other) => normalize(other.name) === normalize(name),
+    )
+    if (similar)
+      reject('similar-alternative-name', { existingName: similar.name })
+    return name
+  }
+  const findGenus = (id: string) =>
+    genera.find((genus) => genus.id === id) ?? reject('genus-not-found')
+  const checkGenus = (value: string, exceptId: string | null) => {
+    const name = cleanGenusName(value)
+    if (name === '') reject('name-required')
+    if (!/^(× )?[^\s×]+$/.test(name)) reject('invalid-genus-name')
+    const others = genera.filter((genus) => genus.id !== exceptId)
+    const same = others.find(
+      (genus) => genus.name.toLowerCase() === name.toLowerCase(),
+    )
+    if (same) reject('duplicate-genus', { existingName: same.name })
+    const similar = others.find(
+      (genus) => normalize(genus.name) === normalize(name),
+    )
+    if (similar) reject('similar-genus', { existingName: similar.name })
+    return name
+  }
+  const findAbbreviation = (id: string): [SampleGenus, number] => {
+    for (const genus of genera) {
+      const index = genus.abbreviations.findIndex(
+        (_, position) => abbreviationId(genus.id, position) === id,
+      )
+      if (index !== -1) return [genus, index]
+    }
+    return reject('abbreviation-not-found')
+  }
+  const checkAbbreviation = (value: string, exceptId: string | null) => {
+    const text = withFinalDot(value)
+    if (text === '') reject('name-required')
+    if (!/^[^\s.]+\.$/.test(text)) reject('invalid-abbreviation')
+    const key = normalize(text).replace(/\.$/, '')
+    for (const genus of genera) {
+      genus.abbreviations.forEach((abbreviation, index) => {
+        if (
+          abbreviationId(genus.id, index) !== exceptId &&
+          normalize(abbreviation).replace(/\.$/, '') === key
+        )
+          reject('abbreviation-taken', {
+            genusName: genus.name,
+            genusId: genus.id,
+            existingAbbreviation: abbreviation,
+          })
+      })
+    }
+    return text
+  }
+  const written = (item: SampleSpecies): WrittenSpecies => ({
+    id: item.id,
+    scientificName: item.scientificName,
+    genusId: item.genusId,
+    type: item.type,
+    status: item.status,
+    source: item.source,
+    sourceRef: item.sourceRef,
+  })
 
   function respond<T>(signal: AbortSignal | undefined, value: () => T) {
     return new Promise<T>((resolve, reject) => {
@@ -388,7 +533,13 @@ export function createSampleCatalogSource(
       const timer = setTimeout(() => {
         if (scenario === 'sin-conexion') fail('offline')
         else if (scenario === 'fallo') fail('failed')
-        else resolve(value())
+        else {
+          try {
+            resolve(value())
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)))
+          }
+        }
       }, delayMs)
       signal?.addEventListener('abort', () => {
         clearTimeout(timer)
@@ -411,7 +562,7 @@ export function createSampleCatalogSource(
   return {
     listSpecies: (options = {}) =>
       respond(options.signal, () => {
-        const list = sorted.filter(matches(options))
+        const list = sorted().filter(matches(options))
         const size = options.pageSize ?? CATALOG_PAGE_SIZE
         const cursor = options.cursor ?? { kind: 'first' }
         let start = 0
@@ -444,12 +595,12 @@ export function createSampleCatalogSource(
         const text = normalize(query)
         const filter = matches(options)
         const found: { item: SampleSpecies; match: SampleName | null }[] = []
-        for (const item of sorted.filter(filter)) {
+        for (const item of sorted().filter(filter)) {
           if (startsByWords(item.scientificName, text)) {
             found.push({ item, match: null })
           }
         }
-        for (const item of sorted.filter(filter)) {
+        for (const item of sorted().filter(filter)) {
           if (found.some((entry) => entry.item === item)) continue
           const name = item.names.find((candidate) =>
             startsByWords(candidate.name, text),
@@ -457,7 +608,7 @@ export function createSampleCatalogSource(
           if (name) found.push({ item, match: name })
         }
         if (found.length === 0) {
-          for (const item of sorted.filter(filter)) {
+          for (const item of sorted().filter(filter)) {
             if (normalize(item.scientificName).includes(text)) {
               found.push({ item, match: null })
             }
@@ -550,7 +701,7 @@ export function createSampleCatalogSource(
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           names: item.names.map((name, index) => ({
-            id: `${item.id}-${index}`,
+            id: nameId(item.id, index),
             ...name,
           })),
         }
@@ -587,6 +738,173 @@ export function createSampleCatalogSource(
                   normalize(abbreviation).replace(/\.$/, '') === text,
               ) ?? null,
           }))
+      }),
+    genusDetail: (id, options = {}) =>
+      respond(options.signal, (): CatalogGenusDetail | null => {
+        const genus = genera.find((candidate) => candidate.id === id)
+        if (!genus) return null
+        return {
+          id: genus.id,
+          name: genus.name,
+          isQuickAccess: genus.isQuickAccess,
+          abbreviations: genus.abbreviations.map((abbreviation, index) => ({
+            id: abbreviationId(genus.id, index),
+            abbreviation,
+          })),
+          speciesCount: species.filter((item) => item.genusId === genus.id)
+            .length,
+        }
+      }),
+    addName: (speciesId, input) =>
+      respond(undefined, () => {
+        const item = findSpecies(speciesId)
+        const name = checkName(item, input.name, null)
+        const entry: SampleName = {
+          name,
+          type: input.type,
+          language:
+            input.type === 'common' ? input.language?.trim() || null : null,
+        }
+        item.names.push(entry)
+        return {
+          id: nameId(item.id, item.names.length - 1),
+          speciesId: item.id,
+          ...entry,
+        }
+      }),
+    updateName: (id, input) =>
+      respond(undefined, () => {
+        const [item, index] = findName(id)
+        const name = checkName(item, input.name, index)
+        const entry: SampleName = {
+          name,
+          type: input.type,
+          language:
+            input.type === 'common' ? input.language?.trim() || null : null,
+        }
+        item.names[index] = entry
+        return { id, speciesId: item.id, ...entry }
+      }),
+    deleteName: (id) =>
+      respond(undefined, () => {
+        const [item, index] = findName(id)
+        item.names.splice(index, 1)
+      }),
+    createGenus: (input) =>
+      respond(undefined, () => {
+        const name = checkGenus(input.name, null)
+        nextId += 1
+        const genus: SampleGenus = {
+          id: uuid(4, nextId),
+          name,
+          abbreviations: [],
+          isQuickAccess: input.isQuickAccess,
+        }
+        genera.push(genus)
+        return { id: genus.id, name, isQuickAccess: genus.isQuickAccess }
+      }),
+    updateGenus: (id, input) =>
+      respond(undefined, () => {
+        const genus = findGenus(id)
+        const name = cleanGenusName(input.name)
+        if (name !== genus.name) checkGenus(name, id)
+        genus.name = name
+        genus.isQuickAccess = input.isQuickAccess
+        return { id, name, isQuickAccess: genus.isQuickAccess }
+      }),
+    deleteGenus: (id) =>
+      respond(undefined, () => {
+        const genus = findGenus(id)
+        const count = species.filter((item) => item.genusId === id).length
+        if (count > 0) reject('genus-has-species', { speciesCount: count })
+        genera.splice(genera.indexOf(genus), 1)
+      }),
+    addAbbreviation: (genusId, abbreviation) =>
+      respond(undefined, () => {
+        const genus = findGenus(genusId)
+        const text = checkAbbreviation(abbreviation, null)
+        genus.abbreviations.push(text)
+        return {
+          id: abbreviationId(genus.id, genus.abbreviations.length - 1),
+          genusId,
+          abbreviation: text,
+        }
+      }),
+    updateAbbreviation: (id, abbreviation) =>
+      respond(undefined, () => {
+        const [genus, index] = findAbbreviation(id)
+        const text = checkAbbreviation(abbreviation, id)
+        genus.abbreviations[index] = text
+        return { id, genusId: genus.id, abbreviation: text }
+      }),
+    deleteAbbreviation: (id) =>
+      respond(undefined, () => {
+        const [genus, index] = findAbbreviation(id)
+        genus.abbreviations.splice(index, 1)
+      }),
+    createSpecies: (input) =>
+      respond(undefined, () => {
+        const name = checkSpecies(input, null)
+        if (input.status === 'imported') reject('invalid-status')
+        nextId += 1
+        const item: SampleSpecies = {
+          id: uuid(3, nextId),
+          scientificName: name,
+          genusId: input.genusId ?? '',
+          type: input.type,
+          status: input.status,
+          source: 'curated',
+          sourceRef: null,
+          names: [],
+          plants: 0,
+        }
+        species.push(item)
+        return written(item)
+      }),
+    updateSpecies: (id, input) =>
+      respond(undefined, () => {
+        const item = findSpecies(id)
+        const name = cleanCatalogText(input.scientificName)
+        if (name !== item.scientificName) checkSpecies(input, id)
+        else {
+          const invalid = validateSpeciesInput(input)
+          if (invalid) throw invalid
+        }
+        const changed =
+          name !== item.scientificName ||
+          input.genusId !== item.genusId ||
+          input.type !== item.type
+        item.scientificName = name
+        item.genusId = input.genusId ?? item.genusId
+        item.type = input.type
+        // Como el disparador de la base: una importada editada pasa a validada.
+        item.status =
+          changed && item.status === 'imported' && input.status === 'imported'
+            ? 'validated'
+            : input.status
+        return written(item)
+      }),
+    setSpeciesStatus: (ids, status) =>
+      respond(undefined, () => {
+        const unique = [...new Set(ids)]
+        if (unique.length === 0) reject('no-species')
+        if (unique.length > MAX_BATCH_SPECIES)
+          reject('too-many-species', { max: MAX_BATCH_SPECIES })
+        const items = species.filter((item) => unique.includes(item.id))
+        if (items.length < unique.length)
+          reject('species-not-found', {
+            missingCount: unique.length - items.length,
+          })
+        const changing = items.filter((item) => item.status !== status)
+        for (const item of changing) item.status = status
+        return changing.length
+      }),
+    deleteSpecies: (id) =>
+      respond(undefined, () => {
+        const item = findSpecies(id)
+        if (item.plants > 0)
+          reject('species-has-plants', { plantCount: item.plants })
+        species.splice(species.indexOf(item), 1)
       }),
   }
 }
