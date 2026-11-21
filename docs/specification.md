@@ -72,7 +72,7 @@ Panel web para administradores (rutas protegidas dentro de la misma app) que man
 
 ### 3.5 Cuentas
 
-Autenticación con Clerk: correo (enlace mágico) y Google. El rol (usuario o administrador de catálogo) se guarda en los metadatos públicos del usuario en Clerk, que el propio usuario no puede modificar. En Fase 1 el rol de administrador se asigna a mano desde el panel de Clerk.
+Autenticación con Clerk: correo (código de verificación) y Google. El rol (usuario o administrador de catálogo) se guarda en los metadatos públicos del usuario en Clerk, que el propio usuario no puede modificar. En Fase 1 el rol de administrador se asigna a mano desde el panel de Clerk.
 
 ### 3.6 Fuera de alcance en v1
 
@@ -107,7 +107,7 @@ SPA estática en Vercel que habla directo con Supabase; sin backend propio en Fa
 | Frontend | React + Vite + TypeScript, Tailwind, PWA desde el inicio | PWA en Fase 1 significa instalable, con la app y el inventario propio cacheados para lectura. El backoffice son rutas protegidas en la misma app |
 | Base de datos | Supabase Postgres con extensión pg_trgm | Índices de trigramas sobre nombre científico, sinónimos y nombres comunes; sin Elasticsearch |
 | API | Supabase (PostgREST) con Row Level Security | Sin backend que mantener |
-| Autenticación | Clerk: correo mágico y Google | Conectado a Supabase como proveedor de autenticación externo; Supabase valida el token de Clerk y aplica RLS. Rol en los metadatos públicos de Clerk, incluido en el token de sesión. No se usa Supabase Auth |
+| Autenticación | Clerk: correo con código de verificación y Google | Conectado a Supabase como proveedor de autenticación externo; Supabase valida el token de Clerk y aplica RLS. Rol en los metadatos públicos de Clerk, incluido en el token de sesión. No se usa Supabase Auth |
 | Fotos | browser-image-compression + Supabase Storage con miniaturas | Mayor costo de almacenamiento y de carga |
 | Importación de catálogo | Scripts en Python fuera de la app. Fuentes: taxonomía base de GBIF (especies y sinónimos) y una lista curada propia en CSV (híbridos comunes) | Normalizan y cargan a Postgres con estado "importada"; se corren a demanda y generan un reporte CSV |
 | Hosting y entrega | Vercel (frontend) + Supabase gestionado | Despliegue automático desde GitHub |
