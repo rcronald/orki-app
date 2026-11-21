@@ -22,7 +22,7 @@ import { CollectionLoadError } from '../collection/source.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
-import { CATTLEYA, plant } from '../test/collection.ts'
+import { CATTLEYA, PHALAENOPSIS, plant } from '../test/collection.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -66,6 +66,7 @@ const PLANTS: CollectionPlant[] = [
     displayName: 'Cattleya maxima',
     enteredName: 'Cattleya maxima',
     genus: CATTLEYA,
+    flowerColor: 'white',
   }),
 ]
 
@@ -86,18 +87,30 @@ function RegisterStub() {
   )
 }
 
-function renderAt(path: string) {
+// "Atrás" del navegador, fuera de las rutas.
+function BackButton() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" onClick={() => void navigate(-1)}>
+      Atrás del navegador
+    </button>
+  )
+}
+
+function renderAt(path: string, previous: string[] = []) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[...previous, path]}>
       <NavigationFocusProvider>
         <CollectionProvider source={source}>
           <main>
             <Routes>
               <Route path="/coleccion" element={<CollectionPage />} />
               <Route path="/coleccion/nueva" element={<RegisterStub />} />
+              <Route path="/inicio" element={<p>Inicio</p>} />
             </Routes>
           </main>
           <LocationProbe />
+          <BackButton />
         </CollectionProvider>
       </NavigationFocusProvider>
     </MemoryRouter>,
@@ -191,5 +204,61 @@ describe('CollectionPage', () => {
 
     await resolveLast()
     expect(screen.getAllByRole('article')).toHaveLength(3)
+  })
+
+  it('lee los filtros de la URL e ignora los valores que no entiende', async () => {
+    renderAt(
+      `/coleccion?genero=${CATTLEYA.id}&genero=no-existe&color=verde&estado=borrada`,
+    )
+    await resolveLast()
+
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    expect(screen.getByText('1 de 3 orquídeas')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Filtros, 1 activo' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Quitar el filtro Género: Cattleya' }),
+    ).toBeInTheDocument()
+  })
+
+  it('escribe los filtros en la URL junto a la búsqueda, sin añadir entradas al historial', async () => {
+    const user = userEvent.setup()
+    renderAt('/coleccion?q=a', ['/inicio'])
+    await resolveLast()
+
+    await user.click(screen.getByRole('button', { name: /^Filtros/ }))
+    await user.click(screen.getByRole('button', { name: 'Perdidas' }))
+    await user.click(screen.getByRole('button', { name: 'Activas' }))
+    await user.click(screen.getByRole('button', { name: 'Cattleya' }))
+    await user.click(screen.getByRole('button', { name: 'Blanco' }))
+    expect(location()).toBe(`/coleccion?q=a&genero=${CATTLEYA.id}&color=white`)
+    await user.click(screen.getByRole('button', { name: 'Quitar filtros' }))
+    expect(location()).toBe('/coleccion?q=a')
+
+    // Cada toque sustituyó la entrada: "atrás" sale del inventario.
+    await user.click(
+      screen.getByRole('button', { name: 'Atrás del navegador' }),
+    )
+    expect(location()).toBe('/inicio')
+  })
+
+  it('al volver del registro conserva los filtros', async () => {
+    const user = userEvent.setup()
+    renderAt('/coleccion')
+    await resolveLast()
+
+    await user.click(screen.getByRole('button', { name: /^Filtros/ }))
+    await user.click(screen.getByRole('button', { name: 'Phalaenopsis' }))
+    await user.click(screen.getByRole('link', { name: 'Registrar orquídea' }))
+    await user.click(screen.getByRole('button', { name: 'Atrás' }))
+
+    expect(location()).toBe(`/coleccion?genero=${PHALAENOPSIS.id}`)
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(
+      screen.getByRole('button', {
+        name: 'Quitar el filtro Género: Phalaenopsis',
+      }),
+    ).toBeInTheDocument()
   })
 })
