@@ -196,9 +196,9 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 /**
  * Clasifica el `error` de supabase-js: cancelada, sin token de sesión, sin
  * respuesta (estado 0), token rechazado (401), sin permiso (código 42501 de
- * Postgres) o fallo.
+ * Postgres) o fallo. También la usan las escrituras (catalogWrites.ts).
  */
-function toAdminError(
+export function toAdminError(
   error: unknown,
   status: number,
   signal: AbortSignal | undefined,
@@ -223,7 +223,8 @@ function toAdminError(
   return new CatalogAdminError('failed', { cause: error })
 }
 
-async function loadClient(
+/** El cliente de Supabase, o CatalogAdminError si no se puede cargar. */
+export async function loadClient(
   signal: AbortSignal | undefined,
 ): Promise<OrkiSupabaseClient> {
   throwIfAborted(signal)
@@ -514,6 +515,69 @@ export async function countSpeciesPlants(
   )
   const data = await settle(request, signal)
   return data ?? 0
+}
+
+/** Detalle de un género para editarlo: sus abreviaturas (con id) y especies. */
+export interface CatalogGenusDetail {
+  id: string
+  name: string
+  isQuickAccess: boolean
+  /** En orden alfabético. */
+  abbreviations: { id: string; abbreviation: string }[]
+  speciesCount: number
+}
+
+/**
+ * Detalle de un género, leído de las tablas (de lectura pública): nombre,
+ * acceso rápido, abreviaturas y número de especies. null si no existe.
+ */
+export async function getGenusDetail(
+  id: string,
+  { signal }: RequestOptions = {},
+): Promise<CatalogGenusDetail | null> {
+  const supabase = await loadClient(signal)
+  const genusRequest = withSignal(
+    supabase
+      .from('genera')
+      .select(
+        'id, name, is_quick_access, genus_abbreviations(id, abbreviation)',
+      )
+      .eq('id', id),
+    signal,
+  ).maybeSingle()
+  const countRequest = withSignal(
+    supabase
+      .from('species')
+      .select('id', { count: 'exact', head: true })
+      .eq('genus_id', id),
+    signal,
+  )
+  const [row, count] = await Promise.all([
+    settle(genusRequest, signal),
+    (async () => {
+      let response: Awaited<typeof countRequest>
+      try {
+        response = await countRequest
+      } catch (error) {
+        throw toAdminError(error, 0, signal)
+      }
+      if (response.error) {
+        throw toAdminError(response.error, response.status, signal)
+      }
+      return response.count ?? 0
+    })(),
+  ])
+  if (!row) return null
+  const collator = new Intl.Collator('es')
+  return {
+    id: row.id,
+    name: row.name,
+    isQuickAccess: row.is_quick_access,
+    abbreviations: row.genus_abbreviations
+      .map((item) => ({ id: item.id, abbreviation: item.abbreviation }))
+      .sort((a, b) => collator.compare(a.abbreviation, b.abbreviation)),
+    speciesCount: count,
+  }
 }
 
 /** Nombre de un género por su id (para el filtro de la URL); null si no existe. */

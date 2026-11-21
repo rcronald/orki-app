@@ -1,16 +1,23 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../components/ui/Button.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
-import type {
-  CatalogSpeciesDetail,
-  CatalogSpeciesName,
-} from '../lib/catalogAdmin.ts'
-import { catalogueOfLifeTaxonUrl } from './attribution.ts'
-import { LoadError, SpeciesStatusBadge } from './parts.tsx'
+import type { CatalogSpeciesDetail } from '../lib/catalogAdmin.ts'
 import {
+  toCatalogWriteError,
+  type WrittenSpecies,
+} from '../lib/catalogWrites.ts'
+import { catalogueOfLifeTaxonUrl } from './attribution.ts'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { LoadError, SpeciesStatusBadge } from './parts.tsx'
+import type { CatalogAdminSource } from './source.ts'
+import { SpeciesForm } from './SpeciesForm.tsx'
+import { SpeciesNames } from './SpeciesNames.tsx'
+import {
+  formatCount,
   formatDateTime,
   plantCountText,
   SOURCE_LABEL,
+  STATUS_LABEL,
   TYPE_LABEL,
 } from './texts.ts'
 import type { RemoteData } from './useRemoteData.ts'
@@ -26,26 +33,47 @@ export interface SpeciesDetailPanelProps {
   onClose: () => void
   /** Cambia cada vez que la persona abre un detalle: el foco va al título. */
   focusRequest: number
+  source: CatalogAdminSource
+  /** Se guardó un cambio: la pantalla vuelve a leer y lo anuncia. */
+  onChanged: (message: string) => void
+  /** Se borró la especie: la pantalla cierra el detalle. */
+  onDeleted: (message: string) => void
 }
 
 // Detalle de una especie, en un panel junto a la tabla (debajo en pantallas
 // estrechas): nombres alternativos, referencia de la fuente con enlace a la
-// ficha del Catalogue of Life, fechas y número de plantas enlazadas. Solo
-// lectura.
+// ficha del Catalogue of Life, fechas y número de plantas enlazadas. Desde
+// aquí se edita (nombre, género, tipo y estado), se borra si no tiene plantas
+// enlazadas y se editan sus sinónimos y nombres comunes (SpeciesNames).
 export function SpeciesDetailPanel({
   detail,
   onClose,
   focusRequest,
+  source,
+  onChanged,
+  onDeleted,
 }: SpeciesDetailPanelProps) {
   const headingId = useId()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const ready = detail.status !== 'loading'
+  const [editing, setEditing] = useState(false)
+  const [localFocus, setLocalFocus] = useState(0)
 
   useEffect(() => {
     if (focusRequest > 0 && ready) headingRef.current?.focus()
   }, [focusRequest, ready])
+  useEffect(() => {
+    if (localFocus > 0) headingRef.current?.focus()
+  }, [localFocus])
 
   const species = detail.status === 'success' ? detail.data.species : null
+  // Otra especie: se sale de la edición.
+  const speciesId = species?.id ?? null
+  const [editingId, setEditingId] = useState(speciesId)
+  if (editingId !== speciesId) {
+    setEditingId(speciesId)
+    setEditing(false)
+  }
 
   return (
     <section
@@ -101,11 +129,53 @@ export function SpeciesDetailPanel({
         <p className="text-md text-neutral-900">
           Esta especie ya no está en el catálogo.
         </p>
+      ) : editing ? (
+        <SpeciesForm
+          species={species}
+          plantCount={detail.data.plantCount}
+          source={source}
+          onCancel={() => {
+            setEditing(false)
+            setLocalFocus((value) => value + 1)
+          }}
+          onSaved={(written, autoValidated) => {
+            setEditing(false)
+            setLocalFocus((value) => value + 1)
+            onChanged(savedMessage(species, written, autoValidated))
+          }}
+        />
       ) : (
-        <DetailBody species={species} plantCount={detail.data.plantCount} />
+        <DetailBody
+          species={species}
+          plantCount={detail.data.plantCount}
+          source={source}
+          onEdit={() => setEditing(true)}
+          onDeleted={onDeleted}
+          onChanged={onChanged}
+        />
       )}
     </section>
   )
+}
+
+function savedMessage(
+  before: CatalogSpeciesDetail,
+  written: WrittenSpecies,
+  autoValidated: boolean,
+): string {
+  const name = `«${written.scientificName}»`
+  if (autoValidated) {
+    return `Se guardaron los cambios de ${name}. Pasó a «Validada» porque era importada y cambiaron sus datos: la importación ya no la pisará.`
+  }
+  if (
+    before.status !== written.status &&
+    before.scientificName === written.scientificName &&
+    before.genusId === written.genusId &&
+    before.type === written.type
+  ) {
+    return `${name} pasó a «${STATUS_LABEL[written.status]}».`
+  }
+  return `Se guardaron los cambios de ${name}.`
 }
 
 const TERM = 'text-sm font-semibold text-neutral-700'
@@ -114,12 +184,36 @@ const VALUE = 'text-md text-neutral-900 [overflow-wrap:anywhere]'
 function DetailBody({
   species,
   plantCount,
+  source,
+  onEdit,
+  onDeleted,
+  onChanged,
 }: {
   species: CatalogSpeciesDetail
   plantCount: number
+  source: CatalogAdminSource
+  onEdit: () => void
+  onDeleted: (message: string) => void
+  onChanged: (message: string) => void
 }) {
   const synonyms = species.names.filter((name) => name.type === 'synonym')
   const commonNames = species.names.filter((name) => name.type === 'common')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const remove = async () => {
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await source.deleteSpecies(species.id)
+      setConfirmDelete(false)
+      onDeleted(`Se borró «${species.scientificName}» del catálogo.`)
+    } catch (caught) {
+      setDeleting(false)
+      setDeleteError(toCatalogWriteError(caught).message)
+    }
+  }
 
   return (
     <>
@@ -162,61 +256,63 @@ function DetailBody({
         <dt className={TERM}>Plantas</dt>
         <dd className={VALUE}>{plantCountText(plantCount)}</dd>
       </dl>
-      <NameList
-        title={`Sinónimos (${synonyms.length})`}
-        names={synonyms}
-        empty="No tiene sinónimos."
-        scientific
-      />
-      <NameList
-        title={`Nombres comunes (${commonNames.length})`}
-        names={commonNames}
-        empty="No tiene nombres comunes."
-      />
+      <div className="flex flex-wrap gap-space-3">
+        <Button icon="pencil" onClick={onEdit}>
+          Editar <span className="sr-only">la especie</span>
+        </Button>
+        {plantCount === 0 && (
+          <Button
+            variant="danger"
+            icon="trash-2"
+            onClick={() => {
+              setDeleteError(null)
+              setConfirmDelete(true)
+            }}
+          >
+            Borrar <span className="sr-only">la especie</span>
+          </Button>
+        )}
+      </div>
+      {plantCount > 0 && (
+        <p className="text-sm text-neutral-700">
+          No se puede borrar: {plantCountText(plantCount).toLowerCase()} Para
+          quitarla del catálogo habrá que fusionarla con otra especie, cuando el
+          backoffice permita fusionar especies; mientras tanto, puedes marcarla
+          como «Observada».
+        </p>
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Borrar «${species.scientificName}»`}
+          confirmLabel="Borrar del catálogo"
+          variant="danger"
+          busy={deleting}
+          busyText="Borrando…"
+          error={deleteError}
+          onConfirm={() => void remove()}
+          onCancel={() => setConfirmDelete(false)}
+        >
+          <p>
+            Se borra del catálogo
+            {species.names.length > 0
+              ? ` junto con ${namesText(synonyms.length, commonNames.length)}`
+              : ''}
+            . No se puede deshacer.
+          </p>
+          <p>Ninguna planta de usuarios la tiene enlazada.</p>
+        </ConfirmDialog>
+      )}
+      <SpeciesNames species={species} source={source} onChanged={onChanged} />
     </>
   )
 }
 
-function NameList({
-  title,
-  names,
-  empty,
-  scientific = false,
-}: {
-  title: string
-  names: readonly CatalogSpeciesName[]
-  empty: string
-  scientific?: boolean
-}) {
-  const headingId = useId()
-  return (
-    <div className="flex flex-col gap-space-1">
-      <h3 id={headingId} className="text-sm font-semibold text-neutral-900">
-        {title}
-      </h3>
-      {names.length === 0 ? (
-        <p className="text-sm text-neutral-700">{empty}</p>
-      ) : (
-        <ul aria-labelledby={headingId} className="flex flex-col gap-space-1">
-          {names.map((name) => (
-            <li key={name.id} className="[overflow-wrap:anywhere]">
-              {scientific ? (
-                <span className="scientific-name text-md">
-                  <ScientificName name={name.name} />
-                </span>
-              ) : (
-                <span className="text-md text-neutral-900">{name.name}</span>
-              )}
-              {name.language && (
-                <span className="text-sm text-neutral-700">
-                  {' '}
-                  ({name.language})
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
+function namesText(synonyms: number, common: number): string {
+  const parts = [
+    synonyms > 0 &&
+      `${formatCount(synonyms)} ${synonyms === 1 ? 'sinónimo' : 'sinónimos'}`,
+    common > 0 &&
+      `${formatCount(common)} ${common === 1 ? 'nombre común' : 'nombres comunes'}`,
+  ].filter(Boolean)
+  return parts.join(' y ')
 }
