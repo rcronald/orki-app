@@ -187,10 +187,12 @@ grant select, update on public.species to orki_pruebas_editor;
 -- Quien escribe en species calcula el índice de búsqueda del nombre científico (#68), y para
 -- eso necesita usar el esquema extensions, que postgres no puede conceder. Como aquí solo
 -- importa la propagación, se quitan los índices (vuelven con el rollback de la prueba): el de
--- trigramas y el de orden por prefijo de la migración 20261120230000. El caso real, un
--- administrador con authenticated, está en politicas_catalogo.sql.
+-- trigramas, el de orden por prefijo de la migración 20261120230000 y el de orden por género
+-- de la migración 20261121100000. El caso real, un administrador con authenticated, está en
+-- politicas_catalogo.sql.
 drop index public.species_scientific_name_trgm_idx;
 drop index public.species_scientific_name_prefix_idx;
+drop index public.species_genus_id_name_idx;
 create policy orki_pruebas_editor_species on public.species
   for all to orki_pruebas_editor using (true) with check (true);
 insert into public.plants (user_id, entered_name, species_id)

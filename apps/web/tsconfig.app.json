@@ -6,6 +6,8 @@
     "module": "esnext",
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
+    // Para leer scripts/catalog-import/fuente.json (atribución del backoffice).
+    "resolveJsonModule": true,
     "skipLibCheck": true,
 
     /* Bundler mode */

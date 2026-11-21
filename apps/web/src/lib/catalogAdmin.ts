@@ -1,0 +1,530 @@
+import type {
+  Database,
+  SpeciesMatchType,
+  SpeciesNameType,
+  SpeciesSource,
+  SpeciesStatus,
+  SpeciesType,
+} from './database.ts'
+import { prepareSearchQuery } from './catalogSearch.ts'
+import { getSupabase, sessionTokenFailure } from './supabase.ts'
+import type { OrkiSupabaseClient } from './supabase.ts'
+
+// Lectura del catálogo para el backoffice (issue #99).
+//
+// Llama a las funciones de la API de la migración
+// 20261121100000_listado_del_catalogo_para_el_backoffice.sql (ver
+// supabase/README.md, "Listado del catálogo para el backoffice") y lee el
+// detalle de una especie de las tablas, que son de lectura pública:
+//
+// - listCatalogSpecies: el catálogo en orden alfabético, por páginas de clave
+//   (después de una especie, antes de otra o la última).
+// - searchCatalogSpecies: con texto, por relevancia, por número de página.
+// - listCatalogGenera, getCatalogSummary, getSpeciesDetail,
+//   countSpeciesPlants y getGenus.
+//
+// Todas aceptan un AbortSignal y fallan con CatalogAdminError, que dice el
+// motivo. Las funciones de listado solo las puede llamar un administrador del
+// catálogo: la base responde 42501 a cualquier otro ("forbidden").
+
+/** Filas por página de la tabla. La base admite hasta 100. */
+export const CATALOG_PAGE_SIZE = 50
+
+// Tipos ----------------------------------------------------------------------------
+
+type Functions = Database['public']['Functions']
+type ListRow = Functions['list_catalog_species']['Returns'][number]
+type SearchRow = Functions['search_catalog_species']['Returns'][number]
+type GenusRow = Functions['list_catalog_genera']['Returns'][number]
+type SummaryRow = Functions['catalog_summary']['Returns'][number]
+
+/** Filtros de la tabla de especies; cada uno es opcional. */
+export interface CatalogSpeciesFilters {
+  status?: SpeciesStatus
+  genusId?: string
+  type?: SpeciesType
+  source?: SpeciesSource
+}
+
+/** Una fila de la tabla de especies. */
+export interface CatalogSpeciesRow {
+  id: ListRow['id']
+  scientificName: ListRow['scientific_name']
+  genusId: ListRow['genus_id']
+  genusName: ListRow['genus_name']
+  type: SpeciesType
+  status: SpeciesStatus
+  source: SpeciesSource
+  /**
+   * Referencia en la fuente (la clave de COL, por ejemplo), o null. Los tipos
+   * generados no saben que las columnas de una función que devuelve una tabla
+   * pueden ser nulas, así que se declara aquí.
+   */
+  sourceRef: ListRow['source_ref'] | null
+  synonymCount: number
+  commonNameCount: number
+  createdAt: string
+  updatedAt: string
+  /** Con búsqueda: el nombre por el que coincidió y su tipo. */
+  matchedName?: SearchRow['matched_name']
+  matchedNameType?: SpeciesMatchType
+}
+
+/** Una página del listado alfabético. */
+export interface CatalogSpeciesListPage {
+  rows: CatalogSpeciesRow[]
+  /** Especies que cumplen los filtros (0 si no hay ninguna). */
+  total: number
+  hasPrevious: boolean
+  hasNext: boolean
+}
+
+/** Una página de la búsqueda o de los géneros, por número. */
+export interface NumberedPage<T> {
+  rows: T[]
+  total: number
+  /** Página devuelta: la pedida o, si no existe, la última. */
+  page: number
+}
+
+/**
+ * Qué página del listado alfabético se pide: la primera, la que va después de
+ * una especie (la última de la página actual), la que va antes de otra (la
+ * primera de la página actual) o la última.
+ */
+export type CatalogListCursor =
+  | { kind: 'first' }
+  | { kind: 'after'; id: string }
+  | { kind: 'before'; id: string }
+  | { kind: 'last' }
+
+export interface CatalogGenusRow {
+  id: GenusRow['id']
+  name: GenusRow['name']
+  isQuickAccess: GenusRow['is_quick_access']
+  abbreviations: GenusRow['abbreviations']
+  speciesCount: number
+}
+
+export interface CatalogSummary {
+  genusCount: number
+  speciesCount: number
+  hybridCount: number
+  synonymCount: number
+  commonNameCount: number
+  byStatus: Record<SpeciesStatus, number>
+  bySource: Record<SpeciesSource, number>
+}
+
+/** Un nombre alternativo de una especie. */
+export interface CatalogSpeciesName {
+  id: string
+  name: string
+  type: SpeciesNameType
+  language: string | null
+}
+
+/** Detalle de una especie, leído de las tablas. */
+export interface CatalogSpeciesDetail {
+  id: string
+  scientificName: string
+  genusId: string
+  genusName: string
+  type: SpeciesType
+  status: SpeciesStatus
+  source: SpeciesSource
+  sourceRef: string | null
+  createdAt: string
+  updatedAt: string
+  /** Sinónimos y nombres comunes, en orden alfabético. */
+  names: CatalogSpeciesName[]
+}
+
+export interface RequestOptions {
+  /** Cancela la petición; la promesa se rechaza con CatalogAdminError('aborted'). */
+  signal?: AbortSignal
+}
+
+// Errores ----------------------------------------------------------------------
+
+/**
+ * Por qué falló una lectura:
+ * - aborted: se canceló (no es un fallo que mostrar).
+ * - offline: sin conexión.
+ * - session-ended: la sesión terminó o Supabase no acepta el token.
+ * - forbidden: la base dice que quien llama no es administrador del catálogo.
+ * - failed: cualquier otro fallo del servidor o de la red.
+ */
+export type CatalogAdminFailure =
+  'aborted' | 'offline' | 'session-ended' | 'forbidden' | 'failed'
+
+export const CATALOG_ADMIN_ERROR_TEXT: Record<CatalogAdminFailure, string> = {
+  aborted: 'Consulta cancelada.',
+  offline:
+    'Sin conexión: no se pudo consultar el catálogo. Revisa la señal o el wifi y vuelve a intentarlo.',
+  'session-ended':
+    'Tu sesión terminó. Vuelve a iniciar sesión para consultar el catálogo.',
+  forbidden:
+    'Tu cuenta no tiene permiso de administrador del catálogo. Si acabas de recibirlo, cierra la sesión y vuelve a entrar.',
+  failed:
+    'No se pudo consultar el catálogo. Vuelve a intentarlo en unos momentos.',
+}
+
+export class CatalogAdminError extends Error {
+  readonly reason: CatalogAdminFailure
+
+  constructor(reason: CatalogAdminFailure, options?: { cause?: unknown }) {
+    super(CATALOG_ADMIN_ERROR_TEXT[reason], options)
+    this.name = 'CatalogAdminError'
+    this.reason = reason
+  }
+}
+
+/** Motivo de un error; cualquier error que no sea CatalogAdminError es 'failed'. */
+export function catalogAdminFailure(error: unknown): CatalogAdminFailure {
+  return error instanceof CatalogAdminError ? error.reason : 'failed'
+}
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new CatalogAdminError('aborted')
+}
+
+/**
+ * Clasifica el `error` de supabase-js: cancelada, sin token de sesión, sin
+ * respuesta (estado 0), token rechazado (401), sin permiso (código 42501 de
+ * Postgres) o fallo.
+ */
+function toAdminError(
+  error: unknown,
+  status: number,
+  signal: AbortSignal | undefined,
+): CatalogAdminError {
+  if (signal?.aborted) return new CatalogAdminError('aborted', { cause: error })
+  const tokenFailure = sessionTokenFailure(error)
+  if (tokenFailure === 'offline' || tokenFailure === 'session-ended') {
+    return new CatalogAdminError(tokenFailure, { cause: error })
+  }
+  if (status === 0) {
+    return new CatalogAdminError(isOffline() ? 'offline' : 'failed', {
+      cause: error,
+    })
+  }
+  if (status === 401) {
+    return new CatalogAdminError('session-ended', { cause: error })
+  }
+  const code = (error as { code?: unknown } | null)?.code
+  if (code === '42501') {
+    return new CatalogAdminError('forbidden', { cause: error })
+  }
+  return new CatalogAdminError('failed', { cause: error })
+}
+
+async function loadClient(
+  signal: AbortSignal | undefined,
+): Promise<OrkiSupabaseClient> {
+  throwIfAborted(signal)
+  try {
+    const supabase = await getSupabase()
+    throwIfAborted(signal)
+    return supabase
+  } catch (error) {
+    if (error instanceof CatalogAdminError) throw error
+    throwIfAborted(signal)
+    throw new CatalogAdminError(isOffline() ? 'offline' : 'failed', {
+      cause: error,
+    })
+  }
+}
+
+/** Añade la señal de cancelación a la consulta, si la hay. */
+function withSignal<B extends { abortSignal(signal: AbortSignal): B }>(
+  builder: B,
+  signal: AbortSignal | undefined,
+): B {
+  return signal ? builder.abortSignal(signal) : builder
+}
+
+interface Response<T> {
+  data: T | null
+  error: unknown
+  status: number
+}
+
+/** Espera la respuesta y devuelve sus datos, o lanza CatalogAdminError. */
+async function settle<T>(
+  request: PromiseLike<Response<T>>,
+  signal: AbortSignal | undefined,
+): Promise<T | null> {
+  let response: Response<T>
+  try {
+    response = await request
+  } catch (error) {
+    throw toAdminError(error, 0, signal)
+  }
+  if (response.error) {
+    throw toAdminError(response.error, response.status, signal)
+  }
+  throwIfAborted(signal)
+  return response.data
+}
+
+// Conversión -------------------------------------------------------------------
+
+function toSpeciesRow(row: ListRow | SearchRow): CatalogSpeciesRow {
+  const base: CatalogSpeciesRow = {
+    id: row.id,
+    scientificName: row.scientific_name,
+    genusId: row.genus_id,
+    genusName: row.genus_name,
+    type: row.type,
+    status: row.status,
+    source: row.source,
+    sourceRef: row.source_ref,
+    synonymCount: row.synonym_count,
+    commonNameCount: row.common_name_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+  if ('matched_name' in row) {
+    base.matchedName = row.matched_name
+    base.matchedNameType = row.matched_name_type
+  }
+  return base
+}
+
+function filterArgs(filters: CatalogSpeciesFilters) {
+  return {
+    ...(filters.status && { filter_status: filters.status }),
+    ...(filters.genusId && { filter_genus_id: filters.genusId }),
+    ...(filters.type && { filter_type: filters.type }),
+    ...(filters.source && { filter_source: filters.source }),
+  }
+}
+
+// Consultas --------------------------------------------------------------------
+
+export interface ListSpeciesOptions extends RequestOptions {
+  filters?: CatalogSpeciesFilters
+  cursor?: CatalogListCursor
+  pageSize?: number
+}
+
+/** Una página del catálogo en orden alfabético, con los filtros y el total. */
+export async function listCatalogSpecies({
+  filters = {},
+  cursor = { kind: 'first' },
+  pageSize = CATALOG_PAGE_SIZE,
+  signal,
+}: ListSpeciesOptions = {}): Promise<CatalogSpeciesListPage> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(
+    supabase.rpc('list_catalog_species', {
+      ...filterArgs(filters),
+      page_size: pageSize,
+      ...(cursor.kind === 'after' && { after_id: cursor.id }),
+      ...(cursor.kind === 'before' && { before_id: cursor.id }),
+      ...(cursor.kind === 'last' && { last_page: true }),
+    }),
+    signal,
+  )
+  const data = (await settle(request, signal)) ?? []
+  const first = data[0]
+  return {
+    rows: data.map(toSpeciesRow),
+    total: first?.total_count ?? 0,
+    hasPrevious: first?.has_previous ?? false,
+    hasNext: first?.has_next ?? false,
+  }
+}
+
+export interface SearchSpeciesOptions extends RequestOptions {
+  filters?: CatalogSpeciesFilters
+  page?: number
+  pageSize?: number
+}
+
+/**
+ * Busca en el catálogo con la tolerancia del autocompletado, con filtros, por
+ * relevancia y por número de página. Con una consulta fuera de los límites de
+ * la base (menos de 2 caracteres o más de 100) devuelve una página vacía sin
+ * hacer ninguna petición.
+ */
+export async function searchCatalogSpecies(
+  query: string,
+  {
+    filters = {},
+    page = 1,
+    pageSize = CATALOG_PAGE_SIZE,
+    signal,
+  }: SearchSpeciesOptions = {},
+): Promise<NumberedPage<CatalogSpeciesRow>> {
+  throwIfAborted(signal)
+  const prepared = prepareSearchQuery(query)
+  if (prepared === null) return { rows: [], total: 0, page: 1 }
+  const supabase = await loadClient(signal)
+  const request = withSignal(
+    supabase.rpc('search_catalog_species', {
+      query: prepared,
+      ...filterArgs(filters),
+      page_size: pageSize,
+      page_number: page,
+    }),
+    signal,
+  )
+  const data = (await settle(request, signal)) ?? []
+  const first = data[0]
+  return {
+    rows: data.map(toSpeciesRow),
+    total: first?.total_count ?? 0,
+    page: first?.current_page ?? 1,
+  }
+}
+
+export interface ListGeneraOptions extends RequestOptions {
+  query?: string
+  quickAccessOnly?: boolean
+  page?: number
+  pageSize?: number
+}
+
+/** Una página de géneros con sus abreviaturas y su número de especies. */
+export async function listCatalogGenera({
+  query = '',
+  quickAccessOnly = false,
+  page = 1,
+  pageSize = CATALOG_PAGE_SIZE,
+  signal,
+}: ListGeneraOptions = {}): Promise<NumberedPage<CatalogGenusRow>> {
+  const supabase = await loadClient(signal)
+  const trimmed = query.trim()
+  const request = withSignal(
+    supabase.rpc('list_catalog_genera', {
+      ...(trimmed !== '' && { query: trimmed.slice(0, 100) }),
+      quick_access_only: quickAccessOnly,
+      page_size: pageSize,
+      page_number: page,
+    }),
+    signal,
+  )
+  const data = (await settle(request, signal)) ?? []
+  const first = data[0]
+  return {
+    rows: data.map((row) => ({
+      id: row.id,
+      name: row.name,
+      isQuickAccess: row.is_quick_access,
+      abbreviations: row.abbreviations,
+      speciesCount: row.species_count,
+    })),
+    total: first?.total_count ?? 0,
+    page: first?.current_page ?? 1,
+  }
+}
+
+function toSummary(row: SummaryRow): CatalogSummary {
+  return {
+    genusCount: row.genus_count,
+    speciesCount: row.species_count,
+    hybridCount: row.hybrid_count,
+    synonymCount: row.synonym_count,
+    commonNameCount: row.common_name_count,
+    byStatus: {
+      imported: row.imported_count,
+      validated: row.validated_count,
+      observed: row.observed_count,
+    },
+    bySource: {
+      col: row.col_source_count,
+      curated: row.curated_source_count,
+      user_proposal: row.user_proposal_source_count,
+      gbif: row.gbif_source_count,
+    },
+  }
+}
+
+/** Recuentos del catálogo para el resumen. */
+export async function getCatalogSummary({
+  signal,
+}: RequestOptions = {}): Promise<CatalogSummary> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(supabase.rpc('catalog_summary'), signal)
+  const data = await settle(request, signal)
+  const row = data?.[0]
+  if (!row) throw new CatalogAdminError('failed')
+  return toSummary(row)
+}
+
+const DETAIL_SELECT =
+  'id, scientific_name, genus_id, type, status, source, source_ref, created_at, updated_at, genera(name), species_names(id, name, type, language)'
+
+/**
+ * Detalle de una especie, con sus sinónimos y nombres comunes; null si no
+ * existe.
+ */
+export async function getSpeciesDetail(
+  id: string,
+  { signal }: RequestOptions = {},
+): Promise<CatalogSpeciesDetail | null> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(
+    supabase.from('species').select(DETAIL_SELECT).eq('id', id),
+    signal,
+  ).maybeSingle()
+  const row = await settle(request, signal)
+  if (!row) return null
+  const collator = new Intl.Collator('es')
+  return {
+    id: row.id,
+    scientificName: row.scientific_name,
+    genusId: row.genus_id,
+    genusName: row.genera.name,
+    type: row.type,
+    status: row.status,
+    source: row.source,
+    sourceRef: row.source_ref,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    names: row.species_names
+      .map((name) => ({
+        id: name.id,
+        name: name.name,
+        type: name.type,
+        language: name.language,
+      }))
+      .sort((a, b) => collator.compare(a.name, b.name)),
+  }
+}
+
+/**
+ * Cuántas plantas de usuarios tienen enlazada la especie (de cualquier dueño y
+ * estado). Solo el número: la función de la base no devuelve nada más.
+ */
+export async function countSpeciesPlants(
+  id: string,
+  { signal }: RequestOptions = {},
+): Promise<number> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(
+    supabase.rpc('count_species_plants', { target_species_id: id }),
+    signal,
+  )
+  const data = await settle(request, signal)
+  return data ?? 0
+}
+
+/** Nombre de un género por su id (para el filtro de la URL); null si no existe. */
+export async function getGenus(
+  id: string,
+  { signal }: RequestOptions = {},
+): Promise<{ id: string; name: string } | null> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(
+    supabase.from('genera').select('id, name').eq('id', id),
+    signal,
+  ).maybeSingle()
+  return settle(request, signal)
+}

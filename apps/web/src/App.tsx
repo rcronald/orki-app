@@ -3,7 +3,6 @@ import { Route, Routes } from 'react-router'
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { RequireAuth, RequireCatalogAdmin } from './auth/RouteGuards.tsx'
 import { AppShell } from './components/AppShell.tsx'
-import { CatalogAdminPage } from './pages/CatalogAdminPage.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
 import { HomePage } from './pages/HomePage.tsx'
@@ -28,6 +27,10 @@ const IdentityDiagnosticsPage =
 // propio que se descarga al abrir /coleccion/nueva, así no engordan el de la
 // app ni el inicial. El service worker lo precachea como los demás.
 const NewPlantPage = lazy(() => import('./pages/NewPlantPage.tsx'))
+
+// Backoffice del catálogo (/administracion/catalogo, #99): solo para
+// administradores, así que va en su propio chunk y no lo descarga nadie más.
+const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
 
 interface AppProps {
   /** Ambiente ya validado por parseEnv. */
@@ -72,7 +75,20 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
               }
             />
             <Route element={<RequireCatalogAdmin />}>
-              <Route path={PATHS.catalogAdmin} element={<CatalogAdminPage />} />
+              <Route
+                path={PATHS.catalogAdmin}
+                element={
+                  <Suspense
+                    fallback={
+                      <p role="status" className="text-md text-neutral-700">
+                        Cargando el catálogo…
+                      </p>
+                    }
+                  >
+                    <CatalogAdminPage />
+                  </Suspense>
+                }
+              />
             </Route>
           </Route>
           <Route path="*" element={<NotFoundPage />} />
