@@ -4,6 +4,7 @@ import { parseTokens } from '../styles/tokens.ts'
 import { CatalogAdminSection } from './CatalogAdminSection.tsx'
 import { ComponentSections } from './ComponentSections.tsx'
 import { InventorySection } from './InventorySection.tsx'
+import { RegistrationSection } from './RegistrationSection.tsx'
 import { PhotoSection } from './PhotoSection.tsx'
 import { TokenSections } from './TokenSections.tsx'
 
@@ -30,6 +31,7 @@ const SECTIONS = [
   { id: 'buscador', label: 'Buscador' },
   { id: 'plegable', label: 'Sección plegable' },
   { id: 'inventario', label: 'Pantalla de inventario' },
+  { id: 'registro', label: 'Formulario de registro' },
   { id: 'backoffice', label: 'Backoffice del catálogo' },
   { id: 'fotos', label: 'Fotos' },
 ] as const
@@ -83,6 +85,7 @@ export default function ShowcasePage() {
           <TokenSections tokens={tokens} />
           <ComponentSections />
           <InventorySection />
+          <RegistrationSection />
           <CatalogAdminSection />
           <PhotoSection />
         </main>

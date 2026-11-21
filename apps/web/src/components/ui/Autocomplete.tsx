@@ -58,6 +58,12 @@ export interface AutocompleteProps extends NativeInputProps {
    * científico (cursiva, font-display) o como texto normal.
    */
   labelStyle?: 'scientific' | 'plain'
+  /**
+   * Contenido del texto principal de cada sugerencia, si no basta con
+   * `option.label`; por ejemplo <ScientificName> para que el signo "×" y el
+   * cultivar vayan en redonda. Va dentro del mismo contenedor, con su estilo.
+   */
+  renderLabel?: (option: AutocompleteOption) => ReactNode
   /** Acción final opcional dentro de la lista, elegible como una sugerencia. */
   action?: AutocompleteAction
   /** Ayuda bajo el campo. */
@@ -100,6 +106,7 @@ export function Autocomplete({
   onOptionSelect,
   loading = false,
   labelStyle = 'plain',
+  renderLabel,
   action,
   hint,
   loadingText = 'Buscando…',
@@ -335,7 +342,7 @@ export function Autocomplete({
                       : 'orki-autocomplete__label'
                   }
                 >
-                  {option.label}
+                  {renderLabel ? renderLabel(option) : option.label}
                 </span>
                 {option.secondary && (
                   <span className="orki-autocomplete__secondary">
