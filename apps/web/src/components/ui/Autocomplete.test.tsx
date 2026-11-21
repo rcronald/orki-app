@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { expectNoAxeViolations } from '../../test/axe.ts'
 import {
   Autocomplete,
   type AutocompleteAction,
@@ -20,6 +21,8 @@ const SPECIES: readonly AutocompleteOption[] = [
 interface HarnessProps {
   options?: readonly AutocompleteOption[]
   loading?: boolean
+  error?: string
+  minQueryLength?: number
   action?: AutocompleteAction
   onOptionSelect?: (option: AutocompleteOption) => void
   initialValue?: string
@@ -29,6 +32,8 @@ interface HarnessProps {
 function Harness({
   options = SPECIES,
   loading,
+  error,
+  minQueryLength,
   action,
   onOptionSelect,
   initialValue = '',
@@ -47,6 +52,8 @@ function Harness({
       onValueChange={setValue}
       options={filtered}
       loading={loading}
+      error={error}
+      minQueryLength={minQueryLength}
       action={action}
       onOptionSelect={(option) => {
         setValue(option.label)
@@ -367,5 +374,87 @@ describe('Autocomplete', () => {
     fireEvent.blur(input)
     expect(onKeyDown).toHaveBeenCalledOnce()
     expect(onBlur).toHaveBeenCalledOnce()
+  })
+  describe('error y longitud mínima', () => {
+    const OFFLINE =
+      'Sin conexión: no se puede buscar en el catálogo. Revisa tu conexión y vuelve a escribir.'
+    const message = { selector: '.orki-autocomplete__message' }
+
+    it('muestra y anuncia el error en lugar de "sin resultados"', () => {
+      render(<Harness options={[]} error={OFFLINE} />)
+      getInput().focus()
+      type('phal')
+
+      expect(screen.getByText(OFFLINE, message)).toBeVisible()
+      expect(screen.queryByText('Sin resultados')).not.toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent(OFFLINE)
+      expect(getInput()).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('con error, el campo sigue usable y la acción final se alcanza con el teclado', () => {
+      const onAction = vi.fn()
+      render(
+        <Harness
+          options={[]}
+          error={OFFLINE}
+          action={{ label: 'No la encuentro', onSelect: onAction }}
+        />,
+      )
+      getInput().focus()
+      type('phal')
+      expect(screen.getByRole('status')).toHaveTextContent(
+        `${OFFLINE} Usa las flechas para elegir.`,
+      )
+
+      key('ArrowDown')
+      key('Enter')
+      expect(onAction).toHaveBeenCalledOnce()
+
+      type('phala')
+      expect(getInput()).toHaveValue('phala')
+      key('Escape')
+      key('Escape')
+      expect(getInput()).toHaveValue('')
+    })
+
+    it('mientras carga no muestra el error', () => {
+      render(<Harness options={[]} error={OFFLINE} loading />)
+      getInput().focus()
+      type('phal')
+
+      expect(screen.queryByText(OFFLINE, message)).not.toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Buscando…')
+    })
+
+    it('por debajo de la longitud mínima no muestra "sin resultados" ni el error', () => {
+      render(<Harness options={[]} minQueryLength={2} error={OFFLINE} />)
+      getInput().focus()
+      type(' p ')
+
+      expect(screen.queryByText('Sin resultados')).not.toBeInTheDocument()
+      expect(screen.queryByText(OFFLINE, message)).not.toBeInTheDocument()
+      expect(screen.getByRole('status')).toBeEmptyDOMElement()
+
+      type('ph')
+      expect(screen.getByText(OFFLINE, message)).toBeVisible()
+    })
+
+    it('no tiene fallos A ni AA con el error a la vista', async () => {
+      document.documentElement.lang = 'es'
+      document.title = 'Prueba'
+      render(
+        <main>
+          <Harness
+            options={[]}
+            error={OFFLINE}
+            action={{ label: 'No la encuentro', onSelect: () => {} }}
+          />
+        </main>,
+      )
+      getInput().focus()
+      type('phal')
+
+      await expectNoAxeViolations()
+    })
   })
 })

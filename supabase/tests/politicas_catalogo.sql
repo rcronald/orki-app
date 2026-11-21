@@ -22,7 +22,7 @@ select pruebas.iguales(
   'filas visibles de genera, genus_abbreviations, species y species_names',
   (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
               (select count(*) from public.species), (select count(*) from public.species_names))::text),
-  '(5,5,1,1)'
+  '(43,43,1,1)'
 );
 select pruebas.iguales('is_catalog_admin() sin sesión', public.is_catalog_admin(), false);
 reset request.jwt.claims;
@@ -41,7 +41,7 @@ begin
   ] loop
     perform set_config('request.jwt.claims', claims, true);
     perform pruebas.debe_fallar('anon inserta un género ' || claims,
-      $q$insert into public.genera (name) values ('Masdevallia')$q$, '42501');
+      $q$insert into public.genera (name) values ('Restrepia')$q$, '42501');
     perform pruebas.debe_fallar('anon inserta una abreviatura ' || claims,
       $q$insert into public.genus_abbreviations (genus_id, abbreviation) values (pruebas.genero('Vanda'), 'Vd.')$q$, '42501');
     perform pruebas.debe_fallar('anon inserta una especie ' || claims,
@@ -65,7 +65,7 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_b", "role": "authenticated"}';
 select pruebas.debe_fallar(
   'insertar un género',
-  $$insert into public.genera (name) values ('Masdevallia')$$,
+  $$insert into public.genera (name) values ('Restrepia')$$,
   '42501'
 );
 select pruebas.debe_fallar(
@@ -92,13 +92,13 @@ update public.species set status = 'observed';
 update public.species_names set name = 'Otro';
 delete from public.species_names;
 delete from public.genus_abbreviations;
-delete from public.genera where name = 'Masdevallia' or name = 'Vanda';
+delete from public.genera where name = 'Restrepia' or name = 'Vanda';
 set local role postgres;
 select pruebas.iguales(
   'catálogo tras los intentos del usuario sin rol',
   (select row((select count(*) from public.genera where is_quick_access), (select count(*) from public.genus_abbreviations),
               (select string_agg(status::text, ',') from public.species), (select string_agg(name, ',') from public.species_names))::text),
-  '(5,5,validated,"Flor de mayo")'
+  '(5,43,validated,"Flor de mayo")'
 );
 
 -- prueba: un administrador inserta, edita y borra en las cuatro tablas del catálogo
@@ -107,16 +107,16 @@ set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "
 select pruebas.iguales('is_catalog_admin() del administrador', public.is_catalog_admin(), true);
 select pruebas.debe_funcionar(
   'insertar en las cuatro tablas',
-  $$insert into public.genera (name) values ('Masdevallia');
-    insert into public.genus_abbreviations (genus_id, abbreviation) values (pruebas.genero('Masdevallia'), 'Masd.');
+  $$insert into public.genera (name) values ('Restrepia');
+    insert into public.genus_abbreviations (genus_id, abbreviation) values (pruebas.genero('Restrepia'), 'Rstp.');
     insert into public.species (scientific_name, genus_id, type, status, source)
-      values ('Masdevallia veitchiana', pruebas.genero('Masdevallia'), 'species', 'validated', 'curated');
+      values ('Restrepia veitchiana', pruebas.genero('Restrepia'), 'species', 'validated', 'curated');
     insert into public.species_names (species_id, name, type, language)
-      values (pruebas.especie('Masdevallia veitchiana'), 'Wiñay wayna', 'common', 'qu')$$
+      values (pruebas.especie('Restrepia veitchiana'), 'Wiñay wayna', 'common', 'qu')$$
 );
-update public.genera set is_quick_access = true where name = 'Masdevallia';
-update public.genus_abbreviations set abbreviation = 'Masdev.' where abbreviation = 'Masd.';
-update public.species set status = 'observed' where scientific_name = 'Masdevallia veitchiana';
+update public.genera set is_quick_access = true where name = 'Restrepia';
+update public.genus_abbreviations set abbreviation = 'Restr.' where abbreviation = 'Rstp.';
+update public.species set status = 'observed' where scientific_name = 'Restrepia veitchiana';
 update public.species_names set name = 'Flor del inca' where name = 'Wiñay wayna';
 select pruebas.iguales(
   'lo que ve el administrador tras editar',
@@ -125,21 +125,21 @@ select pruebas.iguales(
      join public.genus_abbreviations a on a.genus_id = g.id
      join public.species s on s.genus_id = g.id
      join public.species_names n on n.species_id = s.id
-     where g.name = 'Masdevallia'),
-  'true Masdev. observed Flor del inca'
+     where g.name = 'Restrepia'),
+  'true Restr. observed Flor del inca'
 );
 -- El borrado del género se lleva también su abreviatura (cascada); aquí se borra cada una
 -- por separado para probar las cuatro políticas.
 delete from public.species_names where name = 'Flor del inca';
-delete from public.species where scientific_name = 'Masdevallia veitchiana';
-delete from public.genus_abbreviations where abbreviation = 'Masdev.';
-delete from public.genera where name = 'Masdevallia';
+delete from public.species where scientific_name = 'Restrepia veitchiana';
+delete from public.genus_abbreviations where abbreviation = 'Restr.';
+delete from public.genera where name = 'Restrepia';
 set local role postgres;
 select pruebas.iguales(
   'catálogo tras los borrados del administrador',
   (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
               (select count(*) from public.species), (select count(*) from public.species_names))::text),
-  '(5,5,1,1)'
+  '(43,43,1,1)'
 );
 
 -- prueba: el administrador sigue sujeto a las restricciones y a los borrados restringidos
@@ -204,7 +204,7 @@ begin
     perform set_config('request.jwt.claims', claims, true);
     perform pruebas.iguales('is_catalog_admin() con ' || claims, public.is_catalog_admin(), false);
     perform pruebas.debe_fallar('insertar un género con ' || claims,
-      $q$insert into public.genera (name) values ('Masdevallia')$q$, '42501');
+      $q$insert into public.genera (name) values ('Restrepia')$q$, '42501');
     perform pruebas.debe_fallar('insertar un nombre con ' || claims,
       $q$insert into public.species_names (species_id, name, type)
          values (pruebas.especie('Cattleya labiata'), 'Catleya', 'common')$q$, '42501');

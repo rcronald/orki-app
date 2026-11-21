@@ -68,6 +68,18 @@ export interface AutocompleteProps extends NativeInputProps {
   emptyText?: string
   /** Texto del anuncio con el número de sugerencias. */
   formatResultCount?: (count: number) => string
+  /**
+   * Mensaje de error de la búsqueda (por ejemplo, sin conexión). Se muestra en
+   * la lista en lugar de "sin resultados" y se anuncia; el campo y la acción
+   * final siguen funcionando.
+   */
+  error?: string
+  /**
+   * Caracteres (sin los espacios de los extremos) a partir de los cuales
+   * quien usa el componente busca. Con menos, no se muestra "sin resultados".
+   * Por defecto 1: cualquier texto.
+   */
+  minQueryLength?: number
 }
 
 const defaultResultCount = (count: number) =>
@@ -93,6 +105,8 @@ export function Autocomplete({
   loadingText = 'Buscando…',
   emptyText = 'Sin resultados',
   formatResultCount = defaultResultCount,
+  error,
+  minQueryLength = 1,
   id,
   className,
   onKeyDown,
@@ -120,9 +134,11 @@ export function Autocomplete({
         ? optionId(active)
         : actionId
 
-  const hasQuery = value.trim() !== ''
-  const showEmpty = !loading && options.length === 0 && hasQuery
-  const popupVisible = open && (loading || itemCount > 0 || showEmpty)
+  const hasQuery = value.trim().length >= Math.max(1, minQueryLength)
+  const showError = !loading && Boolean(error) && hasQuery
+  const showEmpty = !loading && !showError && options.length === 0 && hasQuery
+  const popupVisible =
+    open && (loading || itemCount > 0 || showEmpty || showError)
   const expanded = popupVisible && itemCount > 0
 
   // Mantiene visible la opción activa dentro de la lista con scroll.
@@ -139,11 +155,13 @@ export function Autocomplete({
   if (popupVisible) {
     const base = loading
       ? loadingText
-      : options.length > 0
-        ? formatResultCount(options.length)
-        : showEmpty
-          ? emptyText
-          : ''
+      : showError
+        ? (error ?? '')
+        : options.length > 0
+          ? formatResultCount(options.length)
+          : showEmpty
+            ? emptyText
+            : ''
     const sentences = [base, itemCount > 0 ? 'Usa las flechas para elegir' : '']
     announcement = sentences
       .filter(Boolean)
@@ -280,6 +298,15 @@ export function Autocomplete({
           )}
           {showEmpty && (
             <p className="orki-autocomplete__message">{emptyText}</p>
+          )}
+          {showError && (
+            <p className="orki-autocomplete__message flex items-center gap-space-2 font-semibold text-danger">
+              <Icon
+                name="triangle-alert"
+                className="h-space-4 w-space-4 flex-none"
+              />
+              {error}
+            </p>
           )}
           <ul
             id={listboxId}

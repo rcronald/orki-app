@@ -13,7 +13,26 @@ import { OwnershipAnswer } from '../components/ui/OwnershipAnswer.tsx'
 import { SpecimenCard } from '../components/ui/SpecimenCard.tsx'
 import { StatusBadge } from '../components/ui/StatusBadge.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
-import { filterOptions, GENERA, PLACES, PLANT_STATES, SPECIES } from './data.ts'
+import {
+  genusMatchText,
+  SEARCH_QUERY_MAX_LENGTH,
+  SEARCH_QUERY_MIN_LENGTH,
+  speciesMatchText,
+} from '../lib/catalogSearch.ts'
+import { isSupabaseConfigured } from '../lib/supabase.ts'
+import {
+  useGenusSearch,
+  useSpeciesSearch,
+  type CatalogSearchState,
+} from '../lib/useCatalogSearch.ts'
+import {
+  filterOptions,
+  GENERA,
+  GENUS_OPTIONS,
+  PLACES,
+  PLANT_STATES,
+  SPECIES,
+} from './data.ts'
 import samplePhoto from './foto-muestra.svg'
 import { Example, Section } from './layout.tsx'
 
@@ -320,17 +339,25 @@ function AnswerSection() {
 
 const SEARCH_DELAY_MS = 600
 
+interface SearchView {
+  options: AutocompleteOption[]
+  loading: boolean
+  error?: string
+}
+
 // Búsqueda simulada con retraso para que se vea el estado de carga, como la
-// tendrá la consulta real al catálogo.
+// tiene la consulta real al catálogo. Se usa sin configuración de Supabase
+// (por ejemplo, en las pruebas).
 function useSimulatedSearch(
   source: readonly AutocompleteOption[],
   query: string,
-) {
+  enabled: boolean,
+): SearchView {
   const [result, setResult] = useState<{
     query: string
     options: AutocompleteOption[]
   }>({ query: '', options: [] })
-  const trimmed = query.trim()
+  const trimmed = enabled ? query.trim() : ''
 
   useEffect(() => {
     if (trimmed === '') return
@@ -344,13 +371,57 @@ function useSimulatedSearch(
   return { loading, options: loading ? [] : result.options }
 }
 
+// Estado de la búsqueda real convertido en lo que recibe Autocomplete.
+function toSearchView<T>(
+  state: CatalogSearchState<T>,
+  toOption: (result: T) => AutocompleteOption,
+): SearchView {
+  return {
+    options: state.results.map(toOption),
+    loading: state.status === 'loading',
+    error: state.error?.message,
+  }
+}
+
+// Con configuración de Supabase, los ejemplos de especies y géneros buscan en
+// el catálogo real (lib/catalogSearch.ts); sin ella, con los datos fijos de
+// data.ts. Los dos hooks se llaman siempre y solo uno está activo.
 function SearchSection() {
+  const live = isSupabaseConfigured()
+
   const [species, setSpecies] = useState('')
   const [speciesChoice, setSpeciesChoice] = useState('')
-  const search = useSimulatedSearch(SPECIES, species)
+  const liveSpecies = useSpeciesSearch(species, { enabled: live })
+  const fixedSpecies = useSimulatedSearch(SPECIES, species, !live)
+  const speciesSearch = live
+    ? toSearchView(liveSpecies, (result) => ({
+        id: result.id,
+        label: result.scientificName,
+        secondary: speciesMatchText(result),
+      }))
+    : fixedSpecies
+
+  const [genus, setGenus] = useState('')
+  const [genusChoice, setGenusChoice] = useState('')
+  const liveGenera = useGenusSearch(genus, { enabled: live })
+  const genusSearch: SearchView = live
+    ? toSearchView(liveGenera, (result) => ({
+        id: result.id,
+        label: result.name,
+        secondary: genusMatchText(result),
+      }))
+    : { options: filterOptions(GENUS_OPTIONS, genus), loading: false }
 
   const [place, setPlace] = useState('')
   const [placeChoice, setPlaceChoice] = useState('')
+
+  // Solo la búsqueda real tiene longitud mínima y máxima.
+  const liveProps = live
+    ? {
+        minQueryLength: SEARCH_QUERY_MIN_LENGTH,
+        maxLength: SEARCH_QUERY_MAX_LENGTH,
+      }
+    : {}
 
   return (
     <Section
@@ -361,7 +432,11 @@ function SearchSection() {
       <div className="grid grid-cols-1 gap-space-4 md:grid-cols-2">
         <Example
           title="Nombre científico, con carga y acción final"
-          description="Escribe «phal» o «wakanki»: primero aparece «Buscando…» y luego las sugerencias. Con un nombre que no está, como «Stanhopea», sale «Sin resultados» y la acción final."
+          description={
+            live
+              ? `Busca en el catálogo de Supabase desde ${SEARCH_QUERY_MIN_LENGTH} caracteres, con errores de tipeo, sin tildes o con abreviaturas («phal amab»). Bajo el nombre se ve si coincidió por un sinónimo o un nombre común. Sin conexión, sale un aviso.`
+              : 'Datos fijos (no hay configuración de Supabase). Escribe «phal» o «wakanki»: primero aparece «Buscando…» y luego las sugerencias. Con un nombre que no está, como «Stanhopea», sale «Sin resultados» y la acción final.'
+          }
         >
           <Autocomplete
             label="Nombre científico"
@@ -369,8 +444,10 @@ function SearchSection() {
             hint="Busca por género, especie o nombre común."
             value={species}
             onValueChange={setSpecies}
-            options={search.options}
-            loading={search.loading}
+            options={speciesSearch.options}
+            loading={speciesSearch.loading}
+            error={speciesSearch.error}
+            {...liveProps}
             onOptionSelect={(option) => {
               setSpecies(option.label)
               setSpeciesChoice(`Elegiste ${option.label}.`)
@@ -385,6 +462,32 @@ function SearchSection() {
           />
           <p role="status" className="text-sm text-neutral-700">
             {speciesChoice}
+          </p>
+        </Example>
+        <Example
+          title="Género, para el chip «Otro»"
+          description={
+            live
+              ? 'Busca géneros en el catálogo por nombre o abreviatura («mps», «Phal.»).'
+              : 'Datos fijos (no hay configuración de Supabase). Escribe «den» o «van».'
+          }
+        >
+          <Autocomplete
+            label="Otro género"
+            labelStyle="scientific"
+            value={genus}
+            onValueChange={setGenus}
+            options={genusSearch.options}
+            loading={genusSearch.loading}
+            error={genusSearch.error}
+            {...liveProps}
+            onOptionSelect={(option) => {
+              setGenus(option.label)
+              setGenusChoice(`Elegiste ${option.label}.`)
+            }}
+          />
+          <p role="status" className="text-sm text-neutral-700">
+            {genusChoice}
           </p>
         </Example>
         <Example

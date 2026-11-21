@@ -3,6 +3,7 @@ import {
   getSessionToken,
   getSupabase,
   initSupabase,
+  isSupabaseConfigured,
   SESSION_TOKEN_ERROR_TEXT,
   SessionTokenError,
   sessionTokenFailure,
@@ -49,10 +50,12 @@ describe('cliente de Supabase', () => {
   // Va primero: el cliente es único para todo el archivo.
   it('falla si se pide antes de inicializarlo', async () => {
     await expect(getSupabase()).rejects.toThrow('no se ha inicializado')
+    expect(isSupabaseConfigured()).toBe(false)
   })
 
   it('crea un único cliente compartido, de forma diferida', async () => {
     initSupabase(CONFIG)
+    expect(isSupabaseConfigured()).toBe(true)
     const [first, second] = await Promise.all([getSupabase(), getSupabase()])
 
     expect(first).toBe(second)

@@ -16,19 +16,19 @@ select pruebas.debe_fallar(
   $$insert into public.genera (name) values ('PHALAENOPSIS')$$,
   '23505', 'genera_name_key'
 );
-select pruebas.debe_funcionar('un género nuevo', $$insert into public.genera (name) values ('Masdevallia')$$);
+select pruebas.debe_funcionar('un género nuevo', $$insert into public.genera (name) values ('Restrepia')$$);
 select pruebas.debe_fallar(
-  'masdevallia ya existe como Masdevallia',
-  $$insert into public.genera (name) values ('masdevallia')$$,
+  'restrepia ya existe como Restrepia',
+  $$insert into public.genera (name) values ('restrepia')$$,
   '23505', 'genera_name_key'
 );
 
 -- prueba: géneros: rechaza nombres vacíos o con espacios sobrantes
 select pruebas.debe_fallar('vacío', $$insert into public.genera (name) values ('')$$, '23514', 'genera_name_clean');
-select pruebas.debe_fallar('espacio inicial', $$insert into public.genera (name) values (' Masdevallia')$$, '23514', 'genera_name_clean');
-select pruebas.debe_fallar('espacio final', $$insert into public.genera (name) values ('Masdevallia ')$$, '23514', 'genera_name_clean');
-select pruebas.debe_fallar('espacio doble', $$insert into public.genera (name) values ('Masde  vallia')$$, '23514', 'genera_name_clean');
-select pruebas.debe_fallar('tabulador', $$insert into public.genera (name) values (E'Masdevallia\t')$$, '23514', 'genera_name_clean');
+select pruebas.debe_fallar('espacio inicial', $$insert into public.genera (name) values (' Restrepia')$$, '23514', 'genera_name_clean');
+select pruebas.debe_fallar('espacio final', $$insert into public.genera (name) values ('Restrepia ')$$, '23514', 'genera_name_clean');
+select pruebas.debe_fallar('espacio doble', $$insert into public.genera (name) values ('Restre  pia')$$, '23514', 'genera_name_clean');
+select pruebas.debe_fallar('tabulador', $$insert into public.genera (name) values (E'Restrepia\t')$$, '23514', 'genera_name_clean');
 select pruebas.debe_fallar(
   'renombrar uno existente con espacio final',
   $$update public.genera set name = 'Vanda ' where name = 'Vanda'$$,

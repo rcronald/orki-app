@@ -23,6 +23,7 @@
     "db:push": "node scripts/supabase-db.mjs aplicar",
     "db:seed:dev": "node scripts/supabase-db.mjs datos-ejemplo",
     "db:test": "node scripts/db-test.mjs",
+    "db:perf": "node scripts/db-perf.mjs",
     "db:types": "node scripts/db-types.mjs",
     "db:types:check": "node scripts/db-types.mjs --comprobar"
   },

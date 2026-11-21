@@ -50,6 +50,8 @@ export type SpeciesType = Enums<'species_type'>
 export type SpeciesStatus = Enums<'species_status'>
 export type SpeciesSource = Enums<'species_source'>
 export type SpeciesNameType = Enums<'species_name_type'>
+/** Por qué nombre coincidió una especie en la búsqueda: científico, sinónimo o común. */
+export type SpeciesMatchType = Enums<'species_match_type'>
 export type PlantType = Enums<'plant_type'>
 export type PlantStatus = Enums<'plant_status'>
 export type PlantValidation = Enums<'plant_validation'>
