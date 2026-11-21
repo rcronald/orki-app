@@ -1,6 +1,7 @@
 import { SignIn } from '@clerk/react'
 import { AuthGate } from '../auth/AuthGate.tsx'
 import { AuthLoading } from '../auth/AuthStatus.tsx'
+import { SignedOutOnly } from '../auth/SignedOutOnly.tsx'
 import { PATHS } from '../routes/paths.ts'
 import { AuthPageLayout } from './AuthPageLayout.tsx'
 import { useAuthRedirectDestination } from '../auth/useAuthRedirectDestination.ts'
@@ -14,13 +15,15 @@ export function SignInPage() {
   return (
     <AuthPageLayout title="Iniciar sesión">
       <AuthGate>
-        <SignIn
-          routing="path"
-          path={PATHS.signIn}
-          forceRedirectUrl={destination}
-          signUpForceRedirectUrl={destination}
-          fallback={<AuthLoading />}
-        />
+        <SignedOutOnly destination={destination}>
+          <SignIn
+            routing="path"
+            path={PATHS.signIn}
+            forceRedirectUrl={destination}
+            signUpForceRedirectUrl={destination}
+            fallback={<AuthLoading />}
+          />
+        </SignedOutOnly>
       </AuthGate>
     </AuthPageLayout>
   )

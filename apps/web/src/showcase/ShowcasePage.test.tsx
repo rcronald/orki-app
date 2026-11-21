@@ -1,5 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ICON_NAMES } from '../components/ui/icons.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -14,14 +15,23 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+// La pantalla de inventario de la muestra lleva enlaces de React Router.
+function renderShowcase() {
+  return render(
+    <MemoryRouter>
+      <ShowcasePage />
+    </MemoryRouter>,
+  )
+}
+
 describe('ShowcasePage', () => {
   it('pone el título de la pestaña', () => {
-    render(<ShowcasePage />)
+    renderShowcase()
     expect(document.title).toBe('Muestra del design system · Orki')
   })
 
   it('muestra los tokens leídos de tokens.css con sus contrastes', () => {
-    render(<ShowcasePage />)
+    renderShowcase()
 
     const colors = screen.getByRole('region', { name: 'Color' })
     expect(within(colors).getByText('color-primary')).toBeInTheDocument()
@@ -44,7 +54,7 @@ describe('ShowcasePage', () => {
   })
 
   it('muestra todos los componentes y sus variantes', () => {
-    render(<ShowcasePage />)
+    renderShowcase()
 
     const icons = screen.getByRole('region', { name: 'Iconos' })
     for (const name of ICON_NAMES) {
@@ -72,7 +82,9 @@ describe('ShowcasePage', () => {
     ).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getAllByText('Validada').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Nombre por validar').length).toBeGreaterThan(0)
-    expect(screen.getByRole('img', { name: 'Sin foto' })).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('img', { name: 'Sin foto' }).length,
+    ).toBeGreaterThan(0)
     expect(screen.getByText('Sí, la tienes')).toBeInTheDocument()
     expect(screen.getByText('Aún no la tienes')).toBeInTheDocument()
     expect(
@@ -88,7 +100,7 @@ describe('ShowcasePage', () => {
 
   it('los chips alternan al pulsarlos', async () => {
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     const genus = screen.getByRole('group', { name: 'Género' })
     const cattleya = within(genus).getByRole('button', { name: 'Cattleya' })
@@ -113,7 +125,7 @@ describe('ShowcasePage', () => {
     const user = userEvent.setup({
       advanceTimers: (ms) => vi.advanceTimersByTime(ms),
     })
-    render(<ShowcasePage />)
+    renderShowcase()
 
     const input = screen.getByRole('combobox', { name: 'Nombre científico' })
     await user.type(input, 'phal')
@@ -136,6 +148,45 @@ describe('ShowcasePage', () => {
     ).toBeInTheDocument()
   })
 
+  it('muestra la pantalla de inventario con datos fijos y con 300 plantas', async () => {
+    const user = userEvent.setup()
+    window.localStorage.clear()
+    renderShowcase()
+
+    const inventory = screen.getByRole('region', {
+      name: 'Pantalla de inventario',
+    })
+    // 10 activas; la regalada no se cuenta.
+    expect(within(inventory).getByText('10 orquídeas')).toBeInTheDocument()
+    expect(within(inventory).getByText('6 géneros')).toBeInTheDocument()
+    expect(within(inventory).getAllByRole('article')).toHaveLength(10)
+    expect(
+      within(inventory).getByRole('article', {
+        name: '× Rhyncholaeliocattleya Memoria Anna Balmores',
+      }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      within(inventory).getByRole('button', { name: '300 plantas' }),
+    )
+    expect(within(inventory).getAllByRole('article')).toHaveLength(300)
+    expect(within(inventory).getByText('300 orquídeas')).toBeInTheDocument()
+
+    await user.click(within(inventory).getByRole('button', { name: 'Vacía' }))
+    expect(
+      within(inventory).getByRole('heading', {
+        name: 'Tu colección está vacía',
+      }),
+    ).toBeInTheDocument()
+    await user.click(
+      within(inventory).getByRole('button', { name: 'Sin conexión' }),
+    )
+    expect(within(inventory).getByRole('alert')).toHaveTextContent(
+      'Sin conexión',
+    )
+    await expectNoAxeViolations()
+  })
+
   it('sin configuración de Supabase, los buscadores usan los datos fijos', async () => {
     const fetchMock = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetchMock)
@@ -144,7 +195,7 @@ describe('ShowcasePage', () => {
       const user = userEvent.setup({
         advanceTimers: (ms) => vi.advanceTimersByTime(ms),
       })
-      render(<ShowcasePage />)
+      renderShowcase()
       expect(screen.getAllByText(/^Datos fijos/)).toHaveLength(2)
 
       await user.type(
@@ -168,13 +219,13 @@ describe('ShowcasePage', () => {
   })
 
   it('no tiene fallos de accesibilidad A ni AA al cargar', async () => {
-    render(<ShowcasePage />)
+    renderShowcase()
     await expectNoAxeViolations()
   })
 
   it('no tiene fallos A ni AA con el buscador abierto y las secciones plegables abiertas', async () => {
     const user = userEvent.setup()
-    render(<ShowcasePage />)
+    renderShowcase()
 
     await user.click(screen.getByRole('button', { name: 'Más detalles' }))
     // El buscador va al final: al salir del campo, la lista se cierra.

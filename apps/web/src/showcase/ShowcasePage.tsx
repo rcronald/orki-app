@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import tokensCss from '../styles/tokens.css?raw'
 import { parseTokens } from '../styles/tokens.ts'
 import { ComponentSections } from './ComponentSections.tsx'
+import { InventorySection } from './InventorySection.tsx'
 import { TokenSections } from './TokenSections.tsx'
 
 // Página interna de muestra del design system (issue #45). Solo existe fuera
@@ -26,6 +27,7 @@ const SECTIONS = [
   { id: 'respuesta', label: 'Respuesta de ¿Ya la tengo?' },
   { id: 'buscador', label: 'Buscador' },
   { id: 'plegable', label: 'Sección plegable' },
+  { id: 'inventario', label: 'Pantalla de inventario' },
 ] as const
 
 export default function ShowcasePage() {
@@ -76,6 +78,7 @@ export default function ShowcasePage() {
         <main className="flex flex-col gap-space-5">
           <TokenSections tokens={tokens} />
           <ComponentSections />
+          <InventorySection />
         </main>
       </div>
     </div>

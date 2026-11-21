@@ -1,0 +1,225 @@
+import type { CollectionPlant } from './model.ts'
+import {
+  collectionErrorFrom,
+  type CollectionLoadError,
+  type CollectionSource,
+} from './source.ts'
+
+// Almacén de la colección en memoria (issue #93), sin React: lo envuelven
+// CollectionProvider y useCollection().
+//
+// - Una colección por usuario: setUser() fija el usuario activo. Si cambia (o
+//   se cierra la sesión, null), aborta la lectura en curso, descarta los datos
+//   y vuelve a "idle". Cada lectura lleva un número de generación: la
+//   respuesta de una lectura que ya no es la actual (de otro usuario o
+//   anterior a una recarga) se ignora aunque la fuente no atienda el aborto.
+// - Carga bajo demanda: no se lee nada hasta que alguien la necesita. Cada
+//   pantalla que usa la colección la "retiene" mientras está montada
+//   (retain()); con el usuario fijado, la primera retención lanza la lectura.
+//   Las siguientes, en esta u otra pantalla, reutilizan la misma lectura o los
+//   datos ya cargados. Soltarla no aborta ni descarta nada: los datos siguen en
+//   memoria para la próxima pantalla. Así el doble montaje de React.StrictMode
+//   no lanza una segunda petición.
+// - Tras un error, no se reintenta solo: reload() lo hace (el botón de
+//   "Reintentar"). Una pantalla nueva que se monta tampoco lo reintenta.
+// - Operaciones locales (upsertPlant, removePlant): reflejan en memoria lo que
+//   otra pantalla ya escribió en la base (#11, #16) sin volver a leerlo todo.
+//   Se aplican al momento sobre los datos que haya en memoria; durante una
+//   lectura, además, se guardan y se aplican sobre su resultado, porque la
+//   respuesta puede haber salido antes o después de la escritura. Sin datos ni
+//   lectura en curso se ignoran: la próxima lectura ya traerá el cambio.
+
+export type CollectionStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+/** Estado de la colección del usuario activo. */
+export interface CollectionSnapshot {
+  /** Usuario al que pertenecen estos datos; null sin sesión. */
+  userId: string | null
+  /**
+   * - idle: aún no se ha pedido (o no hay usuario).
+   * - loading: lectura en curso. Si ya había datos (recarga) o la fuente
+   *   entregó un resultado provisional, `plants` los trae mientras tanto.
+   * - ready: `plants` es la colección completa.
+   * - error: falló la última lectura; `plants` conserva los datos anteriores
+   *   si los había (recarga fallida) o es null.
+   */
+  status: CollectionStatus
+  /** Todas las plantas del usuario, también las dadas de baja; null si no hay datos. */
+  plants: readonly CollectionPlant[] | null
+  /** Error de la última lectura, con su motivo; null si no falló. */
+  error: CollectionLoadError | null
+}
+
+type LocalOperation =
+  { kind: 'upsert'; plant: CollectionPlant } | { kind: 'remove'; id: string }
+
+const EMPTY: CollectionSnapshot = {
+  userId: null,
+  status: 'idle',
+  plants: null,
+  error: null,
+}
+
+export class CollectionStore {
+  private readonly source: CollectionSource
+  private snapshot: CollectionSnapshot = EMPTY
+  private readonly listeners = new Set<() => void>()
+  private retainers = 0
+  private generation = 0
+  private controller: AbortController | null = null
+  /** Operaciones locales recibidas durante la lectura en curso. */
+  private pending: LocalOperation[] = []
+
+  constructor(source: CollectionSource) {
+    this.source = source
+  }
+
+  // Suscripción (para useSyncExternalStore) -----------------------------------
+
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  readonly getSnapshot = (): CollectionSnapshot => this.snapshot
+
+  // Usuario y demanda ---------------------------------------------------------
+
+  /** Fija el usuario activo. Con otro usuario o null, descarta lo anterior. */
+  setUser(userId: string | null): void {
+    if (userId === this.snapshot.userId) return
+    this.cancel()
+    this.update({ ...EMPTY, userId })
+    this.loadIfNeeded()
+  }
+
+  /**
+   * Marca que una pantalla necesita la colección; la carga si aún no se pidió.
+   * Devuelve la función que suelta esa retención.
+   */
+  retain(): () => void {
+    this.retainers += 1
+    this.loadIfNeeded()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.retainers -= 1
+    }
+  }
+
+  /** Vuelve a leer la colección del usuario activo, aunque ya esté cargada. */
+  reload(): void {
+    if (this.snapshot.userId === null) return
+    this.cancel()
+    this.start(this.snapshot.userId)
+  }
+
+  // Operaciones locales -------------------------------------------------------
+
+  /** Añade una planta nueva o sustituye la que tiene su id. */
+  upsertPlant(plant: CollectionPlant): void {
+    this.apply({ kind: 'upsert', plant })
+  }
+
+  /** Quita una planta borrada de la base. */
+  removePlant(id: string): void {
+    this.apply({ kind: 'remove', id })
+  }
+
+  // Internos ------------------------------------------------------------------
+
+  private loadIfNeeded(): void {
+    const { userId, status } = this.snapshot
+    if (userId !== null && status === 'idle' && this.retainers > 0) {
+      this.start(userId)
+    }
+  }
+
+  private start(userId: string): void {
+    const generation = ++this.generation
+    const controller = new AbortController()
+    this.controller = controller
+    this.pending = []
+    this.update({ ...this.snapshot, status: 'loading', error: null })
+
+    const isCurrent = () => generation === this.generation
+
+    this.source
+      .load({
+        userId,
+        signal: controller.signal,
+        provide: (plants) => {
+          if (!isCurrent()) return
+          this.update({
+            ...this.snapshot,
+            plants: applyAll(plants, this.pending),
+          })
+        },
+      })
+      .then(
+        (plants) => {
+          if (!isCurrent()) return
+          this.controller = null
+          this.update({
+            userId,
+            status: 'ready',
+            plants: applyAll(plants, this.pending),
+            error: null,
+          })
+          this.pending = []
+        },
+        (error: unknown) => {
+          if (!isCurrent()) return
+          this.controller = null
+          this.pending = []
+          this.update({
+            ...this.snapshot,
+            status: 'error',
+            error: collectionErrorFrom(error),
+          })
+        },
+      )
+  }
+
+  /** Aborta la lectura en curso y hace que su respuesta se ignore. */
+  private cancel(): void {
+    this.generation += 1
+    this.controller?.abort()
+    this.controller = null
+    this.pending = []
+  }
+
+  private apply(operation: LocalOperation): void {
+    const { status, plants } = this.snapshot
+    if (status === 'loading') this.pending.push(operation)
+    if (plants === null) return
+    this.update({ ...this.snapshot, plants: applyAll(plants, [operation]) })
+  }
+
+  private update(next: CollectionSnapshot): void {
+    this.snapshot = next
+    for (const listener of this.listeners) listener()
+  }
+}
+
+function applyAll(
+  plants: readonly CollectionPlant[],
+  operations: readonly LocalOperation[],
+): readonly CollectionPlant[] {
+  let result = plants
+  for (const operation of operations) {
+    if (operation.kind === 'upsert') {
+      const index = result.findIndex((plant) => plant.id === operation.plant.id)
+      result =
+        index === -1
+          ? [...result, operation.plant]
+          : result.with(index, operation.plant)
+    } else {
+      result = result.filter((plant) => plant.id !== operation.id)
+    }
+  }
+  return result
+}

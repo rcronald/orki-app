@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -42,6 +42,51 @@ describe.each([
       screen.getByRole('link', { name: 'Volver al inicio de Orki' }),
     ).toHaveAttribute('href', '/')
     await expectNoAxeViolations()
+  })
+
+  // Con sesión, los componentes de Clerk no pintan nada: la pantalla no puede
+  // quedarse en blanco (pasaba al volver de una ruta protegida recién iniciada
+  // la sesión).
+  function PageAt({ entry }: { entry: string }) {
+    return (
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/acceso" element={<AuthPage />} />
+          <Route path="/coleccion" element={<p>Colección</p>} />
+          <Route path="/" element={<p>Inicio</p>} />
+        </Routes>
+      </MemoryRouter>
+    )
+  }
+
+  it('con sesión: va a la página pedida en redirect_url', () => {
+    setFakeClerk({ signedIn: true })
+    render(<PageAt entry="/acceso?redirect_url=%2Fcoleccion" />)
+
+    expect(screen.getByText('Colección')).toBeInTheDocument()
+    expect(screen.queryByTestId(clerkTestId)).not.toBeInTheDocument()
+  })
+
+  it('con sesión y sin redirect_url, o con un destino externo: va al inicio', () => {
+    setFakeClerk({ signedIn: true })
+    const { unmount } = render(<PageAt entry="/acceso" />)
+    expect(screen.getByText('Inicio')).toBeInTheDocument()
+    unmount()
+
+    render(<PageAt entry="/acceso?redirect_url=https%3A%2F%2Fotro.sitio%2F" />)
+    expect(screen.getByText('Inicio')).toBeInTheDocument()
+  })
+
+  it('al llegar la sesión con la pantalla abierta: sale hacia el destino', () => {
+    const { rerender } = render(
+      <PageAt entry="/acceso?redirect_url=%2Fcoleccion" />,
+    )
+    expect(screen.getByTestId(clerkTestId)).toBeInTheDocument()
+
+    setFakeClerk({ signedIn: true })
+    rerender(<PageAt entry="/acceso?redirect_url=%2Fcoleccion" />)
+
+    expect(screen.getByText('Colección')).toBeInTheDocument()
   })
 
   it('mientras Clerk carga: estado de carga anunciado', async () => {
