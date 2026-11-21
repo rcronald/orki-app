@@ -129,3 +129,12 @@ def name_shape(name: str) -> NameShape:
 def strip_hybrid_sign(name: str) -> str:
     """Nombre sin el signo «×», para comparar géneros escritos con y sin él."""
     return clean_spaces(name.replace(HYBRID_SIGN, ' '))
+
+
+def match_key(name: str) -> str:
+    """Clave para casar nombres: sin el signo «×», sin mayúsculas y con los espacios limpios.
+
+    La usan la carga de COL para los géneros y la lista curada de híbridos para géneros y
+    nombres, igual que la búsqueda, que tampoco distingue el signo.
+    """
+    return strip_hybrid_sign(name).lower()

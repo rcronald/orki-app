@@ -17,25 +17,30 @@ Pasos, todos dentro de una única transacción (o entra todo o nada):
    casos el reporte es el mismo, porque todo el trabajo se hizo de verdad dentro de ella.
 
 Reglas de casamiento y de conflicto: ver el README de la carpeta ("Reglas de la carga").
+
+La lista curada de híbridos (:mod:`catalog_import.hybrids_load`) usa este mismo flujo: su
+propio plan (otra función pura sobre la misma :class:`DbSnapshot`) y :func:`run_plan`, que
+escribe con :func:`apply_plan` y la :class:`SourcePolicy` de su fuente.
 """
 
 from __future__ import annotations
 
 import time
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import psycopg
 
 from .model import Catalog, Code, Species
-from .names import HYBRID_SIGN
+from .names import HYBRID_SIGN, match_key
 
 # Entidades y resultados del reporte.
 GENUS = 'genero'
 SPECIES = 'especie'
 SYNONYM = 'sinonimo'
+COMMON_NAME = 'nombre_comun'
 RUN = 'carga'
 
 NEW = 'nuevo'
@@ -44,12 +49,27 @@ UNCHANGED = 'sin_cambios'
 CONFLICT = 'conflicto'
 REJECTED = 'rechazado'
 NOT_IN_SOURCE = 'no_en_fuente'
+OMITTED = 'omitido'
 INFO = 'info'
 
 # Estado de una especie recién importada. Cualquier otro (validada, observada) es trabajo de
 # un administrador y la carga no lo pisa.
 IMPORTED = 'imported'
 SOURCE = 'col'
+
+
+@dataclass(frozen=True, slots=True)
+class SourcePolicy:
+    """Qué escribe una fuente: su valor de ``species.source``, el estado con el que entran sus
+    especies nuevas y el único estado en el que la carga puede cambiarlas (cualquier otro es
+    trabajo de un administrador)."""
+
+    source: str
+    new_status: str
+    updatable_status: str
+
+
+COL_POLICY = SourcePolicy(SOURCE, IMPORTED, IMPORTED)
 
 CATALOG_TABLES = ('genera', 'genus_abbreviations', 'species', 'species_names')
 
@@ -102,7 +122,7 @@ class DbSnapshot:
 
 def genus_key(name: str) -> str:
     """Clave para casar géneros: sin el signo «×», sin mayúsculas y con los espacios limpios."""
-    return ' '.join(name.replace(HYBRID_SIGN, ' ').split()).lower()
+    return match_key(name)
 
 
 # Plan --------------------------------------------------------------------------------------
@@ -132,8 +152,9 @@ class Plan:
     genus_renames: list[tuple[str, str]] = field(default_factory=list)
     species_inserts: list[SpeciesWrite] = field(default_factory=list)
     species_updates: list[SpeciesWrite] = field(default_factory=list)
-    # (destino de la especie, nombre): ('id', uuid) o ('ref', clave de una especie nueva).
-    synonym_inserts: list[tuple[tuple[str, str], str]] = field(default_factory=list)
+    # (destino de la especie, nombre, tipo de nombre): el destino es ('id', uuid) o
+    # ('ref', clave de una especie nueva); el tipo, 'synonym' o 'common'.
+    name_inserts: list[tuple[tuple[str, str], str, str]] = field(default_factory=list)
     # Sinónimos de especies de COL que están en la base y la fuente ya no trae.
     synonyms_not_in_source: int = 0
 
@@ -492,6 +513,8 @@ def plan_load(catalog: Catalog, snapshot: DbSnapshot) -> Plan:
                     db_id=existing.id,
                 )
             )
+    # Los sinónimos que la fuente ya no trae solo se cuentan (sin una fila por cada uno).
+    plan.counts[(SYNONYM, NOT_IN_SOURCE)] += plan.synonyms_not_in_source
     return plan
 
 
@@ -542,7 +565,7 @@ def _plan_synonyms(
                 )
             )
         elif found is None:
-            plan.synonym_inserts.append((target, synonym.name))
+            plan.name_inserts.append((target, synonym.name, 'synonym'))
             plan.add(
                 ReportRow(
                     SYNONYM,
@@ -669,11 +692,17 @@ class Applied:
     genera_inserted: int = 0
     species_inserted: int = 0
     species_updated: int = 0
-    synonyms_inserted: int = 0
+    names_inserted: int = 0
 
 
-def apply_plan(conn: psycopg.Connection[Any], plan: Plan) -> Applied:
-    """Escribe el plan por conjuntos. Las tablas temporales desaparecen al acabar la transacción."""
+def apply_plan(
+    conn: psycopg.Connection[Any], plan: Plan, policy: SourcePolicy = COL_POLICY
+) -> Applied:
+    """Escribe el plan por conjuntos. Las tablas temporales desaparecen al acabar la transacción.
+
+    Las especies nuevas entran con la fuente y el estado de ``policy``, y solo se actualizan
+    las de esa fuente que siguen en su estado actualizable.
+    """
     applied = Applied()
     with conn.cursor() as cur:
         # Géneros: primero los renombrados (solo el signo ×), después los nuevos.
@@ -719,18 +748,20 @@ def apply_plan(conn: psycopg.Connection[Any], plan: Plan) -> Applied:
             ),
         )
         cur.execute(
-            f'insert into public.species (scientific_name, genus_id, type, status, source, '
-            f'source_ref) '
-            f"select scientific_name, genus_id, type, '{IMPORTED}', '{SOURCE}', source_ref "
-            f'from carga_especie_nueva order by scientific_name returning id, source_ref'
+            'insert into public.species (scientific_name, genus_id, type, status, source, '
+            'source_ref) '
+            'select scientific_name, genus_id, type, %s::public.species_status, '
+            '%s::public.species_source, source_ref '
+            'from carga_especie_nueva order by scientific_name returning id, source_ref',
+            (policy.new_status, policy.source),
         )
         new_species = {ref: str(species_id) for species_id, ref in cur.fetchall()}
         applied.species_inserted = len(new_species)
         _expect('Especies nuevas', len(plan.species_inserts), len(new_species))
 
-        # Cambios en especies importadas. La condición de estado repite la del plan: una
-        # especie que no está «importada» nunca se toca. Solo se escriben las filas que
-        # cambian, para no mover updated_at.
+        # Cambios en especies de la fuente. La condición de estado repite la del plan: una
+        # especie que no está en el estado actualizable («importada» en COL) nunca se toca.
+        # Solo se escriben las filas que cambian, para no mover updated_at.
         cur.execute(
             'create temp table carga_especie_cambio (id uuid primary key, '
             'scientific_name text not null, genus_id uuid not null, '
@@ -746,23 +777,25 @@ def apply_plan(conn: psycopg.Connection[Any], plan: Plan) -> Applied:
             ),
         )
         cur.execute(
-            f"""
+            """
             update public.species s
                set scientific_name = c.scientific_name, genus_id = c.genus_id, type = c.type,
                    source_ref = c.source_ref
               from carga_especie_cambio c
-             where s.id = c.id and s.source = '{SOURCE}' and s.status = '{IMPORTED}'
+             where s.id = c.id and s.source = %s::public.species_source
+               and s.status = %s::public.species_status
                and (s.scientific_name, s.genus_id, s.type, s.source_ref)
                    is distinct from (c.scientific_name, c.genus_id, c.type, c.source_ref)
-            """
+            """,
+            (policy.source, policy.updatable_status),
         )
         applied.species_updated = cur.rowcount
         _expect('Especies actualizadas', len(plan.species_updates), cur.rowcount)
 
-        # Sinónimos nuevos.
+        # Nombres alternativos nuevos (sinónimos y nombres comunes).
         cur.execute(
-            'create temp table carga_sinonimo (species_id uuid not null, name text not null) '
-            'on commit drop'
+            'create temp table carga_nombre (species_id uuid not null, name text not null, '
+            'type public.species_name_type not null) on commit drop'
         )
 
         def species_id(target: tuple[str, str]) -> str:
@@ -771,16 +804,16 @@ def apply_plan(conn: psycopg.Connection[Any], plan: Plan) -> Applied:
 
         _copy(
             cur,
-            'carga_sinonimo',
-            ('species_id', 'name'),
-            ((species_id(target), name) for target, name in plan.synonym_inserts),
+            'carga_nombre',
+            ('species_id', 'name', 'type'),
+            ((species_id(target), name, kind) for target, name, kind in plan.name_inserts),
         )
         cur.execute(
             'insert into public.species_names (species_id, name, type) '
-            "select species_id, name, 'synonym' from carga_sinonimo order by species_id, name"
+            'select species_id, name, type from carga_nombre order by species_id, name'
         )
-        applied.synonyms_inserted = cur.rowcount
-        _expect('Sinónimos nuevos', len(plan.synonym_inserts), cur.rowcount)
+        applied.names_inserted = cur.rowcount
+        _expect('Nombres alternativos nuevos', len(plan.name_inserts), cur.rowcount)
     return applied
 
 
@@ -791,6 +824,7 @@ class Measures:
     genera: int
     species: int
     species_col: int
+    species_curated: int
     synonyms: int
     common_names: int
 
@@ -807,12 +841,13 @@ def measure(conn: psycopg.Connection[Any]) -> Measures:
                (select count(*) from public.genera),
                (select count(*) from public.species),
                (select count(*) from public.species where source = '{SOURCE}'),
+               (select count(*) from public.species where source = 'curated'),
                (select count(*) from public.species_names where type = 'synonym'),
                (select count(*) from public.species_names where type = 'common')
         """
     ).fetchone()
     assert row is not None
-    return Measures(row[0], sizes, row[1], row[2], row[3], row[4], row[5])
+    return Measures(row[0], sizes, row[1], row[2], row[3], row[4], row[5], row[6])
 
 
 @dataclass(slots=True)
@@ -825,10 +860,22 @@ class LoadResult:
 
 
 def run_load(conn: psycopg.Connection[Any], catalog: Catalog, *, write: bool) -> LoadResult:
-    """Carga el catálogo en una transacción. Sin ``write``, la revierte al terminar.
+    """Carga el catálogo de COL en una transacción. Sin ``write``, la revierte al terminar."""
+    return run_plan(conn, lambda snapshot: plan_load(catalog, snapshot), COL_POLICY, write=write)
 
-    ``conn`` debe estar sin transacción abierta y sin autocommit. Si algo falla, la
-    transacción se revierte y la excepción sigue su camino: no queda nada escrito.
+
+def run_plan(
+    conn: psycopg.Connection[Any],
+    planner: Callable[[DbSnapshot], Plan],
+    policy: SourcePolicy,
+    *,
+    write: bool,
+) -> LoadResult:
+    """Lee la base, planifica con ``planner`` y aplica el plan, todo en una transacción.
+
+    Sin ``write``, la revierte al terminar. ``conn`` debe estar sin transacción abierta y sin
+    autocommit. Si algo falla, la transacción se revierte y la excepción sigue su camino: no
+    queda nada escrito.
     """
     if conn.autocommit:
         raise LoadError('La conexión no debe estar en autocommit: la carga es una transacción.')
@@ -847,11 +894,11 @@ def run_load(conn: psycopg.Connection[Any], catalog: Catalog, *, write: bool) ->
         timings['lectura_base'] = time.perf_counter() - started
 
         mark = time.perf_counter()
-        plan = plan_load(catalog, snapshot)
+        plan = planner(snapshot)
         timings['plan'] = time.perf_counter() - mark
 
         mark = time.perf_counter()
-        applied = apply_plan(conn, plan)
+        applied = apply_plan(conn, plan, policy)
         if write:
             # Estadísticas al día para la búsqueda. Dentro de la transacción: si se revierte,
             # también se revierten.
