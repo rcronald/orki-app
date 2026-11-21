@@ -98,6 +98,7 @@ orki-app/
 │       │   ├── config/        Lectura y validación de las variables de entorno
 │       │   ├── diagnostics/   Panel de diagnóstico de la identidad (solo fuera de producción)
 │       │   ├── lib/           Cliente de Supabase (con el token de Clerk) y tipos del esquema
+│       │   ├── observability/ Sentry: cargador diferido, límite de errores, recorte de datos y ruido
 │       │   ├── pages/         Pantallas (provisionales salvo las de acceso)
 │       │   ├── routes/        Rutas de la app, enrutador de primer nivel, foco y título por página
 │       │   ├── showcase/      Página interna de muestra (solo fuera de producción)
@@ -210,7 +211,7 @@ Las funciones son públicas: sin sesión, la petición va con la clave publicabl
 
 ## Variables de entorno de la app
 
-La app web lee cuatro variables de entorno. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
+La app web lee cuatro variables de entorno obligatorias y una opcional, la de Sentry. Vite solo expone al navegador las que empiezan por `VITE_`, y su valor queda escrito en el JavaScript del build, así que aquí nunca va un secreto.
 
 | Variable                        | Qué es                                                                                                                 | Dónde se obtiene                                                                                   |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -218,6 +219,7 @@ La app web lee cuatro variables de entorno. Vite solo expone al navegador las qu
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Clave publicable del proyecto. Empieza por `sb_publishable_`.                                                          | En Project Settings > API Keys. No uses nunca una clave secreta (`sb_secret_`); la app la rechaza. |
 | `VITE_APP_ENV`                  | Ambiente al que apunta la app: `dev` o `prod`.                                                                         | Lo decide quien configura el ambiente. Coincide con los nombres de los environments de GitHub.     |
 | `VITE_CLERK_PUBLISHABLE_KEY`    | Clave publicable de la instancia de Clerk del ambiente. Empieza por `pk_test_` (desarrollo) o `pk_live_` (producción). | En el panel de Clerk, página API keys. No uses nunca la clave secreta (`sk_`); la app la rechaza.  |
+| `VITE_SENTRY_DSN` (opcional)    | DSN del proyecto de Sentry. Sin él, Sentry queda apagado (ver [Errores en Sentry](#errores-en-sentry)).                | En Sentry, Settings > Projects > (el proyecto) > Client Keys (DSN). No es un secreto.              |
 
 La URL y las claves publicables no son secretas, pero tampoco se versionan, porque cambian de un ambiente a otro. La clave secreta de Clerk no la usa la app y no debe aparecer en el repositorio, en un issue ni en un chat.
 
@@ -235,13 +237,59 @@ No lo confundas con `supabase/.env`: ese archivo es para la CLI de Supabase y co
 
 ### Validación al arrancar
 
-Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clave de Supabase no está vacía (y no es una clave secreta), que el ambiente es `dev` o `prod` y que la clave de Clerk empieza por `pk_test_` o `pk_live_` y corresponde al ambiente: `pk_test_` solo con `dev` y `pk_live_` solo con `prod`. Si se pega la clave secreta de Clerk (`sk_`), el error lo dice expresamente. Si algo falla, en lugar de la app aparece una pantalla de error que nombra cada variable con problemas y el motivo, sin mostrar nunca sus valores; la consola del navegador muestra también los nombres.
+Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clave de Supabase no está vacía (y no es una clave secreta), que el ambiente es `dev` o `prod` y que la clave de Clerk empieza por `pk_test_` o `pk_live_` y corresponde al ambiente: `pk_test_` solo con `dev` y `pk_live_` solo con `prod`. Si hay DSN de Sentry, tiene que tener la forma `https://<clave>@<host>/<id del proyecto>`; un DSN antiguo con clave secreta se rechaza. Si se pega la clave secreta de Clerk (`sk_`), el error lo dice expresamente. Si algo falla, en lugar de la app aparece una pantalla de error que nombra cada variable con problemas y el motivo, sin mostrar nunca sus valores; la consola del navegador muestra también los nombres.
 
 Fuera de producción, la app muestra en la esquina inferior izquierda una etiqueta pequeña con el ambiente ("Desarrollo"), para comprobar a simple vista a qué ambiente apunta una vista previa o el servidor local. Con `VITE_APP_ENV=prod` no aparece.
 
 El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada, y se carga de forma diferida (ver [Identidad: de Clerk a Postgres](#identidad-de-clerk-a-postgres)). No usa Supabase Auth: la sesión es de Clerk y el cliente envía su token de sesión en cada petición.
 
 Las pruebas no leen estas variables (la validación se prueba con objetos de entorno de ejemplo), así que `npm test` y `npm run build` funcionan sin ningún `.env`, también en la integración continua.
+
+## Errores en Sentry
+
+Los errores de la app se reportan a [Sentry](https://docs.sentry.io/platforms/javascript/guides/react/) con `@sentry/react` (versión 11), solo si el build tiene `VITE_SENTRY_DSN`. Sin esa variable no se descarga ni se inicializa nada de Sentry: el chunk del SDK ni siquiera se genera. Así corren el servidor local, las pruebas y la integración continua.
+
+### Cómo está montado
+
+- **Carga diferida.** En el JavaScript inicial solo va un cargador pequeño (`src/observability/reporter.ts`) y el límite de errores de React. El SDK (`src/observability/sentry.ts`, unos 33 kB comprimidos) se descarga con un import dinámico después del primer pintado, cuando el navegador está libre. Los errores que ocurren antes (errores no capturados, promesas rechazadas y los del límite de errores) se guardan en un búfer de 10 como mucho y se envían al cargar el SDK.
+- **Ambiente y versión.** Cada evento lleva el ambiente (`VITE_APP_ENV`: `dev` o `prod`) y la versión, que es el commit desplegado: Vercel lo expone en el build como `VERCEL_GIT_COMMIT_SHA` y `vite.config.ts` lo escribe en una etiqueta `<meta name="orki-release">` del HTML. Va en el HTML y no en el JavaScript para que los chunks no cambien de nombre en cada despliegue. En local no hay versión.
+- **Límite de errores.** Si un componente falla al pintarse, en lugar de una página en blanco aparece la pantalla "Algo salió mal" con el botón "Recargar la página", y el error se reporta con la pila de componentes (`src/observability/ErrorBoundary.tsx`).
+- **Usuario.** Solo el id de Clerk del usuario con sesión (`src/auth/ObservedUser.tsx`).
+- **Ruido ignorado** (`src/observability/noise.ts`): los fallos de red con el navegador sin conexión (incluidos los errores de la app con motivo `offline` y el de Clerk sin conexión) y los errores lanzados por extensiones del navegador. Con conexión, un "Failed to fetch" sí se envía.
+
+### Qué no se envía
+
+Solo se reportan errores: no hay trazas de rendimiento ni grabación de sesión. Las opciones del SDK (`dataCollection`) y dos filtros puros (`beforeSend` y `beforeBreadcrumb`, en `src/observability/privacy.ts`) quitan:
+
+- Correo, nombre e IP del usuario. El SDK pide además a Sentry que no deduzca la IP de la conexión.
+- Cookies, cuerpos de peticiones y cabeceras (salvo `User-Agent`).
+- Los parámetros de consulta y el fragmento de todas las URL: la de la página (la búsqueda del inventario viaja en `?q=`), las de las navegaciones y peticiones de las migas y las que aparezcan en los mensajes de error.
+- Las migas de la consola y los textos (`aria-label`, `title`, `alt`, `name`) de los elementos pulsados, que pueden llevar el nombre de una planta.
+- La zona horaria y el idioma del dispositivo.
+
+`src/observability/sentry-options.test.ts` arranca el SDK real con un transporte en memoria y comprueba que el evento saliente no lleva correo, nombre, IP ni parámetros de URL.
+
+### Mapas de código fuente
+
+El build sube los mapas de código fuente a Sentry solo si tiene estas tres variables, con los nombres estándar del plugin `@sentry/vite-plugin`. Se leen del entorno del proceso de build (no de los `.env`), así que se definen en Vercel:
+
+| Variable            | Qué es                                                                                                                                         | Tipo en Vercel |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `SENTRY_AUTH_TOKEN` | Token de organización de Sentry (Organization Tokens, en la configuración de la organización), con permiso para subir mapas y crear versiones. | Secret         |
+| `SENTRY_ORG`        | Identificador (slug) de la organización en Sentry.                                                                                             | Config         |
+| `SENTRY_PROJECT`    | Identificador (slug) del proyecto en Sentry.                                                                                                   | Config         |
+
+Con las tres, el plugin genera mapas ocultos, enlaza cada chunk con su mapa mediante un identificador (debug ID), los sube y los quita de la salida: no llegan a `dist`, así que no se sirven al público. Si la subida falla, el build avisa y termina bien; el despliegue no depende de que Sentry responda. Si falta alguna, el build es el de siempre, sin mapas y sin contactar con Sentry. La versión usa `VERCEL_GIT_COMMIT_SHA`, que requiere tener activado "Automatically expose System Environment Variables" en Settings > Environment Variables (es lo normal).
+
+### Provocar un error de prueba
+
+En un despliegue con `VITE_SENTRY_DSN`, abre la app, espera a que cargue y escribe en la consola del navegador:
+
+```js
+orkiErrorDePrueba()
+```
+
+Lanza un `SentryTestError` desde el código de la app (`src/observability/sentry.ts`), fuera de cualquier `try`, que debe aparecer en Sentry con su ambiente, su versión y la traza legible si se subieron los mapas. Si la consola dice que la función no existe, el SDK no se ha cargado: falta el DSN en el build o todavía no ha terminado de cargar. Un `throw` escrito directamente en la consola no sirve, porque no pasa por los manejadores globales de errores.
 
 ## Autenticación
 
@@ -729,7 +777,7 @@ Se hace una sola vez, desde el panel de Vercel (Add New > Project, importando el
 
 ### Variables por ambiente
 
-Las cuatro variables de la app (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)) se definen en Settings > Environment Variables, con un valor distinto según el ambiente de Vercel:
+Las variables de la app (ver [Variables de entorno de la app](#variables-de-entorno-de-la-app)) se definen en Settings > Environment Variables, con un valor distinto según el ambiente de Vercel:
 
 | Ambiente de Vercel | `VITE_SUPABASE_URL`            | `VITE_SUPABASE_PUBLISHABLE_KEY`             | `VITE_APP_ENV` | `VITE_CLERK_PUBLISHABLE_KEY`                     |
 | ------------------ | ------------------------------ | ------------------------------------------- | -------------- | ------------------------------------------------ |
@@ -738,6 +786,8 @@ Las cuatro variables de la app (ver [Variables de entorno de la app](#variables-
 | Development        | URL del proyecto de desarrollo | Clave publicable del proyecto de desarrollo | `dev`          | Clave de la instancia de desarrollo (`pk_test_`) |
 
 Vite escribe estos valores en el JavaScript durante el build, así que un cambio de variable solo se aplica en el siguiente despliegue: después de cambiarla hay que volver a desplegar (Redeploy). Si falta alguna, el build termina bien, pero la app muestra la pantalla de error de configuración. El ambiente Development de Vercel solo se usa con la CLI de Vercel (`vercel env pull`, `vercel dev`), que este proyecto no necesita; se rellena igual para que los tres ambientes estén completos. Ninguna de estas variables es secreta: al crearlas se elige el tipo Config, no Secret, para que sus valores sigan siendo legibles en el panel.
+
+Para Sentry (ver [Errores en Sentry](#errores-en-sentry)) se añaden `VITE_SENTRY_DSN` (Config; el DSN del proyecto en Production y Preview, para que los errores de cada ambiente se separen por `VITE_APP_ENV`) y, para los mapas de código fuente, `SENTRY_AUTH_TOKEN` (Secret), `SENTRY_ORG` y `SENTRY_PROJECT` (Config), en los ambientes cuyos builds deban subirlos. El token vive solo en Vercel: nunca en el repositorio, en un issue ni en un chat.
 
 ## Flujo de ramas
 

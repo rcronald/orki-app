@@ -6,6 +6,8 @@ import { ConfigError } from './components/ConfigError.tsx'
 import { EnvironmentBadge } from './components/EnvironmentBadge.tsx'
 import { parseEnv } from './config/env.ts'
 import { initSupabase } from './lib/supabase.ts'
+import { ErrorBoundary } from './observability/ErrorBoundary.tsx'
+import { errorReporter, readRelease } from './observability/reporter.ts'
 import { AppRouter } from './routes/AppRouter.tsx'
 
 const env = parseEnv(import.meta.env)
@@ -13,14 +15,25 @@ const root = createRoot(document.getElementById('root')!)
 
 if (env.ok) {
   initSupabase(env.config)
+  // Sentry, solo con DSN: empieza a guardar errores ya y descarga el SDK tras
+  // el primer pintado (ver observability/reporter.ts).
+  if (env.config.sentryDsn !== undefined) {
+    errorReporter.start({
+      dsn: env.config.sentryDsn,
+      environment: env.config.appEnv,
+      release: readRelease(document),
+    })
+  }
   root.render(
     <StrictMode>
-      <BrowserRouter>
-        <AppRouter
-          appEnv={env.config.appEnv}
-          clerkPublishableKey={env.config.clerkPublishableKey}
-        />
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <AppRouter
+            appEnv={env.config.appEnv}
+            clerkPublishableKey={env.config.clerkPublishableKey}
+          />
+        </BrowserRouter>
+      </ErrorBoundary>
       <EnvironmentBadge env={env.config.appEnv} />
     </StrictMode>,
   )
