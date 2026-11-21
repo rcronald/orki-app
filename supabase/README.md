@@ -16,12 +16,13 @@ El flujo completo (crear una migración, aplicarla en desarrollo, qué pasa en p
 
 Las tablas viven en el esquema `public` y sus identificadores están en inglés:
 
-- Catálogo, de lectura pública (también sin sesión): `genera` (géneros, con la marca de acceso rápido), `genus_abbreviations` (abreviaturas de género, como Phal.), `species` (especies e híbridos, con su estado, su fuente y la referencia externa de la fuente) y `species_names` (sinónimos y nombres comunes). La migración del catálogo carga los cinco géneros de acceso rápido y sus abreviaturas estándar de la RHS.
-- Inventario: `profiles` (perfil de cada usuario de Clerk) y `plants` (ejemplares). El usuario es el id de Clerk, de tipo texto, y por defecto se toma del claim `sub` del token de sesión. Tienen Row Level Security activada y todavía no tienen políticas, así que no se pueden leer ni escribir desde la API.
-- Identidad: `public.requesting_user_id()` devuelve el id de usuario de Clerk de la petición (`auth.jwt()->>'sub'`), o `null` sin sesión. Es `stable`, `security invoker` y con `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role` (la API la expone en `/rest/v1/rpc/requesting_user_id`) y no lee ninguna tabla. La usa el panel de diagnóstico de la app y la usarán las políticas RLS de perfiles y plantas (#6).
+- Catálogo, de lectura pública (también sin sesión): `genera` (géneros, con la marca de acceso rápido), `genus_abbreviations` (abreviaturas de género, como Phal.), `species` (especies e híbridos, con su estado, su fuente y la referencia externa de la fuente) y `species_names` (sinónimos y nombres comunes). La migración del catálogo carga los cinco géneros de acceso rápido y sus abreviaturas estándar de la RHS. Desde la API solo lo escriben (insertar, editar y borrar) los administradores del catálogo: `authenticated` tiene el permiso y las políticas RLS exigen `(select public.is_catalog_admin())`.
+- Inventario: `profiles` (perfil de cada usuario de Clerk) y `plants` (ejemplares). El usuario es el id de Clerk, de tipo texto, y por defecto se toma del claim `sub` del token de sesión. Con sesión (`authenticated`), cada usuario lee, crea, actualiza y borra solo su perfil y sus plantas: las políticas comparan con `(select public.requesting_user_id())`, no dejan crear una planta a nombre de otro ni cambiar su dueño, y no dan más acceso al administrador de catálogo. `authenticated` puede escribir todas las columnas de `plants` menos `validation`, que solo ajustan el disparador de sincronización, `service_role` y las futuras funciones de administrador; así un usuario no puede marcar sus plantas como "no identificable" ni validarlas sin especie. Una columna nueva de `plants` hay que concedérsela explícitamente a `authenticated`. Sin sesión (`anon`) no hay ningún acceso.
+- Identidad: `public.requesting_user_id()` devuelve el id de usuario de Clerk de la petición (`auth.jwt()->>'sub'`), o `null` sin sesión. Es `stable`, `security invoker` y con `search_path` vacío; la pueden ejecutar `anon`, `authenticated` y `service_role` (la API la expone en `/rest/v1/rpc/requesting_user_id`) y no lee ninguna tabla. La usan el panel de diagnóstico de la app y las políticas RLS de perfiles y plantas (#64).
+- Rol de administrador: `public.is_catalog_admin()` es verdadera solo si el claim de primer nivel `app_role` del token vale exactamente `catalog_admin` (falsa sin sesión, sin el claim, con otro valor o con el rol en otro claim); nunca devuelve `null`. Mismas propiedades y permisos que `requesting_user_id()`. No hay columna de rol en la base de datos: el rol vive en Clerk (ver [Rol de administrador del catálogo](../README.md#rol-de-administrador-del-catálogo)). El guardián `private.require_catalog_admin()` lanza el error `42501` si la petición no es de un administrador; lo usan las [funciones de administrador](#funciones-de-administrador).
 - Disparadores, con sus funciones en el esquema `private` (no expuesto en la API): al enlazar una planta a una especie, la planta toma el género y el tipo de la especie y queda validada; al desenlazarla vuelve a "por validar"; si cambian el género o el tipo de una especie, se propagan a sus plantas; y `updated_at` se actualiza solo en todas las tablas.
 
-Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` y `authenticated` solo pueden leer el catálogo, y `service_role` puede leer y escribir todo.
+Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` solo puede leer el catálogo; `authenticated` lee el catálogo, lo escribe solo si es administrador (lo deciden las políticas) y gestiona su propio perfil y sus plantas; y `service_role` puede leer y escribir todo.
 
 ## Reglas para las migraciones
 
@@ -38,20 +39,23 @@ Todas las tablas tienen Row Level Security activada y privilegios explícitos: `
 
 Las pruebas están organizadas por tema, un archivo por tema:
 
-| Archivo                  | Qué comprueba                                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `esquema.sql`            | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.             |
-| `datos_referencia.sql`   | Los cinco géneros de acceso rápido con su abreviatura, y que las migraciones no cargan perfiles ni plantas.                  |
-| `catalogo_unicidad.sql`  | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.            |
-| `borrados.sql`           | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                         |
-| `plantas_y_perfiles.sql` | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto.       |
-| `sincronizacion.sql`     | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                  |
-| `acceso_por_rol.sql`     | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.              |
-| `identidad.sql`          | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas. |
-| `datos_ejemplo.sql`      | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario. |
-| `seguridad_general.sql`  | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.         |
+| Archivo                            | Qué comprueba                                                                                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `esquema.sql`                      | Que las migraciones dejan las tablas, enumerados, extensiones, disparadores y funciones esperados, con su dueño.                                                     |
+| `datos_referencia.sql`             | Los cinco géneros de acceso rápido con su abreviatura, y que las migraciones no cargan perfiles ni plantas.                                                          |
+| `catalogo_unicidad.sql`            | Unicidad sin distinguir mayúsculas y nombres sin espacios sobrantes en géneros, abreviaturas, especies y nombres.                                                    |
+| `borrados.sql`                     | Borrados en cascada (abreviaturas, nombres alternativos) y restringidos (géneros y especies en uso).                                                                 |
+| `plantas_y_perfiles.sql`           | Restricciones de `plants` y `profiles`: validación y especie, textos, fecha, enumerados, idioma y valores por defecto.                                               |
+| `sincronizacion.sql`               | Sincronización de género y tipo al enlazar, desenlazar y cambiar la especie, y `updated_at` y `created_at`.                                                          |
+| `acceso_por_rol.sql`               | Qué pueden leer y escribir `anon`, `authenticated` y `service_role`, y el usuario por defecto tomado del token.                                                      |
+| `identidad.sql`                    | `requesting_user_id()`: null sin sesión, el `sub` con sesión, sus permisos y propiedades, y que no abre perfiles ni plantas a `anon`.                                |
+| `politicas_plantas_y_perfiles.sql` | Políticas y permisos de `profiles` y `plants`: cada usuario solo lo suyo, sin cambiar el dueño ni escribir `validation`; el administrador no ve más; `anon` cerrado. |
+| `politicas_catalogo.sql`           | Escritura del catálogo: anónimo, usuario sin rol y administrador; tokens que no dan el rol; `is_catalog_admin()`.                                                    |
+| `funciones_administrador.sql`      | El guardián `private.require_catalog_admin()` y el patrón de las funciones de administrador, con ejemplos que la regla general acepta y rechaza.                     |
+| `datos_ejemplo.sql`                | Que los datos de ejemplo de `datos-ejemplo/` se cargan, que cargarlos dos veces no cambia nada y que no tocan el inventario.                                         |
+| `seguridad_general.sql`            | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas.                                                 |
 
-`seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon` o deja una función de `private` ejecutable desde la API.
+`seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon`, deja una función de `private` ejecutable desde la API o expone una función `security definer` de `public` sin seguir el patrón de las [funciones de administrador](#funciones-de-administrador).
 
 ### Formato de un archivo de pruebas
 
@@ -66,6 +70,7 @@ Una prueba falla en cuanto una sentencia da error. Para comprobar resultados se 
 - `pruebas.debe_fallar(descripcion, sentencia, codigo, restriccion)`: ejecuta la sentencia (texto, normalmente entre `$$`) y falla si no da el error con ese código SQLSTATE (por ejemplo `23505` para un duplicado, `23514` para un `check`, `23503` para una clave foránea o `42501` para un permiso denegado). La restricción es opcional; si se indica, exige que el error venga de esa restricción o índice único.
 - `pruebas.debe_funcionar(descripcion, sentencia)`: ejecuta la sentencia y falla mostrando el error si lo da.
 - `pruebas.genero(nombre)` y `pruebas.especie(nombre)`: devuelven el id de un género o una especie por su nombre.
+- `pruebas.funciones_definer_expuestas()`: las funciones `security definer` de `public` que la API expone sin seguir el patrón de las [funciones de administrador](#funciones-de-administrador), con el motivo, o `ninguna`.
 
 Por ejemplo:
 
@@ -85,6 +90,45 @@ select pruebas.debe_fallar(
 3. Si la migración crea una tabla, añádela a la lista de `esquema.sql`. Las comprobaciones de `seguridad_general.sql` ya la cubren sin tocarlas.
 4. Ejecuta `npm run db:test` (o `npm run db:test -- <tema>` mientras trabajas). Comprueba también que la prueba nueva falla si quitas de la migración lo que prueba: una prueba que nunca falla no protege nada.
 5. Ejecuta `npm run db:types` para regenerar los tipos de TypeScript y versiona el archivo que cambie.
+
+## Funciones de administrador
+
+Casi todo lo que hace un administrador del catálogo pasa por las tablas, con las políticas RLS de escritura. Algunas operaciones necesitan además leer o cambiar filas que RLS le oculta, como las plantas de todos los usuarios (la fusión de especies, #21; la cola de validación, #22; la auditoría, #23). Esas se exponen como funciones de la API con este patrón:
+
+- Viven en `public`, para que la API las exponga en `/rest/v1/rpc/<nombre>`.
+- Son `security definer` (se ejecutan como su dueño, `postgres`, que no está sujeto a RLS) con `set search_path = ''` y todos los nombres calificados.
+- Se escriben en `plpgsql` (o en `sql`) y su **primera sentencia** es la llamada al guardián `private.require_catalog_admin()`, que lanza el error `42501` (permiso denegado) si quien llama no es administrador. En `plpgsql`, la sección `declare` no puede dar valores iniciales, porque se calculan antes del `begin` y, por tanto, antes del guardián.
+- Se retira el permiso de ejecución a `public`, `anon`, `authenticated` y `service_role` (Supabase lo concede por defecto a toda función nueva de `public`) y se concede solo a `authenticated`.
+- Llegan con sus pruebas: que funcionan para un administrador y que dan `42501` para un usuario sin rol y para `anon`.
+
+```sql
+create function public.merge_species(source_id uuid, target_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_catalog_admin();
+
+  update public.plants set species_id = target_id where species_id = source_id;
+  delete from public.species where id = source_id;
+end;
+$$;
+
+revoke all on function public.merge_species(uuid, uuid) from public, anon, authenticated, service_role;
+grant execute on function public.merge_species(uuid, uuid) to authenticated;
+```
+
+(Es un ejemplo, no la fusión real del #21.)
+
+Por qué así:
+
+- El rol se comprueba dentro de la función, con el mismo `public.is_catalog_admin()` que las políticas, porque `security definer` se salta RLS: sin el guardián, cualquier usuario con sesión podría llamarla.
+- El guardián es la primera sentencia para que nada se ejecute antes de comprobar el rol, y vive en `private` (sin `security definer` y sin permiso para nadie más que su dueño) para que la API no lo exponga: solo lo llaman funciones que ya corren como `postgres`.
+- No se concede a `service_role`: los scripts con la clave de servicio ya pueden escribir todas las tablas, y su token no trae `app_role`, así que el guardián los rechazaría igualmente.
+
+La regla general de `tests/seguridad_general.sql` lo vigila con `pruebas.funciones_definer_expuestas()`: falla si `anon` puede ejecutar alguna función `security definer` de `public`, o si `authenticated` puede ejecutar una que no fija `search_path` vacío o que no llama primero al guardián (lo comprueba en el texto de la función, `pg_proc.prosrc`, sin contar los comentarios). Es una red para olvidos, no una barrera contra quien la quiera esquivar a propósito; la revisión del pull request sigue haciendo falta. Las funciones `security definer` que solo ejecuta `service_role` no están sujetas al patrón. `tests/funciones_administrador.sql` tiene ejemplos que la regla acepta y rechaza.
 
 ## Tipos de TypeScript
 

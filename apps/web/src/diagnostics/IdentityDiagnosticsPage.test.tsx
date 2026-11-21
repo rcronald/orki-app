@@ -59,6 +59,20 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/**
+ * Cabeceras de la petición al RPC del panel. Se busca por su dirección y no por
+ * su posición: con sesión, la app también hace la petición que crea el perfil.
+ */
+function rpcRequestHeaders() {
+  const call = fetchMock.mock.calls.find(([input]) =>
+    (input instanceof Request ? input.url : String(input)).includes(
+      '/rpc/requesting_user_id',
+    ),
+  )
+  expect(call).toBeDefined()
+  return new Headers(call?.[1]?.headers)
+}
+
 function renderPanel(appEnv: AppEnv = 'dev') {
   return render(
     <MemoryRouter initialEntries={['/diagnostico']}>
@@ -92,7 +106,7 @@ describe('panel de diagnóstico de identidad', () => {
     expect(valueOf('Usuario según Clerk')).toHaveTextContent('Sin sesión')
     expect(valueOf('¿Coinciden?')).toHaveTextContent('Sí, los dos sin sesión')
     expect(valueOf('Claim app_role')).toHaveTextContent('Sin sesión')
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
+    const headers = rpcRequestHeaders()
     expect(headers.get('Authorization')).not.toContain(FAKE_SESSION_TOKEN)
     await expectNoAxeViolations()
   })
@@ -108,7 +122,7 @@ describe('panel de diagnóstico de identidad', () => {
     expect(valueOf('¿Coinciden?')).toHaveTextContent(/^Sí$/)
     expect(valueOf('Claim app_role')).toHaveTextContent('catalog_admin')
     // El token viaja en la petición, pero nunca se muestra.
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
+    const headers = rpcRequestHeaders()
     expect(headers.get('Authorization')).toBe(`Bearer ${FAKE_SESSION_TOKEN}`)
     expect(document.body).not.toHaveTextContent(FAKE_SESSION_TOKEN)
     await expectNoAxeViolations()

@@ -164,4 +164,79 @@ begin
 end;
 $$;
 
+-- Patrón de las funciones de administrador ------------------------------------------------
+--
+-- Una función security definer de public que authenticated puede ejecutar tiene que empezar
+-- llamando al guardián private.require_catalog_admin() (ver "Funciones de administrador" en
+-- supabase/README.md). Es una comprobación sobre el texto de la función (pg_proc.prosrc): sirve
+-- para que nadie olvide el guardián, no para detener a quien quiera esquivarla a propósito.
+
+-- Si el cuerpo de una función, en plpgsql o sql, empieza llamando al guardián. Se ignoran los
+-- comentarios y las mayúsculas. En plpgsql, la llamada tiene que ser la primera sentencia
+-- tras el primer "begin", y la sección "declare" no puede dar valores iniciales (se calculan
+-- antes del "begin"). En sql, tiene que ser la primera sentencia. Cualquier otra forma (por
+-- ejemplo un cuerpo "begin atomic", que deja prosrc vacío) se da por no conforme.
+create function pruebas.llama_primero_al_guardian(lenguaje text, fuente text)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+  cuerpo text;
+  antes text;
+begin
+  cuerpo := lower(coalesce(fuente, ''));
+  cuerpo := regexp_replace(cuerpo, '/\*.*?\*/', ' ', 'g');
+  cuerpo := regexp_replace(cuerpo, '--[^\n]*', ' ', 'g');
+
+  if lenguaje = 'sql' then
+    return cuerpo ~ '^\s*select\s+private\.require_catalog_admin\s*\(\s*\)\s*;';
+  end if;
+  if lenguaje <> 'plpgsql' then
+    return false;
+  end if;
+
+  -- Lo que hay antes del primer "begin": nada o una sección "declare" sin valores iniciales.
+  antes := substring(cuerpo from '^(.*?)\mbegin\M');
+  if antes is null then
+    return false;
+  end if;
+  if antes !~ '^\s*$' and (antes !~ '^\s*declare\M' or antes ~ '=|\mdefault\M') then
+    return false;
+  end if;
+  return substr(cuerpo, length(antes) + 1)
+    ~ '^begin\s+perform\s+private\.require_catalog_admin\s*\(\s*\)\s*;';
+end;
+$$;
+
+-- Funciones security definer de public que la API expone sin seguir el patrón, con el motivo,
+-- o "ninguna". anon no puede ejecutar ninguna; authenticated, solo las que fijan un search_path
+-- vacío y llaman primero al guardián.
+create function pruebas.funciones_definer_expuestas()
+returns text
+language sql
+stable
+as $$
+  select coalesce(string_agg(f.funcion || ': ' || f.motivo, '; ' order by f.funcion, f.motivo), 'ninguna')
+  from (
+    select p.oid::regprocedure::text as funcion, m.motivo
+    from pg_proc p
+    join pg_language l on l.oid = p.prolang
+    cross join lateral (
+      select 'la puede ejecutar anon' as motivo
+      where has_function_privilege('anon', p.oid, 'execute')
+      union all
+      select 'la puede ejecutar authenticated sin search_path vacío'
+      where has_function_privilege('authenticated', p.oid, 'execute')
+        and not coalesce('search_path=""' = any (p.proconfig), false)
+      union all
+      select 'la puede ejecutar authenticated sin llamar primero a private.require_catalog_admin()'
+      where has_function_privilege('authenticated', p.oid, 'execute')
+        and not pruebas.llama_primero_al_guardian(l.lanname, p.prosrc)
+    ) m
+    where p.pronamespace = 'public'::regnamespace
+      and p.prosecdef
+  ) f
+$$;
+
 grant execute on all functions in schema pruebas to public;

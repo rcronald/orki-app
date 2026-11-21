@@ -19,16 +19,19 @@ interface FakeClerkState {
   signedIn: boolean
   /** Valor del claim app_role del token de sesión; null si no lo trae. */
   appRole: string | null
+  /** Id del usuario con sesión (userId y claim sub). */
+  userId: string
 }
+
+/** Id de usuario de la sesión simulada por defecto (userId y claim sub). */
+export const FAKE_USER_ID = 'user_prueba'
 
 export const fakeClerk: FakeClerkState = {
   status: 'ready',
   signedIn: false,
   appRole: null,
+  userId: FAKE_USER_ID,
 }
-
-/** Id de usuario de la sesión simulada (userId y claim sub). */
-export const FAKE_USER_ID = 'user_prueba'
 
 /** Token de sesión que devuelve getToken() por defecto con sesión. */
 export const FAKE_SESSION_TOKEN = 'token_de_sesion_de_prueba'
@@ -65,7 +68,12 @@ export function setFakeClerk(next: Partial<FakeClerkState>) {
 }
 
 export function resetFakeClerk() {
-  setFakeClerk({ status: 'ready', signedIn: false, appRole: null })
+  setFakeClerk({
+    status: 'ready',
+    signedIn: false,
+    appRole: null,
+    userId: FAKE_USER_ID,
+  })
   signOut.mockReset()
   getToken.mockReset()
   getToken.mockImplementation(defaultGetToken)
@@ -114,12 +122,14 @@ export function useAuth() {
       getToken,
     }
   }
-  const sessionClaims: Record<string, unknown> = { sub: FAKE_USER_ID }
+  const sessionClaims: Record<string, unknown> = {
+    sub: fakeClerk.userId,
+  }
   if (fakeClerk.appRole !== null) sessionClaims.app_role = fakeClerk.appRole
   return {
     isLoaded: true,
     isSignedIn: true,
-    userId: FAKE_USER_ID,
+    userId: fakeClerk.userId,
     sessionClaims,
     getToken,
   }

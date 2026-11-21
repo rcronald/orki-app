@@ -259,7 +259,19 @@ Las pantallas de acceso leen `redirect_url` (`src/auth/useAuthRedirectDestinatio
 - El valor de administrador es **`catalog_admin`** (`CATALOG_ADMIN_ROLE` en `src/auth/roles.ts`). Es el mismo que se pone en Clerk (#55) y el que comprueban las políticas RLS (#6); si cambia, cambia en los tres sitios.
 - Configuración en el panel de Clerk (#55): en el usuario, metadatos públicos `{ "role": "catalog_admin" }`; en Sessions > Customize session token, el claim `{ "app_role": "{{user.public_metadata.role}}" }`. Los metadatos públicos solo se cambian desde el panel o el backend, no desde el navegador.
 - La app lo lee de `sessionClaims` de [`useAuth()`](https://clerk.com/docs/react/reference/hooks/use-auth), sin peticiones extra (`useIsCatalogAdmin`). Un cambio de rol llega con el siguiente token de sesión, no al instante.
-- Ocultar el enlace y la pantalla es **solo comodidad de la interfaz**: el token está en el navegador y la interfaz se puede manipular. La protección real son las políticas RLS de la base de datos (#6), que leen el mismo claim del token que verifica Supabase.
+- Ocultar el enlace y la pantalla es **solo comodidad de la interfaz**: el token está en el navegador y la interfaz se puede manipular. La protección real son las políticas RLS de la base de datos (#6), que leen el mismo claim del token que verifica Supabase con `public.is_catalog_admin()`: con el rol, `authenticated` puede insertar, editar y borrar en las cuatro tablas del catálogo; sin él, solo leerlas. Las funciones que necesitan saltarse RLS siguen el patrón de [Funciones de administrador](supabase/README.md#funciones-de-administrador).
+
+#### Asignar y retirar el rol
+
+Se hace a mano en el [panel de Clerk](https://dashboard.clerk.com), en la instancia del ambiente que corresponda (desarrollo o producción tienen usuarios distintos):
+
+1. **Asignar:** Users > el usuario > Metadata > Public > Edit, y deja `{ "role": "catalog_admin" }` (conservando las demás claves que hubiera). Guarda.
+2. **Retirar:** en el mismo sitio, borra la clave `role` (o el valor entero si era la única) y guarda.
+3. Comprueba una sola vez por instancia que Sessions > Customize session token tiene el claim `{ "app_role": "{{user.public_metadata.role}}" }`. Sin él, el token no lleva el rol aunque el usuario lo tenga.
+
+El valor tiene que ser exactamente `catalog_admin`, en minúsculas y sin espacios; cualquier otro (`admin`, `CATALOG_ADMIN`...) no da permisos. Los metadatos públicos solo se escriben con la clave secreta de Clerk (panel o backend), así que el usuario no puede ponérselo; el rol en otro sitio que el usuario sí controla (`unsafe_metadata`) no sirve, porque solo cuenta el claim de primer nivel `app_role`.
+
+**Cuánto tarda:** el cambio se refleja sin cerrar sesión cuando Clerk renueva el token de sesión, que dura un minuto aproximadamente: en general en un minuto, y en desarrollo se comprobó que en menos de dos. Hasta entonces, el token anterior sigue valiendo, también para la base de datos. Cerrar sesión y volver a entrar lo aplica al momento. En `/diagnostico` (fuera de producción) se ve el valor de `app_role` que trae el token.
 
 ### Identidad: de Clerk a Postgres
 
@@ -268,7 +280,7 @@ Supabase no tiene usuarios propios: Clerk está registrado en cada proyecto de S
 1. **Clerk** emite el token de sesión: un JWT corto que Clerk renueva solo. Lleva `sub` (el id de usuario de Clerk, `user_...`), `role: authenticated` (lo añade la integración y Supabase lo usa para elegir el rol de Postgres) y `app_role` (el rol de la app, ver [Rol de administrador del catálogo](#rol-de-administrador-del-catálogo)).
 2. **La app** se lo pasa al cliente de Supabase con la opción [`accessToken`](https://supabase.com/docs/reference/javascript/initializing) de supabase-js para tokens de terceros, como indica la [guía de Clerk para Supabase](https://clerk.com/docs/guides/development/integrations/databases/supabase). Antes de cada petición, el cliente pide el token y lo envía en `Authorization: Bearer`, junto con la clave publicable en `apikey`.
 3. **Supabase** comprueba la firma con las claves públicas de la instancia de Clerk, y PostgREST ejecuta la consulta con el rol del claim `role` y deja las claims en la transacción.
-4. **Postgres** lee el usuario con `public.requesting_user_id()`, que devuelve `auth.jwt()->>'sub'` (texto) o `null` sin sesión. Es la función que usarán las políticas RLS de perfiles y plantas (#6): `user_id = (select public.requesting_user_id())`.
+4. **Postgres** lee el usuario con `public.requesting_user_id()`, que devuelve `auth.jwt()->>'sub'` (texto) o `null` sin sesión. Es la función que usan las políticas RLS de perfiles y plantas (#64): `user_id = (select public.requesting_user_id())`.
 
 Cómo llega el token al cliente (`src/lib/supabase.ts` y `src/auth/SupabaseSessionBridge.tsx`): el cliente vive en el chunk inicial y Clerk en el chunk diferido de la app, así que el cliente no importa Clerk. Pide el token a una _fuente_ registrable: `SupabaseSessionBridge`, montado dentro de `<ClerkProvider>` (en `AuthProvider`), registra una con `setSessionTokenSource()` mientras Clerk tiene sesión y la quita al cerrarla o al desmontarse. La fuente llama a `getToken()` de [`useAuth()`](https://clerk.com/docs/react/reference/hooks/use-auth). Sigue habiendo un único cliente, creado en un único módulo.
 
@@ -288,6 +300,10 @@ La regla: **con sesión, una petición nunca sale como anónima ni falla en sile
 Detalle de supabase-js: las lecturas (`GET`) que fallan antes de enviarse se reintentan hasta tres veces (1, 2 y 4 s), pidiendo el token de nuevo en cada intento; las escrituras y las llamadas a funciones (`rpc`, `POST`) fallan enseguida.
 
 Carga diferida: supabase-js (unos 230 kB) no va en el chunk inicial. `main.tsx` solo guarda la configuración con `initSupabase()`, y `getSupabase()` (asíncrona) carga supabase-js y crea el cliente la primera vez que se pide. El service worker precachea ese chunk como los demás, así que sin conexión también carga.
+
+#### Perfil en el primer ingreso
+
+La fila del usuario en `profiles` la crea la app sola la primera vez que ve una sesión iniciada; no hace falta ningún paso en Clerk ni en Supabase. `src/auth/ProfileBootstrap.tsx`, montado justo después de `SupabaseSessionBridge`, llama a `ensureProfile()` (`src/lib/profile.ts`), que hace un `upsert` con `ignoreDuplicates` sobre `id` (en Postgres, `insert ... on conflict (id) do nothing`): si el perfil ya existe no da error ni lo modifica (el idioma elegido se conserva). Se hace una vez por usuario y carga de la página, en segundo plano y sin bloquear la interfaz. Si falla (sin conexión, error de red o del servidor) no se muestra nada; se reintenta al recuperar la conexión, en el siguiente ingreso o al recargar.
 
 #### Panel de diagnóstico
 
