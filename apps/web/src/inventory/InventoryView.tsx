@@ -14,6 +14,7 @@ import type { CollectionStatus } from '../collection/store.ts'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
+import { PHOTO_FIRST_PATH } from '../registration/photo-first.ts'
 import { PATHS } from '../routes/paths.ts'
 import {
   EmptyCollection,
@@ -259,17 +260,34 @@ function GenusSection({ group, view }: { group: GenusGroup; view: View }) {
   )
 }
 
-// Acceso a registrar una planta. En el celular queda fijo abajo, al alcance
-// del pulgar; desde 640 px va en su sitio, junto a los contadores. En el
-// orden del tabulador va siempre aquí, antes del buscador y de la lista.
+// Acceso a registrar una planta, con dos entradas: escribir el nombre primero
+// o empezar por la foto (#87, la misma pantalla con ?foto=1). En el celular
+// quedan fijas abajo, al alcance del pulgar; desde 640 px van en su sitio,
+// junto a los contadores. En el orden del tabulador van siempre aquí, antes
+// del buscador y de la lista.
+//
+// "Con foto" no abre la cámara: lleva al formulario con "Tomar foto" arriba
+// del todo. Los navegadores solo abren la cámara como respuesta directa a un
+// toque, y así ese toque es el del propio botón de la cámara, ya en el
+// formulario que conserva lo escrito si iOS recarga la app.
 function RegisterLink() {
   return (
-    <Link
-      to={PATHS.newPlant}
-      className="orki-btn orki-btn--primary max-sm:fixed max-sm:inset-x-space-4 max-sm:bottom-[calc(var(--space-4)_+_env(safe-area-inset-bottom))] max-sm:z-10 max-sm:shadow-card"
-    >
-      <Icon name="plus" />
-      Registrar orquídea
-    </Link>
+    <div className="flex gap-space-2 max-sm:fixed max-sm:inset-x-space-4 max-sm:bottom-[calc(var(--space-4)_+_env(safe-area-inset-bottom))] max-sm:z-10">
+      <Link
+        to={PATHS.newPlant}
+        className="orki-btn orki-btn--primary min-w-[0] max-sm:flex-1 max-sm:shadow-card"
+      >
+        <Icon name="plus" />
+        Registrar orquídea
+      </Link>
+      <Link
+        to={PHOTO_FIRST_PATH}
+        aria-label="Registrar con foto"
+        className="orki-btn orki-btn--secondary flex-none max-sm:bg-neutral-0 max-sm:shadow-card"
+      >
+        <Icon name="camera" />
+        Con foto
+      </Link>
+    </div>
   )
 }

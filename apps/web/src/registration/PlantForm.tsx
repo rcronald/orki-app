@@ -22,6 +22,14 @@ import {
 } from '../lib/catalogSearch.ts'
 import { enumValues, type PlantType } from '../lib/database.ts'
 import { localDateString } from '../lib/localDate.ts'
+import { PhotoField, type PhotoFieldValue } from '../photos/PhotoField.tsx'
+import { PhotoStorageError } from '../photos/storage.ts'
+import type {
+  PhotoFiles,
+  PlantPhotoChangeResult,
+  UploadProgress,
+} from '../photos/upload.ts'
+import { canRetryUpload, usePhotoUpload } from '../photos/usePhotoUpload.ts'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
 import {
   ChoiceField,
@@ -29,6 +37,13 @@ import {
   LOCKED_CHIP_CLASSES,
 } from './ChoiceField.tsx'
 import { clearPlantDraft, readPlantDraft, writePlantDraft } from './draft.ts'
+import {
+  appDraftPhotoBackend,
+  clearDraftPhoto,
+  readDraftPhoto,
+  writeDraftPhoto,
+  type DraftPhotoBackend,
+} from './draft-photo.ts'
 import { DuplicateNotice } from './DuplicateNotice.tsx'
 import {
   initialPlantFormValues,
@@ -39,6 +54,7 @@ import {
   plantFormReducer,
   toPlantInsert,
   validatePlantForm,
+  isPendingName,
   type FormGenus,
   type NewPlantInsert,
   type PlantFormField,
@@ -66,14 +82,48 @@ export interface PlantFormServices {
   loadQuickGenera: () => Promise<readonly FormGenus[]>
   /** Inserta la planta; se rechaza con PlantSaveError. */
   savePlant: (insert: NewPlantInsert) => Promise<CollectionPlant>
+  /**
+   * Sube la foto de la planta ya guardada y la apunta a ella
+   * (replacePlantPhoto); se rechaza con PhotoStorageError.
+   */
+  uploadPhoto: (
+    files: PhotoFiles,
+    options: PlantPhotoUploadOptions,
+  ) => Promise<PlantPhotoChangeResult>
+}
+
+export interface PlantPhotoUploadOptions {
+  userId: string
+  plant: CollectionPlant
+  signal: AbortSignal
+  onProgress: (progress: UploadProgress) => void
+  /** La planta ya apunta a la foto nueva. */
+  onPlantUpdated: (plant: CollectionPlant) => void
 }
 
 export interface PlantFormProps {
   services: PlantFormServices
   /** Si hay conexión (useOnlineStatus). Sin ella, el formulario se desactiva. */
   online: boolean
-  /** La planta ya está guardada. */
+  /**
+   * El registro terminó: la planta está guardada y, si había foto, subida (o
+   * la persona eligió seguir sin ella). Para salir del formulario.
+   */
   onSaved: (plant: CollectionPlant) => void
+  /**
+   * La fila de la planta cambió en la base: al guardarla y, después, al
+   * apuntarla a su foto. Para reflejarla en la colección (upsertPlant) en
+   * cuanto existe, aunque la foto falle o la persona salga a mitad.
+   */
+  onPlantStored?: (plant: CollectionPlant) => void
+  /**
+   * Entrada "desde la cámara" (#87, /coleccion/nueva?foto=1): el campo de
+   * foto va arriba del todo y, al elegir la primera foto, el foco pasa al
+   * nombre.
+   */
+  photoFirst?: boolean
+  /** Dónde se guarda la foto pendiente del borrador; por defecto, IndexedDB. */
+  photoDraftBackend?: DraftPhotoBackend
   /**
    * Salir sin guardar; si había cambios, la persona ya lo confirmó y el
    * borrador ya está borrado.
@@ -105,7 +155,8 @@ function hasDetails(values: PlantFormValues): boolean {
   return (
     values.location.trim() !== '' ||
     values.nickname.trim() !== '' ||
-    values.flowerColor !== null
+    values.flowerColor !== null ||
+    values.photoInBloom
   )
 }
 
@@ -183,23 +234,33 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
 /**
  * Formulario de registro de una planta: los cuatro campos obligatorios
  * (nombre, género, tipo y fecha de adquisición, #85), el aviso de duplicado
- * (#88), el origen y la sección plegable "Más detalles" (#86). Todo el estado de los campos vive en un
- * reductor (form-state.ts); aquí van la validación al enviar, el guardado y
- * sus errores, y el borrador en el dispositivo (draft.ts).
+ * (#88), el origen, la sección plegable "Más detalles" (#86) y la foto
+ * (#87). Todo el estado de los campos vive en un reductor (form-state.ts);
+ * aquí van la validación al enviar, el guardado y sus errores, la subida de
+ * la foto y el borrador en el dispositivo (draft.ts y draft-photo.ts).
  *
  * Borrador: cada cambio se guarda; si el formulario vuelve a estar vacío, se
  * borra. Se recupera al montarse, con un aviso y "Descartar borrador". Se
  * borra al guardar con éxito, al descartarlo y al salir con "Cancelar" (que
  * avisa antes de perder lo escrito). Salir de otra forma (otra pestaña de la
  * app, cerrar o recargar) lo conserva: es lo que protege de una recarga.
+ *
+ * Foto (#87): opcional. Primero se guarda la planta y después se sube la foto
+ * (replacePlantPhoto), así que un fallo de la foto no pierde el registro. La
+ * subida se espera aquí, con su estado: si falla, la planta ya está
+ * registrada y se ofrece reintentar con la misma foto ya preparada o
+ * continuar sin ella.
  */
 export function PlantForm({
   services,
   online,
   onSaved,
   onCancel,
+  onPlantStored,
   knownPlants = null,
   draftUserId = null,
+  photoFirst = false,
+  photoDraftBackend = appDraftPhotoBackend(),
   now = deviceNow,
 }: PlantFormProps) {
   // Lo que se lee una sola vez al montarse: el formulario vacío de hoy y el
@@ -230,11 +291,27 @@ export function PlantForm({
     online,
   )
 
+  // Foto elegida (ya preparada), aún sin subir. No va en el reductor: es un
+  // archivo, no un dato de la fila.
+  const [photo, setPhoto] = useState<PhotoFieldValue | null>(null)
+  const hasPhoto = photo !== null
+  const [photoProcessing, setPhotoProcessing] = useState(false)
+  // Si la persona ya eligió o quitó una foto: la del borrador, que llega
+  // después (IndexedDB es asíncrono), ya no la sustituye.
+  const photoTouched = useRef(false)
+  // Planta ya guardada cuya foto se está subiendo o no se pudo subir.
+  const [registered, setRegistered] = useState<CollectionPlant | null>(null)
+  const upload = usePhotoUpload<PlantPhotoChangeResult>()
+  const primaryRef = useRef<HTMLButtonElement>(null)
+  const uploadAlertRef = useRef<HTMLDivElement>(null)
+
   // Guarda el borrador con cada cambio. Los valores con los que se montó no
-  // se reescriben: recuperar un borrador no renueva su caducidad.
+  // se reescriben: recuperar un borrador no renueva su caducidad. Con una foto
+  // el borrador se conserva aunque no haya nada escrito: lleva el id de
+  // planta con el que va la foto.
   useEffect(() => {
     if (draftUserId === null || values === start.values) return
-    if (isPlantFormDirty(values, initial)) {
+    if (isPlantFormDirty(values, initial) || hasPhoto) {
       writePlantDraft(draftUserId, {
         plantId,
         values,
@@ -243,7 +320,24 @@ export function PlantForm({
     } else {
       clearPlantDraft(draftUserId)
     }
-  }, [values, draftUserId, plantId, now, start.values, initial])
+  }, [values, draftUserId, plantId, now, start.values, initial, hasPhoto])
+
+  // La foto pendiente del borrador, si va con su id de planta. Sin borrador
+  // de texto, la que hubiera se borra.
+  useEffect(() => {
+    if (draftUserId === null) return
+    let active = true
+    void readDraftPhoto(photoDraftBackend, draftUserId, {
+      plantId: start.draft?.plantId ?? null,
+      now: now(),
+    }).then((found) => {
+      if (!active || found === null || photoTouched.current) return
+      setPhoto({ kind: 'new', photo: found.photo, fileName: found.fileName })
+    })
+    return () => {
+      active = false
+    }
+  }, [draftUserId, photoDraftBackend, start.draft, now])
 
   const offlineId = useId()
   const nameRef = useRef<HTMLInputElement>(null)
@@ -292,9 +386,26 @@ export function PlantForm({
     }
   }
 
+  /** Sube la foto de la planta ya guardada; reintentar repite esta tarea. */
+  const startUpload = (plant: CollectionPlant, files: PhotoFiles) =>
+    upload.start(({ signal, onProgress }) => {
+      if (draftUserId === null) {
+        return Promise.reject(new PhotoStorageError('session-ended'))
+      }
+      return services.uploadPhoto(files, {
+        userId: draftUserId,
+        plant,
+        signal,
+        onProgress,
+        onPlantUpdated: (updated) => onPlantStored?.(updated),
+      })
+    })
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (savingRef.current || !online) return
+    if (savingRef.current || !online || registered !== null) return
+    // Con la foto a medio preparar no se guarda: el botón lo dice.
+    if (photoProcessing) return
     setSubmitted(true)
     const found = validatePlantForm(values, localDateString(now()))
     const firstInvalid = PLANT_FORM_FIELDS.find((field) => found[field])
@@ -308,41 +419,131 @@ export function PlantForm({
       return
     }
 
+    const files = photo?.kind === 'new' ? photo.photo : null
     savingRef.current = true
     setSave({ status: 'saving' })
+    let plant: CollectionPlant
     try {
-      const plant = await services.savePlant(toPlantInsert(values, plantId))
-      savingRef.current = false
-      if (draftUserId !== null) clearPlantDraft(draftUserId)
-      setSave({ status: 'idle' })
-      onSaved(plant)
+      // "En floración" solo tiene sentido con foto.
+      plant = await services.savePlant(
+        toPlantInsert(
+          { ...values, photoInBloom: values.photoInBloom && files !== null },
+          plantId,
+        ),
+      )
     } catch (error) {
       savingRef.current = false
       setSave({ status: 'error', error: plantSaveErrorFrom(error) })
+      return
+    }
+    savingRef.current = false
+    // La planta ya existe: el borrador (y su foto) sobran. La foto sigue en
+    // memoria para subirla y reintentarlo.
+    if (draftUserId !== null) {
+      clearPlantDraft(draftUserId)
+      void clearDraftPhoto(photoDraftBackend, draftUserId)
+    }
+    setSave({ status: 'idle' })
+    onPlantStored?.(plant)
+    if (files === null) {
+      onSaved(plant)
+      return
+    }
+    setRegistered(plant)
+    const result = await startUpload(plant, files)
+    if (result) onSaved(result.plant)
+  }
+
+  const uploadError =
+    registered !== null && upload.state.status === 'error'
+      ? upload.state.error
+      : null
+  const uploading = registered !== null && uploadError === null
+  const canRetry = uploadError !== null && canRetryUpload(uploadError.reason)
+
+  // Tras un fallo de la subida, el foco va a la acción que sigue (reintentar
+  // o, si no se puede, continuar), que está en la barra fija de abajo, y el
+  // mensaje que lo explica se desplaza a la vista: queda al final del
+  // formulario, quizá fuera de la pantalla.
+  const uploadFailed = uploadError !== null
+  useEffect(() => {
+    if (!uploadFailed) return
+    primaryRef.current?.focus()
+    // jsdom no tiene scrollIntoView.
+    uploadAlertRef.current?.scrollIntoView?.({ block: 'center' })
+  }, [uploadFailed])
+
+  const retryUpload = async () => {
+    if (!online || upload.state.status !== 'error') return
+    const result = await upload.retry()
+    if (result) onSaved(result.plant)
+  }
+
+  // La planta ya está registrada; se sale sin foto.
+  const continueWithoutPhoto = () => {
+    if (registered === null || upload.state.status === 'uploading') return
+    onSaved(registered)
+  }
+
+  const changePhoto = (next: PhotoFieldValue | null) => {
+    photoTouched.current = true
+    const first = photo === null
+    setPhoto(next)
+    // Sin foto, "en floración" no tiene sentido.
+    if (next === null && values.photoInBloom) {
+      dispatch({ type: 'photoInBloomChanged', photoInBloom: false })
+    }
+    if (draftUserId !== null) {
+      if (next?.kind === 'new') {
+        const savedAt = now().getTime()
+        // El borrador de texto lleva el id de planta con el que va la foto.
+        writePlantDraft(draftUserId, { plantId, values, savedAt })
+        void writeDraftPhoto(photoDraftBackend, draftUserId, {
+          plantId,
+          savedAt,
+          fileName: next.fileName,
+          photo: next.photo,
+        })
+      } else {
+        void clearDraftPhoto(photoDraftBackend, draftUserId)
+        if (!isPlantFormDirty(values, initial)) clearPlantDraft(draftUserId)
+      }
+    }
+    // Desde la cámara, tras la primera foto se sigue por el nombre.
+    if (photoFirst && first && next !== null && values.name === '') {
+      nameRef.current?.focus()
     }
   }
 
   const cancel = () => {
-    if (saving) return
+    if (saving || registered !== null) return
     if (
-      isPlantFormDirty(values, initial) &&
+      (isPlantFormDirty(values, initial) || hasPhoto) &&
       !window.confirm(PLANT_FORM_TEXT.confirmDiscard)
     ) {
       return
     }
-    if (draftUserId !== null) clearPlantDraft(draftUserId)
+    if (draftUserId !== null) {
+      clearPlantDraft(draftUserId)
+      void clearDraftPhoto(photoDraftBackend, draftUserId)
+    }
     onCancel()
   }
 
-  // Empieza de cero: formulario vacío con la fecha de hoy y otro id de planta
-  // (el del borrador pudo llegar a la base en un intento anterior).
+  // Empieza de cero: formulario vacío con la fecha de hoy, sin foto y otro id
+  // de planta (el del borrador pudo llegar a la base en un intento anterior).
   const discardDraft = () => {
-    if (saving) return
-    if (draftUserId !== null) clearPlantDraft(draftUserId)
+    if (saving || registered !== null) return
+    if (draftUserId !== null) {
+      clearPlantDraft(draftUserId)
+      void clearDraftPhoto(photoDraftBackend, draftUserId)
+    }
     dispatch({
       type: 'restored',
       values: initialPlantFormValues(localDateString(now())),
     })
+    photoTouched.current = true
+    setPhoto(null)
     setPlantId(newPlantId())
     setDraftRestored(false)
     setDetailsOpen(false)
@@ -351,6 +552,44 @@ export function PlantForm({
     // El botón desaparece con el aviso: el foco va al primer campo.
     nameRef.current?.focus()
   }
+
+  const photoField = (
+    <PhotoField
+      value={photo}
+      onChange={changePhoto}
+      label={PLANT_FORM_TEXT.photoLabel}
+      description={
+        isPendingName(values)
+          ? PLANT_FORM_TEXT.pendingPhotoHint
+          : photoFirst
+            ? PLANT_FORM_TEXT.photoFirstHint
+            : PLANT_FORM_TEXT.photoHint
+      }
+      disabled={saving || registered !== null}
+      onProcessingChange={setPhotoProcessing}
+    />
+  )
+
+  let primaryText: string
+  if (registered !== null) {
+    primaryText = uploading
+      ? PLANT_FORM_TEXT.photoUploadingButton
+      : canRetry
+        ? PLANT_FORM_TEXT.photoUploadRetry
+        : PLANT_FORM_TEXT.photoContinueWithout
+  } else if (saving) {
+    primaryText = PLANT_FORM_TEXT.submitting
+  } else if (photoProcessing) {
+    primaryText = PLANT_FORM_TEXT.photoPreparing
+  } else {
+    primaryText = PLANT_FORM_TEXT.submit
+  }
+  const primaryBlocked =
+    registered !== null
+      ? uploading || (canRetry && !online)
+      : saving || photoProcessing || !online
+  const progress =
+    upload.state.status === 'uploading' ? upload.state.progress : null
 
   return (
     <form
@@ -374,11 +613,18 @@ export function PlantForm({
         )}
       </div>
 
-      {/* Sin conexión, todo el formulario queda desactivado; lo escrito se conserva. */}
+      {/*
+        Sin conexión, todo el formulario queda desactivado; lo escrito y la
+        foto se conservan. Con la planta ya guardada (subiendo su foto), no
+        hay nada más que editar.
+      */}
       <fieldset
-        disabled={!online}
+        disabled={!online || registered !== null}
         className="flex min-w-[0] flex-col gap-space-5"
       >
+        {/* Desde la cámara, la foto va lo primero. */}
+        {photoFirst && photoField}
+
         {/* El aviso de duplicado (#88) va pegado al nombre, sin hueco propio. */}
         <div>
           <NameField
@@ -445,10 +691,11 @@ export function PlantForm({
         />
 
         {/*
-          #87: la foto va aquí, antes del origen. Con un nombre por validar
-          (isPendingName(values), #12) el campo recomienda la foto con
-          PLANT_FORM_TEXT.pendingPhotoHint, sin exigirla.
+          La foto, opcional, después de los obligatorios: registrar sin foto
+          no pasa por ella. Con un nombre por validar (#12) recomienda
+          añadirla, sin exigirla.
         */}
+        {!photoFirst && photoField}
 
         <OriginField
           value={values.origin}
@@ -513,11 +760,23 @@ export function PlantForm({
                 ))
               }
             </ChoiceField>
-            {/*
-              #87: "La foto es en floración" (values.photoInBloom, acción
-              photoInBloomChanged) va aquí y solo con una foto elegida: sin
-              foto no tiene sentido. Ya viaja en la fila y en el borrador.
-            */}
+            {/* Solo con una foto elegida: sin foto no tiene sentido. */}
+            {hasPhoto && (
+              <div>
+                <Chip
+                  className={FORM_CHIP_CLASSES}
+                  selected={values.photoInBloom}
+                  onClick={() =>
+                    dispatch({
+                      type: 'photoInBloomChanged',
+                      photoInBloom: !values.photoInBloom,
+                    })
+                  }
+                >
+                  {PLANT_FORM_TEXT.photoInBloom}
+                </Chip>
+              </div>
+            )}
           </div>
         </Collapsible>
       </fieldset>
@@ -550,23 +809,88 @@ export function PlantForm({
         </div>
       )}
 
+      {/* Región siempre presente: anuncia la subida de la foto. */}
+      <div role="status">
+        {uploading && (
+          <p className="text-sm text-neutral-900">
+            {progress
+              ? PLANT_FORM_TEXT.photoUploadProgress(
+                  progress.filesDone,
+                  progress.filesTotal,
+                )
+              : PLANT_FORM_TEXT.photoUploading}
+          </p>
+        )}
+      </div>
+
+      {uploadError !== null && (
+        <div
+          ref={uploadAlertRef}
+          role="alert"
+          className="flex flex-col gap-space-2 rounded-lg bg-danger-soft p-space-4 text-sm text-neutral-900"
+        >
+          <p className="flex items-start gap-space-2 font-semibold">
+            <Icon
+              name="triangle-alert"
+              className="mt-[2px] size-[16px] flex-none text-danger"
+            />
+            {uploadError.reason === 'aborted'
+              ? PLANT_FORM_TEXT.photoUploadCancelled
+              : PLANT_FORM_TEXT.photoUploadFailed}
+          </p>
+          {uploadError.reason !== 'aborted' && <p>{uploadError.message}</p>}
+          {canRetry && <p>{PLANT_FORM_TEXT.photoUploadRetryHint}</p>}
+        </div>
+      )}
+
       {/* Acciones fijas abajo, al alcance del pulgar. */}
       <div className="sticky bottom-[0] z-10 -mx-space-4 flex gap-space-3 bg-neutral-0 px-space-4 pt-space-3 pb-[calc(var(--space-3)_+_env(safe-area-inset-bottom))]">
+        {registered === null ? (
+          <Button
+            className="flex-none px-space-4"
+            aria-disabled={saving || undefined}
+            onClick={cancel}
+          >
+            {PLANT_FORM_TEXT.cancel}
+          </Button>
+        ) : uploading ? (
+          <Button className="flex-none px-space-4" onClick={upload.cancel}>
+            {PLANT_FORM_TEXT.photoUploadCancel}
+          </Button>
+        ) : (
+          canRetry && (
+            <Button
+              className="flex-none px-space-4"
+              onClick={continueWithoutPhoto}
+            >
+              {PLANT_FORM_TEXT.photoContinueWithout}
+            </Button>
+          )
+        )}
+        {/*
+          El mismo botón en todas las fases (registrar, subiendo, reintentar o
+          continuar): el foco no se pierde al cambiar de una a otra.
+        */}
         <Button
-          className="flex-none px-space-4"
-          aria-disabled={saving || undefined}
-          onClick={cancel}
-        >
-          {PLANT_FORM_TEXT.cancel}
-        </Button>
-        <Button
-          type="submit"
+          ref={primaryRef}
+          type={registered === null ? 'submit' : 'button'}
           variant="primary"
           className="min-w-[0] flex-1 px-space-4"
-          aria-disabled={saving || !online || undefined}
-          aria-describedby={!online ? offlineId : undefined}
+          aria-disabled={primaryBlocked || undefined}
+          aria-describedby={
+            !online && (registered === null || canRetry) ? offlineId : undefined
+          }
+          onClick={
+            registered === null
+              ? undefined
+              : uploading
+                ? undefined
+                : canRetry
+                  ? () => void retryUpload()
+                  : continueWithoutPhoto
+          }
         >
-          {saving ? PLANT_FORM_TEXT.submitting : PLANT_FORM_TEXT.submit}
+          {primaryText}
         </Button>
       </div>
     </form>

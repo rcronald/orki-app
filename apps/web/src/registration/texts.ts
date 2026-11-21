@@ -23,10 +23,29 @@ export const PLANT_FORM_TEXT = {
     'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
   /**
    * Recomendación de foto para un nombre por validar (#12). La muestra el
-   * campo de foto cuando exista (#87), sin exigirla.
+   * campo de foto (#87), sin exigirla.
    */
   pendingPhotoHint:
     'Te recomendamos añadir una foto: ayuda al administrador a confirmar el nombre.',
+  photoLabel: 'Foto',
+  photoHint: 'Opcional.',
+  /** Ayuda del campo de foto al entrar desde la cámara (?foto=1). */
+  photoFirstHint: 'Empieza por la foto; después completa los datos.',
+  photoInBloom: 'La foto es en floración',
+  photoPreparing: 'Preparando la foto…',
+  photoUploading: 'Tu orquídea quedó registrada. Subiendo la foto…',
+  photoUploadProgress: (done: number, total: number) =>
+    `Tu orquídea quedó registrada. Subiendo la foto… (${String(done)} de ${String(total)} archivos)`,
+  photoUploadingButton: 'Subiendo la foto…',
+  photoUploadFailed:
+    'Tu orquídea quedó registrada, pero no se pudo subir la foto.',
+  photoUploadCancelled:
+    'Tu orquídea quedó registrada, pero sin foto: se canceló la subida.',
+  photoUploadRetryHint:
+    'Puedes volver a intentarlo con la misma foto o continuar sin ella.',
+  photoUploadRetry: 'Reintentar subida',
+  photoUploadCancel: 'Cancelar subida',
+  photoContinueWithout: 'Continuar sin foto',
   freeNameAction: (name: string) => `No la encuentro: guardarla como «${name}»`,
   /** Aviso de duplicado (#88), antes y después del nombre científico. */
   duplicateBefore: (count: number) =>

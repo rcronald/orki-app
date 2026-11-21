@@ -373,11 +373,15 @@ describe('InventoryView', () => {
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
   })
 
-  it('ofrece registrar una planta', () => {
+  it('ofrece registrar una planta, escribiendo el nombre o empezando por la foto', () => {
     renderInventory(COLLECTION)
     expect(
       screen.getByRole('link', { name: 'Registrar orquídea' }),
     ).toHaveAttribute('href', '/coleccion/nueva')
+    // El nombre accesible contiene el texto visible ("Con foto").
+    const withPhoto = screen.getByRole('link', { name: 'Registrar con foto' })
+    expect(withPhoto).toHaveAttribute('href', '/coleccion/nueva?foto=1')
+    expect(withPhoto).toHaveTextContent('Con foto')
   })
 
   it('el orden del tabulador va del registro al buscador y a los controles de vista', async () => {
@@ -387,6 +391,10 @@ describe('InventoryView', () => {
     await user.tab()
     expect(
       screen.getByRole('link', { name: 'Registrar orquídea' }),
+    ).toHaveFocus()
+    await user.tab()
+    expect(
+      screen.getByRole('link', { name: 'Registrar con foto' }),
     ).toHaveFocus()
     await user.tab()
     expect(
