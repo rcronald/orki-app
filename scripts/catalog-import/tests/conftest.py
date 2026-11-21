@@ -31,6 +31,14 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, 'connect_ex', blocked)
 
 
+@pytest.fixture(autouse=True)
+def _outside_github_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Las pruebas se comportan igual en local y en el CI: sin las variables de GitHub Actions,
+    la carga se identifica en la auditoría como local (las que prueban el workflow las ponen)."""
+    for name in ('GITHUB_ACTIONS', 'GITHUB_RUN_ID', 'GITHUB_RUN_NUMBER', 'GITHUB_RUN_ATTEMPT'):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture(scope='session')
 def sample_records() -> list[SourceRecord]:
     return list(read_family(SAMPLE, 'Orchidaceae'))

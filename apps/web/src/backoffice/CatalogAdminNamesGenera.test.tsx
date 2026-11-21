@@ -198,6 +198,7 @@ beforeEach(() => {
     'rpc/list_catalog_species': () => jsonResponse([LIST_ROW]),
     'rpc/list_catalog_genera': () => jsonResponse(GENUS_ROWS),
     'rpc/count_species_plants': () => jsonResponse(0),
+    'rpc/species_history': () => jsonResponse([]),
     // El detalle de una especie y, con HEAD, el número de especies de un género.
     species: ({ method, url }) => {
       if (method === 'HEAD') {

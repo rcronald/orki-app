@@ -157,6 +157,7 @@ function defaultHandlers(): Record<string, Handler> {
         },
       ]),
     'rpc/count_species_plants': () => jsonResponse(3),
+    'rpc/species_history': () => jsonResponse([]),
     'rpc/search_genera': () =>
       jsonResponse([
         {

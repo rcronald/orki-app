@@ -194,6 +194,7 @@ beforeEach(() => {
         ? jsonResponse(listPage(51, 100, 120))
         : jsonResponse(listPage(1, 50, 120)),
     'rpc/count_species_plants': () => jsonResponse(3),
+    'rpc/species_history': () => jsonResponse([]),
     'rpc/search_genera': () =>
       jsonResponse([
         {

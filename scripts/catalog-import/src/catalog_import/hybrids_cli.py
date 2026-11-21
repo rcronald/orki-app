@@ -5,7 +5,7 @@ ejecuta el CI con el CSV versionado). ``cargar-hibridos`` valida igual y, si no 
 carga las entradas revisadas con el mismo flujo, las mismas opciones y la misma protección de
 ambiente que ``orki-catalogo cargar`` (:mod:`catalog_import.load_cli`): simulación por
 defecto, ``--escribir``, ``--confirmar-produccion`` en producción, la URL solo en
-``ORKI_CATALOG_DB_URL`` y un reporte CSV.
+``ORKI_CATALOG_DB_URL``, un reporte CSV y su fila de resumen en la auditoría del catálogo.
 """
 
 from __future__ import annotations
@@ -15,10 +15,20 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .audit import HYBRIDS_LOAD, hybrids_source
 from .hybrids import HybridList, format_validation, read_hybrids
 from .hybrids_load import CURATED_POLICY, plan_hybrids
 from .load import COMMON_NAME, GENUS, SPECIES, SYNONYM, run_plan
-from .load_cli import add_load_options, announce, connect_and_run, error, resolve_target
+from .load_cli import (
+    add_load_options,
+    announce,
+    audit_notice,
+    audit_row_detail,
+    connect_and_run,
+    error,
+    prepare_audit,
+    resolve_target,
+)
 from .report import default_report_path, format_load_summary, write_csv
 from .target import URL_VARIABLE
 
@@ -75,6 +85,13 @@ def load_main(argv: list[str]) -> int:
         print(format_validation(hybrids))
         return error('la lista tiene errores de formato. No se ha conectado a nada.')
     timings = {'lectura_fuente': time.perf_counter() - mark}
+    summary = hybrids.summary()
+
+    audit = prepare_audit(
+        HYBRIDS_LOAD, target, lambda: hybrids_source(args.archivo, hybrids.sha256, summary)
+    )
+    if isinstance(audit, int):
+        return audit
 
     started = datetime.now(UTC)
     announce(target, args.escribir)
@@ -86,12 +103,12 @@ def load_main(argv: list[str]) -> int:
             lambda snapshot: plan_hybrids(entries, snapshot),
             CURATED_POLICY,
             write=args.escribir,
+            audit=audit,
         ),
     )
     if isinstance(result, int):
         return result
 
-    summary = hybrids.summary()
     timings |= result.timings
     context = {
         'source': {
@@ -108,6 +125,7 @@ def load_main(argv: list[str]) -> int:
         'target': target.describe(),
         'started': started,
         'timings': timings,
+        'audit': (audit.actor, audit_row_detail(result)),
     }
     report = args.reporte or default_report_path(
         target.environment.value, started, args.escribir, REPORT_PREFIX
@@ -124,5 +142,6 @@ def load_main(argv: list[str]) -> int:
             ],
         )
     )
+    print(audit_notice(audit, result))
     print(f'\nReporte: {report} ({rows} filas)')
     return 0

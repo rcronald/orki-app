@@ -4,6 +4,7 @@ import {
   getGenus,
   getGenusDetail,
   getSpeciesDetail,
+  getSpeciesHistory,
   listCatalogGenera,
   listCatalogSpecies,
   searchCatalogSpecies,
@@ -37,6 +38,8 @@ export interface CatalogAdminSource {
   summary: typeof getCatalogSummary
   speciesDetail: typeof getSpeciesDetail
   plantCount: typeof countSpeciesPlants
+  /** Historial de la especie (auditoría), por páginas. */
+  speciesHistory: typeof getSpeciesHistory
   genus: typeof getGenus
   genusDetail: typeof getGenusDetail
   /** Para el filtro de género (el mismo buscador que el registro). */
@@ -64,6 +67,7 @@ export const supabaseCatalogAdminSource: CatalogAdminSource = {
   summary: getCatalogSummary,
   speciesDetail: getSpeciesDetail,
   plantCount: countSpeciesPlants,
+  speciesHistory: getSpeciesHistory,
   genus: getGenus,
   genusDetail: getGenusDetail,
   searchGenera,

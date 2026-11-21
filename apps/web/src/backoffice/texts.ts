@@ -105,3 +105,77 @@ export const LOAD_ERROR_TITLE: Record<
   forbidden: 'Sin permiso de administrador',
   failed: 'No se pudo consultar el catálogo',
 }
+
+// Historial de una especie (auditoría) ---------------------------------------
+
+/** Acciones con sentido propio de la auditoría, en palabras. */
+const AUDIT_ACTION_LABEL: Partial<Record<string, string>> = {
+  merge_species: 'Fusión de especies',
+  validate_plant: 'Validación de una propuesta',
+  catalog_import: 'Carga del catálogo',
+}
+
+/** Una acción con sentido propio en palabras; una desconocida, con su nombre. */
+export function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABEL[action] ?? `Acción «${action.replaceAll('_', ' ')}»`
+}
+
+type RowAction = 'insert' | 'update' | 'delete'
+
+const GENERIC_ROW_CHANGE_LABEL: Record<RowAction, string> = {
+  insert: 'Alta',
+  update: 'Edición',
+  delete: 'Baja',
+}
+
+const ROW_CHANGE_LABEL: Partial<Record<string, Record<RowAction, string>>> = {
+  species: GENERIC_ROW_CHANGE_LABEL,
+  species_names: {
+    insert: 'Nombre añadido',
+    update: 'Nombre editado',
+    delete: 'Nombre quitado',
+  },
+}
+
+/** Un cambio de fila en palabras: "Alta", "Nombre añadido"... */
+export function rowChangeLabel(table: string, action: RowAction): string {
+  return (ROW_CHANGE_LABEL[table] ?? GENERIC_ROW_CHANGE_LABEL)[action]
+}
+
+/**
+ * Columnas de cada tabla que se muestran en el historial, en orden y con su
+ * etiqueta. Las demás (id, fechas, la especie de un nombre) no se muestran.
+ */
+export const AUDIT_FIELD_LABEL: Partial<
+  Record<string, readonly (readonly [string, string])[]>
+> = {
+  species: [
+    ['scientific_name', 'Nombre científico'],
+    ['genus_id', 'Género'],
+    ['type', 'Tipo'],
+    ['status', 'Estado'],
+    ['source', 'Fuente'],
+    ['source_ref', 'Referencia'],
+  ],
+  species_names: [
+    ['name', 'Nombre'],
+    ['type', 'Tipo de nombre'],
+    ['language', 'Idioma'],
+  ],
+}
+
+/**
+ * Quién hizo un cambio: un id de usuario de Clerk, abreviado
+ * ("user_2Nxb…sW8c"), o "carga" con el identificador de una carga por script.
+ */
+export function actorText(actor: string): string {
+  if (actor.startsWith('user_')) {
+    const id = actor.slice('user_'.length)
+    return id.length > 10 ? `user_${id.slice(0, 4)}…${id.slice(-4)}` : actor
+  }
+  return `carga «${actor}»`
+}
+
+export function changeCountText(count: number): string {
+  return countText(count, 'cambio', 'cambios')
+}
