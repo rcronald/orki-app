@@ -4,12 +4,15 @@ import {
   CatalogAdminError,
   type CatalogAdminFailure,
   type CatalogGenusRow,
+  type CatalogGenusDetail,
   type CatalogSpeciesDetail,
   type CatalogSpeciesRow,
 } from '../lib/catalogAdmin.ts'
 import {
   cleanCatalogText,
+  cleanGenusName,
   CatalogWriteError,
+  withFinalDot,
   MAX_BATCH_SPECIES,
   validateSpeciesInput,
   type CatalogWriteProblem,
@@ -344,6 +347,14 @@ function startsByWords(name: string, query: string): boolean {
 
 let nextId = 0
 
+function nameId(speciesId: string, index: number): string {
+  return `${speciesId}-n${index}`
+}
+
+function abbreviationId(genusId: string, index: number): string {
+  return `${genusId}-a${index}`
+}
+
 const CREATED_AT = '2026-11-20T14:37:00Z'
 const UPDATED_AT = '2026-11-21T08:15:00Z'
 
@@ -421,6 +432,88 @@ export function createSampleCatalogSource(
     if (similar)
       reject('similar-name', { existingName: similar.scientificName })
     return name
+  }
+  // Nombres y abreviaturas no tienen id propio en la muestra: se identifican
+  // por su posición, que la pantalla vuelve a leer tras cada cambio.
+  const findName = (id: string): [SampleSpecies, number] => {
+    for (const item of species) {
+      const index = item.names.findIndex(
+        (_, position) => nameId(item.id, position) === id,
+      )
+      if (index !== -1) return [item, index]
+    }
+    return reject('name-not-found')
+  }
+  const checkName = (
+    item: SampleSpecies,
+    value: string,
+    exceptIndex: number | null,
+  ) => {
+    const name = cleanCatalogText(value)
+    if (name === '') reject('name-required')
+    if (name.toLowerCase() === item.scientificName.toLowerCase())
+      reject('name-is-scientific-name')
+    const others = item.names.filter((_, index) => index !== exceptIndex)
+    const same = others.find(
+      (other) => other.name.toLowerCase() === name.toLowerCase(),
+    )
+    if (same)
+      reject('duplicate-alternative-name', {
+        existingName: same.name,
+        existingType: same.type,
+      })
+    const similar = others.find(
+      (other) => normalize(other.name) === normalize(name),
+    )
+    if (similar)
+      reject('similar-alternative-name', { existingName: similar.name })
+    return name
+  }
+  const findGenus = (id: string) =>
+    genera.find((genus) => genus.id === id) ?? reject('genus-not-found')
+  const checkGenus = (value: string, exceptId: string | null) => {
+    const name = cleanGenusName(value)
+    if (name === '') reject('name-required')
+    if (!/^(× )?[^\s×]+$/.test(name)) reject('invalid-genus-name')
+    const others = genera.filter((genus) => genus.id !== exceptId)
+    const same = others.find(
+      (genus) => genus.name.toLowerCase() === name.toLowerCase(),
+    )
+    if (same) reject('duplicate-genus', { existingName: same.name })
+    const similar = others.find(
+      (genus) => normalize(genus.name) === normalize(name),
+    )
+    if (similar) reject('similar-genus', { existingName: similar.name })
+    return name
+  }
+  const findAbbreviation = (id: string): [SampleGenus, number] => {
+    for (const genus of genera) {
+      const index = genus.abbreviations.findIndex(
+        (_, position) => abbreviationId(genus.id, position) === id,
+      )
+      if (index !== -1) return [genus, index]
+    }
+    return reject('abbreviation-not-found')
+  }
+  const checkAbbreviation = (value: string, exceptId: string | null) => {
+    const text = withFinalDot(value)
+    if (text === '') reject('name-required')
+    if (!/^[^\s.]+\.$/.test(text)) reject('invalid-abbreviation')
+    const key = normalize(text).replace(/\.$/, '')
+    for (const genus of genera) {
+      genus.abbreviations.forEach((abbreviation, index) => {
+        if (
+          abbreviationId(genus.id, index) !== exceptId &&
+          normalize(abbreviation).replace(/\.$/, '') === key
+        )
+          reject('abbreviation-taken', {
+            genusName: genus.name,
+            genusId: genus.id,
+            existingAbbreviation: abbreviation,
+          })
+      })
+    }
+    return text
   }
   const written = (item: SampleSpecies): WrittenSpecies => ({
     id: item.id,
@@ -608,7 +701,7 @@ export function createSampleCatalogSource(
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           names: item.names.map((name, index) => ({
-            id: `${item.id}-${index}`,
+            id: nameId(item.id, index),
             ...name,
           })),
         }
@@ -645,6 +738,109 @@ export function createSampleCatalogSource(
                   normalize(abbreviation).replace(/\.$/, '') === text,
               ) ?? null,
           }))
+      }),
+    genusDetail: (id, options = {}) =>
+      respond(options.signal, (): CatalogGenusDetail | null => {
+        const genus = genera.find((candidate) => candidate.id === id)
+        if (!genus) return null
+        return {
+          id: genus.id,
+          name: genus.name,
+          isQuickAccess: genus.isQuickAccess,
+          abbreviations: genus.abbreviations.map((abbreviation, index) => ({
+            id: abbreviationId(genus.id, index),
+            abbreviation,
+          })),
+          speciesCount: species.filter((item) => item.genusId === genus.id)
+            .length,
+        }
+      }),
+    addName: (speciesId, input) =>
+      respond(undefined, () => {
+        const item = findSpecies(speciesId)
+        const name = checkName(item, input.name, null)
+        const entry: SampleName = {
+          name,
+          type: input.type,
+          language:
+            input.type === 'common' ? input.language?.trim() || null : null,
+        }
+        item.names.push(entry)
+        return {
+          id: nameId(item.id, item.names.length - 1),
+          speciesId: item.id,
+          ...entry,
+        }
+      }),
+    updateName: (id, input) =>
+      respond(undefined, () => {
+        const [item, index] = findName(id)
+        const name = checkName(item, input.name, index)
+        const entry: SampleName = {
+          name,
+          type: input.type,
+          language:
+            input.type === 'common' ? input.language?.trim() || null : null,
+        }
+        item.names[index] = entry
+        return { id, speciesId: item.id, ...entry }
+      }),
+    deleteName: (id) =>
+      respond(undefined, () => {
+        const [item, index] = findName(id)
+        item.names.splice(index, 1)
+      }),
+    createGenus: (input) =>
+      respond(undefined, () => {
+        const name = checkGenus(input.name, null)
+        nextId += 1
+        const genus: SampleGenus = {
+          id: uuid(4, nextId),
+          name,
+          abbreviations: [],
+          isQuickAccess: input.isQuickAccess,
+        }
+        genera.push(genus)
+        return { id: genus.id, name, isQuickAccess: genus.isQuickAccess }
+      }),
+    updateGenus: (id, input) =>
+      respond(undefined, () => {
+        const genus = findGenus(id)
+        const name = cleanGenusName(input.name)
+        if (name !== genus.name) checkGenus(name, id)
+        genus.name = name
+        genus.isQuickAccess = input.isQuickAccess
+        return { id, name, isQuickAccess: genus.isQuickAccess }
+      }),
+    deleteGenus: (id) =>
+      respond(undefined, () => {
+        const genus = findGenus(id)
+        const count = species.filter((item) => item.genusId === id).length
+        if (count > 0) reject('genus-has-species', { speciesCount: count })
+        genera.splice(genera.indexOf(genus), 1)
+      }),
+    addAbbreviation: (genusId, abbreviation) =>
+      respond(undefined, () => {
+        const genus = findGenus(genusId)
+        const text = checkAbbreviation(abbreviation, null)
+        genus.abbreviations.push(text)
+        return {
+          id: abbreviationId(genus.id, genus.abbreviations.length - 1),
+          genusId,
+          abbreviation: text,
+        }
+      }),
+    updateAbbreviation: (id, abbreviation) =>
+      respond(undefined, () => {
+        const [genus, index] = findAbbreviation(id)
+        const text = checkAbbreviation(abbreviation, id)
+        genus.abbreviations[index] = text
+        return { id, genusId: genus.id, abbreviation: text }
+      }),
+    deleteAbbreviation: (id) =>
+      respond(undefined, () => {
+        const [genus, index] = findAbbreviation(id)
+        genus.abbreviations.splice(index, 1)
       }),
     createSpecies: (input) =>
       respond(undefined, () => {

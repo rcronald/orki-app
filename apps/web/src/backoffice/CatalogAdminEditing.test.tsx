@@ -334,7 +334,7 @@ describe('Backoffice: escritura de especies', () => {
       ),
     ).toBeInTheDocument()
     // La especie nueva se abre en el detalle; la búsqueda y los filtros siguen.
-    expect(currentSearch().get('especie')).toBe(NEW_ID)
+    await waitFor(() => expect(currentSearch().get('especie')).toBe(NEW_ID))
     expect(currentSearch().get('estado')).toBe('validated')
     // La tabla y el resumen se vuelven a leer sin recargar la página.
     await waitFor(() =>
@@ -538,7 +538,8 @@ describe('Backoffice: escritura de especies', () => {
     expect(requestsTo('rpc/delete_catalog_species')[0]?.body).toEqual({
       target_species_id: speciesId(1),
     })
-    expect(currentSearch().get('especie')).toBeNull()
+    // La URL la actualiza el router en su propio pintado.
+    await waitFor(() => expect(currentSearch().get('especie')).toBeNull())
     await waitFor(() =>
       expect(requestsTo('rpc/list_catalog_species').length).toBeGreaterThan(
         listCalls,

@@ -1,16 +1,18 @@
 import { CatalogAdminError, loadClient, toAdminError } from './catalogAdmin.ts'
 import type {
   Database,
+  SpeciesNameType,
   SpeciesSource,
   SpeciesStatus,
   SpeciesType,
 } from './database.ts'
 
-// Escrituras del catálogo desde el backoffice (issue #106).
+// Escrituras del catálogo desde el backoffice (issues #106 y #107).
 //
 // Es la única puerta por la que la pantalla escribe el catálogo: cada
-// operación llama a una función de administrador de la API (migración
-// 20261121120000_escritura_de_especies_del_backoffice.sql; ver
+// operación llama a una función de administrador de la API (migraciones
+// 20261121120000_escritura_de_especies_del_backoffice.sql y
+// 20261121130000_nombres_generos_y_abreviaturas_del_backoffice.sql; ver
 // supabase/README.md, "Escritura del catálogo desde el backoffice"), que hace
 // la operación entera en una transacción. La auditoría (#23) podrá apoyarse en
 // ese mismo punto.
@@ -43,9 +45,33 @@ export type CatalogWriteProblem =
   | 'no-species'
   | 'too-many-species'
   | 'source-ref'
+  // Sinónimos y nombres comunes.
+  | 'name-type-required'
+  | 'invalid-language'
+  | 'duplicate-alternative-name'
+  | 'similar-alternative-name'
+  | 'name-is-scientific-name'
+  | 'name-not-found'
+  // Géneros y abreviaturas.
+  | 'invalid-genus-name'
+  | 'quick-access-required'
+  | 'duplicate-genus'
+  | 'similar-genus'
+  | 'genus-has-species'
+  | 'genus-has-plants'
+  | 'invalid-abbreviation'
+  | 'abbreviation-taken'
+  | 'abbreviation-not-found'
 
 /** Campo del formulario al que se asocia el error (aria-describedby). */
-export type CatalogWriteField = 'scientificName' | 'genus' | 'type' | 'status'
+export type CatalogWriteField =
+  | 'scientificName'
+  | 'genus'
+  | 'type'
+  | 'status'
+  /** El texto de un sinónimo, un nombre común, un género o una abreviatura. */
+  | 'text'
+  | 'language'
 
 /** Datos que acompañan a algunos problemas. */
 export interface CatalogWriteDetails {
@@ -58,6 +84,14 @@ export interface CatalogWriteDetails {
   missingCount?: number
   /** Tope del lote (too-many-species). */
   max?: number
+  /** Tipo del nombre que ya tiene la especie (duplicate-alternative-name). */
+  existingType?: 'synonym' | 'common'
+  /** Especies que impiden borrar un género (genus-has-species). */
+  speciesCount?: number
+  /** Género que ya tiene la abreviatura (abbreviation-taken). */
+  genusName?: string
+  genusId?: string
+  existingAbbreviation?: string
 }
 
 /** Tope de especies de un cambio de estado por lote; el mismo que la base. */
@@ -72,6 +106,16 @@ const FIELD: Partial<Record<CatalogWriteProblem, CatalogWriteField>> = {
   'invalid-status': 'status',
   'genus-required': 'genus',
   'genus-not-found': 'genus',
+  'name-type-required': 'type',
+  'invalid-language': 'language',
+  'duplicate-alternative-name': 'text',
+  'similar-alternative-name': 'text',
+  'name-is-scientific-name': 'text',
+  'invalid-genus-name': 'text',
+  'duplicate-genus': 'text',
+  'similar-genus': 'text',
+  'invalid-abbreviation': 'text',
+  'abbreviation-taken': 'text',
 }
 
 function plural(count: number, singular: string, pluralText: string) {
@@ -126,6 +170,50 @@ export function catalogWriteMessage(
       return `Se pueden cambiar como mucho ${details.max ?? MAX_BATCH_SPECIES} especies a la vez.`
     case 'source-ref':
       return 'La fuente y la referencia de la especie no son coherentes: otra especie ya tiene esa referencia, o la fuente exige una.'
+    case 'name-type-required':
+      return 'Elige si es un sinónimo o un nombre común.'
+    case 'invalid-language':
+      return 'El idioma es una etiqueta corta, como es, en o pt-BR. Déjalo vacío si no lo sabes.'
+    case 'duplicate-alternative-name':
+      return details.existingName
+        ? `La especie ya tiene este nombre: «${details.existingName}»${details.existingType ? ` (${details.existingType === 'synonym' ? 'sinónimo' : 'nombre común'})` : ''}. Los nombres no distinguen mayúsculas.`
+        : 'La especie ya tiene este nombre. Los nombres no distinguen mayúsculas.'
+    case 'similar-alternative-name':
+      return details.existingName
+        ? `La especie ya tiene un nombre que se escribe casi igual: «${details.existingName}». Solo cambian las tildes o el signo de híbrido «×».`
+        : 'La especie ya tiene un nombre que se escribe casi igual: solo cambian las tildes o el signo de híbrido «×».'
+    case 'name-is-scientific-name':
+      return 'Ese es el nombre científico de la especie: no hace falta añadirlo como otro nombre.'
+    case 'name-not-found':
+      return 'Este nombre ya no está en el catálogo.'
+    case 'invalid-genus-name':
+      return 'El nombre de un género es una sola palabra, con «× » delante si es un nothogénero.'
+    case 'quick-access-required':
+      return 'Indica si es de acceso rápido.'
+    case 'duplicate-genus':
+      return details.existingName
+        ? `Ya hay un género con este nombre: «${details.existingName}». Los nombres no distinguen mayúsculas.`
+        : 'Ya hay un género con este nombre.'
+    case 'similar-genus':
+      return details.existingName
+        ? `Ya hay un género que se escribe casi igual: «${details.existingName}». Solo cambian las tildes o el signo de híbrido «×».`
+        : 'Ya hay un género que se escribe casi igual: solo cambian las tildes o el signo de híbrido «×».'
+    case 'genus-has-species':
+      return details.speciesCount
+        ? `No se puede borrar: el género tiene ${plural(details.speciesCount, 'especie', 'especies')}. Bórralas o cámbialas de género antes.`
+        : 'No se puede borrar: el género tiene especies.'
+    case 'genus-has-plants':
+      return details.plantCount
+        ? `No se puede borrar: ${plural(details.plantCount, 'planta de usuarios está registrada', 'plantas de usuarios están registradas')} con este género.`
+        : 'No se puede borrar: hay plantas de usuarios registradas con este género.'
+    case 'invalid-abbreviation':
+      return 'Una abreviatura es una sola palabra con su punto final, como Phal.'
+    case 'abbreviation-taken':
+      return details.genusName
+        ? `La abreviatura «${details.existingAbbreviation ?? ''}» ya es del género ${details.genusName}: una abreviatura solo puede ser de un género (sin distinguir mayúsculas, tildes ni el punto final).`
+        : 'Esa abreviatura ya es de otro género.'
+    case 'abbreviation-not-found':
+      return 'Esta abreviatura ya no está en el catálogo.'
   }
 }
 
@@ -173,6 +261,21 @@ const REASON: Record<string, CatalogWriteProblem> = {
   species_has_plants: 'species-has-plants',
   no_species: 'no-species',
   too_many_species: 'too-many-species',
+  name_type_required: 'name-type-required',
+  invalid_language: 'invalid-language',
+  duplicate_alternative_name: 'duplicate-alternative-name',
+  similar_alternative_name: 'similar-alternative-name',
+  name_is_scientific_name: 'name-is-scientific-name',
+  name_not_found: 'name-not-found',
+  invalid_genus_name: 'invalid-genus-name',
+  quick_access_required: 'quick-access-required',
+  duplicate_genus: 'duplicate-genus',
+  similar_genus: 'similar-genus',
+  genus_has_species: 'genus-has-species',
+  genus_has_plants: 'genus-has-plants',
+  invalid_abbreviation: 'invalid-abbreviation',
+  abbreviation_taken: 'abbreviation-taken',
+  abbreviation_not_found: 'abbreviation-not-found',
 }
 
 // Restricciones del esquema, por si la base rechaza la fila sin pasar por las
@@ -187,6 +290,15 @@ const CONSTRAINT: Record<string, CatalogWriteProblem> = {
   species_source_ref_not_blank: 'source-ref',
   species_gbif_has_source_ref: 'source-ref',
   species_col_has_source_ref: 'source-ref',
+  species_names_species_id_name_key: 'duplicate-alternative-name',
+  species_names_name_clean: 'name-required',
+  species_names_language_format: 'invalid-language',
+  genera_name_key: 'duplicate-genus',
+  genera_name_clean: 'name-required',
+  genus_abbreviations_abbreviation_key: 'abbreviation-taken',
+  genus_abbreviations_search_key: 'abbreviation-taken',
+  genus_abbreviations_abbreviation_clean: 'invalid-abbreviation',
+  plants_genus_id_fkey: 'genus-has-plants',
 }
 
 interface PostgrestLikeError {
@@ -228,6 +340,17 @@ export function catalogWriteErrorFromDatabase(
             plantCount: numberOrUndefined(parsed.plant_count),
             missingCount: numberOrUndefined(parsed.missing_count),
             max: numberOrUndefined(parsed.max),
+            existingType:
+              parsed.existing_type === 'synonym' ||
+              parsed.existing_type === 'common'
+                ? parsed.existing_type
+                : undefined,
+            speciesCount: numberOrUndefined(parsed.species_count),
+            genusName: stringOrUndefined(parsed.genus_name),
+            genusId: stringOrUndefined(parsed.genus_id),
+            existingAbbreviation: stringOrUndefined(
+              parsed.existing_abbreviation,
+            ),
           },
           { cause: error },
         )
@@ -238,7 +361,15 @@ export function catalogWriteErrorFromDatabase(
   }
   if (typeof message === 'string') {
     const constraint = /constraint "([^"]+)"/.exec(message)?.[1]
-    const problem = constraint ? CONSTRAINT[constraint] : undefined
+    // Borrar un género con especies lo rechaza la misma clave foránea que
+    // dar de alta una especie con un género inexistente.
+    const problem =
+      constraint === 'species_genus_id_fkey' &&
+      message.startsWith('update or delete on table "genera"')
+        ? 'genus-has-species'
+        : constraint
+          ? CONSTRAINT[constraint]
+          : undefined
     if (problem) return new CatalogWriteError(problem, {}, { cause: error })
   }
   return null
@@ -416,5 +547,221 @@ export async function deleteCatalogSpecies(id: string): Promise<void> {
   const supabase = await client()
   await settleWrite(
     supabase.rpc('delete_catalog_species', { target_species_id: id }),
+  )
+}
+
+// Sinónimos y nombres comunes ------------------------------------------------------
+
+/** Un sinónimo o un nombre común tal como queda tras escribirlo. */
+export interface WrittenName {
+  id: string
+  speciesId: string
+  name: string
+  type: SpeciesNameType
+  language: string | null
+}
+
+/** Lo que se escribe de un nombre. El idioma solo cuenta en los comunes. */
+export interface SpeciesNameInput {
+  name: string
+  type: SpeciesNameType
+  language?: string | null
+}
+
+type NameRow = Database['public']['Tables']['species_names']['Row']
+
+function toWrittenName(row: NameRow): WrittenName {
+  return {
+    id: row.id,
+    speciesId: row.species_id,
+    name: row.name,
+    type: row.type,
+    language: row.language,
+  }
+}
+
+function nameArgs(input: SpeciesNameInput) {
+  const language = input.language?.trim() ?? ''
+  return {
+    new_name: cleanCatalogText(input.name),
+    new_type: input.type,
+    ...(input.type === 'common' &&
+      language !== '' && { new_language: language }),
+  }
+}
+
+function requireText(text: string): void {
+  if (cleanCatalogText(text) === '')
+    throw new CatalogWriteError('name-required')
+}
+
+/** Añade un sinónimo o un nombre común a una especie. */
+export async function addSpeciesName(
+  speciesId: string,
+  input: SpeciesNameInput,
+): Promise<WrittenName> {
+  requireText(input.name)
+  const supabase = await client()
+  const row = await settleWrite(
+    supabase.rpc('add_species_name', {
+      target_species_id: speciesId,
+      ...nameArgs(input),
+    }),
+  )
+  return toWrittenName(row)
+}
+
+/** Cambia el texto, el tipo y el idioma de un nombre. */
+export async function updateSpeciesName(
+  nameId: string,
+  input: SpeciesNameInput,
+): Promise<WrittenName> {
+  requireText(input.name)
+  const supabase = await client()
+  const row = await settleWrite(
+    supabase.rpc('update_species_name', {
+      target_name_id: nameId,
+      ...nameArgs(input),
+    }),
+  )
+  return toWrittenName(row)
+}
+
+/** Quita un sinónimo o un nombre común. */
+export async function deleteSpeciesName(nameId: string): Promise<void> {
+  const supabase = await client()
+  await settleWrite(
+    supabase.rpc('delete_species_name', { target_name_id: nameId }),
+  )
+}
+
+// Géneros y abreviaturas -----------------------------------------------------------
+
+/** Un género tal como queda tras escribirlo. */
+export interface WrittenGenus {
+  id: string
+  name: string
+  isQuickAccess: boolean
+}
+
+export interface GenusInput {
+  name: string
+  isQuickAccess: boolean
+}
+
+type GenusRow = Database['public']['Tables']['genera']['Row']
+
+function toWrittenGenus(row: GenusRow): WrittenGenus {
+  return { id: row.id, name: row.name, isQuickAccess: row.is_quick_access }
+}
+
+/**
+ * Nombre de género como lo guarda la base: sin espacios sobrantes y, en un
+ * nothogénero, con «× » delante.
+ */
+export function cleanGenusName(value: string): string {
+  return cleanCatalogText(value).replace(/^×\s*/, '× ')
+}
+
+/** Crea un género. */
+export async function createCatalogGenus(
+  input: GenusInput,
+): Promise<WrittenGenus> {
+  requireText(input.name)
+  const supabase = await client()
+  const row = await settleWrite(
+    supabase.rpc('create_catalog_genus', {
+      new_name: cleanGenusName(input.name),
+      new_is_quick_access: input.isQuickAccess,
+    }),
+  )
+  return toWrittenGenus(row)
+}
+
+/** Renombra un género y cambia su marca de acceso rápido. */
+export async function updateCatalogGenus(
+  id: string,
+  input: GenusInput,
+): Promise<WrittenGenus> {
+  requireText(input.name)
+  const supabase = await client()
+  const row = await settleWrite(
+    supabase.rpc('update_catalog_genus', {
+      target_genus_id: id,
+      new_name: cleanGenusName(input.name),
+      new_is_quick_access: input.isQuickAccess,
+    }),
+  )
+  return toWrittenGenus(row)
+}
+
+/**
+ * Borra un género sin especies ni plantas, con sus abreviaturas. Si tiene
+ * alguna, falla con 'genus-has-species' o 'genus-has-plants' y el número.
+ */
+export async function deleteCatalogGenus(id: string): Promise<void> {
+  const supabase = await client()
+  await settleWrite(
+    supabase.rpc('delete_catalog_genus', { target_genus_id: id }),
+  )
+}
+
+/** Una abreviatura tal como queda tras escribirla. */
+export interface WrittenAbbreviation {
+  id: string
+  genusId: string
+  abbreviation: string
+}
+
+type AbbreviationRow =
+  Database['public']['Tables']['genus_abbreviations']['Row']
+
+function toWrittenAbbreviation(row: AbbreviationRow): WrittenAbbreviation {
+  return { id: row.id, genusId: row.genus_id, abbreviation: row.abbreviation }
+}
+
+/** Abreviatura con su punto final, como la guarda la base ("Phal."). */
+export function withFinalDot(value: string): string {
+  const clean = cleanCatalogText(value).replace(/\.+$/, '')
+  return clean === '' ? '' : `${clean}.`
+}
+
+/** Añade una abreviatura a un género. */
+export async function addGenusAbbreviation(
+  genusId: string,
+  abbreviation: string,
+): Promise<WrittenAbbreviation> {
+  requireText(withFinalDot(abbreviation))
+  const supabase = await client()
+  const row = await settleWrite(
+    supabase.rpc('add_genus_abbreviation', {
+      target_genus_id: genusId,
+      new_abbreviation: withFinalDot(abbreviation),
+    }),
+  )
+  return toWrittenAbbreviation(row)
+}
+
+/** Cambia una abreviatura. */
+export async function updateGenusAbbreviation(
+  id: string,
+  abbreviation: string,
+): Promise<WrittenAbbreviation> {
+  requireText(withFinalDot(abbreviation))
+  const supabase = await client()
+  const row = await settleWrite(
+    supabase.rpc('update_genus_abbreviation', {
+      target_abbreviation_id: id,
+      new_abbreviation: withFinalDot(abbreviation),
+    }),
+  )
+  return toWrittenAbbreviation(row)
+}
+
+/** Quita una abreviatura. */
+export async function deleteGenusAbbreviation(id: string): Promise<void> {
+  const supabase = await client()
+  await settleWrite(
+    supabase.rpc('delete_genus_abbreviation', { target_abbreviation_id: id }),
   )
 }

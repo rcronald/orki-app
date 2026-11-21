@@ -1,10 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../components/ui/Button.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
-import type {
-  CatalogSpeciesDetail,
-  CatalogSpeciesName,
-} from '../lib/catalogAdmin.ts'
+import type { CatalogSpeciesDetail } from '../lib/catalogAdmin.ts'
 import {
   toCatalogWriteError,
   type WrittenSpecies,
@@ -14,6 +11,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { LoadError, SpeciesStatusBadge } from './parts.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesForm } from './SpeciesForm.tsx'
+import { SpeciesNames } from './SpeciesNames.tsx'
 import {
   formatCount,
   formatDateTime,
@@ -45,8 +43,8 @@ export interface SpeciesDetailPanelProps {
 // Detalle de una especie, en un panel junto a la tabla (debajo en pantallas
 // estrechas): nombres alternativos, referencia de la fuente con enlace a la
 // ficha del Catalogue of Life, fechas y número de plantas enlazadas. Desde
-// aquí se edita (nombre, género, tipo y estado) y se borra, si no tiene
-// plantas enlazadas.
+// aquí se edita (nombre, género, tipo y estado), se borra si no tiene plantas
+// enlazadas y se editan sus sinónimos y nombres comunes (SpeciesNames).
 export function SpeciesDetailPanel({
   detail,
   onClose,
@@ -153,6 +151,7 @@ export function SpeciesDetailPanel({
           source={source}
           onEdit={() => setEditing(true)}
           onDeleted={onDeleted}
+          onChanged={onChanged}
         />
       )}
     </section>
@@ -188,12 +187,14 @@ function DetailBody({
   source,
   onEdit,
   onDeleted,
+  onChanged,
 }: {
   species: CatalogSpeciesDetail
   plantCount: number
   source: CatalogAdminSource
   onEdit: () => void
   onDeleted: (message: string) => void
+  onChanged: (message: string) => void
 }) {
   const synonyms = species.names.filter((name) => name.type === 'synonym')
   const commonNames = species.names.filter((name) => name.type === 'common')
@@ -301,17 +302,7 @@ function DetailBody({
           <p>Ninguna planta de usuarios la tiene enlazada.</p>
         </ConfirmDialog>
       )}
-      <NameList
-        title={`Sinónimos (${synonyms.length})`}
-        names={synonyms}
-        empty="No tiene sinónimos."
-        scientific
-      />
-      <NameList
-        title={`Nombres comunes (${commonNames.length})`}
-        names={commonNames}
-        empty="No tiene nombres comunes."
-      />
+      <SpeciesNames species={species} source={source} onChanged={onChanged} />
     </>
   )
 }
@@ -324,48 +315,4 @@ function namesText(synonyms: number, common: number): string {
       `${formatCount(common)} ${common === 1 ? 'nombre común' : 'nombres comunes'}`,
   ].filter(Boolean)
   return parts.join(' y ')
-}
-
-function NameList({
-  title,
-  names,
-  empty,
-  scientific = false,
-}: {
-  title: string
-  names: readonly CatalogSpeciesName[]
-  empty: string
-  scientific?: boolean
-}) {
-  const headingId = useId()
-  return (
-    <div className="flex flex-col gap-space-1">
-      <h3 id={headingId} className="text-sm font-semibold text-neutral-900">
-        {title}
-      </h3>
-      {names.length === 0 ? (
-        <p className="text-sm text-neutral-700">{empty}</p>
-      ) : (
-        <ul aria-labelledby={headingId} className="flex flex-col gap-space-1">
-          {names.map((name) => (
-            <li key={name.id} className="[overflow-wrap:anywhere]">
-              {scientific ? (
-                <span className="scientific-name text-md">
-                  <ScientificName name={name.name} />
-                </span>
-              ) : (
-                <span className="text-md text-neutral-900">{name.name}</span>
-              )}
-              {name.language && (
-                <span className="text-sm text-neutral-700">
-                  {' '}
-                  ({name.language})
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
 }

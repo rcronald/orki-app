@@ -1,14 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  addGenusAbbreviation,
+  addSpeciesName,
   catalogWriteErrorFromDatabase,
   CatalogWriteError,
   cleanCatalogText,
+  cleanGenusName,
+  createCatalogGenus,
   createCatalogSpecies,
+  deleteCatalogGenus,
   deleteCatalogSpecies,
+  deleteGenusAbbreviation,
+  deleteSpeciesName,
   MAX_BATCH_SPECIES,
   setCatalogSpeciesStatus,
   toCatalogWriteError,
+  updateCatalogGenus,
   updateCatalogSpecies,
+  updateGenusAbbreviation,
+  updateSpeciesName,
+  withFinalDot,
 } from './catalogWrites.ts'
 import { CatalogAdminError } from './catalogAdmin.ts'
 import { initSupabase, setSessionTokenSource } from './supabase.ts'
@@ -112,7 +123,7 @@ describe('cleanCatalogText', () => {
 
 describe('especies', () => {
   it('alta: envía el nombre sin espacios sobrantes y convierte la fila', async () => {
-    fetchMock.mockReturnValue(jsonResponse(SPECIES_ROW))
+    fetchMock.mockImplementation(() => jsonResponse(SPECIES_ROW))
     const written = await createCatalogSpecies({
       scientificName: '  Vanda   tricolor ',
       genusId: GENUS_ID,
@@ -164,7 +175,7 @@ describe('especies', () => {
   })
 
   it('edición: envía todos los campos a la vez', async () => {
-    fetchMock.mockReturnValue(jsonResponse(SPECIES_ROW))
+    fetchMock.mockImplementation(() => jsonResponse(SPECIES_ROW))
     await updateCatalogSpecies(SPECIES_ID, {
       scientificName: 'Vanda tricolor ',
       genusId: GENUS_ID,
@@ -287,7 +298,7 @@ describe('especies', () => {
   })
 
   it('lote: sin repetidos, con su tope, y devuelve cuántas cambiaron', async () => {
-    fetchMock.mockReturnValue(jsonResponse(2))
+    fetchMock.mockImplementation(() => jsonResponse(2))
     await expect(
       setCatalogSpeciesStatus([SPECIES_ID, SPECIES_ID, GENUS_ID], 'validated'),
     ).resolves.toBe(2)
@@ -388,5 +399,262 @@ describe('especies', () => {
       'offline',
     )
     expect(toCatalogWriteError(new Error('x')).problem).toBe('failed')
+  })
+})
+
+const NAME_ID = '55555555-5555-4555-8555-555555555555'
+const ABBREVIATION_ID = '66666666-6666-4666-8666-666666666666'
+
+describe('nombres de una especie', () => {
+  const nameRow = {
+    id: NAME_ID,
+    species_id: SPECIES_ID,
+    name: 'vanda azul',
+    type: 'common',
+    language: 'es',
+    created_at: '2026-11-21T10:00:00+00:00',
+    updated_at: '2026-11-21T10:00:00+00:00',
+  }
+
+  it('añadir: recorta el nombre y solo envía el idioma de un nombre común', async () => {
+    fetchMock.mockImplementation(() => jsonResponse(nameRow))
+    const written = await addSpeciesName(SPECIES_ID, {
+      name: '  vanda   azul ',
+      type: 'common',
+      language: ' es ',
+    })
+    expect(lastRequest()).toEqual({
+      path: 'rpc/add_species_name',
+      body: {
+        target_species_id: SPECIES_ID,
+        new_name: 'vanda azul',
+        new_type: 'common',
+        new_language: 'es',
+      },
+    })
+    expect(written).toEqual({
+      id: NAME_ID,
+      speciesId: SPECIES_ID,
+      name: 'vanda azul',
+      type: 'common',
+      language: 'es',
+    })
+    await addSpeciesName(SPECIES_ID, {
+      name: 'Vanda caerulea',
+      type: 'synonym',
+      language: 'la',
+    })
+    expect(lastRequest().body).toEqual({
+      target_species_id: SPECIES_ID,
+      new_name: 'Vanda caerulea',
+      new_type: 'synonym',
+    })
+  })
+
+  it('editar y quitar', async () => {
+    fetchMock.mockImplementation(() => jsonResponse(nameRow))
+    await updateSpeciesName(NAME_ID, { name: 'Vanda azul', type: 'common' })
+    expect(lastRequest()).toEqual({
+      path: 'rpc/update_species_name',
+      body: {
+        target_name_id: NAME_ID,
+        new_name: 'Vanda azul',
+        new_type: 'common',
+      },
+    })
+    fetchMock.mockReturnValue(
+      Promise.resolve(new Response(null, { status: 204 })),
+    )
+    await deleteSpeciesName(NAME_ID)
+    expect(lastRequest()).toEqual({
+      path: 'rpc/delete_species_name',
+      body: { target_name_id: NAME_ID },
+    })
+  })
+
+  it('errores: vacío sin pedir nada; duplicado, idioma y nombre científico junto a su campo', async () => {
+    const empty = await failure(
+      addSpeciesName(SPECIES_ID, { name: ' ', type: 'synonym' }),
+    )
+    expect(empty.problem).toBe('name-required')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fetchMock.mockReturnValueOnce(
+      rejection(409, '23505', 'duplicate_alternative_name', {
+        existing_name: 'Laelia purpurata',
+        existing_type: 'synonym',
+      }),
+    )
+    const duplicate = await failure(
+      addSpeciesName(SPECIES_ID, { name: 'laelia purpurata', type: 'common' }),
+    )
+    expect(duplicate.field).toBe('text')
+    expect(duplicate.message).toBe(
+      'La especie ya tiene este nombre: «Laelia purpurata» (sinónimo). Los nombres no distinguen mayúsculas.',
+    )
+    fetchMock.mockReturnValueOnce(rejection(400, '22023', 'invalid_language'))
+    const language = await failure(
+      addSpeciesName(SPECIES_ID, {
+        name: 'reina',
+        type: 'common',
+        language: 'español',
+      }),
+    )
+    expect(language.field).toBe('language')
+    fetchMock.mockReturnValueOnce(
+      rejection(409, '23505', 'name_is_scientific_name'),
+    )
+    expect(
+      (
+        await failure(
+          addSpeciesName(SPECIES_ID, {
+            name: 'Vanda coerulea',
+            type: 'synonym',
+          }),
+        )
+      ).problem,
+    ).toBe('name-is-scientific-name')
+    expect(
+      catalogWriteErrorFromDatabase({
+        code: '23505',
+        message:
+          'duplicate key value violates unique constraint "species_names_species_id_name_key"',
+      })?.problem,
+    ).toBe('duplicate-alternative-name')
+  })
+})
+
+describe('géneros y abreviaturas', () => {
+  const genusRow = {
+    id: GENUS_ID,
+    name: '× Mokara',
+    is_quick_access: true,
+    photo_path: null,
+    created_at: '2026-11-21T10:00:00+00:00',
+    updated_at: '2026-11-21T10:00:00+00:00',
+  }
+
+  it('cleanGenusName y withFinalDot', () => {
+    expect(cleanGenusName('  ×Mokara ')).toBe('× Mokara')
+    expect(cleanGenusName('×   Mokara')).toBe('× Mokara')
+    expect(withFinalDot(' Phal ')).toBe('Phal.')
+    expect(withFinalDot('Phal..')).toBe('Phal.')
+    expect(withFinalDot(' . ')).toBe('')
+  })
+
+  it('crear, renombrar y borrar un género', async () => {
+    fetchMock.mockImplementation(() => jsonResponse(genusRow))
+    const written = await createCatalogGenus({
+      name: '×Mokara',
+      isQuickAccess: true,
+    })
+    expect(lastRequest()).toEqual({
+      path: 'rpc/create_catalog_genus',
+      body: { new_name: '× Mokara', new_is_quick_access: true },
+    })
+    expect(written).toEqual({
+      id: GENUS_ID,
+      name: '× Mokara',
+      isQuickAccess: true,
+    })
+    await updateCatalogGenus(GENUS_ID, { name: 'Mokara', isQuickAccess: false })
+    expect(lastRequest()).toEqual({
+      path: 'rpc/update_catalog_genus',
+      body: {
+        target_genus_id: GENUS_ID,
+        new_name: 'Mokara',
+        new_is_quick_access: false,
+      },
+    })
+    fetchMock.mockReturnValue(
+      rejection(409, '23503', 'genus_has_species', { species_count: 12 }),
+    )
+    const error = await failure(deleteCatalogGenus(GENUS_ID))
+    expect(error.message).toBe(
+      'No se puede borrar: el género tiene 12 especies. Bórralas o cámbialas de género antes.',
+    )
+  })
+
+  it('un género casi igual se explica con el que ya existe', async () => {
+    fetchMock.mockReturnValue(
+      rejection(409, '23505', 'similar_genus', {
+        existing_name: 'Rhyncholaeliocattleya',
+      }),
+    )
+    const error = await failure(
+      createCatalogGenus({
+        name: '× Rhyncholaeliocattleya',
+        isQuickAccess: false,
+      }),
+    )
+    expect(error.field).toBe('text')
+    expect(error.message).toBe(
+      'Ya hay un género que se escribe casi igual: «Rhyncholaeliocattleya». Solo cambian las tildes o el signo de híbrido «×».',
+    )
+    expect(
+      catalogWriteErrorFromDatabase({
+        code: '23503',
+        message:
+          'update or delete on table "genera" violates foreign key constraint "species_genus_id_fkey" on table "species"',
+      })?.problem,
+    ).toBe('genus-has-species')
+    expect(
+      catalogWriteErrorFromDatabase({
+        code: '23503',
+        message:
+          'insert or update on table "species" violates foreign key constraint "species_genus_id_fkey"',
+      })?.problem,
+    ).toBe('genus-not-found')
+  })
+
+  it('abreviaturas: con su punto, y el choque nombra el género que la tiene', async () => {
+    const row = {
+      id: ABBREVIATION_ID,
+      genus_id: GENUS_ID,
+      abbreviation: 'Mok.',
+      created_at: '2026-11-21T10:00:00+00:00',
+      updated_at: '2026-11-21T10:00:00+00:00',
+    }
+    fetchMock.mockImplementation(() => jsonResponse(row))
+    await expect(addGenusAbbreviation(GENUS_ID, ' Mok ')).resolves.toEqual({
+      id: ABBREVIATION_ID,
+      genusId: GENUS_ID,
+      abbreviation: 'Mok.',
+    })
+    expect(lastRequest().body).toEqual({
+      target_genus_id: GENUS_ID,
+      new_abbreviation: 'Mok.',
+    })
+    await updateGenusAbbreviation(ABBREVIATION_ID, 'Mkr')
+    expect(lastRequest()).toEqual({
+      path: 'rpc/update_genus_abbreviation',
+      body: {
+        target_abbreviation_id: ABBREVIATION_ID,
+        new_abbreviation: 'Mkr.',
+      },
+    })
+    fetchMock.mockReturnValue(
+      Promise.resolve(new Response(null, { status: 204 })),
+    )
+    await deleteGenusAbbreviation(ABBREVIATION_ID)
+    expect(lastRequest().path).toBe('rpc/delete_genus_abbreviation')
+
+    fetchMock.mockClear()
+    fetchMock.mockReturnValue(
+      rejection(409, '23505', 'abbreviation_taken', {
+        genus_id: GENUS_ID,
+        genus_name: 'Phalaenopsis',
+        existing_abbreviation: 'Phal.',
+      }),
+    )
+    const taken = await failure(addGenusAbbreviation(GENUS_ID, 'PHAL'))
+    expect(taken.field).toBe('text')
+    expect(taken.details.genusName).toBe('Phalaenopsis')
+    expect(taken.message).toBe(
+      'La abreviatura «Phal.» ya es del género Phalaenopsis: una abreviatura solo puede ser de un género (sin distinguir mayúsculas, tildes ni el punto final).',
+    )
+    const empty = await failure(addGenusAbbreviation(GENUS_ID, ' . '))
+    expect(empty.problem).toBe('name-required')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

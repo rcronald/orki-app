@@ -187,6 +187,8 @@ export function CatalogAdminView({
               source={source}
               fullState={state}
               hrefFor={hrefFor}
+              revision={revision}
+              onCatalogChanged={onCatalogChanged}
             />
           )}
         </div>

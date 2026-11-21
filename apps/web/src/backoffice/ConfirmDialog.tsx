@@ -12,7 +12,8 @@ import { Icon } from '../components/ui/Icon.tsx'
 //   destruye algo, la acción si no. Tab y Mayús+Tab no salen del diálogo.
 // - Escape y "Cancelar" lo cierran sin hacer nada (salvo mientras se guarda).
 // - Al cerrarse, el foco vuelve a donde estaba antes de abrirlo, o a
-//   `returnFocusTo` si aquel elemento ya no existe (por ejemplo, tras borrar).
+//   al que diga `returnFocusTo` si devuelve uno (por ejemplo, tras quitar
+//   el elemento que lo abrió).
 // Se pinta en document.body, sobre una capa que cubre la pantalla.
 
 export interface ConfirmDialogProps {
@@ -30,7 +31,10 @@ export interface ConfirmDialogProps {
   error?: string | null
   onConfirm: () => void
   onCancel: () => void
-  /** Dónde poner el foco al cerrarse si el elemento de antes ya no está. */
+  /**
+   * Dónde poner el foco al cerrarse en lugar de donde estaba; si devuelve
+   * null, vuelve a donde estaba (si sigue en la página).
+   */
   returnFocusTo?: () => HTMLElement | null
 }
 
@@ -94,9 +98,12 @@ export function ConfirmDialog({
     return () => {
       dialog?.removeEventListener('keydown', listener)
       const target =
-        previous && previous.isConnected ? previous : fallbackFocus()
-      // Tras el pintado, para que el elemento ya exista si se acaba de crear.
-      queueMicrotask(() => target?.focus())
+        fallbackFocus() ?? (previous && previous.isConnected ? previous : null)
+      // En el momento, no en una tarea aparte: en desarrollo, StrictMode
+      // monta, desmonta y vuelve a montar el diálogo, y un foco diferido
+      // llegaría después del del segundo montaje y lo sacaría del diálogo.
+      // Las limpiezas de efectos corren con el DOM ya actualizado.
+      target?.focus()
     }
   }, [])
 

@@ -54,8 +54,14 @@ select pruebas.iguales(
   (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ','), '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'private'::regnamespace),
-  'check_species_name_free definer=false search_path=""; '
+  'check_abbreviation_free definer=false search_path=""; '
+    || 'check_alternative_name definer=false search_path=""; '
+    || 'check_genus_name_free definer=false search_path=""; '
+    || 'check_species_name_free definer=false search_path=""; '
+    || 'clean_abbreviation definer=false search_path=""; '
     || 'clean_catalog_text definer=false search_path=""; '
+    || 'clean_genus_name definer=false search_path=""; '
+    || 'clean_name_language definer=false search_path=""; '
     || 'propagate_species_to_plants definer=true search_path=""; '
     || 'raise_catalog_error definer=false search_path=""; '
     || 'require_catalog_admin definer=false search_path=""; '
