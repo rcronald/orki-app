@@ -1,4 +1,9 @@
-import type { PlantInsert, PlantType, SpeciesType } from '../lib/database.ts'
+import type {
+  FlowerColor,
+  PlantInsert,
+  PlantType,
+  SpeciesType,
+} from '../lib/database.ts'
 import { isCalendarDate } from '../lib/localDate.ts'
 import { PLANT_FORM_ERROR_TEXT } from './texts.ts'
 
@@ -8,17 +13,25 @@ import { PLANT_FORM_ERROR_TEXT } from './texts.ts'
 // useReducer.
 //
 // Pensado para crecer sin rehacerlo:
-// - #86 (origen, "Más detalles" y borrador): sus campos se añaden a
-//   PlantFormValues, a initialPlantFormValues() y a toPlantInsert(); el
-//   borrador guarda y restaura PlantFormValues entero (acción "restored").
+// - #86 (origen, "Más detalles" y borrador): origen, ubicación, apodo, color
+//   de flor y "foto en floración" están en PlantFormValues; el borrador
+//   (draft.ts) guarda PlantFormValues entero y PlantForm lo usa como estado
+//   inicial al montarse; "restored" sirve para descartarlo y empezar de cero.
 // - #87 (foto): la foto pendiente es un archivo, no un dato de la fila; vive
-//   junto a este estado y se sube después de guardar la planta.
+//   junto a este estado y se sube después de guardar la planta. Con ella se
+//   muestra la casilla de `photoInBloom`, que ya viaja en la fila y el borrador.
 // - #88 (aviso de duplicado): depende solo de `species`.
 // - #12 (nombre por validar): isPendingName() dice cuándo se guardará sin
 //   especie.
 
 /** Topes de longitud de la base (restricción plants_entered_name_valid). */
 export const PLANT_NAME_MAX_LENGTH = 200
+
+/**
+ * Tope de origen, ubicación y apodo (restricciones plants_origin_valid,
+ * plants_location_valid y plants_nickname_valid).
+ */
+export const PLANT_TEXT_MAX_LENGTH = 120
 
 /** Un género del catálogo. */
 export interface FormGenus {
@@ -50,9 +63,23 @@ export interface PlantFormValues {
   type: PlantType | null
   /** Fecha de adquisición, "AAAA-MM-DD" ('' si se borró). */
   acquiredOn: string
+  /** Tienda, vivero o intercambio, tal como está escrito ('' si no hay). */
+  origin: string
+  /** "Más detalles": dónde está en casa ('' si no hay). */
+  location: string
+  /** "Más detalles": apodo o etiqueta ('' si no hay). */
+  nickname: string
+  /** "Más detalles": color de la flor; null si no se indica. */
+  flowerColor: FlowerColor | null
+  /**
+   * Si la foto es en floración. Sin foto no tiene sentido: la casilla llega
+   * con la foto (#87); hasta entonces es siempre false.
+   */
+  photoInBloom: boolean
 }
 
-export type PlantFormField = 'name' | 'genus' | 'type' | 'acquiredOn'
+export type PlantFormField =
+  'name' | 'genus' | 'type' | 'acquiredOn' | 'origin' | 'location' | 'nickname'
 
 /** Orden de los campos en pantalla: el primero con error recibe el foco. */
 export const PLANT_FORM_FIELDS: readonly PlantFormField[] = [
@@ -60,7 +87,19 @@ export const PLANT_FORM_FIELDS: readonly PlantFormField[] = [
   'genus',
   'type',
   'acquiredOn',
+  'origin',
+  'location',
+  'nickname',
 ]
+
+/** Campos que van dentro de la sección plegable "Más detalles". */
+export const PLANT_DETAIL_FIELDS: readonly PlantFormField[] = [
+  'location',
+  'nickname',
+]
+
+/** Campos de texto opcionales con tope de PLANT_TEXT_MAX_LENGTH. */
+export type PlantOptionalTextField = 'origin' | 'location' | 'nickname'
 
 export type PlantFormErrors = Partial<Record<PlantFormField, string>>
 
@@ -71,7 +110,11 @@ export type PlantFormAction =
   | { type: 'otherGenusToggled' }
   | { type: 'typeSelected'; plantType: PlantType }
   | { type: 'acquiredOnChanged'; acquiredOn: string }
-  /** Sustituye todo el estado; para restaurar un borrador (#86) o empezar otro registro. */
+  | { type: 'textChanged'; field: PlantOptionalTextField; value: string }
+  /** Elegir el color ya elegido lo quita: el campo es opcional. */
+  | { type: 'flowerColorToggled'; flowerColor: FlowerColor }
+  | { type: 'photoInBloomChanged'; photoInBloom: boolean }
+  /** Sustituye todo el estado; por ejemplo, al descartar el borrador (#86). */
   | { type: 'restored'; values: PlantFormValues }
 
 /** Formulario vacío con la fecha de adquisición en `today` (fecha local). */
@@ -83,6 +126,11 @@ export function initialPlantFormValues(today: string): PlantFormValues {
     otherGenusOpen: false,
     type: null,
     acquiredOn: today,
+    origin: '',
+    location: '',
+    nickname: '',
+    flowerColor: null,
+    photoInBloom: false,
   }
 }
 
@@ -120,6 +168,16 @@ export function plantFormReducer(
       return { ...state, type: action.plantType }
     case 'acquiredOnChanged':
       return { ...state, acquiredOn: action.acquiredOn }
+    case 'textChanged':
+      return { ...state, [action.field]: action.value }
+    case 'flowerColorToggled':
+      return {
+        ...state,
+        flowerColor:
+          state.flowerColor === action.flowerColor ? null : action.flowerColor,
+      }
+    case 'photoInBloomChanged':
+      return { ...state, photoInBloom: action.photoInBloom }
     case 'restored':
       return action.values
   }
@@ -153,7 +211,12 @@ export function isPlantFormDirty(
     values.genus !== null ||
     values.otherGenusOpen ||
     values.type !== null ||
-    values.acquiredOn !== initial.acquiredOn
+    values.acquiredOn !== initial.acquiredOn ||
+    values.origin.trim() !== '' ||
+    values.location.trim() !== '' ||
+    values.nickname.trim() !== '' ||
+    values.flowerColor !== null ||
+    values.photoInBloom
   )
 }
 
@@ -188,6 +251,17 @@ export function validatePlantForm(
     // Las dos van en "AAAA-MM-DD": el orden del texto es el de las fechas.
     errors.acquiredOn = PLANT_FORM_ERROR_TEXT.dateFuture
   }
+
+  // Opcionales: vacíos no dan error (se guardan como null). El campo ya corta
+  // en 120 unidades de UTF-16, que nunca son más de 120 caracteres; esto cubre
+  // lo que llega por otra vía (un borrador restaurado).
+  for (const field of ['origin', 'location', 'nickname'] as const) {
+    if (
+      characterCount(normalizePlantName(values[field])) > PLANT_TEXT_MAX_LENGTH
+    ) {
+      errors[field] = PLANT_FORM_ERROR_TEXT.textTooLong
+    }
+  }
   return errors
 }
 
@@ -198,7 +272,15 @@ export function validatePlantForm(
 export type NewPlantInsert = Required<
   Pick<PlantInsert, 'id' | 'entered_name' | 'genus_id' | 'type' | 'acquired_on'>
 > &
-  Pick<PlantInsert, 'species_id'>
+  Pick<
+    PlantInsert,
+    | 'species_id'
+    | 'origin'
+    | 'location'
+    | 'nickname'
+    | 'flower_color'
+    | 'photo_in_bloom'
+  >
 
 /**
  * Fila para insertar a partir de un formulario ya validado. `id` lo genera la
@@ -206,6 +288,9 @@ export type NewPlantInsert = Required<
  *
  * Con especie, el género y el tipo los vuelve a poner el disparador de la base
  * con los de la especie; se envían igual porque las columnas son obligatorias.
+ *
+ * Los opcionales solo van si tienen valor (sin espacios sobrantes): vacíos,
+ * la base los deja en null (o false), que es "sin dato".
  */
 export function toPlantInsert(
   values: PlantFormValues,
@@ -222,5 +307,13 @@ export function toPlantInsert(
     acquired_on: values.acquiredOn,
   }
   if (values.species !== null) insert.species_id = values.species.id
+  const origin = normalizePlantName(values.origin)
+  if (origin !== '') insert.origin = origin
+  const location = normalizePlantName(values.location)
+  if (location !== '') insert.location = location
+  const nickname = normalizePlantName(values.nickname)
+  if (nickname !== '') insert.nickname = nickname
+  if (values.flowerColor !== null) insert.flower_color = values.flowerColor
+  if (values.photoInBloom) insert.photo_in_bloom = true
   return insert
 }

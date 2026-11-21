@@ -84,6 +84,32 @@ describe('plantFormReducer', () => {
     state = plantFormReducer(state, { type: 'genusSelected', genus: CATT })
     expect(state).toMatchObject({ otherGenusOpen: false, genus: CATT })
   })
+
+  it('el color de flor se elige y, tocándolo otra vez, se quita', () => {
+    let state = plantFormReducer(filled(), {
+      type: 'flowerColorToggled',
+      flowerColor: 'pink',
+    })
+    expect(state.flowerColor).toBe('pink')
+    state = plantFormReducer(state, {
+      type: 'flowerColorToggled',
+      flowerColor: 'pink',
+    })
+    expect(state.flowerColor).toBeNull()
+  })
+
+  it('los textos opcionales cambian cada uno su campo', () => {
+    const state = plantFormReducer(filled(), {
+      type: 'textChanged',
+      field: 'location',
+      value: 'Balcón',
+    })
+    expect(state).toMatchObject({
+      location: 'Balcón',
+      origin: '',
+      nickname: '',
+    })
+  })
 })
 
 describe('validatePlantForm', () => {
@@ -121,6 +147,35 @@ describe('validatePlantForm', () => {
     expect(
       validatePlantForm(filled({ name: '🌸'.repeat(200) }), TODAY),
     ).toEqual({})
+  })
+
+  it('origen, ubicación y apodo: opcionales, con tope de 120 caracteres', () => {
+    expect(validatePlantForm(filled(), TODAY)).toEqual({})
+    const text120 = 'a'.repeat(120)
+    expect(
+      validatePlantForm(
+        filled({
+          origin: text120,
+          location: ` ${text120} `,
+          nickname: '🌸'.repeat(120),
+        }),
+        TODAY,
+      ),
+    ).toEqual({})
+    expect(
+      validatePlantForm(
+        filled({
+          origin: `${text120}b`,
+          location: `${text120}b`,
+          nickname: `${text120}b`,
+        }),
+        TODAY,
+      ),
+    ).toEqual({
+      origin: PLANT_FORM_ERROR_TEXT.textTooLong,
+      location: PLANT_FORM_ERROR_TEXT.textTooLong,
+      nickname: PLANT_FORM_ERROR_TEXT.textTooLong,
+    })
   })
 
   it('rechaza fechas futuras y fechas que no existen', () => {
@@ -168,6 +223,31 @@ describe('toPlantInsert', () => {
     expect(insert).not.toHaveProperty('validation')
     expect(insert).not.toHaveProperty('user_id')
   })
+
+  it('los opcionales van limpios y solo si tienen valor', () => {
+    expect(
+      toPlantInsert(
+        filled({
+          origin: '  Vivero   Sol ',
+          location: 'Balcón',
+          nickname: '   ',
+          flowerColor: 'yellow',
+          photoInBloom: true,
+        }),
+        'id-3',
+      ),
+    ).toEqual({
+      id: 'id-3',
+      entered_name: 'Phalaenopsis amabilis',
+      genus_id: PHAL.id,
+      type: 'species',
+      acquired_on: TODAY,
+      origin: 'Vivero Sol',
+      location: 'Balcón',
+      flower_color: 'yellow',
+      photo_in_bloom: true,
+    })
+  })
 })
 
 describe('isPendingName e isPlantFormDirty', () => {
@@ -184,6 +264,16 @@ describe('isPendingName e isPlantFormDirty', () => {
     expect(isPlantFormDirty({ ...initial, type: 'hybrid' }, initial)).toBe(true)
     expect(
       isPlantFormDirty({ ...initial, acquiredOn: '2026-11-01' }, initial),
+    ).toBe(true)
+    expect(isPlantFormDirty({ ...initial, origin: '  ' }, initial)).toBe(false)
+    expect(isPlantFormDirty({ ...initial, origin: 'Feria' }, initial)).toBe(
+      true,
+    )
+    expect(isPlantFormDirty({ ...initial, nickname: 'La lila' }, initial)).toBe(
+      true,
+    )
+    expect(
+      isPlantFormDirty({ ...initial, flowerColor: 'white' }, initial),
     ).toBe(true)
   })
 })

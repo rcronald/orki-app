@@ -20,12 +20,20 @@ import {
   PLANT_INVALID_TEXT,
   PlantSaveError,
 } from '../registration/save-plant.ts'
+import { SAMPLE_COLLECTION } from './inventory-data.ts'
 import { Example, Section } from './layout.tsx'
 
 // El formulario de registro (/coleccion/nueva) con datos fijos, para revisarlo
 // sin base de datos ni sesión. Guardar no escribe nada: dice qué se enviaría o
 // simula el fallo elegido. Va plegado para no repetir en la página los nombres
 // de los campos de las secciones de componentes.
+//
+// Las sugerencias de origen salen de la colección de ejemplo del inventario.
+// El borrador es real (localStorage, usuario "muestra"): recargar la página a
+// mitad lo recupera.
+
+/** Dueño del borrador de la muestra; no es un usuario de Clerk. */
+const SHOWCASE_DRAFT_USER = 'muestra'
 
 const GENERA: Record<string, FormGenus> = {
   cattleya: { id: 'genero-cattleya', name: 'Cattleya' },
@@ -183,11 +191,11 @@ function samplePlant(insert: NewPlantInsert): CollectionPlant {
     acquiredOn: insert.acquired_on,
     createdAt: now,
     updatedAt: now,
-    origin: null,
-    location: null,
-    nickname: null,
-    flowerColor: null,
-    photoInBloom: false,
+    origin: insert.origin ?? null,
+    location: insert.location ?? null,
+    nickname: insert.nickname ?? null,
+    flowerColor: insert.flower_color ?? null,
+    photoInBloom: insert.photo_in_bloom ?? false,
     photoPath: null,
     thumbnailPath: null,
   }
@@ -231,7 +239,7 @@ export function RegistrationSection() {
     <Section
       id="registro"
       title="Formulario de registro"
-      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Guardar no escribe nada."
+      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). Lo escrito se conserva como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
     >
       <Collapsible title="Ver el formulario" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -261,6 +269,8 @@ export function RegistrationSection() {
                 key={formKey}
                 services={services}
                 online={online}
+                knownPlants={SAMPLE_COLLECTION}
+                draftUserId={SHOWCASE_DRAFT_USER}
                 onSaved={(plant) =>
                   setResult(
                     `Guardada: «${plant.displayName}», ${

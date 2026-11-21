@@ -12,9 +12,18 @@ import {
   vi,
 } from 'vitest'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
-import type { CollectionPlantRow } from '../collection/model.ts'
+import type {
+  CollectionPlant,
+  CollectionPlantRow,
+} from '../collection/model.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { localDateString } from '../lib/localDate.ts'
+import {
+  PLANT_DRAFT_MAX_AGE_MS,
+  PLANT_DRAFT_VERSION,
+  plantDraftKey,
+} from '../registration/draft.ts'
+import { initialPlantFormValues } from '../registration/form-state.ts'
 import { clearQuickAccessGeneraCache } from '../registration/quick-genera.ts'
 import {
   PLANT_INVALID_TEXT,
@@ -27,6 +36,7 @@ import {
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
+import { plant } from '../test/collection.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -241,7 +251,7 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>
 }
 
-async function renderPage() {
+async function renderPage(plants: readonly CollectionPlant[] = []) {
   const view = render(
     <MemoryRouter initialEntries={['/coleccion', '/coleccion/nueva']}>
       <NavigationFocusProvider>
@@ -257,9 +267,10 @@ async function renderPage() {
       </NavigationFocusProvider>
     </MemoryRouter>,
   )
-  // La colección del usuario (vacía) y los géneros de acceso rápido.
+  // La colección del usuario (vacía si no se indica) y los géneros de acceso
+  // rápido.
   await act(async () => {
-    source.last().resolve([])
+    source.last().resolve(plants)
     await Promise.resolve()
   })
   await screen.findByRole('button', { name: 'Phalaenopsis' })
@@ -810,11 +821,355 @@ describe('NewPlantPage', () => {
     await user.tab()
     expect(dateInput()).toHaveFocus()
     await user.tab()
+    expect(originInput()).toHaveFocus()
+    await user.keyboard('Feria de Miraflores')
+    // "Más detalles" se abre con Enter y sus campos siguen en orden.
+    await user.tab()
+    expect(detailsButton()).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await user.tab()
+    expect(locationInput()).toHaveFocus()
+    await user.keyboard('Balcón')
+    await user.tab()
+    expect(nicknameInput()).toHaveFocus()
+    await user.tab()
+    expect(chip('Blanco')).toHaveFocus()
+    await user.keyboard('{Enter}')
+    for (let i = 0; i < 6; i += 1) await user.tab()
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus()
     await user.tab()
     expect(submitButton()).toHaveFocus()
     await user.keyboard('{Enter}')
     await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(lastInsert().species_id).toBe(AMABILIS.id)
+    expect(lastInsert()).toMatchObject({
+      species_id: AMABILIS.id,
+      origin: 'Feria de Miraflores',
+      location: 'Balcón',
+      flower_color: 'white',
+    })
+  })
+})
+
+const originInput = () => screen.getByRole('combobox', { name: 'Origen' })
+const detailsButton = () => screen.getByRole('button', { name: 'Más detalles' })
+const locationInput = () => screen.getByLabelText('Ubicación')
+const nicknameInput = () => screen.getByLabelText('Apodo')
+const draftKey = plantDraftKey('user_prueba')
+
+function storedDraft(key = draftKey): {
+  plantId: string
+  savedAt: number
+  values: Record<string, unknown>
+} | null {
+  const raw = window.localStorage.getItem(key)
+  return raw === null ? null : (JSON.parse(raw) as never)
+}
+
+describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
+  it('el origen sugiere los ya usados, sin distinguir mayúsculas ni tildes, y acepta uno nuevo', async () => {
+    const user = userEvent.setup()
+    await renderPage([
+      plant({ origin: 'vivero  sol', createdAt: '2026-10-01T10:00:00Z' }),
+      plant({ origin: 'Vivero Sol', createdAt: '2026-11-10T10:00:00Z' }),
+      // Las dadas de baja también cuentan: la tienda sigue siendo suya.
+      plant({
+        origin: 'Vivero Sol',
+        status: 'lost',
+        createdAt: '2026-09-01T10:00:00Z',
+      }),
+      plant({ origin: 'Orquídeas del Valle' }),
+      plant({ origin: 'Intercambio con Ana' }),
+    ])
+
+    await user.type(originInput(), 'VIVERO')
+    // Uno solo, con la forma escrita en el registro más reciente.
+    expect(
+      screen.getAllByRole('option').map((option) => option.textContent),
+    ).toEqual(['Vivero Sol'])
+
+    await user.clear(originInput())
+    await user.type(originInput(), 'orquideas')
+    await user.click(
+      screen.getByRole('option', { name: 'Orquídeas del Valle' }),
+    )
+    expect(originInput()).toHaveValue('Orquídeas del Valle')
+
+    // Un origen nuevo: sin sugerencias, sin "sin resultados".
+    await user.clear(originInput())
+    await user.type(originInput(), 'Feria de Lima')
+    expect(screen.queryByRole('option')).toBeNull()
+    expect(screen.queryByText('Sin resultados')).toBeNull()
+
+    await chooseAmabilis(user)
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert().origin).toBe('Feria de Lima')
+  })
+
+  it('origen, ubicación y apodo tienen el tope de la base, 120 caracteres', async () => {
+    await renderPage()
+    expect(originInput()).toHaveAttribute('maxlength', '120')
+    expect(locationInput()).toHaveAttribute('maxlength', '120')
+    expect(nicknameInput()).toHaveAttribute('maxlength', '120')
+  })
+
+  it('"Más detalles" está cerrado; lo de dentro va en la inserción, sin espacios sobrantes', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    expect(detailsButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('textbox', { name: 'Ubicación' })).toBeNull()
+
+    await user.click(detailsButton())
+    expect(detailsButton()).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(screen.getByRole('group', { name: 'Color de la flor' }))
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Blanco', 'Rosado', 'Morado', 'Amarillo', 'Naranja', 'Bicolor'])
+    await user.type(locationInput(), '  Ventana   de la sala ')
+    await user.type(nicknameInput(), 'La lila')
+    await user.click(chip('Rosado'))
+    // Tocar el color elegido lo quita; se elige otro.
+    await user.click(chip('Rosado'))
+    expect(chip('Rosado')).toHaveAttribute('aria-pressed', 'false')
+    await user.click(chip('Morado'))
+    await expectNoAxeViolations()
+
+    await fillFreeName(user)
+    await user.type(originInput(), 'Vivero Sol')
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toEqual({
+      id: expect.any(String) as unknown,
+      entered_name: 'La naranja del mercado',
+      genus_id: GENERA.cattleya.id,
+      type: 'unknown',
+      acquired_on: localDateString(),
+      origin: 'Vivero Sol',
+      location: 'Ventana de la sala',
+      nickname: 'La lila',
+      flower_color: 'purple',
+    })
+  })
+
+  it('sin opcionales, la inserción no los lleva', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await chooseAmabilis(user)
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    const insert = lastInsert()
+    for (const column of [
+      'origin',
+      'location',
+      'nickname',
+      'flower_color',
+      'photo_in_bloom',
+    ]) {
+      expect(insert).not.toHaveProperty(column)
+    }
+  })
+
+  it('recargar a mitad no pierde lo escrito: se recupera con un aviso y se guarda con el mismo id', async () => {
+    const user = userEvent.setup()
+    const view = await renderPage()
+
+    await chooseAmabilis(user)
+    await user.type(originInput(), 'Vivero Sol')
+    await user.click(detailsButton())
+    await user.type(nicknameInput(), 'La blanca')
+    const saved = storedDraft()
+    expect(saved).toMatchObject({
+      version: PLANT_DRAFT_VERSION,
+      values: { name: 'Phalaenopsis amabilis', origin: 'Vivero Sol' },
+    })
+
+    // La recarga: la app se vuelve a montar desde cero.
+    view.unmount()
+    await renderPage()
+
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.draftRestored),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('Phalaenopsis amabilis')
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-disabled', 'true')
+    expect(originInput()).toHaveValue('Vivero Sol')
+    // Lo de "Más detalles" se ve: la sección vuelve abierta.
+    expect(detailsButton()).toHaveAttribute('aria-expanded', 'true')
+    expect(nicknameInput()).toHaveValue('La blanca')
+    await expectNoAxeViolations()
+
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      id: saved?.plantId,
+      species_id: AMABILIS.id,
+      origin: 'Vivero Sol',
+      nickname: 'La blanca',
+    })
+    // Guardar con éxito borra el borrador.
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+  })
+
+  it('el borrador de una cuenta no aparece con otra en el mismo dispositivo', async () => {
+    const user = userEvent.setup()
+    const view = await renderPage()
+    await user.type(nameInput(), 'Stanhopea')
+    view.unmount()
+
+    setFakeClerk({ signedIn: true, userId: 'user_otra' })
+    const other = await renderPage()
+    expect(nameInput()).toHaveValue('')
+    expect(screen.queryByText(PLANT_FORM_TEXT.draftRestored)).toBeNull()
+    // El de la primera cuenta sigue ahí, para cuando vuelva.
+    expect(storedDraft()?.values.name).toBe('Stanhopea')
+    other.unmount()
+
+    setFakeClerk({ signedIn: true, userId: 'user_prueba' })
+    await renderPage()
+    expect(nameInput()).toHaveValue('Stanhopea')
+  })
+
+  it('el borrador caduca a las 24 horas del último cambio', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-21T15:00:00Z'))
+    const user = userEvent.setup()
+    const view = await renderPage()
+    await user.type(nameInput(), 'Stanhopea')
+    view.unmount()
+
+    // Un poco antes de caducar, sigue.
+    vi.setSystemTime(new Date(Date.now() + PLANT_DRAFT_MAX_AGE_MS - 60_000))
+    const before = await renderPage()
+    expect(nameInput()).toHaveValue('Stanhopea')
+    before.unmount()
+
+    // Recuperarlo sin tocarlo no renueva la caducidad.
+    vi.setSystemTime(new Date(Date.now() + 2 * 60_000))
+    await renderPage()
+    expect(nameInput()).toHaveValue('')
+    expect(screen.queryByText(PLANT_FORM_TEXT.draftRestored)).toBeNull()
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+  })
+
+  it('descartar el borrador deja el formulario vacío, con otro id', async () => {
+    const user = userEvent.setup()
+    const view = await renderPage()
+    await fillFreeName(user)
+    const first = storedDraft()?.plantId
+    view.unmount()
+    await renderPage()
+
+    await user.click(
+      await screen.findByRole('button', { name: PLANT_FORM_TEXT.draftDiscard }),
+    )
+    expect(screen.queryByText(PLANT_FORM_TEXT.draftRestored)).toBeNull()
+    expect(nameInput()).toHaveValue('')
+    expect(nameInput()).toHaveFocus()
+    expect(chip('Cattleya')).toHaveAttribute('aria-pressed', 'false')
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+
+    await fillFreeName(user)
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert().id).not.toBe(first)
+  })
+
+  it('"Cancelar" con borrador pregunta y, si se confirma, lo borra', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    const view = await renderPage()
+    await user.type(nameInput(), 'Stanhopea')
+    view.unmount()
+    await renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(confirm).toHaveBeenCalledWith(PLANT_FORM_TEXT.confirmDiscard)
+    expect(location()).toBe('/coleccion')
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+  })
+
+  it('vaciar el formulario a mano borra el borrador', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await user.type(nameInput(), 'Sta')
+    expect(storedDraft()).not.toBeNull()
+    await user.clear(nameInput())
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+  })
+
+  it('un borrador de otra versión o ilegible se ignora y se borra', async () => {
+    window.localStorage.setItem(
+      draftKey,
+      JSON.stringify({ version: 99, plantId: 'x', savedAt: Date.now() }),
+    )
+    const view = await renderPage()
+    expect(nameInput()).toHaveValue('')
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+    view.unmount()
+
+    window.localStorage.setItem(draftKey, '{"version":1,')
+    await renderPage()
+    expect(nameInput()).toHaveValue('')
+    expect(window.localStorage.getItem(draftKey)).toBeNull()
+  })
+
+  it('sin almacenamiento disponible, el formulario funciona igual', async () => {
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new DOMException('Bloqueado', 'SecurityError')
+    })
+    const user = userEvent.setup()
+    await renderPage()
+    await fillFreeName(user)
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(plantInserts()).toHaveLength(1)
+  })
+
+  it('con el almacenamiento lleno, el formulario funciona igual', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Lleno', 'QuotaExceededError')
+    })
+    const user = userEvent.setup()
+    await renderPage()
+    await fillFreeName(user)
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(plantInserts()).toHaveLength(1)
+  })
+
+  it('un error dentro de "Más detalles" la abre al intentar guardar y lleva el foco al campo', async () => {
+    // Un borrador con una ubicación más larga que el tope (el campo no deja
+    // escribirla, pero puede llegar así de otra versión).
+    window.localStorage.setItem(
+      draftKey,
+      JSON.stringify({
+        version: PLANT_DRAFT_VERSION,
+        plantId: '30000000-0000-4000-8000-000000000001',
+        savedAt: Date.now(),
+        values: {
+          ...initialPlantFormValues(localDateString()),
+          name: 'Stanhopea',
+          genus: GENERA.cattleya,
+          type: 'species',
+          location: 'a'.repeat(121),
+        },
+      }),
+    )
+    const user = userEvent.setup()
+    await renderPage()
+    // Se cierra a mano para comprobar que se abre sola.
+    await user.click(detailsButton())
+    expect(detailsButton()).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(submitButton())
+    expect(detailsButton()).toHaveAttribute('aria-expanded', 'true')
+    expect(locationInput()).toHaveFocus()
+    expect(locationInput()).toHaveAccessibleDescription(
+      new RegExp(`^${PLANT_FORM_ERROR_TEXT.textTooLong}`),
+    )
+    expect(plantInserts()).toHaveLength(0)
+    await expectNoAxeViolations()
   })
 })

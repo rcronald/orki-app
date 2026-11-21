@@ -10,6 +10,7 @@ export const PLANT_FORM_ERROR_TEXT = {
   dateMissing: 'Indica la fecha de adquisición.',
   dateInvalid: 'Escribe una fecha válida.',
   dateFuture: 'La fecha no puede ser posterior a hoy.',
+  textTooLong: 'No puede pasar de 120 caracteres.',
 } as const
 
 export const PLANT_FORM_TEXT = {
@@ -33,6 +34,16 @@ export const PLANT_FORM_TEXT = {
   typeLabel: 'Tipo',
   lockedHint: 'Lo marca la especie elegida. Para cambiarlo, cambia el nombre.',
   dateLabel: 'Fecha de adquisición',
+  originLabel: 'Origen',
+  originHint: 'Tienda, vivero, intercambio… Opcional.',
+  detailsTitle: 'Más detalles',
+  locationLabel: 'Ubicación',
+  locationHint: 'Dónde está en casa, como «Ventana de la sala». Opcional.',
+  nicknameLabel: 'Apodo',
+  nicknameHint: 'Un nombre o etiqueta tuya. Opcional.',
+  flowerColorLabel: 'Color de la flor',
+  draftRestored: 'Recuperamos lo que estabas escribiendo.',
+  draftDiscard: 'Descartar borrador',
   submit: 'Registrar orquídea',
   submitting: 'Registrando…',
   cancel: 'Cancelar',
@@ -42,6 +53,16 @@ export const PLANT_FORM_TEXT = {
     '¿Salir sin registrar? Se perderá lo que escribiste en el formulario.',
   offline:
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
+} as const
+
+/** Etiquetas de los chips de color de flor (enumerado flower_color). */
+export const FLOWER_COLOR_LABEL = {
+  white: 'Blanco',
+  pink: 'Rosado',
+  purple: 'Morado',
+  yellow: 'Amarillo',
+  orange: 'Naranja',
+  bicolor: 'Bicolor',
 } as const
 
 /** Etiquetas de los chips de tipo (enumerado plant_type). */

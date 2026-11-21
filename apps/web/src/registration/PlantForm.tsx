@@ -6,10 +6,12 @@ import {
   useState,
   type FormEvent,
 } from 'react'
+import { flushSync } from 'react-dom'
 import { Link } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
+import { Collapsible } from '../components/ui/Collapsible.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
 import {
@@ -18,7 +20,7 @@ import {
   type GenusSearchResult,
   type SpeciesSearchResult,
 } from '../lib/catalogSearch.ts'
-import type { PlantType } from '../lib/database.ts'
+import { enumValues, type PlantType } from '../lib/database.ts'
 import { localDateString } from '../lib/localDate.ts'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
 import {
@@ -26,21 +28,30 @@ import {
   FORM_CHIP_CLASSES,
   LOCKED_CHIP_CLASSES,
 } from './ChoiceField.tsx'
+import { clearPlantDraft, readPlantDraft, writePlantDraft } from './draft.ts'
 import {
   initialPlantFormValues,
   isPlantFormDirty,
+  PLANT_DETAIL_FIELDS,
   PLANT_FORM_FIELDS,
+  PLANT_TEXT_MAX_LENGTH,
   plantFormReducer,
   toPlantInsert,
   validatePlantForm,
   type FormGenus,
   type NewPlantInsert,
   type PlantFormField,
+  type PlantFormValues,
 } from './form-state.ts'
 import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField } from './NameField.tsx'
+import { OriginField } from './OriginField.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
-import { PLANT_FORM_TEXT, PLANT_TYPE_LABEL } from './texts.ts'
+import {
+  FLOWER_COLOR_LABEL,
+  PLANT_FORM_TEXT,
+  PLANT_TYPE_LABEL,
+} from './texts.ts'
 
 /**
  * De dónde saca el formulario los datos y dónde guarda. La pantalla de
@@ -62,13 +73,39 @@ export interface PlantFormProps {
   online: boolean
   /** La planta ya está guardada. */
   onSaved: (plant: CollectionPlant) => void
-  /** Salir sin guardar; si había cambios, la persona ya lo confirmó. */
+  /**
+   * Salir sin guardar; si había cambios, la persona ya lo confirmó y el
+   * borrador ya está borrado.
+   */
   onCancel: () => void
+  /**
+   * Plantas del usuario ya cargadas (la colección en memoria), para las
+   * sugerencias de origen; null o sin indicar si aún no están.
+   */
+  knownPlants?: readonly CollectionPlant[] | null
+  /**
+   * Dueño del borrador (id del usuario). Con él, lo escrito se guarda en el
+   * dispositivo y se recupera al volver a abrir el formulario (draft.ts); sin
+   * él, no hay borrador. Si cambia, hay que volver a montar el formulario
+   * (key), porque el borrador se lee al montarse.
+   */
+  draftUserId?: string | null
   /** Reloj, para las pruebas. Por defecto, la hora del dispositivo. */
   now?: () => Date
 }
 
 const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
+
+const deviceNow = () => new Date()
+
+/** Si hay algo escrito dentro de "Más detalles". */
+function hasDetails(values: PlantFormValues): boolean {
+  return (
+    values.location.trim() !== '' ||
+    values.nickname.trim() !== '' ||
+    values.flowerColor !== null
+  )
+}
 
 type SaveState =
   | { status: 'idle' }
@@ -114,28 +151,76 @@ function useQuickGenera(
 }
 
 /**
- * Formulario de registro de una planta (#85) con los cuatro campos
- * obligatorios: nombre, género, tipo y fecha de adquisición. Todo el estado
- * de los campos vive en un reductor (form-state.ts); aquí van la validación al
- * enviar, el guardado y sus errores.
+ * Aviso discreto de borrador recuperado, con "Descartar borrador". Como en
+ * RegisteredNotice, la región role="status" se pinta vacía y el texto llega en
+ * el pintado siguiente, para que el lector de pantalla lo anuncie.
+ */
+function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setVisible(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  return (
+    <div role="status">
+      {visible && (
+        <div className="flex flex-wrap items-center justify-between gap-space-2 rounded-lg bg-neutral-50 px-space-4 py-space-2">
+          <p className="text-sm text-neutral-900">
+            {PLANT_FORM_TEXT.draftRestored}
+          </p>
+          <Button className="flex-none" onClick={onDiscard}>
+            {PLANT_FORM_TEXT.draftDiscard}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Formulario de registro de una planta: los cuatro campos obligatorios
+ * (nombre, género, tipo y fecha de adquisición, #85), el origen y la sección
+ * plegable "Más detalles" (#86). Todo el estado de los campos vive en un
+ * reductor (form-state.ts); aquí van la validación al enviar, el guardado y
+ * sus errores, y el borrador en el dispositivo (draft.ts).
+ *
+ * Borrador: cada cambio se guarda; si el formulario vuelve a estar vacío, se
+ * borra. Se recupera al montarse, con un aviso y "Descartar borrador". Se
+ * borra al guardar con éxito, al descartarlo y al salir con "Cancelar" (que
+ * avisa antes de perder lo escrito). Salir de otra forma (otra pestaña de la
+ * app, cerrar o recargar) lo conserva: es lo que protege de una recarga.
  */
 export function PlantForm({
   services,
   online,
   onSaved,
   onCancel,
-  now = () => new Date(),
+  knownPlants = null,
+  draftUserId = null,
+  now = deviceNow,
 }: PlantFormProps) {
-  const [initial] = useState(() =>
-    initialPlantFormValues(localDateString(now())),
-  )
-  const [values, dispatch] = useReducer(plantFormReducer, initial)
+  // Lo que se lee una sola vez al montarse: el formulario vacío de hoy y el
+  // borrador, si lo hay.
+  const [start] = useState(() => {
+    const fresh = initialPlantFormValues(localDateString(now()))
+    const draft = draftUserId ? readPlantDraft(draftUserId, now()) : null
+    return { fresh, draft, values: draft?.values ?? fresh }
+  })
+  const initial = start.fresh
+  const [values, dispatch] = useReducer(plantFormReducer, start.values)
   const [submitted, setSubmitted] = useState(false)
   const [save, setSave] = useState<SaveState>({ status: 'idle' })
-  // El id de la planta se genera una vez y se reutiliza en cada reintento:
-  // si un intento llegó a la base pero no su respuesta, el siguiente no crea
-  // otra planta (ver save-plant.ts).
-  const [plantId] = useState(newPlantId)
+  // El id de la planta se genera una vez (o viene del borrador) y se
+  // reutiliza en cada reintento: si un intento llegó a la base pero no su
+  // respuesta, el siguiente no crea otra planta (ver save-plant.ts). Solo
+  // cambia al descartar el borrador.
+  const [plantId, setPlantId] = useState(
+    () => start.draft?.plantId ?? newPlantId(),
+  )
+  const [draftRestored, setDraftRestored] = useState(start.draft !== null)
+  // Cerrada por defecto; abierta si el borrador traía algo dentro.
+  const [detailsOpen, setDetailsOpen] = useState(() => hasDetails(start.values))
   // Evita el doble envío antes de que React pinte el estado "guardando".
   const savingRef = useRef(false)
   const [quickGenera, retryQuickGenera] = useQuickGenera(
@@ -143,11 +228,29 @@ export function PlantForm({
     online,
   )
 
+  // Guarda el borrador con cada cambio. Los valores con los que se montó no
+  // se reescriben: recuperar un borrador no renueva su caducidad.
+  useEffect(() => {
+    if (draftUserId === null || values === start.values) return
+    if (isPlantFormDirty(values, initial)) {
+      writePlantDraft(draftUserId, {
+        plantId,
+        values,
+        savedAt: now().getTime(),
+      })
+    } else {
+      clearPlantDraft(draftUserId)
+    }
+  }, [values, draftUserId, plantId, now, start.values, initial])
+
   const offlineId = useId()
   const nameRef = useRef<HTMLInputElement>(null)
   const genusRef = useRef<HTMLDivElement>(null)
   const typeRef = useRef<HTMLDivElement>(null)
   const dateRef = useRef<HTMLInputElement>(null)
+  const originRef = useRef<HTMLInputElement>(null)
+  const locationRef = useRef<HTMLInputElement>(null)
+  const nicknameRef = useRef<HTMLInputElement>(null)
 
   const today = localDateString(now())
   // Sin validar mientras se escribe: los errores aparecen al intentar
@@ -175,6 +278,15 @@ export function PlantForm({
       case 'acquiredOn':
         dateRef.current?.focus()
         return
+      case 'origin':
+        originRef.current?.focus()
+        return
+      case 'location':
+        locationRef.current?.focus()
+        return
+      case 'nickname':
+        nicknameRef.current?.focus()
+        return
     }
   }
 
@@ -185,6 +297,11 @@ export function PlantForm({
     const found = validatePlantForm(values, localDateString(now()))
     const firstInvalid = PLANT_FORM_FIELDS.find((field) => found[field])
     if (firstInvalid) {
+      // Un error dentro de "Más detalles" la abre, para que se vea; se pinta
+      // ya, antes de mover el foco a un campo que estaba oculto.
+      if (PLANT_DETAIL_FIELDS.some((field) => found[field])) {
+        flushSync(() => setDetailsOpen(true))
+      }
       focusField(firstInvalid)
       return
     }
@@ -194,6 +311,7 @@ export function PlantForm({
     try {
       const plant = await services.savePlant(toPlantInsert(values, plantId))
       savingRef.current = false
+      if (draftUserId !== null) clearPlantDraft(draftUserId)
       setSave({ status: 'idle' })
       onSaved(plant)
     } catch (error) {
@@ -210,7 +328,26 @@ export function PlantForm({
     ) {
       return
     }
+    if (draftUserId !== null) clearPlantDraft(draftUserId)
     onCancel()
+  }
+
+  // Empieza de cero: formulario vacío con la fecha de hoy y otro id de planta
+  // (el del borrador pudo llegar a la base en un intento anterior).
+  const discardDraft = () => {
+    if (saving) return
+    if (draftUserId !== null) clearPlantDraft(draftUserId)
+    dispatch({
+      type: 'restored',
+      values: initialPlantFormValues(localDateString(now())),
+    })
+    setPlantId(newPlantId())
+    setDraftRestored(false)
+    setDetailsOpen(false)
+    setSubmitted(false)
+    setSave({ status: 'idle' })
+    // El botón desaparece con el aviso: el foco va al primer campo.
+    nameRef.current?.focus()
   }
 
   return (
@@ -220,6 +357,8 @@ export function PlantForm({
       className="flex flex-col gap-space-5"
       onSubmit={(event) => void handleSubmit(event)}
     >
+      {draftRestored && <DraftNotice onDiscard={discardDraft} />}
+
       {/* Región siempre presente: así se anuncia al perder la conexión. */}
       <div id={offlineId} role="status">
         {!online && (
@@ -301,7 +440,78 @@ export function PlantForm({
           }
         />
 
-        {/* #87: la foto. #86: el origen y la sección plegable "Más detalles". */}
+        {/* #87: la foto va aquí, antes del origen. */}
+
+        <OriginField
+          value={values.origin}
+          dispatch={dispatch}
+          knownPlants={knownPlants}
+          error={errors.origin}
+          inputRef={originRef}
+        />
+
+        <Collapsible
+          title={PLANT_FORM_TEXT.detailsTitle}
+          headingLevel={2}
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+        >
+          <div className="flex flex-col gap-space-5 pt-space-3">
+            <TextField
+              ref={locationRef}
+              label={PLANT_FORM_TEXT.locationLabel}
+              hint={PLANT_FORM_TEXT.locationHint}
+              value={values.location}
+              maxLength={PLANT_TEXT_MAX_LENGTH}
+              autoCapitalize="sentences"
+              error={errors.location}
+              onChange={(event) =>
+                dispatch({
+                  type: 'textChanged',
+                  field: 'location',
+                  value: event.target.value,
+                })
+              }
+            />
+            <TextField
+              ref={nicknameRef}
+              label={PLANT_FORM_TEXT.nicknameLabel}
+              hint={PLANT_FORM_TEXT.nicknameHint}
+              value={values.nickname}
+              maxLength={PLANT_TEXT_MAX_LENGTH}
+              autoCapitalize="sentences"
+              error={errors.nickname}
+              onChange={(event) =>
+                dispatch({
+                  type: 'textChanged',
+                  field: 'nickname',
+                  value: event.target.value,
+                })
+              }
+            />
+            <ChoiceField label={PLANT_FORM_TEXT.flowerColorLabel}>
+              {() =>
+                enumValues.flower_color.map((flowerColor) => (
+                  <Chip
+                    key={flowerColor}
+                    className={FORM_CHIP_CLASSES}
+                    selected={values.flowerColor === flowerColor}
+                    onClick={() =>
+                      dispatch({ type: 'flowerColorToggled', flowerColor })
+                    }
+                  >
+                    {FLOWER_COLOR_LABEL[flowerColor]}
+                  </Chip>
+                ))
+              }
+            </ChoiceField>
+            {/*
+              #87: "La foto es en floración" (values.photoInBloom, acción
+              photoInBloomChanged) va aquí y solo con una foto elegida: sin
+              foto no tiene sentido. Ya viaja en la fila y en el borrador.
+            */}
+          </div>
+        </Collapsible>
       </fieldset>
 
       {save.status === 'error' && (
