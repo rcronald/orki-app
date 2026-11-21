@@ -2,7 +2,7 @@
 
 Scripts en Python que preparan el catálogo de especies de orquídeas de Orki a partir del **Catalogue of Life eXtended Release** (COL26.10 XR, clave de ChecklistBank `316691`). La investigación de la fuente, la licencia y el formato está en [FUENTE.md](FUENTE.md); las decisiones aprobadas, en el issue #72.
 
-Hay tres partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); y el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)).
+Hay cuatro partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); la lista curada de híbridos, con su validación y su carga por el mismo flujo (#77, `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`, ver [Lista curada de híbridos](#lista-curada-de-híbridos)); y el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)).
 
 ## Requisitos e instalación
 
@@ -22,7 +22,7 @@ uv run ruff format --check    # formato (uv run ruff format para aplicarlo)
 
 La lectura y la normalización solo usan la biblioteca estándar. La carga usa [psycopg](https://www.psycopg.org/psycopg3/) 3.3.8 con el extra `binary`, que trae libpq compilada (no hace falta instalar el cliente de PostgreSQL). Las dependencias de desarrollo son pytest 9.2.0 y ruff 0.17.4. Para actualizarlas: mover la fecha `exclude-newer` de `pyproject.toml` (solo se aceptan versiones publicadas antes de esa fecha), cambiar las versiones y ejecutar `uv lock`.
 
-En el CI, el job «Importación del catálogo (Python)» de `.github/workflows/ci.yml` ejecuta esos mismos tres pasos, con un Postgres 17 desechable para las pruebas de la carga (ver [Pruebas de la carga](#pruebas-de-la-carga)).
+En el CI, el job «Importación del catálogo (Python)» de `.github/workflows/ci.yml` ejecuta esos mismos tres pasos, con un Postgres 17 desechable para las pruebas de la carga (ver [Pruebas de la carga](#pruebas-de-la-carga)), y además valida el formato de la lista curada de híbridos (`uv run --locked orki-catalogo validar-hibridos data/hibridos.csv`).
 
 ## Uso de la CLI
 
@@ -39,20 +39,24 @@ También acepta el TSV suelto. Imprime los recuentos de géneros, especies, híb
 
 ## Código
 
-| Archivo                           | Qué hace                                                                                                       |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `src/catalog_import/reader.py`    | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia    |
-| `src/catalog_import/names.py`     | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)           |
-| `src/catalog_import/normalize.py` | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste          |
-| `src/catalog_import/model.py`     | Modelo intermedio y códigos de motivo                                                                          |
-| `src/catalog_import/cli.py`       | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`)                                   |
-| `src/catalog_import/load_cli.py`  | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales                                           |
-| `src/catalog_import/target.py`    | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                     |
-| `src/catalog_import/load.py`      | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                    |
-| `src/catalog_import/report.py`    | Reporte CSV y resumen por pantalla                                                                             |
-| `fuente.json`                     | Versión fijada de la fuente: clave, DOI, URL y SHA-256 de la exportación (la usa el workflow)                  |
-| `tests/`                          | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md)) |
-| `tests/basedatos.py`              | Bases desechables con las migraciones para las pruebas de la carga                                             |
+| Archivo                              | Qué hace                                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `src/catalog_import/reader.py`       | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia    |
+| `src/catalog_import/names.py`        | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)           |
+| `src/catalog_import/normalize.py`    | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste          |
+| `src/catalog_import/model.py`        | Modelo intermedio y códigos de motivo                                                                          |
+| `src/catalog_import/cli.py`          | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`; los híbridos, a `hybrids_cli.py`) |
+| `src/catalog_import/load_cli.py`     | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales (comunes con `cargar-hibridos`)           |
+| `src/catalog_import/target.py`       | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                     |
+| `src/catalog_import/load.py`         | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                    |
+| `src/catalog_import/report.py`       | Reporte CSV y resumen por pantalla (de las dos cargas)                                                         |
+| `src/catalog_import/hybrids.py`      | Lista curada de híbridos: formato del CSV y validación, sin base                                               |
+| `src/catalog_import/hybrids_load.py` | Plan de la carga de la lista curada (función pura); el resto es el flujo de `load.py`                          |
+| `src/catalog_import/hybrids_cli.py`  | `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`                                             |
+| `data/hibridos.csv`                  | La lista curada de híbridos (ver [Lista curada de híbridos](#lista-curada-de-híbridos))                        |
+| `fuente.json`                        | Versión fijada de la fuente: clave, DOI, URL y SHA-256 de la exportación (la usa el workflow)                  |
+| `tests/`                             | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md)) |
+| `tests/basedatos.py`                 | Bases desechables con las migraciones para las pruebas de la carga                                             |
 
 ### Modelo intermedio
 
@@ -261,7 +265,7 @@ Todas quedan muy por debajo del objetivo de 300 ms y en el orden de lo medido co
 
 ### Pruebas de la carga
 
-`tests/test_load_db.py` prueba la carga contra una base desechable: carga de la muestra, segunda carga sin cambios (ninguna fila distinta, tampoco `updated_at`), simulación que no escribe y da el mismo reporte, fallo a mitad (un disparador que falla al insertar una especie) que no deja nada, especie validada u observada que no cambia y sale como conflicto, especie importada editada sin cambiar el estado (la limitación), nombre de la lista curada o de una propuesta, género sin «×» que pasa a llevarlo conservando su abreviatura, nothogénero sin especies que solo renombra, sinónimos y nombres comunes añadidos a mano que se conservan, sinónimo de la fuente que ya es nombre común, claves cambiadas (importada, validada y clave que la fuente sigue usando), propagación a las plantas y que no se imprime la contraseña. `tests/test_target.py` prueba la protección de ambiente y que las credenciales no salen en ningún mensaje, sin base.
+`tests/test_load_db.py` prueba la carga contra una base desechable: carga de la muestra, segunda carga sin cambios (ninguna fila distinta, tampoco `updated_at`), simulación que no escribe y da el mismo reporte, fallo a mitad (un disparador que falla al insertar una especie) que no deja nada, especie validada u observada que no cambia y sale como conflicto, especie importada editada sin cambiar el estado (la limitación), nombre de la lista curada o de una propuesta, género sin «×» que pasa a llevarlo conservando su abreviatura, nothogénero sin especies que solo renombra, sinónimos y nombres comunes añadidos a mano que se conservan, sinónimo de la fuente que ya es nombre común, claves cambiadas (importada, validada y clave que la fuente sigue usando), propagación a las plantas y que no se imprime la contraseña. `tests/test_target.py` prueba la protección de ambiente y que las credenciales no salen en ningún mensaje, sin base. `tests/test_hybrids.py` prueba la validación de la lista curada sin base (cada código de error, BOM, comillas, el signo «×», el CSV versionado y que la carga no conecta con una lista con errores ni escribe en producción sin confirmación), y `tests/test_hybrids_db.py`, su carga contra la base desechable: carga, recarga sin cambios, fila añadida, fila revisada después, conflictos con una especie de COL (también por el signo) y con una curada sin referencia, géneros con y sin signo, filas no revisadas omitidas, entrada protegida, entrada corregida y nombres quitados que se conservan, edición del administrador revertida (la limitación), simulación que no escribe, fallo a mitad sin efectos y que el borrador sin revisar no escribe nada.
 
 Las de la base necesitan `ORKI_TEST_DB_URL`, la misma variable que `npm run db:test`: un Postgres local con un superusuario (solo se aceptan hosts de esta máquina). Con ella, `tests/basedatos.py` crea una base plantilla con lo mínimo de Supabase (`scripts/db-desechable/supabase-minimo.sql`) y todas las migraciones, cada una en su transacción y con el rol `postgres`, y cada prueba trabaja en una copia que se borra al terminar. Sin la variable, se saltan; en el CI (variable `CI`) fallan, para que no se salten sin que nadie lo vea.
 
@@ -277,6 +281,124 @@ Las pruebas siguen bloqueando la red de Python; la conexión a la base la hace l
 - Las pruebas se conectan como superusuario; en Supabase la carga se conectará como `postgres`, que es el dueño de las tablas pero no superusuario. Lo que hace la carga (bloquear, `COPY` a tablas temporales, escribir las cuatro tablas, `analyze`) no necesita más que eso, pero no se ha probado contra un proyecto de Supabase.
 - Con el pooler en modo transacción (puerto 6543) la carga también debería funcionar, porque es una sola transacción y no usa sentencias preparadas, pero no se ha probado; la conexión directa o el pooler en modo sesión (puerto 5432) son la opción segura.
 - Los datos de ejemplo de desarrollo (`supabase/datos-ejemplo/`) tienen especies de fuente `curated` con nombres que COL también trae (por ejemplo Phalaenopsis amabilis): en desarrollo saldrán como `NOMBRE_DE_OTRA_FUENTE` y no se cargarán sus sinónimos.
+
+## Lista curada de híbridos
+
+El Catalogue of Life casi no trae híbridos de vivero (grex), que son la mayoría de lo que se vende. La lista curada, [`data/hibridos.csv`](data/hibridos.csv), los añade al catálogo con sus nombres comerciales o de etiqueta (issue #9; especificación, sección 11). La cura una persona: cada fila se marca como revisada antes de cargarse. Para especies manda el Catalogue of Life; para híbridos, la lista.
+
+### Formato del CSV
+
+UTF-8 (con o sin BOM), separado por **comas**, una fila por híbrido y esta cabecera, exacta y en este orden:
+
+```csv
+id,nombre,genero,nombres_comunes,otros_nombres,revisado,notas
+HIB-0001,Phalaenopsis Sogo Yukidian,Phalaenopsis,,Doritaenopsis Sogo Yukidian,sí,Verificado en la RHS.
+HIB-0016,Cattlianthe Chocolate Drop,× Cattlianthe,,Cattleya Chocolate Drop,no,Etiquetas antiguas: Cattleya Chocolate Drop.
+HIB-0026,Oncidium Sharry Baby,Oncidium,orquídea chocolate,Oncidium Sharry Baby 'Sweet Fragrance',sí,"Huele a chocolate, sobre todo de mañana."
+```
+
+| Columna           | Obligatoria | Qué lleva                                                                                                                                                                                                                                                                |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`              | Sí          | Identificador estable: `HIB-` y cuatro cifras. Es el `source_ref` de la especie en la base. **Nunca se cambia ni se reutiliza**, aunque se corrija el nombre o se borre la fila: es lo que permite recargar sin duplicar. Una fila nueva toma el siguiente número libre. |
+| `nombre`          | Sí          | Nombre aceptado: el grex completo con el género («Phalaenopsis Sogo Yukidian»). El grex empieza por mayúscula, sin el signo «×» (en los grex no se escribe, tampoco en los de nothogéneros) y sin el clon entre comillas.                                                |
+| `genero`          | Sí          | El género del nombre (la primera palabra), con o sin «× » delante: «× Cattlianthe» o «Cattlianthe». Se casa con los géneros de la base sin distinguir mayúsculas ni el signo; conviene escribirlo como está en el catálogo. Todas las filas de un género, igual.         |
+| `nombres_comunes` | No          | Nombres comunes o comerciales con los que se vende ese híbrido («orquídea chocolate»), separados por `\|`. Se cargan como nombres comunes, sin idioma. No pongas aquí el nombre de un género entero («orquídea mariposa»): no identifica el híbrido.                     |
+| `otros_nombres`   | No          | Otras grafías y nombres de etiqueta: el género antiguo («Doritaenopsis Sogo Yukidian», «Potinara Toshie Aoki») o la etiqueta con el clon («Oncidium Sharry Baby 'Sweet Fragrance'»), separados por `\|`. Se cargan como sinónimos.                                       |
+| `revisado`        | Sí          | `sí` o `no`, exactamente (con tilde). Solo se cargan las filas con `sí`.                                                                                                                                                                                                 |
+| `notas`           | No          | Texto libre: fuente consultada, dudas. No se carga. Hasta 500 caracteres.                                                                                                                                                                                                |
+
+Editarlo en una hoja de cálculo sin romperlo:
+
+- **Comas y comillas.** Una celda que lleve comas va entre comillas dobles (`"Huele a chocolate, sobre todo de mañana."`), como hace cualquier hoja de cálculo al exportar a CSV. En los nombres no se usan comillas dobles; el apóstrofo es el recto `'` («Robert's Delight»), no el tipográfico `’` que ponen algunos programas al escribir.
+- **Separador de listas.** La barra `|`; los espacios junto a ella no cuentan (`orquídea chocolate | chocolate`).
+- **Exportar.** En Google Sheets, Archivo > Descargar > CSV. En Excel, «CSV UTF-8 (delimitado por comas)»: con la configuración regional de Perú o España, el «CSV» normal puede salir separado por punto y coma o en otra codificación, y la validación lo rechaza (y lo dice). LibreOffice: juego de caracteres UTF-8 y separador coma.
+- **El signo «×»** solo va en la columna `genero`, y siempre como «× » (U+00D7 y un espacio). Una «x» latina o un «×» pegado al nombre son un error.
+
+### Validación
+
+`orki-catalogo validar-hibridos data/hibridos.csv` comprueba el formato sin conectarse a nada; la carga ejecuta la misma validación antes de conectar y, con un solo error, termina sin escribir nada. La lista **entera** pasa la validación de formato también con filas sin revisar (el CI la ejecuta sobre el CSV versionado). Cada error dice la fila de la hoja de cálculo (la cabecera es la fila 1), la columna y un código:
+
+| Código                      | Qué comprueba                                                                                                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CODIFICACION`              | El archivo está en UTF-8 (con o sin BOM al principio, nunca en medio).                                                                                                                                       |
+| `COMILLAS`                  | El CSV está bien formado (por ejemplo, ninguna comilla doble sin cerrar).                                                                                                                                    |
+| `CABECERA`                  | La cabecera es exactamente la de arriba; si parece separada por punto y coma, lo dice.                                                                                                                       |
+| `FILA_VACIA`, `COLUMNAS`    | Ninguna fila vacía (tampoco `,,,,,,`) y cada fila con sus 7 columnas.                                                                                                                                        |
+| `VACIO`                     | `id`, `nombre` y `genero` no están vacíos.                                                                                                                                                                   |
+| `ID_FORMATO`, `ID_REPETIDO` | El identificador tiene el formato `HIB-0000` y no se repite.                                                                                                                                                 |
+| `ESPACIOS`, `CARACTER`      | Sin espacios al principio, al final ni dobles (tampoco de no separación) y sin caracteres invisibles; en los nombres, sin «×», comillas dobles o tipográficas ni la barra.                                   |
+| `LONGITUD`                  | Cada nombre, hasta 100 caracteres (lo más largo que acepta el buscador), y las notas, hasta 500.                                                                                                             |
+| `GENERO`                    | El género es una sola palabra con mayúscula inicial, con «× » delante si es un nothogénero.                                                                                                                  |
+| `GENERO_DISTINTO`           | El nombre empieza por el género de la columna `genero` (sin el signo).                                                                                                                                       |
+| `GENERO_ESCRITO_DISTINTO`   | Un mismo género se escribe igual en todas las filas (no «× Cattlianthe» en una y «Cattlianthe» en otra).                                                                                                     |
+| `NOMBRE`                    | El nombre es género y grex, el grex empieza por mayúscula (un epíteto en minúscula es una especie, que viene de COL) y no lleva el clon entre comillas.                                                      |
+| `FORMULA`                   | Ningún nombre lleva una «x» suelta («A x B» es una fórmula, no un grex).                                                                                                                                     |
+| `LISTA`                     | Ninguna lista tiene elementos vacíos (`a \|\| b`, una barra al principio o al final).                                                                                                                        |
+| `REPETIDO_EN_ENTRADA`       | Dentro de una fila, cada nombre una sola vez y distinto del aceptado, sin distinguir mayúsculas ni el signo.                                                                                                 |
+| `NOMBRE_REPETIDO`           | En todo el archivo, cada nombre aceptado una sola vez; ningún nombre común u otro nombre es el aceptado de otra fila, y un otro nombre no está en dos filas. Un nombre común sí puede repetirse entre filas. |
+| `REVISADO`                  | `revisado` es `sí` o `no`.                                                                                                                                                                                   |
+
+Lo que la validación no puede saber sin la base (si el género existe, si el nombre ya es una especie de COL) lo decide la carga y va al reporte.
+
+### Carga
+
+`orki-catalogo cargar-hibridos` usa **el mismo flujo** que `orki-catalogo cargar` (ver [Carga en la base de datos](#carga-en-la-base-de-datos)): las mismas opciones (`--ambiente`, `--escribir`, `--confirmar-produccion`, `--reporte`, `--detalle-sin-cambios`), la misma protección de ambiente, la URL solo en `ORKI_CATALOG_DB_URL`, simulación por defecto, una sola transacción con las tablas bloqueadas, escritura por conjuntos que comprueba cada sentencia, `analyze`, medida de la base y el mismo reporte CSV. Lo único propio es el plan (`plan_hybrids`, en `hybrids_load.py`), que decide qué hacer con cada fila; la lectura de la base, la escritura (`apply_plan`) y la transacción (`run_plan`) son las de `load.py`, con la fuente `curated`.
+
+```sh
+cd scripts/catalog-import
+uv run orki-catalogo validar-hibridos data/hibridos.csv
+uv run orki-catalogo cargar-hibridos data/hibridos.csv --ambiente local             # simulación
+uv run orki-catalogo cargar-hibridos data/hibridos.csv --ambiente local --escribir  # carga de verdad
+```
+
+El reporte por defecto se llama `reporte-carga-hibridos-<ambiente>-<simulacion|escritura>-<fecha UTC>.csv` (git lo ignora). Repetible: una segunda carga con el mismo CSV no cambia ninguna fila, ni su `updated_at`. Nunca borra nada.
+
+**Reglas.** Cada fila revisada es una especie con fuente `curated`, `source_ref` = su `id`, tipo `hybrid` y estado `validated` (la revisó una persona). Los nombres comunes y otros nombres van a `species_names` como `common` y `synonym`, sin idioma.
+
+| Situación                                                                                              | Qué hace                                                                           | Código                    |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ------------------------- |
+| Fila con `revisado = no`                                                                               | No la carga; si ya estaba en la base, no la toca                                   | `NO_REVISADA` (`omitido`) |
+| No hay nada con ese `id` ni con ese nombre                                                             | La inserta                                                                         | `ESPECIE_NUEVA`           |
+| Mismo `id`, mismos datos                                                                               | Nada                                                                               | `ESPECIE_SIN_CAMBIOS`     |
+| Mismo `id`, nombre, género o tipo distinto (corrección en el CSV o edición a mano), estado `validated` | La actualiza (el cambio de género o de tipo se propaga a las plantas, como en COL) | `ESPECIE_ACTUALIZADA`     |
+| Lo mismo, pero un administrador la dejó `observed` o `imported`                                        | No la toca                                                                         | `ESPECIE_PROTEGIDA`       |
+| El nombre nuevo ya lo tiene otra especie                                                               | No cambia el nombre                                                                | `NOMBRE_OCUPADO`          |
+| El nombre (sin mayúsculas ni signo) ya es de una especie de COL, `gbif` o una propuesta                | No la carga ni toca la especie; sus nombres se rechazan                            | `NOMBRE_DE_OTRA_FUENTE`   |
+| El nombre ya es de una especie curada con otra referencia o sin ella (datos de ejemplo)                | No la carga ni toca la especie; el detalle dice cómo resolverlo                    | `NOMBRE_DE_OTRA_ENTRADA`  |
+| Especie de la lista en la base cuyo `id` ya no está en el CSV                                          | La conserva y la lista                                                             | `ENTRADA_NO_EN_LISTA`     |
+
+Géneros: se casan con los de la base sin distinguir mayúsculas ni el signo «×», igual que en la importación de COL. Si existe, se usa el de la base **sin renombrarlo**, aunque la lista lo escriba de otra forma (la grafía de los géneros la decide la importación de COL; el detalle lo anota con `--detalle-sin-cambios`). Si hay varios que solo se distinguen por el signo, es `GENERO_AMBIGUO` y sus filas se rechazan (`GENERO_EN_CONFLICTO`). Si no existe, **se crea** (`GENERO_NUEVO`), sin abreviatura ni acceso rápido, como hace la importación de COL. Se eligió crearlo en vez de rechazar la fila porque los nothogéneros de vivero son justo los que COL no trae (descarta 33 nothogéneros sin especies, como «× Aliceara» o «× Mokara»), y rechazarlos obligaría a una migración por cada género de la lista. El riesgo es crear un género mal escrito: por eso cada género nuevo va al reporte con su propia fila y hay que mirarlo en la simulación antes de escribir.
+
+Nombres de una fila: se añaden los que faltan (`NOMBRE_NUEVO`); los que ya están con el mismo tipo no cambian (`NOMBRE_SIN_CAMBIOS`); si la especie ya tiene ese nombre con el otro tipo (común en vez de sinónimo), no se cambia (`NOMBRE_DE_OTRO_TIPO`); si coincide con el nombre aceptado que tiene la especie en la base, no se carga (`NOMBRE_IGUAL_AL_ACEPTADO`). Los de una entrada que no se cargó se rechazan (`NOMBRE_SIN_ESPECIE`).
+
+**Cuando una entrada cambia en el CSV entre cargas.**
+
+- Nombre aceptado o género corregidos: se actualiza la misma fila de la base (mismo id, mismas plantas enlazadas), salvo que esté protegida o que el nombre nuevo ya lo tenga otra especie. El nombre anterior no se guarda como sinónimo: si era una grafía válida que se sigue viendo en etiquetas, añádelo a `otros_nombres`.
+- Nombre común u otro nombre añadido: se añade.
+- Nombre común u otro nombre quitado: **no se borra**; va al reporte como `NOMBRE_NO_EN_LISTA` (`no_en_fuente`), una fila por nombre. Si hay que quitarlo de verdad, lo borra un administrador. Lo mismo con una fila borrada del CSV (`ENTRADA_NO_EN_LISTA`).
+- Fila que vuelve a `revisado = no`: no se carga ni se toca lo que ya hay.
+
+**Al revés: la importación de COL** no pisa las entradas de la lista: si una versión nueva de COL trae un nombre que ya tiene la lista, sale como `NOMBRE_DE_OTRA_FUENTE` en su reporte. Pero COL compara el nombre solo sin mayúsculas, no sin el signo: si trajera «Vanda × rothschildiana» y la lista tuviera «Vanda Rothschildiana», entrarían las dos y la búsqueda mostraría ambas. Revisa en el reporte de COL los híbridos nuevos cuando cambie de versión.
+
+**Ediciones de un administrador.** Como las entradas entran ya como `validated`, el estado no distingue «la cargó la lista» de «la validó un administrador». La regla es: **para híbridos manda la lista**, y las correcciones se hacen en el CSV (con su revisión en un pull request). Si un administrador edita en el backoffice el nombre, el género o el tipo de una entrada de la lista y la deja `validated`, la siguiente carga lo devuelve a lo que dice el CSV (`ESPECIE_ACTUALIZADA`, con el cambio en el detalle). Para que la carga no toque una entrada, el administrador la marca como `observed` (o la devuelve a `imported`): desde entonces sale como `ESPECIE_PROTEGIDA` mientras el CSV diga otra cosa. **Limitación**, la misma que en COL: sin auditoría (#23) no hay otra señal; `updated_at` no sirve porque también lo mueve la carga. Los nombres que añada un administrador nunca se tocan (salen como `NOMBRE_NO_EN_LISTA`).
+
+### Cómo añadir un híbrido
+
+1. Comprueba el nombre del grex y su género actual en el registro de híbridos de orquídeas de la Royal Horticultural Society (RHS), la autoridad internacional de registro.
+2. Añade una fila al final con el siguiente `id` libre (no reutilices los de filas borradas), el nombre con el género, la columna `genero` como está en el catálogo, los nombres comunes y los otros nombres (géneros antiguos de las etiquetas) y `revisado = sí`. Anota en `notas` qué consultaste.
+3. `uv run orki-catalogo validar-hibridos data/hibridos.csv`.
+4. Simula contra una base local con COL cargado (o contra desarrollo) y revisa el reporte: géneros nuevos, conflictos con COL (`NOMBRE_DE_OTRA_FUENTE`: ese híbrido ya está en COL como nothoespecie y no hace falta en la lista) y nombres que no se cargan.
+5. Abre un pull request; tras fusionarlo, carga en cada ambiente (ver [Ejecución por ambiente](#ejecución-por-ambiente)).
+
+### Cómo revisar el borrador
+
+La lista versionada empieza como un **borrador preparado por un agente** (issue #77): 76 filas, todas con `revisado = no`, de los géneros que más se ven en viveros y mercados (Phalaenopsis, Cattleya y sus nothogéneros, Oncidium y afines, Dendrobium, Vanda, Cymbidium, Miltoniopsis, Paphiopedilum, Phragmipedium, Masdevallia). Mientras ninguna fila esté revisada, la carga no escribe nada. No sustituye a la revisión: los nombres salen de memoria, no de una consulta al registro de la RHS, y las dudas concretas están en `notas`. Para cada fila (issue #78):
+
+1. Busca el grex en el registro de la RHS: que exista, la grafía exacta (mayúsculas, apóstrofos, guiones, «St.» o «Saint») y el **género actual** (la RHS reclasificó muchos híbridos: Doritaenopsis → Phalaenopsis, Ascocenda → Vanda, Potinara y Brassolaeliocattleya → Rhyncholaeliocattleya, los de Odontoglossum → Oncidium).
+2. Corrige lo que haga falta; pon el género antiguo de las etiquetas en `otros_nombres` y los nombres con los que de verdad se vende en Perú en `nombres_comunes`.
+3. Si no existe o no se vende en Perú, borra la fila (mientras ninguna se haya cargado, los `id` todavía se pueden renumerar; después, nunca).
+4. Cambia `revisado` a `sí` y deja en `notas` la fuente.
+5. Valida y simula como en «Cómo añadir un híbrido». Con COL26.10 XR, el borrador entero marcado como revisado da 76 altas, 2 géneros nuevos (Burrageara y Miltassia, que conviene comprobar) y ningún conflicto: Paphiopedilum Maudiae, Paphiopedilum Leeanum y Phragmipedium Sedenii se quitaron del borrador porque COL ya los trae como nothoespecies («Paphiopedilum × maudiae»…).
 
 ## Ejecución por ambiente
 
@@ -326,27 +448,32 @@ unset ORKI_CATALOG_DB_URL
 
 Los datos de ejemplo de desarrollo (`npm run db:seed:dev`) traen especies de fuente `curated` con nombres que COL también tiene: en desarrollo saldrán como `NOMBRE_DE_OTRA_FUENTE` y no se cargarán sus sinónimos. Es lo esperado.
 
+Con la lista de híbridos pasa algo parecido: los datos de ejemplo traen híbridos curados **sin** `source_ref` (Phalaenopsis Sogo Yukidian, Cattleya Bow Bells, Dendrobium Berry Oda, Oncidium Sharry Baby, Oncidium Twinkle, Vanda Robert's Delight, Paphiopedilum Maudiae). Si la lista tiene alguno revisado, en desarrollo sale como `NOMBRE_DE_OTRA_ENTRADA` y no se carga; el detalle dice qué `source_ref` ponerle para que la lista lo adopte.
+
 También se puede cargar desarrollo con el workflow, igual que producción (sin la confirmación), desde cualquier rama.
 
 ### En producción, con el workflow
 
 El workflow **Importar catálogo** (`.github/workflows/importar-catalogo.yml`) solo se lanza a mano. Sus entradas:
 
-| Entrada                | Valores                              | Qué hace                                                                                                                                                   |
-| ---------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ambiente`             | `dev` (por defecto) o `prod`         | Environment de GitHub del que toma los secretos y base de destino. `prod` solo desde `main`.                                                               |
-| `modo`                 | `simular` (por defecto) o `escribir` | `simular` hace toda la carga y la revierte; solo el valor exacto `escribir` añade `--escribir`.                                                            |
-| `confirmar_produccion` | texto                                | Solo al escribir en producción: hay que escribir el identificador del proyecto de producción (`fzundhfxnbyjbxyhkgtg`). Se pasa a `--confirmar-produccion`. |
+| Entrada                | Valores                               | Qué hace                                                                                                                                                                                       |
+| ---------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `carga`                | `catalogo` (por defecto) o `hibridos` | `catalogo` carga la exportación de COL fijada en `fuente.json` (`orki-catalogo cargar`); `hibridos`, la lista curada `data/hibridos.csv` del commit lanzado (`orki-catalogo cargar-hibridos`). |
+| `ambiente`             | `dev` (por defecto) o `prod`          | Environment de GitHub del que toma los secretos y base de destino. `prod` solo desde `main`.                                                                                                   |
+| `modo`                 | `simular` (por defecto) o `escribir`  | `simular` hace toda la carga y la revierte; solo el valor exacto `escribir` añade `--escribir`.                                                                                                |
+| `confirmar_produccion` | texto                                 | Solo al escribir en producción: hay que escribir el identificador del proyecto de producción (`fzundhfxnbyjbxyhkgtg`). Se pasa a `--confirmar-produccion`.                                     |
 
 Qué hace, en orden:
 
 1. Comprueba las entradas antes de obtener el código: producción solo desde `main`, las variables del environment presentes y, al escribir en producción, que la confirmación sea el identificador del proyecto.
-2. Descarga la exportación fijada en [`fuente.json`](fuente.json) (o la toma de la caché de Actions, con clave por versión y hash) y **verifica su SHA-256**. Si no coincide, falla sin conectarse a nada.
+2. Solo con `carga = catalogo`: descarga la exportación fijada en [`fuente.json`](fuente.json) (o la toma de la caché de Actions, con clave por versión y hash) y **verifica su SHA-256**. Si no coincide, falla sin conectarse a nada. Con `carga = hibridos` no descarga nada: la fuente es el CSV del propio commit, que ya pasó la validación del CI en su pull request.
 3. Instala Python y las dependencias con `uv sync --locked --no-dev`.
-4. Compone la URL de conexión con los secretos del environment, la enmascara en el registro y ejecuta `orki-catalogo cargar` con `--ambiente` igual al environment.
-5. Escribe un resumen en la página de la ejecución (el resumen de la CLI, con los recuentos, los conflictos y el tamaño de la base, y una tabla de filas del reporte por entidad y resultado) y sube el reporte CSV y la salida de la CLI como artefacto `reporte-carga-<ambiente>-<modo>-<id de ejecución>`, con 30 días de retención. Las dos cosas se hacen también cuando la carga falla.
+4. Compone la URL de conexión con los secretos del environment, la enmascara en el registro y ejecuta `orki-catalogo cargar` (o `orki-catalogo cargar-hibridos data/hibridos.csv`, que vuelve a validar el CSV y, con errores, termina sin conectar) con `--ambiente` igual al environment.
+5. Escribe un resumen en la página de la ejecución (el resumen de la CLI, con los recuentos, los conflictos y el tamaño de la base, y una tabla de filas del reporte por entidad y resultado) y sube el reporte CSV y la salida de la CLI como artefacto `reporte-carga-<carga>-<ambiente>-<modo>-<id de ejecución>`, con 30 días de retención. Las dos cosas se hacen también cuando la carga falla.
 
-Nunca corren dos importaciones a la vez contra el mismo ambiente (la segunda espera) y la ejecución se corta a los 30 minutos. La carga completa tarda unos segundos; casi todo el tiempo es la descarga.
+Las dos cargas comparten el grupo de concurrencia del ambiente: nunca corren dos a la vez contra el mismo ambiente, sean del catálogo o de los híbridos (la segunda espera), y la ejecución se corta a los 30 minutos. La carga completa tarda unos segundos; casi todo el tiempo es la descarga. Se eligió una entrada más en este workflow, en vez de uno propio para los híbridos, para que las protecciones (comprobación de entradas, confirmación de producción, credenciales enmascaradas, rama `main`) estén escritas una sola vez.
+
+Para la lista de híbridos, los mismos pasos de abajo con `-f carga=hibridos` (por ejemplo `gh workflow run importar-catalogo.yml -R rcronald/orki-app --ref main -f carga=hibridos -f ambiente=prod -f modo=simular`). Carga primero el catálogo de COL: así los conflictos con especies de COL salen en el reporte de los híbridos.
 
 **Pasos para producción:**
 
@@ -429,6 +556,8 @@ Qué hacer con cada código de conflicto, rechazo o baja:
 | `GENERO_NO_EN_FUENTE`         | no_en_fuente | Género de la base que COL no trae (con COL26.10 XR, Rhyncholaeliocattleya, Odontoglossum y Sophronitis). Nada que hacer.                                                                                                                          |
 
 `CLAVE_ACTUALIZADA` (resultado `actualizado`) no es un conflicto: COL cambió la clave de una especie importada sin tocar el nombre y la carga la sigue. Conviene revisar si son muchas.
+
+El reporte de la lista de híbridos tiene las mismas columnas y entidades (más `nombre_comun`, y `omitido` para las filas sin revisar); sus códigos están en [Carga](#carga) de la lista curada. Allí, `GENERO_NUEVO` y `NOMBRE_DE_OTRA_FUENTE` son los que hay que mirar antes de escribir.
 
 Si la carga falla (error de la base, esquema incompleto, conexión), la transacción se revierte entera y no se ha escrito nada: corrige la causa y vuelve a lanzarla.
 

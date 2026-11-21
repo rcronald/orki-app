@@ -1,0 +1,77 @@
+id,nombre,genero,nombres_comunes,otros_nombres,revisado,notas
+HIB-0001,Phalaenopsis Sogo Yukidian,Phalaenopsis,,Doritaenopsis Sogo Yukidian,no,Borrador: verificar en la RHS. Blanca grande de mercado; el clon 'V3' es el más vendido. En tiendas se vende como «orquídea mariposa» (nombre del género).
+HIB-0002,Phalaenopsis Golden Peoker,Phalaenopsis,,,no,Borrador: verificar en la RHS. Arlequín (manchas); padre de muchos híbridos de mercado.
+HIB-0003,Phalaenopsis Be Glad,Phalaenopsis,,,no,Borrador: verificar en la RHS. Híbrido antiguo de flor mediana.
+HIB-0004,Phalaenopsis Baldan's Kaleidoscope,Phalaenopsis,,,no,Borrador: verificar en la RHS y la grafía del apóstrofo.
+HIB-0005,Phalaenopsis Timothy Christopher,Phalaenopsis,,,no,Borrador: verificar en la RHS.
+HIB-0006,Phalaenopsis Orchid World,Phalaenopsis,,,no,Borrador: verificar en la RHS. Amarilla con rayas.
+HIB-0007,Phalaenopsis Mini Mark,Phalaenopsis,,,no,Borrador: verificar en la RHS. Miniatura.
+HIB-0008,Phalaenopsis Cassandra,Phalaenopsis,,,no,Borrador: verificar en la RHS. Híbrido primario clásico.
+HIB-0009,Phalaenopsis Doris,Phalaenopsis,,,no,Borrador: verificar en la RHS. Blanca clásica; antecesora de casi todas las blancas de mercado.
+HIB-0010,Phalaenopsis Tzu Chiang Balm,Phalaenopsis,,,no,Borrador: verificar en la RHS.
+HIB-0011,Phalaenopsis Sogo Vivien,Phalaenopsis,,Doritaenopsis Sogo Vivien,no,"Borrador: verificar en la RHS. Duda: no sé si se registró como Doritaenopsis; si no, quitar el otro nombre."
+HIB-0012,Phalaenopsis I-Hsin Sesame,Phalaenopsis,,,no,Borrador: verificar en la RHS. Duda: grafía del guion en «I-Hsin».
+HIB-0013,Cattleya Bow Bells,Cattleya,,,no,Borrador: verificar en la RHS. Blanca clásica.
+HIB-0014,Cattleya Portia,Cattleya,,,no,Borrador: verificar en la RHS. Híbrido antiguo.
+HIB-0015,Cattleya Mini Purple,Cattleya,,Laeliocattleya Mini Purple,no,Borrador: verificar en la RHS. Se vende también como Lc. Mini Purple (antes de pasar Laelia pumila a Cattleya).
+HIB-0016,Cattlianthe Chocolate Drop,× Cattlianthe,,Cattleya Chocolate Drop,no,Borrador: verificar en la RHS. Etiquetas antiguas: Cattleya Chocolate Drop.
+HIB-0017,Cattlianthe Hazel Boyd,× Cattlianthe,,Sophrolaeliocattleya Hazel Boyd,no,Borrador: verificar en la RHS. Duda: género actual (Cattlianthe o Cattleya).
+HIB-0018,Brassocattleya Binosa,× Brassocattleya,,,no,Borrador: verificar en la RHS.
+HIB-0019,Brassocattleya Maikai,× Brassocattleya,,,no,Borrador: verificar en la RHS.
+HIB-0020,Rhyncholaeliocattleya George King,Rhyncholaeliocattleya,,Brassolaeliocattleya George King,no,Borrador: verificar en la RHS. Etiquetas antiguas: Blc. George King.
+HIB-0021,Rhyncholaeliocattleya Memoria Anna Balmores,Rhyncholaeliocattleya,,,no,Borrador: verificar en la RHS. Duda: género con el que se registró (Blc. o Pot.); añadir el antiguo en otros_nombres.
+HIB-0022,Rhyncholaeliocattleya Hawaiian Wedding Song,Rhyncholaeliocattleya,,Brassolaeliocattleya Hawaiian Wedding Song,no,Borrador: verificar en la RHS. Blanca.
+HIB-0023,Rhyncholaeliocattleya Village Chief North,Rhyncholaeliocattleya,,Brassolaeliocattleya Village Chief North,no,Borrador: verificar en la RHS. Verde.
+HIB-0024,Rhyncholaeliocattleya Toshie Aoki,Rhyncholaeliocattleya,,Potinara Toshie Aoki,no,Borrador: verificar en la RHS. Etiquetas antiguas: Pot. Toshie Aoki.
+HIB-0025,Rhyncholaeliocattleya Burana Beauty,Rhyncholaeliocattleya,,Potinara Burana Beauty,no,Borrador: verificar en la RHS. Etiquetas antiguas: Pot. Burana Beauty.
+HIB-0026,Oncidium Sharry Baby,Oncidium,orquídea chocolate,Oncidium Sharry Baby 'Sweet Fragrance',no,Borrador: verificar en la RHS. Huele a chocolate; 'Sweet Fragrance' es el clon más vendido.
+HIB-0027,Oncidium Twinkle,Oncidium,,,no,Borrador: verificar en la RHS. Miniatura fragante.
+HIB-0028,Oncidium Gower Ramsey,Oncidium,,,no,Borrador: verificar en la RHS. Amarilla de flor cortada; en mercados se vende como «lluvia de oro» o «bailarina» (nombres que también se dan a especies de Oncidium: no se cargan como nombre común).
+HIB-0029,Oncidium Sweet Sugar,Oncidium,,,no,Borrador: verificar en la RHS. Amarilla.
+HIB-0030,Oncidium Wildcat,Oncidium,,Odontocidium Wildcat | Colmanara Wildcat,no,Borrador: verificar en la RHS. Duda: con qué géneros antiguos se etiqueta (Odcdm. o Colm.).
+HIB-0031,Burrageara Nelly Isler,Burrageara,,,no,"Borrador: verificar en la RHS. Duda: la RHS reclasificó los híbridos de Odontoglossum y Cochlioda dentro de Oncidium, así que el género actual puede ser otro; comprobarlo antes de revisar. Burrageara no está en el catálogo: la carga lo crearía."
+HIB-0032,Miltassia Shelob,Miltassia,,,no,Borrador: verificar en la RHS. Duda: género actual. Miltassia no está en el catálogo: la carga lo crearía.
+HIB-0033,Brassia Rex,Brassia,,,no,Borrador: verificar en la RHS. Orquídea araña.
+HIB-0034,Zygopetalum Louisendorf,Zygopetalum,,,no,Borrador: verificar en la RHS. Fragante.
+HIB-0035,Dendrobium Berry Oda,Dendrobium,,,no,Borrador: verificar en la RHS. Tipo australiano (kingianum).
+HIB-0036,Dendrobium Sonia,Dendrobium,,,no,Borrador: verificar en la RHS. Tipo phalaenopsis de flor cortada; muy común en mercados.
+HIB-0037,Dendrobium Burana Jade,Dendrobium,,,no,Borrador: verificar en la RHS. Tipo phalaenopsis.
+HIB-0038,Dendrobium Emma White,Dendrobium,,,no,Borrador: verificar en la RHS. Tipo phalaenopsis blanca de flor cortada.
+HIB-0039,Dendrobium Jaquelyn Thomas,Dendrobium,,,no,Borrador: verificar en la RHS. Duda: grafía «Jaquelyn».
+HIB-0040,Dendrobium Stardust,Dendrobium,,,no,Borrador: verificar en la RHS.
+HIB-0041,Dendrobium Hibiki,Dendrobium,,,no,Borrador: verificar en la RHS. Miniatura.
+HIB-0042,Dendrobium Spring Dream,Dendrobium,,,no,Borrador: verificar en la RHS. Tipo nobile (Yamamoto); el clon 'Apollon' es el más vendido.
+HIB-0043,Dendrobium Love Memory,Dendrobium,,,no,Borrador: verificar en la RHS. Tipo nobile; clon 'Fizz'.
+HIB-0044,Vanda Robert's Delight,Vanda,,,no,Borrador: verificar en la RHS.
+HIB-0045,Vanda Pachara Delight,Vanda,,,no,Borrador: verificar en la RHS.
+HIB-0046,Vanda Sansai Blue,Vanda,,,no,Borrador: verificar en la RHS. Azul.
+HIB-0047,Vanda Gordon Dillon,Vanda,,,no,Borrador: verificar en la RHS.
+HIB-0048,Vanda Kasem's Delight,Vanda,,,no,Borrador: verificar en la RHS.
+HIB-0049,Vanda Rothschildiana,Vanda,,,no,Borrador: verificar en la RHS. Híbrido primario clásico (azul).
+HIB-0050,Vanda Princess Mikasa,Vanda,,Ascocenda Princess Mikasa,no,Borrador: verificar en la RHS. Etiquetas antiguas: Ascda. Princess Mikasa (Ascocentrum pasó a Vanda).
+HIB-0051,Vanda Yip Sum Wah,Vanda,,Ascocenda Yip Sum Wah,no,Borrador: verificar en la RHS. Etiquetas antiguas: Ascda. Yip Sum Wah.
+HIB-0052,Cymbidium Golden Elf,Cymbidium,,,no,Borrador: verificar en la RHS. Amarilla; florece con calor.
+HIB-0053,Cymbidium Sarah Jean,Cymbidium,,,no,Borrador: verificar en la RHS. Colgante; clon 'Ice Cascade'.
+HIB-0054,Cymbidium Lovely Moon,Cymbidium,,,no,Borrador: verificar en la RHS.
+HIB-0055,Cymbidium Showgirl,Cymbidium,,,no,Borrador: verificar en la RHS. Miniatura.
+HIB-0056,Cymbidium Mighty Tracey,Cymbidium,,,no,Borrador: verificar en la RHS.
+HIB-0057,Cymbidium Melody Fair,Cymbidium,,,no,Borrador: verificar en la RHS. Clon 'Marilyn Monroe'.
+HIB-0058,Cymbidium Tiger Tail,Cymbidium,,,no,Borrador: verificar en la RHS.
+HIB-0059,Miltoniopsis Bert Field,Miltoniopsis,,,no,Borrador: verificar en la RHS. El género se vende como «orquídea pensamiento».
+HIB-0060,Miltoniopsis Hajime Ono,Miltoniopsis,,,no,Borrador: verificar en la RHS.
+HIB-0061,Miltoniopsis Celle,Miltoniopsis,,Miltoniopsis Celle 'Wasserfall',no,Borrador: verificar en la RHS. 'Wasserfall' es el clon conocido.
+HIB-0062,Paphiopedilum Pinocchio,Paphiopedilum,,,no,Borrador: verificar en la RHS.
+HIB-0063,Paphiopedilum Magic Lantern,Paphiopedilum,,,no,Borrador: verificar en la RHS.
+HIB-0064,Paphiopedilum Delrosi,Paphiopedilum,,,no,Borrador: verificar en la RHS.
+HIB-0065,Paphiopedilum St. Swithin,Paphiopedilum,,Paphiopedilum Saint Swithin,no,Borrador: verificar en la RHS. Duda: si la RHS lo escribe «St. Swithin» o «Saint Swithin».
+HIB-0066,Paphiopedilum Winston Churchill,Paphiopedilum,,,no,Borrador: verificar en la RHS.
+HIB-0067,Paphiopedilum Armeni White,Paphiopedilum,,,no,Borrador: verificar en la RHS.
+HIB-0068,Phragmipedium Grande,Phragmipedium,,,no,Borrador: verificar en la RHS. Híbrido antiguo.
+HIB-0069,Phragmipedium Eric Young,Phragmipedium,,,no,Borrador: verificar en la RHS. Descendiente de P. besseae (Perú y Ecuador).
+HIB-0070,Phragmipedium Don Wimber,Phragmipedium,,,no,Borrador: verificar en la RHS.
+HIB-0071,Phragmipedium Hanne Popow,Phragmipedium,,,no,Borrador: verificar en la RHS.
+HIB-0072,Phragmipedium Andean Fire,Phragmipedium,,,no,Borrador: verificar en la RHS.
+HIB-0073,Phragmipedium Sorcerer's Apprentice,Phragmipedium,,,no,Borrador: verificar en la RHS.
+HIB-0074,Phragmipedium Fritz Schomburg,Phragmipedium,,,no,Borrador: verificar en la RHS. Duda: creo que es P. kovachii (Perú) × P. besseae; confirmarlo.
+HIB-0075,Masdevallia Angel Frost,Masdevallia,,,no,Borrador: verificar en la RHS.
+HIB-0076,Masdevallia Copper Angel,Masdevallia,,,no,Borrador: verificar en la RHS.

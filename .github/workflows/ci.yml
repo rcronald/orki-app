@@ -97,6 +97,11 @@ jobs:
       - name: Verificar formato
         run: uv run --locked ruff format --check
 
+      # El CSV versionado de la lista curada de híbridos tiene que pasar la validación de
+      # formato (aunque tenga filas sin revisar). No se conecta a ninguna base.
+      - name: Validar la lista curada de híbridos
+        run: uv run --locked orki-catalogo validar-hibridos data/hibridos.csv
+
       # Las pruebas usan la muestra versionada y bloquean cualquier conexión de red; las de
       # la carga se conectan además al Postgres local del servicio (sin él fallarían, porque
       # en el CI no se pueden saltar).
