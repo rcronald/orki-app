@@ -13,6 +13,46 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      catalog_audit_log: {
+        Row: {
+          action: string
+          action_id: string
+          actor: string
+          created_at: string
+          details: Json | null
+          id: number
+          new_values: Json | null
+          old_values: Json | null
+          row_id: string | null
+          table_name: string | null
+        }
+        ComputedFields: never
+        Insert: {
+          action: string
+          action_id: string
+          actor: string
+          created_at?: string
+          details?: Json | null
+          id?: never
+          new_values?: Json | null
+          old_values?: Json | null
+          row_id?: string | null
+          table_name?: string | null
+        }
+        Update: {
+          action?: string
+          action_id?: string
+          actor?: string
+          created_at?: string
+          details?: Json | null
+          id?: never
+          new_values?: Json | null
+          old_values?: Json | null
+          row_id?: string | null
+          table_name?: string | null
+        }
+        Relationships: []
+      }
       genera: {
         Row: {
           created_at: string
