@@ -92,6 +92,8 @@ def test_write_leaves_exactly_one_summary(
             'species': {'created': 10, 'updated': 0, 'unchanged': 0},
             'species_names': {'created': 8, 'updated': 0, 'unchanged': 0},
         },
+        # Sin fusiones registradas (#137).
+        'omitted_by_merge': 0,
         'run': None,
     }
     assert re.fullmatch(r'[0-9a-f]{64}', row['details']['source']['file_sha256'])

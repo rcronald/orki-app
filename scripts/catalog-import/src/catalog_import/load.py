@@ -21,6 +21,11 @@ Entre los pasos 3 y 4 deja además una fila de resumen en la auditoría del cat�
 en una simulación se revierte con ella. Si la base no tiene la auditoría, una carga que escribe
 se niega antes de tocar nada.
 
+En el paso 2 lee también la memoria de las fusiones (``public.species_merge_keys``, #21): un
+registro de la fuente cuya clave absorbió una fusión no se crea ni se actualiza, y sus nombres
+van a la especie conservada (:func:`plan_names_into_kept`). Si la base no tiene la memoria, una
+carga que escribe se niega, igual que sin la auditoría.
+
 Reglas de casamiento y de conflicto: ver el README de la carpeta ("Reglas de la carga").
 
 La lista curada de híbridos (:mod:`catalog_import.hybrids_load`) usa este mismo flujo: su
@@ -58,6 +63,8 @@ CONFLICT = 'conflicto'
 REJECTED = 'rechazado'
 NOT_IN_SOURCE = 'no_en_fuente'
 OMITTED = 'omitido'
+# Registro de la fuente cuya clave absorbió una fusión de especies: no se crea ni se actualiza.
+MERGED = 'omitido_por_fusion'
 INFO = 'info'
 
 # Estado de una especie recién importada. Cualquier otro (validada, observada) es trabajo de
@@ -118,6 +125,15 @@ class DbSpecies:
     source_ref: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class MergedKey:
+    """Una clave de la memoria de las fusiones: la especie que la conserva hoy (siempre existe:
+    la memoria se lee unida a ``species``) y el nombre que tenía la absorbida."""
+
+    species_id: str
+    merged_scientific_name: str
+
+
 @dataclass(slots=True)
 class DbSnapshot:
     genera: list[DbGenus]
@@ -126,6 +142,25 @@ class DbSnapshot:
     names: dict[str, dict[str, tuple[str, str]]]
     # Plantas enlazadas por especie.
     plants: dict[str, int]
+    # Memoria de las fusiones: (fuente, clave) -> especie conservada. Vacía si no hay fusiones
+    # o si la base no tiene la memoria.
+    merge_keys: dict[tuple[str, str], MergedKey] = field(default_factory=dict)
+    # Clave de búsqueda (public.normalize_search_text, calculada por la base) de los nombres
+    # que hay que comparar con los de una especie conservada. Solo se calcula si hay fusiones.
+    search_keys: dict[str, str] = field(default_factory=dict)
+
+    def search_key(self, name: str) -> str:
+        """``public.normalize_search_text(name)``, tal como la calculó la base.
+
+        La carga pide a la base las de todos los nombres que puede comparar con una especie
+        conservada; si falta alguno (un plan hecho a mano en una prueba), se usa
+        :func:`catalog_import.names.match_key`, que también quita el «×» y las mayúsculas.
+        """
+        return self.search_keys.get(name) or match_key(name)
+
+    def merged_names(self) -> dict[str, tuple[tuple[str, str], MergedKey]]:
+        """Nombres científicos absorbidos (por :func:`match_key`) -> (clave, memoria)."""
+        return {match_key(m.merged_scientific_name): (key, m) for key, m in self.merge_keys.items()}
 
 
 def genus_key(name: str) -> str:
@@ -307,6 +342,10 @@ def plan_load(catalog: Catalog, snapshot: DbSnapshot) -> Plan:
     by_id = {s.id: s for s in snapshot.species}
     source_refs = {sp.source_ref for sp in catalog.species}
     consumed: set[str] = set()
+    # Registros cuya clave absorbió una fusión: se planifican al final, cuando ya se sabe qué
+    # nombres añade esta carga a cada especie conservada.
+    absorbed: list[tuple[Species, DbSpecies]] = []
+    merged_names = snapshot.merged_names()
 
     def genus_label(target: GenusRef) -> str:
         kind, value = target
@@ -316,6 +355,10 @@ def plan_load(catalog: Catalog, snapshot: DbSnapshot) -> Plan:
 
     for sp in catalog.species:
         label = _species_label(sp.scientific_name, sp.source_ref)
+        merged = snapshot.merge_keys.get((SOURCE, sp.source_ref))
+        if merged is not None and merged.species_id in by_id:
+            absorbed.append((sp, by_id[merged.species_id]))
+            continue
         genus_target = genus_targets.get(sp.genus_ref)
         synonym_target: tuple[str, str] | None = None
 
@@ -335,7 +378,12 @@ def plan_load(catalog: Catalog, snapshot: DbSnapshot) -> Plan:
             key_change = False
             if existing is None:
                 same_name = by_name.get(sp.scientific_name.lower())
-                if same_name is None:
+                fused = (
+                    merged_names.get(match_key(sp.scientific_name)) if same_name is None else None
+                )
+                if fused is not None:
+                    plan.add(merged_name_conflict(sp.source_ref, sp.scientific_name, fused, by_id))
+                elif same_name is None:
                     plan.species_inserts.append(
                         SpeciesWrite(sp.source_ref, sp.scientific_name, genus_target, sp.type)
                     )
@@ -503,6 +551,22 @@ def plan_load(catalog: Catalog, snapshot: DbSnapshot) -> Plan:
             label,
         )
 
+    kept_names: dict[str, dict[str, str]] = {}
+    for sp, kept in absorbed:
+        recreated = by_ref.get(sp.source_ref)
+        if recreated is not None:
+            consumed.add(recreated.id)
+        plan.add(merged_record_row(SPECIES, sp.source_ref, sp.scientific_name, kept, recreated))
+        plan_names_into_kept(
+            plan,
+            snapshot,
+            kept,
+            [KeptName(sp.scientific_name, 'synonym', SYNONYM, sp.source_ref, ABSORBED_NAME_NOTE)]
+            + [KeptName(s.name, 'synonym', SYNONYM, s.source_ref) for s in sp.synonyms],
+            _species_label(sp.scientific_name, sp.source_ref),
+            kept_names,
+        )
+
     for existing in snapshot.species:
         if (
             existing.source == SOURCE
@@ -615,6 +679,153 @@ def _plan_synonyms(
     )
 
 
+# Fusiones ----------------------------------------------------------------------------------
+#
+# Las dos cargas (COL y la lista curada) tratan igual un registro cuya clave está en la
+# memoria de las fusiones: no lo crean ni lo actualizan (ni siquiera miran su género) y llevan
+# sus nombres a la especie conservada. Ver el README ("Fusiones de especies").
+
+_NAME_KIND = {'synonym': 'sinónimo', 'common': 'nombre común'}
+ABSORBED_NAME_NOTE = 'Nombre científico del registro absorbido.'
+
+
+@dataclass(frozen=True, slots=True)
+class KeptName:
+    """Un nombre de un registro absorbido que va a la especie conservada."""
+
+    name: str
+    # Tipo que tendrá en species_names: 'synonym' o 'common'.
+    kind: str
+    # Entidad del reporte: SYNONYM o COMMON_NAME.
+    entity: str
+    source_ref: str
+    note: str = ''
+
+
+def _kept_label(kept: DbSpecies) -> str:
+    return f'«{kept.scientific_name}» (fuente {kept.source}, clave {kept.source_ref or "ninguna"})'
+
+
+def merged_record_row(
+    entity: str,
+    source_ref: str,
+    name: str,
+    kept: DbSpecies,
+    recreated: DbSpecies | None,
+    extra: str = '',
+) -> ReportRow:
+    """Fila del reporte de un registro cuya clave absorbió una fusión."""
+    detail = (
+        f'Su clave se fusionó en {_kept_label(kept)}, estado {kept.status}. No se crea ni se '
+        'actualiza; sus nombres van a la especie conservada, sin duplicar.'
+    )
+    if recreated is not None:
+        detail += (
+            f' En la base hay además una especie con esta clave («{recreated.scientific_name}», '
+            f'id {recreated.id}), probablemente creada por una carga anterior a la memoria de '
+            'las fusiones: no se toca; fusiónala otra vez en la conservada.'
+        )
+    return ReportRow(entity, MERGED, 'ESPECIE_FUSIONADA', source_ref, name, '', detail + extra,
+                     kept.id)  # fmt: skip
+
+
+def merged_name_conflict(
+    source_ref: str,
+    name: str,
+    fused: tuple[tuple[str, str], MergedKey],
+    by_id: dict[str, DbSpecies],
+) -> ReportRow:
+    """Registro nuevo (su clave no está en la memoria) con el nombre de una especie absorbida."""
+    (source, ref), merged = fused
+    kept = by_id.get(merged.species_id)
+    where = _kept_label(kept) if kept else f'la especie {merged.species_id}'
+    return ReportRow(
+        SPECIES,
+        CONFLICT,
+        'NOMBRE_FUSIONADO',
+        source_ref,
+        name,
+        detail=(
+            f'Un administrador fusionó «{merged.merged_scientific_name}» (fuente {source}, clave '
+            f'{ref}) en {where}. La fuente lo trae ahora con otra clave: no se crea, para no '
+            'deshacer la fusión, y sus nombres no se cargan. Si es la misma especie, no hay que '
+            'hacer nada; si no, revísalo a mano.'
+        ),
+        db_id=merged.species_id,
+    )
+
+
+def _kept_existing(snapshot: DbSnapshot, plan: Plan, kept: DbSpecies) -> dict[str, str]:
+    """Nombres que la especie conservada ya tiene o que esta carga ya le añade, por clave.
+
+    Cada nombre entra con dos claves: en minúsculas (la del índice único
+    ``species_names_species_id_name_key``) y la de ``public.normalize_search_text`` (la de la
+    fusión, que además quita tildes y el signo «×»). El valor describe el nombre para el
+    reporte.
+    """
+    found: dict[str, str] = {}
+
+    def add(name: str, what: str) -> None:
+        for key in (name.lower(), snapshot.search_key(name)):
+            found.setdefault(key, f'«{name}» ({what})')
+
+    add(kept.scientific_name, 'nombre científico')
+    for name, kind in snapshot.names.get(kept.id, {}).values():
+        add(name, _NAME_KIND.get(kind, kind))
+    for target, name, kind in plan.name_inserts:
+        if target == ('id', kept.id):
+            add(name, f'{_NAME_KIND.get(kind, kind)} que añade esta carga')
+    return found
+
+
+def plan_names_into_kept(
+    plan: Plan,
+    snapshot: DbSnapshot,
+    kept: DbSpecies,
+    names: Sequence[KeptName],
+    label: str,
+    cache: dict[str, dict[str, str]],
+) -> None:
+    """Nombres de un registro absorbido: se añaden a la conservada los que no tiene.
+
+    Un nombre ya está si coincide, en minúsculas **o** tras ``public.normalize_search_text``,
+    con el nombre científico de la conservada, uno de sus nombres alternativos (de cualquier
+    tipo) o uno que esta carga ya le añade. Las minúsculas son lo que compara la carga en el
+    resto de casos y lo que impone el índice único; la normalización es lo que usó la fusión
+    al pasar los nombres, así que un nombre que la fusión descartó por repetido tampoco vuelve
+    ahora. Exigir las dos es lo seguro: en el peor caso no se añade un nombre que la búsqueda
+    ya encuentra por otro igual tras normalizar.
+
+    ``cache`` guarda, por especie conservada, los nombres ya vistos: varios registros pueden
+    ir a la misma conservada en una carga.
+    """
+    found = cache.get(kept.id)
+    if found is None:
+        found = cache[kept.id] = _kept_existing(snapshot, plan, kept)
+    target = ('id', kept.id)
+    for item in names:
+        keys = (item.name.lower(), snapshot.search_key(item.name))
+        existing = next((found[k] for k in keys if k in found), None)
+        note = f'{item.note} ' if item.note else ''
+        if existing is not None:
+            plan.add(
+                ReportRow(item.entity, UNCHANGED, 'NOMBRE_EN_LA_CONSERVADA', item.source_ref,
+                          item.name, label,
+                          f'{note}La especie conservada {_kept_label(kept)} ya tiene {existing}. '
+                          'No se añade.', kept.id)
+            )  # fmt: skip
+            continue
+        plan.name_inserts.append((target, item.name, item.kind))
+        for key in keys:
+            found.setdefault(key, f'«{item.name}» ({_NAME_KIND[item.kind]} que añade esta carga)')
+        plan.add(
+            ReportRow(item.entity, NEW, 'NOMBRE_A_LA_CONSERVADA', item.source_ref, item.name,
+                      label,
+                      f'{note}Se añade como {_NAME_KIND[item.kind]} a la especie conservada '
+                      f'{_kept_label(kept)}.', kept.id)
+        )  # fmt: skip
+
+
 # Base de datos ------------------------------------------------------------------------------
 
 
@@ -677,6 +888,67 @@ def read_snapshot(conn: psycopg.Connection[Any]) -> DbSnapshot:
         )
     }
     return DbSnapshot(genera, species, dict(names), plants)
+
+
+MERGE_MIGRATION = '20261121160000_fusion_de_especies.sql'
+
+
+def merges_ready(conn: psycopg.Connection[Any]) -> bool:
+    """¿Tiene la base la memoria de las fusiones y la puede leer entera este usuario?
+
+    Leerla entera exige el permiso ``select`` y que RLS no se aplique al usuario: con RLS
+    (un usuario que no es el dueño de la tabla) la política solo deja ver filas a un
+    administrador con token, así que la carga leería una memoria vacía sin saberlo.
+    """
+    row = conn.execute(
+        "select t is not null and has_table_privilege(t, 'select') and not row_security_active(t) "
+        "from to_regclass('public.species_merge_keys') as t"
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def missing_merges_message() -> str:
+    return (
+        'La base no tiene la memoria de las fusiones de especies (falta '
+        f'public.species_merge_keys, de la migración {MERGE_MIGRATION}) o el usuario no puede '
+        'leerla entera. Sin ella, la carga podría volver a crear especies que un administrador '
+        'fusionó, así que con --escribir no se escribe nada hasta que la migración esté '
+        'aplicada. La simulación sí funciona (como si no hubiera fusiones).'
+    )
+
+
+def read_merge_keys(conn: psycopg.Connection[Any]) -> dict[tuple[str, str], MergedKey]:
+    """La memoria de las fusiones, unida a ``species``: la conservada siempre existe (la clave
+    foránea borra la memoria con ella, y la carga tiene ``species`` bloqueada)."""
+    return {
+        (source, ref): MergedKey(str(species_id), merged_name)
+        for source, ref, species_id, merged_name in conn.execute(
+            'select k.source::text, k.source_ref, k.species_id, k.merged_scientific_name '
+            'from public.species_merge_keys k join public.species s on s.id = k.species_id'
+        )
+    }
+
+
+def read_search_keys(conn: psycopg.Connection[Any], names: Iterable[str]) -> dict[str, str]:
+    """``public.normalize_search_text`` de cada nombre, calculada por la base (la misma que
+    usó la fusión). Una sola consulta."""
+    unique = sorted(set(names))
+    if not unique:
+        return {}
+    return dict(
+        conn.execute(
+            'select n, public.normalize_search_text(n) from unnest(%s::text[]) as n', (unique,)
+        ).fetchall()
+    )
+
+
+def _kept_species_names(snapshot: DbSnapshot) -> list[str]:
+    """Nombre científico y nombres alternativos de cada especie conservada."""
+    kept_ids = {m.species_id for m in snapshot.merge_keys.values()}
+    found = [s.scientific_name for s in snapshot.species if s.id in kept_ids]
+    for species_id in kept_ids:
+        found += [name for name, _ in snapshot.names.get(species_id, {}).values()]
+    return found
 
 
 def _copy(
@@ -871,6 +1143,19 @@ class LoadResult:
     # action_id de la fila de resumen de la auditoría (en una simulación, el de la fila que
     # se insertó y se revirtió).
     audit_action_id: str | None = None
+    # ¿Tiene la base la memoria de las fusiones? Una simulación sin ella avisa de que la
+    # escritura se negaría.
+    merges_ready: bool = True
+    # Claves de la fuente de esta carga en la memoria de las fusiones.
+    merge_keys: int = 0
+
+
+def catalog_names(catalog: Catalog) -> Iterable[str]:
+    """Todos los nombres de la fuente de COL: los científicos y los sinónimos."""
+    for sp in catalog.species:
+        yield sp.scientific_name
+        for synonym in sp.synonyms:
+            yield synonym.name
 
 
 def run_load(
@@ -882,7 +1167,12 @@ def run_load(
 ) -> LoadResult:
     """Carga el catálogo de COL en una transacción. Sin ``write``, la revierte al terminar."""
     return run_plan(
-        conn, lambda snapshot: plan_load(catalog, snapshot), COL_POLICY, write=write, audit=audit
+        conn,
+        lambda snapshot: plan_load(catalog, snapshot),
+        COL_POLICY,
+        write=write,
+        audit=audit,
+        source_names=lambda: catalog_names(catalog),
     )
 
 
@@ -893,6 +1183,7 @@ def run_plan(
     *,
     write: bool,
     audit: LoadAudit | None = None,
+    source_names: Callable[[], Iterable[str]] | None = None,
 ) -> LoadResult:
     """Lee la base, planifica con ``planner`` y aplica el plan, todo en una transacción.
 
@@ -905,6 +1196,12 @@ def run_plan(
     transacción. Si la base no tiene la auditoría, falla antes de escribir nada. En una
     simulación con ``audit``, la fila se inserta si la base tiene la auditoría y se revierte
     con lo demás; si no la tiene, el resultado lo dice (``audit_ready``).
+
+    Lo mismo con la memoria de las fusiones (:func:`merges_ready`): sin ella, una carga que
+    escribe falla antes de escribir nada, y una simulación planifica como si no hubiera
+    fusiones y el resultado lo dice (``merges_ready``). Si hay fusiones, la base calcula la
+    clave de búsqueda de los nombres de las especies conservadas y de ``source_names`` (los
+    de la fuente), para que el plan compare como la fusión.
     """
     # Importación diferida: audit usa las constantes y el Plan de este módulo.
     from .audit import audit_ready, log_load, missing_audit_message
@@ -929,7 +1226,21 @@ def run_plan(
         ready = audit_ready(conn)
         if write and not ready:
             raise LoadError(missing_audit_message())
+        merges = merges_ready(conn)
+        if write and not merges:
+            raise LoadError(missing_merges_message())
         snapshot = read_snapshot(conn)
+        if merges:
+            # Una fusión escribe en species y species_names, que la carga tiene bloqueadas: la
+            # memoria que se lee aquí es la de las fusiones confirmadas antes del bloqueo; una
+            # fusión que llegue después espera a que la carga termine (o, si choca con ella,
+            # falla entera y no deja nada).
+            snapshot.merge_keys = read_merge_keys(conn)
+        if snapshot.merge_keys:
+            snapshot.search_keys = read_search_keys(
+                conn,
+                [*_kept_species_names(snapshot), *(source_names() if source_names else ())],
+            )
         timings['lectura_base'] = time.perf_counter() - started
 
         mark = time.perf_counter()
@@ -961,4 +1272,5 @@ def run_plan(
         conn.rollback()
         raise
     timings['total_base'] = time.perf_counter() - started
-    return LoadResult(plan, applied, measures, write, timings, ready, action_id)
+    own_keys = sum(1 for source, _ in snapshot.merge_keys if source == policy.source)
+    return LoadResult(plan, applied, measures, write, timings, ready, action_id, merges, own_keys)

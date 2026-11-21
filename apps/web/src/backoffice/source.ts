@@ -19,6 +19,8 @@ import {
   deleteCatalogSpecies,
   deleteGenusAbbreviation,
   deleteSpeciesName,
+  mergeCatalogSpecies,
+  previewSpeciesMerge,
   setCatalogSpeciesStatus,
   updateCatalogGenus,
   updateCatalogSpecies,
@@ -58,6 +60,10 @@ export interface CatalogAdminSource {
   addAbbreviation: typeof addGenusAbbreviation
   updateAbbreviation: typeof updateGenusAbbreviation
   deleteAbbreviation: typeof deleteGenusAbbreviation
+  // Fusión de especies: la vista previa (una lectura, falla con
+  // CatalogAdminError salvo los rechazos de la fusión) y la fusión.
+  previewMerge: typeof previewSpeciesMerge
+  mergeSpecies: typeof mergeCatalogSpecies
 }
 
 export const supabaseCatalogAdminSource: CatalogAdminSource = {
@@ -84,4 +90,6 @@ export const supabaseCatalogAdminSource: CatalogAdminSource = {
   addAbbreviation: addGenusAbbreviation,
   updateAbbreviation: updateGenusAbbreviation,
   deleteAbbreviation: deleteGenusAbbreviation,
+  previewMerge: previewSpeciesMerge,
+  mergeSpecies: mergeCatalogSpecies,
 }

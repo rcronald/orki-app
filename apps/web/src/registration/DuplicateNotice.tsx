@@ -10,6 +10,8 @@ interface DuplicateNoticeProps {
   species: FormSpecies | null
   /** Plantas del usuario ya cargadas; null si aún no están (sin aviso). */
   knownPlants: readonly CollectionPlant[] | null
+  /** Lo que sigue al nombre; por defecto, "Puedes registrar otro igualmente". */
+  after?: string
 }
 
 /**
@@ -26,6 +28,7 @@ interface DuplicateNoticeProps {
 export function DuplicateNotice({
   species,
   knownPlants,
+  after = PLANT_FORM_TEXT.duplicateAfter,
 }: DuplicateNoticeProps) {
   const count =
     species !== null && knownPlants !== null
@@ -42,7 +45,7 @@ export function DuplicateNotice({
             <em className="font-display">
               <ScientificName name={species.scientificName} />
             </em>
-            {PLANT_FORM_TEXT.duplicateAfter}
+            {after}
           </span>
         </p>
       )}

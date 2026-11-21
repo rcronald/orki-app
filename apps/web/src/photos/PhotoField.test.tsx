@@ -185,6 +185,34 @@ describe('PhotoField', () => {
     await expectNoAxeViolations()
   })
 
+  it('avisa con onProcessingChange al empezar y al terminar de preparar', async () => {
+    let finish: (photo: ProcessedPhoto) => void = () => {}
+    processPhoto.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    const onProcessingChange = vi.fn()
+    const { container } = render(
+      <PhotoField
+        value={null}
+        onChange={() => {}}
+        camera="hide"
+        onProcessingChange={onProcessingChange}
+      />,
+    )
+    expect(onProcessingChange).toHaveBeenLastCalledWith(false)
+    await userEvent.upload(hiddenInputs(container)[0], file())
+    await waitFor(() =>
+      expect(onProcessingChange).toHaveBeenLastCalledWith(true),
+    )
+    await act(async () => {
+      finish(processedPhoto())
+      await Promise.resolve()
+    })
+    expect(onProcessingChange).toHaveBeenLastCalledWith(false)
+  })
+
   it('cancelar la preparación devuelve el foco a elegir', async () => {
     processPhoto.mockImplementation(
       (_file, { signal }) =>

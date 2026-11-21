@@ -1,11 +1,83 @@
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Versión desplegada: el commit que Vercel construye. Vercel la expone durante
+// el build en VERCEL_GIT_COMMIT_SHA (variable de sistema, con "Automatically
+// expose System Environment Variables" activado, que es lo normal). En local no
+// existe y los errores van sin versión.
+const release = /^[0-9a-f]{7,40}$/i.test(
+  process.env.VERCEL_GIT_COMMIT_SHA ?? '',
+)
+  ? process.env.VERCEL_GIT_COMMIT_SHA
+  : undefined
+
+// La versión va en una etiqueta meta del HTML, que el cargador de Sentry lee al
+// arrancar (src/observability/reporter.ts). Si fuera en el JavaScript, todos los
+// chunks cambiarían de nombre en cada despliegue y quien vuelve a la app los
+// descargaría de nuevo aunque su código no hubiera cambiado.
+function releaseMeta(): Plugin {
+  return {
+    name: 'orki-release-meta',
+    transformIndexHtml() {
+      return release === undefined
+        ? []
+        : [
+            {
+              tag: 'meta',
+              attrs: { name: 'orki-release', content: release },
+              injectTo: 'head',
+            },
+          ]
+    },
+  }
+}
+
+// Mapas de código fuente para Sentry: solo si el build tiene las tres
+// variables con los nombres estándar del plugin (en Vercel, solo en los
+// ambientes que deban subirlos). Sin ellas el plugin no se registra y el build
+// es el de siempre: sin mapas de código fuente y sin contactar con Sentry.
+//
+// Con ellas, el plugin activa mapas ocultos (sin comentario sourceMappingURL),
+// inyecta en cada chunk un identificador (debug ID) que enlaza el archivo con
+// su mapa, los sube y los quita de la salida: nunca llegan a dist, así que no
+// se sirven al público. filesToDeleteAfterUpload es una segunda barrera por si
+// otro plugin genera alguno. Un fallo al subir solo avisa: el despliegue no
+// depende de que Sentry responda.
+function sentrySourceMaps(): PluginOption[] {
+  const { SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT } = process.env
+  if (!SENTRY_AUTH_TOKEN || !SENTRY_ORG || !SENTRY_PROJECT) return []
+  return [
+    sentryVitePlugin({
+      org: SENTRY_ORG,
+      project: SENTRY_PROJECT,
+      authToken: SENTRY_AUTH_TOKEN,
+      telemetry: false,
+      sourcemaps: {
+        deleteSourcemapsAfterUpload: true,
+        filesToDeleteAfterUpload: ['./dist/**/*.map'],
+      },
+      release: {
+        // La versión va en el HTML (releaseMeta); aquí solo se crea en Sentry.
+        ...(release !== undefined && { name: release }),
+        inject: false,
+        setCommits: false,
+      },
+      errorHandler: (error) => {
+        console.warn(
+          `No se pudieron subir los mapas de código fuente a Sentry: ${error.message}`,
+        )
+      },
+    }),
+  ]
+}
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    releaseMeta(),
     react(),
     tailwindcss(),
     VitePWA({
@@ -81,7 +153,13 @@ export default defineConfig({
         // nueva se activa en cuanto se instala y controla las pestañas abiertas.
         skipWaiting: true,
         clientsClaim: true,
+        // Sin mapas del service worker. El plugin de PWA los generaría al ver
+        // los mapas ocultos que activa el plugin de Sentry, y como se escriben
+        // después de que este limpie la salida, se quedarían publicados.
+        sourcemap: false,
       },
     }),
+    // El plugin de Sentry va el último, como pide su documentación.
+    ...sentrySourceMaps(),
   ],
 })

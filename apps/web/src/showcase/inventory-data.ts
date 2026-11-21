@@ -2,8 +2,8 @@ import type { CollectionGenus, CollectionPlant } from '../collection/model.ts'
 
 // Colección de ejemplo para ver la pantalla de inventario en la página de
 // muestra, sin base de datos ni sesión. Nombres reales del catálogo (especies,
-// grex con y sin género híbrido, un híbrido natural), plantas por validar, una
-// dada de baja (que no se cuenta) y apodos y orígenes verosímiles.
+// grex con y sin género híbrido, un híbrido natural), plantas por validar, dos
+// dadas de baja (que no se cuentan) y apodos y orígenes verosímiles.
 
 const genus = (id: string, name: string): CollectionGenus => ({ id, name })
 
@@ -55,12 +55,14 @@ export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
     displayName: 'Phalaenopsis amabilis',
     genus: PHALAENOPSIS,
     nickname: 'La blanca de la sala',
+    flowerColor: 'white',
     origin: 'Vivero Moyobamba',
     createdAt: '2026-11-19T15:00:00+00:00',
   }),
   samplePlant({
     displayName: 'Phalaenopsis Sogo Yukidian',
     genus: PHALAENOPSIS,
+    flowerColor: 'white',
     type: 'hybrid',
     origin: 'Feria de orquídeas de Miraflores',
     createdAt: '2026-11-12T15:00:00+00:00',
@@ -74,6 +76,7 @@ export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
   samplePlant({
     displayName: 'Cattleya maxima',
     genus: CATTLEYA,
+    flowerColor: 'pink',
     nickname: 'Flor de mayo',
     origin: 'Orquídeas del Alto Mayo',
     createdAt: '2026-09-21T15:00:00+00:00',
@@ -86,6 +89,7 @@ export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
   samplePlant({
     displayName: '× Rhyncholaeliocattleya Memoria Anna Balmores',
     genus: RLC,
+    flowerColor: 'purple',
     type: 'hybrid',
     origin: 'Mercado de flores de Acho',
     createdAt: '2026-11-17T15:00:00+00:00',
@@ -93,6 +97,7 @@ export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
   samplePlant({
     displayName: 'Masdevallia veitchiana',
     genus: MASDEVALLIA,
+    flowerColor: 'orange',
     nickname: 'Wakanki',
     createdAt: '2026-07-03T15:00:00+00:00',
   }),
@@ -106,6 +111,7 @@ export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
   samplePlant({
     displayName: 'Oncidium Sharry Baby',
     genus: ONCIDIUM,
+    flowerColor: 'bicolor',
     type: 'hybrid',
     nickname: 'La de chocolate',
     createdAt: '2026-06-30T15:00:00+00:00',
@@ -124,6 +130,31 @@ export const SAMPLE_COLLECTION: readonly CollectionPlant[] = [
     status: 'gifted',
     createdAt: '2026-11-20T09:00:00+00:00',
   }),
+  samplePlant({
+    displayName: 'Phalaenopsis schilleriana',
+    genus: PHALAENOPSIS,
+    status: 'lost',
+    flowerColor: 'pink',
+    origin: 'Vivero Moyobamba',
+    createdAt: '2026-04-02T15:00:00+00:00',
+  }),
+]
+
+// Orígenes de la colección grande: más de los que el panel de filtros enseña
+// de entrada, para ver "Ver más".
+const LARGE_ORIGINS = [
+  'Vivero Moyobamba',
+  'Feria de orquídeas de Miraflores',
+  'Mercado de flores de Acho',
+  'Orquídeas del Alto Mayo',
+  'Intercambio con la asociación',
+  'Vivero Los Andes',
+  'Feria de Oxapampa',
+  'Regalo de un familiar',
+  'Tienda en línea',
+  'Vivero San Isidro',
+  'Exposición de Tarapoto',
+  'Mercado de Surquillo',
 ]
 
 /**
@@ -139,6 +170,7 @@ export function largeSampleCollection(count = 300): CollectionPlant[] {
       ...model,
       id: `muestra-grande-${String(index).padStart(4, '0')}`,
       nickname: `Ejemplar ${index + 1}`,
+      origin: LARGE_ORIGINS[index % LARGE_ORIGINS.length] ?? null,
       createdAt: new Date(
         Date.UTC(2026, 10, 20) - index * 3_600_000,
       ).toISOString(),

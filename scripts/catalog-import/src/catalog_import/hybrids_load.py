@@ -19,12 +19,15 @@ Reglas (el README de la carpeta las explica con más detalle):
   grafía de los géneros la decide la importación de COL).
 - Nombres: se añaden los que faltan; nunca se cambia ni se borra uno. Los que la base tiene y
   la lista ya no trae se conservan y se listan.
+- Fusiones: una entrada cuyo identificador está en la memoria de las fusiones no se crea ni se
+  actualiza; su nombre, sus nombres comunes y sus otros nombres van a la especie conservada,
+  sin duplicar (:func:`catalog_import.load.plan_names_into_kept`, como en la carga de COL).
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 from .hybrids import HybridEntry
 from .load import (
@@ -43,10 +46,15 @@ from .load import (
     DbSnapshot,
     DbSpecies,
     GenusRef,
+    KeptName,
+    MergedKey,
     Plan,
     ReportRow,
     SourcePolicy,
     SpeciesWrite,
+    merged_name_conflict,
+    merged_record_row,
+    plan_names_into_kept,
 )
 from .names import match_key
 
@@ -56,6 +64,7 @@ HYBRID = 'hybrid'
 CURATED_POLICY = SourcePolicy(CURATED, VALIDATED, VALIDATED)
 
 _NAME_TYPE_LABEL = {'common': 'nombre común', 'synonym': 'sinónimo'}
+ABSORBED_ENTRY_NOTE = 'Nombre de la entrada absorbida.'
 _NAME_ENTITY = {'common': COMMON_NAME, 'synonym': SYNONYM}
 
 
@@ -121,10 +130,25 @@ def _plan_genera(
     return targets
 
 
+def entry_names(entries: Sequence[HybridEntry]) -> Iterable[str]:
+    """Todos los nombres de la lista: el aceptado, los comunes y los otros nombres."""
+    for entry in entries:
+        yield entry.name
+        yield from entry.common_names
+        yield from entry.other_names
+
+
 def plan_hybrids(entries: Sequence[HybridEntry], snapshot: DbSnapshot) -> Plan:
     """Planifica la carga de la lista sin tocar la base."""
     plan = Plan()
-    reviewed = [e for e in entries if e.reviewed]
+    by_id = {s.id: s for s in snapshot.species}
+
+    def kept_of(entry: HybridEntry) -> DbSpecies | None:
+        merged = snapshot.merge_keys.get((CURATED, entry.ref))
+        return by_id.get(merged.species_id) if merged is not None else None
+
+    # Las entradas absorbidas por una fusión no se crean: su género tampoco hace falta.
+    reviewed = [e for e in entries if e.reviewed and kept_of(e) is None]
     genus_targets = _plan_genera(reviewed, snapshot, plan)
     genus_names = {g.id: g.name for g in snapshot.genera}
 
@@ -133,6 +157,8 @@ def plan_hybrids(entries: Sequence[HybridEntry], snapshot: DbSnapshot) -> Plan:
     for sp in snapshot.species:
         by_key[match_key(sp.scientific_name)].append(sp)
     list_refs = {e.ref for e in entries}
+    merged_names = snapshot.merged_names()
+    absorbed: list[tuple[HybridEntry, DbSpecies]] = []
 
     def genus_label(target: GenusRef) -> str:
         kind, value = target
@@ -140,16 +166,25 @@ def plan_hybrids(entries: Sequence[HybridEntry], snapshot: DbSnapshot) -> Plan:
 
     for entry in entries:
         existing = by_ref.get(entry.ref)
+        kept = kept_of(entry)
         if not entry.reviewed:
             detail = 'Marcada como no revisada en la lista: no se carga.'
             if existing is not None:
                 detail += (
                     f' Ya está en la base («{existing.scientific_name}»): se conserva tal cual.'
                 )
+            if kept is not None:
+                detail += (
+                    f' Además, su identificador se fusionó en «{kept.scientific_name}»: aunque se '
+                    'revise, no se creará.'
+                )
             plan.add(
                 ReportRow(SPECIES, OMITTED, 'NO_REVISADA', entry.ref, entry.name, '', detail,
                           existing.id if existing else '')
             )  # fmt: skip
+            continue
+        if kept is not None:
+            absorbed.append((entry, kept))
             continue
 
         genus_target = genus_targets.get(match_key(entry.genus))
@@ -169,7 +204,8 @@ def plan_hybrids(entries: Sequence[HybridEntry], snapshot: DbSnapshot) -> Plan:
             target = _plan_existing(entry, existing, genus_target, by_key, snapshot, plan,
                                     genus_names, genus_label)  # fmt: skip
         else:
-            target = _plan_new(entry, genus_target, by_key, list_refs, plan, genus_label)
+            target = _plan_new(entry, genus_target, by_key, list_refs, plan, genus_label,
+                               merged_names, by_id)  # fmt: skip
 
         current = by_ref.get(entry.ref) if target and target[0] == 'id' else None
         _plan_names(
@@ -178,6 +214,22 @@ def plan_hybrids(entries: Sequence[HybridEntry], snapshot: DbSnapshot) -> Plan:
             current.scientific_name if current else entry.name,
             snapshot.names.get(current.id, {}) if current else {},
             plan,
+        )
+
+    # Al final, cuando ya se sabe qué nombres añade la carga a cada especie conservada.
+    kept_names: dict[str, dict[str, str]] = {}
+    for entry, kept in absorbed:
+        recreated = by_ref.get(entry.ref)
+        plan.add(merged_record_row(SPECIES, entry.ref, entry.name, kept, recreated))
+        plan_names_into_kept(
+            plan,
+            snapshot,
+            kept,
+            [KeptName(entry.name, 'synonym', SYNONYM, entry.ref, ABSORBED_ENTRY_NOTE)]
+            + [KeptName(n, 'common', COMMON_NAME, entry.ref) for n in entry.common_names]
+            + [KeptName(n, 'synonym', SYNONYM, entry.ref) for n in entry.other_names],
+            f'{entry.name} ({entry.ref})',
+            kept_names,
         )
 
     for sp in snapshot.species:
@@ -277,9 +329,15 @@ def _plan_new(
     list_refs: set[str],
     plan: Plan,
     genus_label: Callable[[GenusRef], str],
+    merged_names: dict[str, tuple[tuple[str, str], MergedKey]],
+    by_id: dict[str, DbSpecies],
 ) -> tuple[str, str] | None:
     """Entrada que no está en la base con su referencia: alta o conflicto de nombre."""
     same = by_key.get(match_key(entry.name), [])
+    fused = merged_names.get(match_key(entry.name)) if not same else None
+    if fused is not None:
+        plan.add(merged_name_conflict(entry.ref, entry.name, fused, by_id))
+        return None
     if not same:
         plan.species_inserts.append(SpeciesWrite(entry.ref, entry.name, genus_target, HYBRID))
         plan.add(

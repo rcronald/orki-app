@@ -13,6 +13,8 @@ import {
   deleteGenusAbbreviation,
   deleteSpeciesName,
   MAX_BATCH_SPECIES,
+  mergeCatalogSpecies,
+  previewSpeciesMerge,
   setCatalogSpeciesStatus,
   toCatalogWriteError,
   updateCatalogGenus,
@@ -656,5 +658,226 @@ describe('géneros y abreviaturas', () => {
     const empty = await failure(addGenusAbbreviation(GENUS_ID, ' . '))
     expect(empty.problem).toBe('name-required')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('fusión de especies', () => {
+  const MERGED_ID = '33333333-3333-4333-8333-333333333333'
+  const KEPT_ID = '44444444-4444-4444-8444-444444444444'
+  const PREVIEW_ROW = {
+    merged_scientific_name: 'Doritis pulcherrima',
+    merged_genus_id: GENUS_ID,
+    merged_genus_name: 'Doritis',
+    merged_type: 'species',
+    merged_status: 'imported',
+    merged_source: 'col',
+    merged_source_ref: '4F1',
+    kept_scientific_name: 'Phalaenopsis pulcherrima',
+    kept_genus_id: '55555555-5555-4555-8555-555555555555',
+    kept_genus_name: 'Phalaenopsis',
+    kept_type: 'species',
+    kept_status: 'imported',
+    plant_count: 3,
+    moved_names: [
+      {
+        name: 'Doritis pulcherrima',
+        type: 'synonym',
+        language: null,
+        origin: 'scientific_name',
+      },
+      {
+        name: 'flor de mayo',
+        type: 'common',
+        language: 'es',
+        origin: 'common',
+      },
+      // Una forma que no se reconoce se descarta.
+      { name: 'raro', type: 'desconocido', origin: 'synonym' },
+    ],
+    existing_names: [
+      {
+        name: 'Doritis buyssoniana',
+        type: 'synonym',
+        language: null,
+        origin: 'synonym',
+        reason: 'already_in_kept',
+        existing_name: 'Doritis Buyssoniana',
+        existing_type: 'synonym',
+      },
+    ],
+    genus_differs: true,
+    type_differs: false,
+    kept_becomes_validated: true,
+    remembered_keys: [
+      { source: 'col', source_ref: '4F1', inherited: false },
+      { source: 'curated', source_ref: 'h-12', inherited: true },
+    ],
+  }
+
+  it('vista previa: envía las dos especies y convierte la fila', async () => {
+    fetchMock.mockImplementation(() => jsonResponse([PREVIEW_ROW]))
+    const preview = await previewSpeciesMerge(MERGED_ID, KEPT_ID)
+    expect(lastRequest()).toEqual({
+      path: 'rpc/preview_species_merge',
+      body: { merged_species_id: MERGED_ID, kept_species_id: KEPT_ID },
+    })
+    expect(preview).toEqual({
+      merged: {
+        id: MERGED_ID,
+        scientificName: 'Doritis pulcherrima',
+        genusId: GENUS_ID,
+        genusName: 'Doritis',
+        type: 'species',
+        status: 'imported',
+        source: 'col',
+        sourceRef: '4F1',
+      },
+      kept: {
+        id: KEPT_ID,
+        scientificName: 'Phalaenopsis pulcherrima',
+        genusId: '55555555-5555-4555-8555-555555555555',
+        genusName: 'Phalaenopsis',
+        type: 'species',
+        status: 'imported',
+      },
+      plantCount: 3,
+      movedNames: [
+        {
+          name: 'Doritis pulcherrima',
+          type: 'synonym',
+          language: null,
+          origin: 'scientific_name',
+        },
+        {
+          name: 'flor de mayo',
+          type: 'common',
+          language: 'es',
+          origin: 'common',
+        },
+      ],
+      existingNames: [
+        {
+          name: 'Doritis buyssoniana',
+          type: 'synonym',
+          language: null,
+          origin: 'synonym',
+          reason: 'already_in_kept',
+          existingName: 'Doritis Buyssoniana',
+          existingType: 'synonym',
+        },
+      ],
+      genusDiffers: true,
+      typeDiffers: false,
+      keptBecomesValidated: true,
+      rememberedKeys: [
+        { source: 'col', sourceRef: '4F1', inherited: false },
+        { source: 'curated', sourceRef: 'h-12', inherited: true },
+      ],
+    })
+  })
+
+  it('vista previa: los rechazos de la fusión y los de transporte', async () => {
+    await expect(previewSpeciesMerge(KEPT_ID, KEPT_ID)).rejects.toMatchObject({
+      problem: 'same-species',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fetchMock.mockReturnValueOnce(
+      rejection(404, 'P0002', 'species_not_found', {
+        species_id: KEPT_ID,
+        species_role: 'kept',
+      }),
+    )
+    const gone = previewSpeciesMerge(MERGED_ID, KEPT_ID)
+    await expect(gone).rejects.toBeInstanceOf(CatalogWriteError)
+    await expect(gone).rejects.toMatchObject({
+      problem: 'species-not-found',
+      details: { speciesRole: 'kept', speciesId: KEPT_ID },
+    })
+
+    // Sin rol, sesión y conexión: como cualquier lectura.
+    fetchMock.mockReturnValueOnce(
+      jsonResponse({ code: '42501', message: 'Solo un administrador…' }, 403),
+    )
+    await expect(previewSpeciesMerge(MERGED_ID, KEPT_ID)).rejects.toMatchObject(
+      { reason: 'forbidden' },
+    )
+    fetchMock.mockReturnValueOnce(
+      jsonResponse({ code: 'PGRST301', message: 'JWT expired' }, 401),
+    )
+    await expect(previewSpeciesMerge(MERGED_ID, KEPT_ID)).rejects.toMatchObject(
+      { reason: 'session-ended' },
+    )
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(previewSpeciesMerge(MERGED_ID, KEPT_ID)).rejects.toMatchObject(
+      { reason: 'offline' },
+    )
+  })
+
+  it('fusión: envía las dos especies y devuelve el resultado', async () => {
+    fetchMock.mockImplementation(() =>
+      jsonResponse([
+        {
+          action_id: 'accion-1',
+          plant_count: 3,
+          moved_name_count: 2,
+          skipped_name_count: 1,
+          kept_validated: true,
+          remembered_keys: [
+            { source: 'col', source_ref: '4F1', inherited: false },
+          ],
+        },
+      ]),
+    )
+    const result = await mergeCatalogSpecies(MERGED_ID, KEPT_ID)
+    expect(lastRequest()).toEqual({
+      path: 'rpc/merge_species',
+      body: { merged_species_id: MERGED_ID, kept_species_id: KEPT_ID },
+    })
+    expect(result).toEqual({
+      actionId: 'accion-1',
+      plantCount: 3,
+      movedNameCount: 2,
+      skippedNameCount: 1,
+      keptValidated: true,
+      rememberedKeys: [{ source: 'col', sourceRef: '4F1', inherited: false }],
+    })
+  })
+
+  it('fusión: misma especie, la que falta y los fallos de transporte', async () => {
+    fetchMock.mockReturnValueOnce(rejection(400, '22023', 'same_species'))
+    const same = await failure(mergeCatalogSpecies(MERGED_ID, KEPT_ID))
+    expect(same.problem).toBe('same-species')
+    expect(same.message).toMatch(/dos especies distintas/)
+
+    fetchMock.mockReturnValueOnce(
+      rejection(404, 'P0002', 'species_not_found', {
+        species_id: MERGED_ID,
+        species_role: 'merged',
+      }),
+    )
+    const gone = await failure(mergeCatalogSpecies(MERGED_ID, KEPT_ID))
+    expect(gone.problem).toBe('species-not-found')
+    expect(gone.details.speciesRole).toBe('merged')
+    expect(gone.message).toMatch(/La especie que se absorbía ya no está/)
+
+    fetchMock.mockReturnValueOnce(
+      jsonResponse({ code: '42501', message: 'Solo un administrador…' }, 403),
+    )
+    expect(
+      (await failure(mergeCatalogSpecies(MERGED_ID, KEPT_ID))).problem,
+    ).toBe('forbidden')
+    fetchMock.mockReturnValueOnce(
+      jsonResponse({ code: 'PGRST301', message: 'JWT expired' }, 401),
+    )
+    expect(
+      (await failure(mergeCatalogSpecies(MERGED_ID, KEPT_ID))).problem,
+    ).toBe('session-ended')
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(
+      (await failure(mergeCatalogSpecies(MERGED_ID, KEPT_ID))).problem,
+    ).toBe('offline')
   })
 })

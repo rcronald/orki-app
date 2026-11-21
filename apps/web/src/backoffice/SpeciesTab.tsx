@@ -48,8 +48,9 @@ import {
 import { useDebouncedValue, useRemoteData } from './useRemoteData.ts'
 
 // Pestaña "Especies": buscador, filtros, tabla paginada en el servidor,
-// detalle de la especie elegida (con su edición y su baja), alta de especies y
-// cambio de estado por lote de las filas seleccionadas.
+// detalle de la especie elegida (con su edición, su baja y su fusión con
+// otra), alta de especies y cambio de estado por lote de las filas
+// seleccionadas.
 //
 // Sin texto (o con menos de 2 caracteres) la tabla es el listado alfabético,
 // paginado por clave; con texto, la búsqueda por relevancia, paginada por
@@ -501,6 +502,15 @@ export function SpeciesTab({
               onDeleted={(message) => {
                 setReturnFocusTo(detailId)
                 onChange({ ...state, detailId: null })
+                onCatalogChanged(message)
+              }}
+              onMerged={(keptId, message) => {
+                // Se abre la conservada (puede ser la misma) con el foco en
+                // su título; la absorbida ya no está en la tabla.
+                setFocusRequest((value) => value + 1)
+                setReturnFocusTo(keptId)
+                if (keptId !== detailId)
+                  onChange({ ...state, detailId: keptId })
                 onCatalogChanged(message)
               }}
               onClose={() => {
