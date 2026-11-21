@@ -39,6 +39,12 @@ export function AuthPageLayout({ title, children }: AuthPageLayoutProps) {
           {children}
         </div>
       </main>
+      {/* Antes de crear la cuenta, qué datos se guardan (#111). */}
+      <footer className="px-space-4 pb-space-4 text-center text-sm">
+        <Link to={PATHS.privacy} className="text-neutral-700 underline">
+          Privacidad
+        </Link>
+      </footer>
     </div>
   )
 }

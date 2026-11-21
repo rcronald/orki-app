@@ -125,10 +125,13 @@ afterEach(() => {
 })
 
 describe('AccountView', () => {
-  it('muestra el correo y explica qué se borra', async () => {
+  it('muestra el correo, explica qué se borra y enlaza la privacidad', async () => {
     const { effects } = controlledEffects()
     renderView({ effects })
     expect(screen.getByText('persona@example.com')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Qué datos guarda Orki (privacidad)' }),
+    ).toHaveAttribute('href', '/privacidad')
     expect(
       screen.getByText(
         /se borran tus plantas con todos sus detalles, sus fotos, tu perfil/,
@@ -283,7 +286,12 @@ describe('AccountView', () => {
     expect(alert).toHaveTextContent(
       'Tus fotos, tus plantas y tu perfil ya se borraron; solo queda tu cuenta de acceso, vacía.',
     )
-    expect(alert).toHaveTextContent('escribe a quien administra Orki')
+    expect(alert).toHaveTextContent(
+      'escribe al contacto de la página de privacidad',
+    )
+    expect(
+      within(dialog).getByRole('link', { name: 'Ver la página de privacidad' }),
+    ).toHaveAttribute('href', '/privacidad')
     // La marca sigue: el perfil no se recrea y al volver se ofrece terminar.
     expect(isAccountDeletionPending(USER)).toBe(true)
 

@@ -1,7 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router'
 import { Button } from '../components/ui/Button.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
+import { PATHS } from '../routes/paths.ts'
 import { DELETION_STEPS, type DeletionStep } from './deletion.ts'
 import {
   DIALOG_TEXT,
@@ -140,7 +142,7 @@ export function DeleteAccountDialog({
   const canConfirm = confirmed && online && !running
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-neutral-900/50 p-space-3 sm:items-center">
+    <div className="fixed inset-[0] z-50 flex items-end justify-center bg-neutral-900/50 p-space-3 sm:items-center">
       <div
         ref={dialogRef}
         role="dialog"
@@ -194,6 +196,16 @@ export function DeleteAccountDialog({
               className="rounded-md bg-danger-soft p-space-3 text-md"
             >
               {failureText(state.step, state.reason)}
+            </p>
+          )}
+          {failed && state.reason === 'not-allowed' && (
+            <p className="text-md">
+              <Link
+                to={PATHS.privacy}
+                className="font-semibold text-secondary underline"
+              >
+                Ver la página de privacidad
+              </Link>
             </p>
           )}
 

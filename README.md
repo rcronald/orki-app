@@ -656,6 +656,27 @@ Sin huérfanos:
 - **Pendiente:** ofrecer la exportación del inventario (#17) antes de eliminar, cuando exista. Lo que no pueda borrar la app (por ejemplo, una cuenta eliminada desde el panel de Clerk) lo detectará el script del #112.
 - **Pruebas:** `src/account/*.test.ts(x)` (orquestadora con cada fallo, efectos de Supabase con un cliente simulado, errores de Clerk, limpieza del dispositivo, diálogo con teclado y axe), `src/lib/profile.test.ts` (la marca) y `src/pages/AccountPage.test.tsx` (con el doble de Clerk, de `/cuenta` al inicio). En `/muestra`, sección "Pantalla de cuenta", se ve con pasos simulados y se elige cuál falla.
 
+## Página de privacidad
+
+`/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie de la app, desde las pantallas de acceso, desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`); de la atribución del catálogo importa solo `src/backoffice/attribution.ts`, sin la pantalla del backoffice.
+
+**Es un borrador pendiente de revisión por una persona.** Lo redactó un agente comprobándolo contra el código de esta rama el 21 de noviembre de 2026. No es asesoría legal: conviene que lo revise alguien con criterio legal (ley peruana de protección de datos personales). La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
+
+Contacto: `src/privacy/contact.ts` tiene la constante `PRIVACY_CONTACT` con el marcador `CONTACTO_PENDIENTE`. Mientras sea el marcador, la página dice que aún no hay un medio de contacto publicado; al poner un correo o una URL real, lo muestra enlazado. Hay que completarlo antes de publicar.
+
+Afirmaciones que debe verificar una persona:
+
+1. Clerk recibe, si se entra con Google, datos del perfil de Google «como tu nombre y tu foto» (depende de los permisos que pida la instancia de Clerk).
+2. Los proveedores son solo Clerk (acceso), Supabase (base de datos y fotos) y Vercel (alojamiento). No dice en qué países guardan los datos ni qué registros técnicos (por ejemplo, direcciones IP) guardan por su cuenta: conviene revisarlo en sus condiciones y decidir si se menciona.
+3. «Orki no usa analítica ni publicidad»: cierto en el código de hoy (no hay Sentry ni eventos de producto). La especificación prevé Sentry y dos eventos de producto: al añadirlos, hay que cambiar el texto.
+4. Quién ve qué: las políticas solo entregan a cada usuario sus plantas; un administrador del catálogo ve, con `count_species_plants`, cuántas plantas hay enlazadas a una especie (solo el número) y, por la política del bucket, puede abrir la foto actual de las plantas «por validar». La cola de propuestas (#22) aún no existe; el texto dice en futuro que entonces verá también el nombre ingresado.
+5. Lo que se guarda en el dispositivo (borrador con caducidad de 24 horas, miniaturas que se borran al cerrar sesión, preferencias del inventario, archivos de la app y la sesión de Clerk) y que las fotos se reducen y pierden sus metadatos, incluida la ubicación, antes de subirlas.
+6. Que no hay exportación de datos (#17 aún no está en esta rama): al añadirla, cambiar el texto.
+7. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «Orki lo filtró a las orquídeas y lo normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
+8. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
+
+Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
+
 ## Base de datos y migraciones
 
 Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.
