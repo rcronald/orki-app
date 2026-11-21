@@ -268,6 +268,9 @@ function HistoryItem({
         </time>{' '}
         · por <span title={entry.actor}>{actorText(entry.actor)}</span>
       </p>
+      {entry.action === 'merge_species' && (
+        <MergeSummary details={entry.details} />
+      )}
       {main && <ChangeValues change={main} genusNames={entry.genusNames} />}
       {rest.length > 0 && (
         <ul className="flex flex-col gap-space-1">
@@ -288,6 +291,36 @@ function HistoryItem({
         </p>
       )}
     </li>
+  )
+}
+
+/**
+ * Qué hizo una fusión, de sus detalles en la auditoría: "Se absorbió
+ * «Doritis pulcherrima» en «Phalaenopsis pulcherrima» (plantas movidas: 3;
+ * nombres que pasaron: 2)."
+ */
+function MergeSummary({ details }: { details: AuditValues | null }) {
+  const merged = details?.merged_scientific_name
+  const kept = details?.kept_scientific_name
+  if (typeof merged !== 'string' || typeof kept !== 'string') return null
+  const plants = details?.plant_count
+  const names = details?.moved_names
+  const parts = [
+    typeof plants === 'number' && `plantas movidas: ${formatCount(plants)}`,
+    Array.isArray(names) && `nombres que pasaron: ${formatCount(names.length)}`,
+  ].filter((part): part is string => typeof part === 'string')
+  return (
+    <p className="text-sm text-neutral-900 [overflow-wrap:anywhere]">
+      Se absorbió «
+      <span className="scientific-name">
+        <ScientificName name={merged} />
+      </span>
+      » en «
+      <span className="scientific-name">
+        <ScientificName name={kept} />
+      </span>
+      »{parts.length > 0 ? ` (${parts.join('; ')}).` : '.'}
+    </p>
   )
 }
 

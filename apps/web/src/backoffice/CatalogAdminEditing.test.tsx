@@ -503,6 +503,9 @@ describe('Backoffice: escritura de especies', () => {
     expect(
       within(panel).queryByRole('button', { name: 'Borrar la especie' }),
     ).not.toBeInTheDocument()
+    expect(
+      within(panel).getByRole('button', { name: 'Fusionar con otra especie' }),
+    ).toBeInTheDocument()
     await expectNoAxeViolations()
   })
 

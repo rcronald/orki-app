@@ -9,9 +9,9 @@ las tildes y el «×»):
 - ``entidad``: ``carga`` (datos de la ejecución), ``genero``, ``especie``, ``sinonimo`` o
   (en la lista curada) ``nombre_comun``.
 - ``resultado``: ``info`` (solo en ``carga``), ``nuevo``, ``actualizado``, ``sin_cambios``,
-  ``conflicto``, ``rechazado``, ``no_en_fuente`` u ``omitido`` (entradas de la lista sin
-  revisar), y para lo que la normalización de COL dejó fuera o cambió, ``descartado`` o
-  ``ajustado``.
+  ``conflicto``, ``rechazado``, ``no_en_fuente``, ``omitido`` (entradas de la lista sin
+  revisar), ``omitido_por_fusion`` (registros cuya clave absorbió una fusión de especies) y,
+  para lo que la normalización de COL dejó fuera o cambió, ``descartado`` o ``ajustado``.
 - ``codigo``: código estable del motivo (``ESPECIE_NUEVA``, ``ESPECIE_PROTEGIDA``,
   ``FORMULA_HIBRIDA``…).
 - ``source_ref``: identificador del registro en su fuente (clave de COL o identificador de
@@ -38,6 +38,7 @@ from .load import (
     CONFLICT,
     GENUS,
     INFO,
+    MERGED,
     NEW,
     NOT_IN_SOURCE,
     OMITTED,
@@ -49,6 +50,7 @@ from .load import (
     UPDATED,
     LoadResult,
     ReportRow,
+    missing_merges_message,
 )
 from .model import Action, Catalog, Issue
 from .normalize import SYNONYM_STATUSES
@@ -64,7 +66,42 @@ _RESULT_LABELS = {
     REJECTED: 'rechazados',
     NOT_IN_SOURCE: 'en la base y no en la fuente',
     OMITTED: 'omitidos',
+    MERGED: 'omitidos por fusión',
 }
+
+
+def merge_notes(result: LoadResult) -> list[str]:
+    """Líneas del resumen sobre la memoria de las fusiones. Sin fusiones de esta fuente y con
+    la memoria en la base, ninguna: el resumen queda igual que antes de #137."""
+    if not result.merges_ready:
+        return [f'Aviso: {missing_merges_message()} Con --escribir, esta carga se negaría.']
+    if not result.merge_keys:
+        return []
+    omitted = result.plan.counts[(SPECIES, MERGED)]
+    return [
+        f'Fusiones: {result.merge_keys} claves de esta fuente en la memoria de las fusiones; '
+        f'{omitted} registros de la fuente omitidos por fusión (no se crean ni se actualizan; '
+        'sus nombres van a la especie conservada).'
+    ]
+
+
+def merge_row(result: LoadResult) -> list[ReportRow]:
+    """Fila FUSIONES del reporte, en las mismas condiciones que :func:`merge_notes`."""
+    if not result.merges_ready:
+        detail = 'La base no tiene la memoria de las fusiones; con --escribir se negaría.'
+        return [ReportRow(RUN, INFO, 'FUSIONES', name='sin memoria', detail=detail)]
+    if not result.merge_keys:
+        return []
+    omitted = result.plan.counts[(SPECIES, MERGED)]
+    return [
+        ReportRow(
+            RUN,
+            INFO,
+            'FUSIONES',
+            name=f'{result.merge_keys} claves en la memoria',
+            detail=f'{omitted} registros omitidos por fusión (resultado omitido_por_fusion).',
+        )
+    ]
 
 
 def megabytes(size: int) -> str:
@@ -138,6 +175,7 @@ def run_rows(context: dict[str, Any], result: LoadResult) -> list[ReportRow]:
         # Identificador de la carga y qué pasó con su fila de resumen en la auditoría.
         actor, detail = context['audit']
         rows.append(ReportRow(RUN, INFO, 'AUDITORIA', name=actor, detail=detail))
+    rows += merge_row(result)
     for (entity, outcome), count in sorted(result.plan.counts.items()):
         rows.append(ReportRow(RUN, INFO, 'TOTAL', name=f'{entity} {outcome}', detail=str(count)))
     rows += [
@@ -245,6 +283,7 @@ def format_load_summary(
         ]
         lines.append(f'{label}: ' + ', '.join(parts))
     lines += list(notes)
+    lines += merge_notes(result)
     lines += [
         '',
         'Base de datos tras la carga'

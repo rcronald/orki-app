@@ -24,6 +24,11 @@ function renderShowcase() {
   )
 }
 
+// La página de muestra pinta todos los componentes y pantallas a la vez: con
+// el equipo cargado (o en el CI) una prueba que además escribe en ella no
+// cabe en los 5 s por defecto.
+vi.setConfig({ testTimeout: 20_000 })
+
 describe('ShowcasePage', () => {
   it('pone el título de la pestaña', () => {
     renderShowcase()

@@ -263,6 +263,48 @@ export type Database = {
           },
         ]
       }
+      species_merge_keys: {
+        Row: {
+          action_id: string
+          merged_at: string
+          merged_by: string
+          merged_scientific_name: string
+          merged_species_id: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string
+          species_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          action_id: string
+          merged_at?: string
+          merged_by: string
+          merged_scientific_name: string
+          merged_species_id: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string
+          species_id: string
+        }
+        Update: {
+          action_id?: string
+          merged_at?: string
+          merged_by?: string
+          merged_scientific_name?: string
+          merged_species_id?: string
+          source?: Database['public']['Enums']['species_source']
+          source_ref?: string
+          species_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'species_merge_keys_species_id_fkey'
+            columns: ['species_id']
+            isOneToOne: false
+            referencedRelation: 'species'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       species_names: {
         Row: {
           created_at: string
@@ -476,7 +518,42 @@ export type Database = {
           updated_at: string
         }[]
       }
+      merge_species: {
+        Args: { kept_species_id: string; merged_species_id: string }
+        Returns: {
+          action_id: string
+          kept_validated: boolean
+          moved_name_count: number
+          plant_count: number
+          remembered_keys: Json
+          skipped_name_count: number
+        }[]
+      }
       normalize_search_text: { Args: { value: string }; Returns: string }
+      preview_species_merge: {
+        Args: { kept_species_id: string; merged_species_id: string }
+        Returns: {
+          existing_names: Json
+          genus_differs: boolean
+          kept_becomes_validated: boolean
+          kept_genus_id: string
+          kept_genus_name: string
+          kept_scientific_name: string
+          kept_status: Database['public']['Enums']['species_status']
+          kept_type: Database['public']['Enums']['species_type']
+          merged_genus_id: string
+          merged_genus_name: string
+          merged_scientific_name: string
+          merged_source: Database['public']['Enums']['species_source']
+          merged_source_ref: string
+          merged_status: Database['public']['Enums']['species_status']
+          merged_type: Database['public']['Enums']['species_type']
+          moved_names: Json
+          plant_count: number
+          remembered_keys: Json
+          type_differs: boolean
+        }[]
+      }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
       search_catalog_species: {
         Args: {

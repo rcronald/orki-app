@@ -12,6 +12,7 @@ import { LoadError, SpeciesStatusBadge } from './parts.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesForm } from './SpeciesForm.tsx'
 import { SpeciesHistory } from './SpeciesHistory.tsx'
+import { SpeciesMergeDialog } from './SpeciesMergeDialog.tsx'
 import { SpeciesNames } from './SpeciesNames.tsx'
 import {
   formatCount,
@@ -39,6 +40,11 @@ export interface SpeciesDetailPanelProps {
   onChanged: (message: string) => void
   /** Se borró la especie: la pantalla cierra el detalle. */
   onDeleted: (message: string) => void
+  /**
+   * Se fusionó con otra especie: la pantalla abre la conservada (que puede
+   * ser esta), vuelve a leer y lo anuncia.
+   */
+  onMerged: (keptId: string, message: string) => void
   /** Cambia tras cada escritura: el historial se vuelve a leer. */
   revision?: number
 }
@@ -47,8 +53,9 @@ export interface SpeciesDetailPanelProps {
 // estrechas): nombres alternativos, referencia de la fuente con enlace a la
 // ficha del Catalogue of Life, fechas y número de plantas enlazadas. Desde
 // aquí se edita (nombre, género, tipo y estado), se borra si no tiene plantas
-// enlazadas y se editan sus sinónimos y nombres comunes (SpeciesNames). Al
-// final, su historial de cambios (SpeciesHistory), también mientras se edita.
+// enlazadas, se fusiona con otra (SpeciesMergeDialog) y se editan sus
+// sinónimos y nombres comunes (SpeciesNames). Al final, su historial de
+// cambios (SpeciesHistory), también mientras se edita.
 export function SpeciesDetailPanel({
   detail,
   onClose,
@@ -56,6 +63,7 @@ export function SpeciesDetailPanel({
   source,
   onChanged,
   onDeleted,
+  onMerged,
   revision = 0,
 }: SpeciesDetailPanelProps) {
   const headingId = useId()
@@ -157,6 +165,8 @@ export function SpeciesDetailPanel({
           onEdit={() => setEditing(true)}
           onDeleted={onDeleted}
           onChanged={onChanged}
+          onMerged={onMerged}
+          heading={() => headingRef.current}
         />
       )}
       {species && (
@@ -196,6 +206,8 @@ function DetailBody({
   onEdit,
   onDeleted,
   onChanged,
+  onMerged,
+  heading,
 }: {
   species: CatalogSpeciesDetail
   plantCount: number
@@ -203,12 +215,19 @@ function DetailBody({
   onEdit: () => void
   onDeleted: (message: string) => void
   onChanged: (message: string) => void
+  onMerged: (keptId: string, message: string) => void
+  /** El título del panel, adonde va el foco tras fusionar. */
+  heading: () => HTMLElement | null
 }) {
   const synonyms = species.names.filter((name) => name.type === 'synonym')
   const commonNames = species.names.filter((name) => name.type === 'common')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [merging, setMerging] = useState(false)
+  // Tras fusionar (o si la especie ya no existe), el foco va al título del
+  // panel en lugar de al botón que abrió el diálogo, que desaparece.
+  const mergeDone = useRef(false)
 
   const remove = async () => {
     setDeleting(true)
@@ -280,14 +299,41 @@ function DetailBody({
             Borrar <span className="sr-only">la especie</span>
           </Button>
         )}
+        <Button
+          aria-haspopup="dialog"
+          onClick={() => {
+            mergeDone.current = false
+            setMerging(true)
+          }}
+        >
+          Fusionar con otra especie
+        </Button>
       </div>
       {plantCount > 0 && (
         <p className="text-sm text-neutral-700">
-          No se puede borrar: {plantCountText(plantCount).toLowerCase()} Para
-          quitarla del catálogo habrá que fusionarla con otra especie, cuando el
-          backoffice permita fusionar especies; mientras tanto, puedes marcarla
-          como «Observada».
+          No se puede borrar: {plantCountText(plantCount).toLowerCase()} Si es
+          un duplicado, puedes fusionarla con otra especie: sus plantas y sus
+          nombres pasarán a la que se conserve. Si no, puedes marcarla como
+          «Observada».
         </p>
+      )}
+      {merging && (
+        <SpeciesMergeDialog
+          species={species}
+          source={source}
+          onCancel={() => setMerging(false)}
+          onMerged={(keptId, message) => {
+            mergeDone.current = true
+            setMerging(false)
+            onMerged(keptId, message)
+          }}
+          onSpeciesGone={(message) => {
+            mergeDone.current = true
+            setMerging(false)
+            onChanged(message)
+          }}
+          returnFocusTo={() => (mergeDone.current ? heading() : null)}
+        />
       )}
       {confirmDelete && (
         <ConfirmDialog

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .audit import HYBRIDS_LOAD, hybrids_source
 from .hybrids import HybridList, format_validation, read_hybrids
-from .hybrids_load import CURATED_POLICY, plan_hybrids
+from .hybrids_load import CURATED_POLICY, entry_names, plan_hybrids
 from .load import COMMON_NAME, GENUS, SPECIES, SYNONYM, run_plan
 from .load_cli import (
     add_load_options,
@@ -104,6 +104,7 @@ def load_main(argv: list[str]) -> int:
             CURATED_POLICY,
             write=args.escribir,
             audit=audit,
+            source_names=lambda: entry_names(entries),
         ),
     )
     if isinstance(result, int):

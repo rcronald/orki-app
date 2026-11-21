@@ -4,13 +4,13 @@
 -- orden sobre una base vacía. Estas pruebas comprueban además que el resultado tiene las
 -- piezas que el resto de pruebas y la app dan por hechas.
 
--- prueba: existen las siete tablas del esquema en public
+-- prueba: existen las ocho tablas del esquema en public
 select pruebas.iguales(
   'tablas de public',
   (select string_agg(c.relname, ', ' order by c.relname)
      from pg_class c
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')),
-  'catalog_audit_log, genera, genus_abbreviations, plants, profiles, species, species_names'
+  'catalog_audit_log, genera, genus_abbreviations, plants, profiles, species, species_merge_keys, species_names'
 );
 
 -- prueba: los enumerados tienen los valores acordados, en orden
@@ -73,6 +73,7 @@ select pruebas.iguales(
     || 'require_catalog_admin definer=false search_path=""; '
     || 'set_audit_species_id definer=false search_path=""; '
     || 'set_updated_at definer=false search_path=""; '
+    || 'species_merge_plan definer=false search_path=""; '
     || 'sync_plant_with_species definer=true search_path=""; '
     || 'validate_edited_imported_species definer=false search_path=""'
 );
