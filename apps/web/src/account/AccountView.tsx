@@ -1,4 +1,5 @@
 import { useId, useState, useSyncExternalStore } from 'react'
+import { Link } from 'react-router'
 import { Button } from '../components/ui/Button.tsx'
 import {
   clearAccountDeletionMarker,
@@ -6,6 +7,7 @@ import {
   subscribeToAccountDeletionMarker,
 } from '../lib/account-deletion-marker.ts'
 import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
+import { PATHS } from '../routes/paths.ts'
 import { DeleteAccountDialog } from './DeleteAccountDialog.tsx'
 import type { AccountDeletionEffects } from './deletion.ts'
 import { ACCOUNT_TEXT } from './texts.ts'
@@ -80,6 +82,14 @@ export function AccountView({
           <dd className="break-words">{email ?? ACCOUNT_TEXT.noEmail}</dd>
         </dl>
         <p className="text-sm text-neutral-700">{ACCOUNT_TEXT.manageHint}</p>
+        <p className="text-sm">
+          <Link
+            to={PATHS.privacy}
+            className="font-semibold text-secondary underline"
+          >
+            {ACCOUNT_TEXT.privacyLink}
+          </Link>
+        </p>
       </section>
 
       <section

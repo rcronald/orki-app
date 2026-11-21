@@ -29,12 +29,13 @@ export const ACCOUNT_TEXT = {
   offline:
     'Sin conexión: para eliminar la cuenta hace falta conexión. Vuelve cuando la tengas.',
   notAllowed:
-    'Orki todavía no permite eliminar la cuenta desde la app. No se ha borrado nada. Para eliminarla, escribe a quien administra Orki.',
+    'Orki todavía no permite eliminar la cuenta desde la app. No se ha borrado nada. Para eliminarla, escribe al contacto de la página de privacidad.',
   pendingHeading: 'La eliminación de tu cuenta quedó a medias',
   pendingText:
     'Empezaste a eliminar tu cuenta y no terminó. Puede que parte de tus datos ya se haya borrado. Continúa para terminar, o sigue usando Orki con lo que quede.',
   pendingContinue: 'Continuar la eliminación',
   pendingKeep: 'Seguir usando Orki',
+  privacyLink: 'Qué datos guarda Orki (privacidad)',
 } as const
 
 export const DIALOG_TEXT = {
@@ -113,7 +114,8 @@ const DONE_TEXT: Record<number, string> = {
 }
 
 /** Contacto para pedir la eliminación de la cuenta a mano. */
-export const CONTACT_TEXT = 'Para eliminarla, escribe a quien administra Orki.'
+export const CONTACT_TEXT =
+  'Para eliminarla, escribe al contacto de la página de privacidad.'
 
 /** Explicación de un fallo: qué falló, por qué, qué quedó y qué hacer. */
 export function failureText(
