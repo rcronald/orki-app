@@ -196,9 +196,9 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 /**
  * Clasifica el `error` de supabase-js: cancelada, sin token de sesión, sin
  * respuesta (estado 0), token rechazado (401), sin permiso (código 42501 de
- * Postgres) o fallo.
+ * Postgres) o fallo. También la usan las escrituras (catalogWrites.ts).
  */
-function toAdminError(
+export function toAdminError(
   error: unknown,
   status: number,
   signal: AbortSignal | undefined,
@@ -223,7 +223,8 @@ function toAdminError(
   return new CatalogAdminError('failed', { cause: error })
 }
 
-async function loadClient(
+/** El cliente de Supabase, o CatalogAdminError si no se puede cargar. */
+export async function loadClient(
   signal: AbortSignal | undefined,
 ): Promise<OrkiSupabaseClient> {
   throwIfAborted(signal)

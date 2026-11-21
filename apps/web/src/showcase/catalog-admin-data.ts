@@ -7,6 +7,15 @@ import {
   type CatalogSpeciesDetail,
   type CatalogSpeciesRow,
 } from '../lib/catalogAdmin.ts'
+import {
+  cleanCatalogText,
+  CatalogWriteError,
+  MAX_BATCH_SPECIES,
+  validateSpeciesInput,
+  type CatalogWriteProblem,
+  type SpeciesInput,
+  type WrittenSpecies,
+} from '../lib/catalogWrites.ts'
 import type { GenusSearchResult } from '../lib/catalogSearch.ts'
 import type {
   SpeciesNameType,
@@ -21,7 +30,10 @@ import type {
 // Supabase (CatalogAdminSource). Pagina como la base (por clave sin texto, por
 // número con texto), pero la búsqueda es solo una aproximación: compara por
 // prefijo de palabras y, si nada empieza así, por contener el texto; no
-// tolera errores de tipeo como la de verdad.
+// tolera errores de tipeo como la de verdad. Las escrituras cambian el
+// catálogo en memoria con las mismas reglas que la base (nombre único sin
+// distinguir mayúsculas ni el signo «×», baja solo sin plantas...), hasta que
+// se cambia de escenario.
 
 interface SampleGenus {
   id: string
@@ -330,6 +342,8 @@ function startsByWords(name: string, query: string): boolean {
   })
 }
 
+let nextId = 0
+
 const CREATED_AT = '2026-11-20T14:37:00Z'
 const UPDATED_AT = '2026-11-21T08:15:00Z'
 
@@ -372,13 +386,51 @@ export function createSampleCatalogSource(
   scenario: SampleScenario,
   delayMs = 400,
 ): CatalogAdminSource {
-  const species = scenario === 'vacio' ? [] : buildSpecies()
-  const genera = scenario === 'vacio' ? [] : GENERA
-  const sorted = [...species].sort(
-    (a, b) =>
-      compareKey(normalize(a.scientificName), normalize(b.scientificName)) ||
-      compareKey(a.id, b.id),
-  )
+  const species: SampleSpecies[] = scenario === 'vacio' ? [] : buildSpecies()
+  const genera: SampleGenus[] =
+    scenario === 'vacio' ? [] : GENERA.map((genus) => ({ ...genus }))
+  const sorted = () =>
+    [...species].sort(
+      (a, b) =>
+        compareKey(normalize(a.scientificName), normalize(b.scientificName)) ||
+        compareKey(a.id, b.id),
+    )
+
+  const reject = (
+    problem: CatalogWriteProblem,
+    details?: ConstructorParameters<typeof CatalogWriteError>[1],
+  ): never => {
+    throw new CatalogWriteError(problem, details)
+  }
+  const findSpecies = (id: string) =>
+    species.find((item) => item.id === id) ?? reject('species-not-found')
+  const checkSpecies = (input: SpeciesInput, exceptId: string | null) => {
+    const invalid = validateSpeciesInput(input)
+    if (invalid) throw invalid
+    const name = cleanCatalogText(input.scientificName)
+    if (!genera.some((genus) => genus.id === input.genusId))
+      reject('genus-not-found')
+    const others = species.filter((item) => item.id !== exceptId)
+    const same = others.find(
+      (item) => item.scientificName.toLowerCase() === name.toLowerCase(),
+    )
+    if (same) reject('duplicate-name', { existingName: same.scientificName })
+    const similar = others.find(
+      (item) => normalize(item.scientificName) === normalize(name),
+    )
+    if (similar)
+      reject('similar-name', { existingName: similar.scientificName })
+    return name
+  }
+  const written = (item: SampleSpecies): WrittenSpecies => ({
+    id: item.id,
+    scientificName: item.scientificName,
+    genusId: item.genusId,
+    type: item.type,
+    status: item.status,
+    source: item.source,
+    sourceRef: item.sourceRef,
+  })
 
   function respond<T>(signal: AbortSignal | undefined, value: () => T) {
     return new Promise<T>((resolve, reject) => {
@@ -388,7 +440,13 @@ export function createSampleCatalogSource(
       const timer = setTimeout(() => {
         if (scenario === 'sin-conexion') fail('offline')
         else if (scenario === 'fallo') fail('failed')
-        else resolve(value())
+        else {
+          try {
+            resolve(value())
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)))
+          }
+        }
       }, delayMs)
       signal?.addEventListener('abort', () => {
         clearTimeout(timer)
@@ -411,7 +469,7 @@ export function createSampleCatalogSource(
   return {
     listSpecies: (options = {}) =>
       respond(options.signal, () => {
-        const list = sorted.filter(matches(options))
+        const list = sorted().filter(matches(options))
         const size = options.pageSize ?? CATALOG_PAGE_SIZE
         const cursor = options.cursor ?? { kind: 'first' }
         let start = 0
@@ -444,12 +502,12 @@ export function createSampleCatalogSource(
         const text = normalize(query)
         const filter = matches(options)
         const found: { item: SampleSpecies; match: SampleName | null }[] = []
-        for (const item of sorted.filter(filter)) {
+        for (const item of sorted().filter(filter)) {
           if (startsByWords(item.scientificName, text)) {
             found.push({ item, match: null })
           }
         }
-        for (const item of sorted.filter(filter)) {
+        for (const item of sorted().filter(filter)) {
           if (found.some((entry) => entry.item === item)) continue
           const name = item.names.find((candidate) =>
             startsByWords(candidate.name, text),
@@ -457,7 +515,7 @@ export function createSampleCatalogSource(
           if (name) found.push({ item, match: name })
         }
         if (found.length === 0) {
-          for (const item of sorted.filter(filter)) {
+          for (const item of sorted().filter(filter)) {
             if (normalize(item.scientificName).includes(text)) {
               found.push({ item, match: null })
             }
@@ -587,6 +645,70 @@ export function createSampleCatalogSource(
                   normalize(abbreviation).replace(/\.$/, '') === text,
               ) ?? null,
           }))
+      }),
+    createSpecies: (input) =>
+      respond(undefined, () => {
+        const name = checkSpecies(input, null)
+        if (input.status === 'imported') reject('invalid-status')
+        nextId += 1
+        const item: SampleSpecies = {
+          id: uuid(3, nextId),
+          scientificName: name,
+          genusId: input.genusId ?? '',
+          type: input.type,
+          status: input.status,
+          source: 'curated',
+          sourceRef: null,
+          names: [],
+          plants: 0,
+        }
+        species.push(item)
+        return written(item)
+      }),
+    updateSpecies: (id, input) =>
+      respond(undefined, () => {
+        const item = findSpecies(id)
+        const name = cleanCatalogText(input.scientificName)
+        if (name !== item.scientificName) checkSpecies(input, id)
+        else {
+          const invalid = validateSpeciesInput(input)
+          if (invalid) throw invalid
+        }
+        const changed =
+          name !== item.scientificName ||
+          input.genusId !== item.genusId ||
+          input.type !== item.type
+        item.scientificName = name
+        item.genusId = input.genusId ?? item.genusId
+        item.type = input.type
+        // Como el disparador de la base: una importada editada pasa a validada.
+        item.status =
+          changed && item.status === 'imported' && input.status === 'imported'
+            ? 'validated'
+            : input.status
+        return written(item)
+      }),
+    setSpeciesStatus: (ids, status) =>
+      respond(undefined, () => {
+        const unique = [...new Set(ids)]
+        if (unique.length === 0) reject('no-species')
+        if (unique.length > MAX_BATCH_SPECIES)
+          reject('too-many-species', { max: MAX_BATCH_SPECIES })
+        const items = species.filter((item) => unique.includes(item.id))
+        if (items.length < unique.length)
+          reject('species-not-found', {
+            missingCount: unique.length - items.length,
+          })
+        const changing = items.filter((item) => item.status !== status)
+        for (const item of changing) item.status = status
+        return changing.length
+      }),
+    deleteSpecies: (id) =>
+      respond(undefined, () => {
+        const item = findSpecies(id)
+        if (item.plants > 0)
+          reject('species-has-plants', { plantCount: item.plants })
+        species.splice(species.indexOf(item), 1)
       }),
   }
 }

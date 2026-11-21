@@ -45,7 +45,7 @@ select pruebas.iguales(
      where c.relnamespace = 'public'::regnamespace and not t.tgisinternal),
   'genera.set_updated_at:O, genus_abbreviations.set_updated_at:O, plants.set_updated_at:O, '
     || 'plants.sync_with_species:O, profiles.set_updated_at:O, species.propagate_to_plants:O, '
-    || 'species.set_updated_at:O, species_names.set_updated_at:O'
+    || 'species.set_updated_at:O, species.validate_edited_imported:O, species_names.set_updated_at:O'
 );
 
 -- prueba: las funciones de los disparadores y el guardián de administrador viven en private y fijan un search_path vacío
@@ -54,10 +54,14 @@ select pruebas.iguales(
   (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ','), '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'private'::regnamespace),
-  'propagate_species_to_plants definer=true search_path=""; '
+  'check_species_name_free definer=false search_path=""; '
+    || 'clean_catalog_text definer=false search_path=""; '
+    || 'propagate_species_to_plants definer=true search_path=""; '
+    || 'raise_catalog_error definer=false search_path=""; '
     || 'require_catalog_admin definer=false search_path=""; '
     || 'set_updated_at definer=false search_path=""; '
-    || 'sync_plant_with_species definer=true search_path=""'
+    || 'sync_plant_with_species definer=true search_path=""; '
+    || 'validate_edited_imported_species definer=false search_path=""'
 );
 
 -- prueba: las tablas y las funciones pertenecen a postgres, como en Supabase

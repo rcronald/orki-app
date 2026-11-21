@@ -1,4 +1,5 @@
-import { useId, useRef, type KeyboardEvent } from 'react'
+import { useId, useRef, useState, type KeyboardEvent } from 'react'
+import { Icon } from '../components/ui/Icon.tsx'
 import { GeneraTab } from './GeneraTab.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesTab } from './SpeciesTab.tsx'
@@ -30,8 +31,13 @@ const TABS: readonly { id: CatalogAdminTab; label: string }[] = [
 /**
  * Pantalla del catálogo para administradores, sin la conexión a la URL:
  * resumen, pestañas de especies y géneros y atribución del Catalogue of Life.
- * Solo lectura. La usa CatalogAdminPage con la URL y Supabase, y la página de
- * muestra con estado propio y datos fijos.
+ * La usa CatalogAdminPage con la URL y Supabase, y la página de muestra con
+ * estado propio y datos en memoria.
+ *
+ * Tras cada escritura, `revision` sube: el resumen, la tabla y el detalle se
+ * vuelven a leer sin perder la búsqueda, los filtros ni la página (están en
+ * el estado), mostrando lo de antes hasta que llega lo nuevo, y el resultado
+ * se anuncia en una región de estado.
  */
 export function CatalogAdminView({
   state,
@@ -39,8 +45,16 @@ export function CatalogAdminView({
   source,
   hrefFor,
 }: CatalogAdminViewProps) {
-  const summary = useRemoteData('resumen', (signal) =>
-    source.summary({ signal }),
+  const [revision, setRevision] = useState(0)
+  const [announcement, setAnnouncement] = useState('')
+  const onCatalogChanged = (message: string) => {
+    setRevision((value) => value + 1)
+    setAnnouncement(message)
+  }
+  const summary = useRemoteData(
+    'resumen',
+    (signal) => source.summary({ signal }),
+    { revision },
   )
   const baseId = useId()
   const tabRefs = useRef(new Map<CatalogAdminTab, HTMLButtonElement>())
@@ -81,8 +95,25 @@ export function CatalogAdminView({
   return (
     <div className="flex flex-col gap-space-5">
       <p className="max-w-prose text-md text-neutral-700">
-        El catálogo de especies tal como lo ven la búsqueda y el registro. Solo
-        lectura: la edición llegará más adelante.
+        El catálogo de especies tal como lo ven la búsqueda y el registro. Los
+        cambios que se guardan aquí llegan al momento al buscador de todos los
+        usuarios.
+      </p>
+      <p
+        role="status"
+        className={
+          announcement === ''
+            ? 'sr-only'
+            : 'flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-md text-neutral-900'
+        }
+      >
+        {announcement !== '' && (
+          <Icon
+            name="circle-check"
+            className="mt-space-1 size-[16px] flex-none text-success"
+          />
+        )}
+        {announcement}
       </p>
       <SummaryPanel summary={summary} />
 
@@ -134,6 +165,8 @@ export function CatalogAdminView({
               source={source}
               fullState={state}
               hrefFor={hrefFor}
+              revision={revision}
+              onCatalogChanged={onCatalogChanged}
             />
           ) : (
             <GeneraTab
