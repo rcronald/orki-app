@@ -177,6 +177,57 @@ describe('parseEnv', () => {
     })
   })
 
+  describe('DSN de Sentry', () => {
+    const DSN = 'https://clave0publica@o123.ingest.us.sentry.io/4567'
+    const INVALID =
+      'No es un DSN de Sentry válido (https://<clave>@<host>/<proyecto>).'
+
+    it('es opcional: sin él la configuración es válida y no lleva DSN', () => {
+      const result = parseEnv(VALID)
+
+      expect(result.ok && result.config.sentryDsn).toBeUndefined()
+    })
+
+    it('vacío cuenta como ausente', () => {
+      const result = parseEnv({ ...VALID, VITE_SENTRY_DSN: '   ' })
+
+      expect(result.ok && result.config.sentryDsn).toBeUndefined()
+    })
+
+    it('acepta un DSN válido y recorta espacios', () => {
+      const result = parseEnv({ ...VALID, VITE_SENTRY_DSN: ` ${DSN} ` })
+
+      expect(result.ok && result.config.sentryDsn).toBe(DSN)
+    })
+
+    it.each([
+      'no es url',
+      'http://clave@o123.ingest.sentry.io/4567',
+      'https://o123.ingest.sentry.io/4567',
+      'https://clave@o123.ingest.sentry.io/',
+      'https://clave@o123.ingest.sentry.io/proyecto',
+      'https://clave@o123.ingest.sentry.io/4567?x=1',
+    ])('rechaza %s', (dsn) => {
+      const result = parseEnv({ ...VALID, VITE_SENTRY_DSN: dsn })
+
+      expect(result).toEqual({
+        ok: false,
+        issues: [{ variable: 'VITE_SENTRY_DSN', problem: INVALID }],
+      })
+    })
+
+    it('rechaza un DSN con clave secreta con un mensaje propio', () => {
+      const result = parseEnv({
+        ...VALID,
+        VITE_SENTRY_DSN: 'https://clave:secreto_visible@o1.ingest.sentry.io/2',
+      })
+
+      expect(!result.ok && result.issues[0]?.variable).toBe('VITE_SENTRY_DSN')
+      expect(!result.ok && result.issues[0]?.problem).toMatch(/clave secreta/)
+      expect(JSON.stringify(result)).not.toContain('secreto_visible')
+    })
+  })
+
   it('nunca incluye los valores en los problemas', () => {
     const invalid = {
       VITE_SUPABASE_URL: 'http://valor-visible.example',
