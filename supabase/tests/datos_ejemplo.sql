@@ -144,3 +144,48 @@ select pruebas.iguales(
   (select string_agg(s.scientific_name, ', ') from public.search_species('Paph. ins', 1) s),
   'Paphiopedilum insigne'
 );
+
+-- prueba: las plantas de ejemplo se cargan para un usuario, con su marca y sin tocar a otros
+-- supabase/datos-ejemplo/plantas.sql lo carga "npm run db:seed:plants", que sustituye
+-- :'usuario' y :cantidad; aquí los pone psql.
+\i supabase/datos-ejemplo/catalogo.sql
+insert into public.plants (user_id, entered_name, genus_id, type)
+values ('user_otra_persona', 'Planta ajena', pruebas.genero('Vanda'), 'unknown');
+\set usuario user_plantas_de_ejemplo
+\set cantidad 20
+\i supabase/datos-ejemplo/plantas.sql
+select pruebas.iguales(
+  'plantas del usuario',
+  (select count(*) from public.plants where user_id = 'user_plantas_de_ejemplo'),
+  20::bigint
+);
+select pruebas.comprobar(
+  'todas llevan la marca de prueba en el origen',
+  not exists (
+    select from public.plants
+    where user_id = 'user_plantas_de_ejemplo' and origin not like '% (prueba)'
+  )
+);
+select pruebas.iguales(
+  'las enlazadas a una especie quedan validadas y las de nombre libre, por validar',
+  (select count(*) filter (where species_id is not null and validation = 'validated') || ' y '
+          || count(*) filter (where species_id is null and validation = 'pending')
+     from public.plants where user_id = 'user_plantas_de_ejemplo'),
+  '17 y 3'
+);
+select pruebas.comprobar(
+  'hay varios géneros y alguna dada de baja no rompe la carga',
+  (select count(distinct genus_id) from public.plants where user_id = 'user_plantas_de_ejemplo') >= 4
+);
+select pruebas.iguales(
+  'la planta de otra persona sigue igual',
+  (select count(*) from public.plants where user_id = 'user_otra_persona'),
+  1::bigint
+);
+-- Una segunda carga añade plantas: no sustituye las anteriores.
+\i supabase/datos-ejemplo/plantas.sql
+select pruebas.iguales(
+  'plantas del usuario tras cargar dos veces',
+  (select count(*) from public.plants where user_id = 'user_plantas_de_ejemplo'),
+  40::bigint
+);
