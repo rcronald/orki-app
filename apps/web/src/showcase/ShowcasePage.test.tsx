@@ -219,7 +219,7 @@ describe('ShowcasePage', () => {
     )
     await waitFor(() =>
       expect(within(section).getByRole('status')).toHaveTextContent(
-        'Guardada: «Masdevallia veitchiana», validada.',
+        'Guardada: «Masdevallia veitchiana», validada, sin foto.',
       ),
     )
     expect(within(section).getByText(/"species_id"/)).toBeInTheDocument()

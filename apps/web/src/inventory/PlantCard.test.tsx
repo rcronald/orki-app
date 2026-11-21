@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
 import type { PlantImageSource } from '../photos/read.ts'
@@ -129,11 +129,15 @@ describe('miniatura de la tarjeta', () => {
     act(() => {
       window.dispatchEvent(new Event('online'))
     })
-    await waitFor(() => {
-      expect(
-        screen.getByRole('img', { name: 'Foto de Cattleya labiata' }),
-      ).toBeInTheDocument()
-    })
+    // Margen amplio: en el CI, con la suite entera en paralelo, el reintento ha
+    // llegado a tardar algo más del segundo que espera findByRole por defecto.
+    expect(
+      await screen.findByRole(
+        'img',
+        { name: 'Foto de Cattleya labiata' },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument()
     expect(acquire).toHaveBeenCalledTimes(2)
   })
 
