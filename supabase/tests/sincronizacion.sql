@@ -184,6 +184,11 @@ select pruebas.iguales(
 create role orki_pruebas_editor nologin;
 grant usage on schema public to orki_pruebas_editor;
 grant select, update on public.species to orki_pruebas_editor;
+-- Quien escribe en species calcula el índice de búsqueda del nombre científico (#68), y para
+-- eso necesita usar el esquema extensions, que postgres no puede conceder. Como aquí solo
+-- importa la propagación, se quita el índice (vuelve con el rollback de la prueba). El caso
+-- real, un administrador con authenticated, está en politicas_catalogo.sql.
+drop index public.species_scientific_name_trgm_idx;
 create policy orki_pruebas_editor_species on public.species
   for all to orki_pruebas_editor using (true) with check (true);
 insert into public.plants (user_id, entered_name, species_id)
@@ -206,29 +211,29 @@ select pruebas.iguales(
 -- prueba: al actualizar cualquier tabla, updated_at pasa a ser la hora actual y created_at no cambia
 -- Filas con marcas antiguas (al insertar no actúa ningún disparador), que después se
 -- actualizan intentando también reescribir las marcas.
-insert into public.genera (name, created_at, updated_at) values ('Masdevallia', '2000-01-01', '2000-01-01');
+insert into public.genera (name, created_at, updated_at) values ('Restrepia', '2000-01-01', '2000-01-01');
 insert into public.genus_abbreviations (genus_id, abbreviation, created_at, updated_at)
-values (pruebas.genero('Masdevallia'), 'Masd.', '2000-01-01', '2000-01-01');
+values (pruebas.genero('Restrepia'), 'Rstp.', '2000-01-01', '2000-01-01');
 insert into public.species (scientific_name, genus_id, type, status, source, created_at, updated_at)
-values ('Masdevallia coccinea', pruebas.genero('Masdevallia'), 'species', 'validated', 'curated', '2000-01-01', '2000-01-01');
+values ('Restrepia coccinea', pruebas.genero('Restrepia'), 'species', 'validated', 'curated', '2000-01-01', '2000-01-01');
 insert into public.species_names (species_id, name, type, created_at, updated_at)
-values (pruebas.especie('Masdevallia coccinea'), 'Masdevallia roja', 'common', '2000-01-01', '2000-01-01');
+values (pruebas.especie('Restrepia coccinea'), 'Restrepia roja', 'common', '2000-01-01', '2000-01-01');
 insert into public.profiles (id, created_at, updated_at) values ('user_marcas', '2000-01-01', '2000-01-01');
 insert into public.plants (user_id, entered_name, genus_id, type, created_at, updated_at)
-values ('user_marcas', 'Marcas', pruebas.genero('Masdevallia'), 'unknown', '2000-01-01', '2000-01-01');
-update public.genera set is_quick_access = false, created_at = '1999-01-01', updated_at = '1999-01-01' where name = 'Masdevallia';
-update public.genus_abbreviations set abbreviation = 'Masdev.', created_at = '1999-01-01', updated_at = '1999-01-01' where abbreviation = 'Masd.';
-update public.species set status = 'observed', created_at = '1999-01-01', updated_at = '1999-01-01' where scientific_name = 'Masdevallia coccinea';
-update public.species_names set language = 'es', created_at = '1999-01-01', updated_at = '1999-01-01' where name = 'Masdevallia roja';
+values ('user_marcas', 'Marcas', pruebas.genero('Restrepia'), 'unknown', '2000-01-01', '2000-01-01');
+update public.genera set is_quick_access = false, created_at = '1999-01-01', updated_at = '1999-01-01' where name = 'Restrepia';
+update public.genus_abbreviations set abbreviation = 'Restr.', created_at = '1999-01-01', updated_at = '1999-01-01' where abbreviation = 'Rstp.';
+update public.species set status = 'observed', created_at = '1999-01-01', updated_at = '1999-01-01' where scientific_name = 'Restrepia coccinea';
+update public.species_names set language = 'es', created_at = '1999-01-01', updated_at = '1999-01-01' where name = 'Restrepia roja';
 update public.profiles set preferred_language = 'en', created_at = '1999-01-01', updated_at = '1999-01-01' where id = 'user_marcas';
 update public.plants set nickname = 'Roja', created_at = '1999-01-01', updated_at = '1999-01-01' where entered_name = 'Marcas';
 select pruebas.iguales(
   'tablas cuyo updated_at es ahora y cuyo created_at sigue en 2000',
   (select string_agg(tabla, ', ' order by tabla) from (
-     select 'genera' as tabla, created_at, updated_at from public.genera where name = 'Masdevallia'
-     union all select 'genus_abbreviations', created_at, updated_at from public.genus_abbreviations where abbreviation = 'Masdev.'
-     union all select 'species', created_at, updated_at from public.species where scientific_name = 'Masdevallia coccinea'
-     union all select 'species_names', created_at, updated_at from public.species_names where name = 'Masdevallia roja'
+     select 'genera' as tabla, created_at, updated_at from public.genera where name = 'Restrepia'
+     union all select 'genus_abbreviations', created_at, updated_at from public.genus_abbreviations where abbreviation = 'Restr.'
+     union all select 'species', created_at, updated_at from public.species where scientific_name = 'Restrepia coccinea'
+     union all select 'species_names', created_at, updated_at from public.species_names where name = 'Restrepia roja'
      union all select 'profiles', created_at, updated_at from public.profiles where id = 'user_marcas'
      union all select 'plants', created_at, updated_at from public.plants where entered_name = 'Marcas'
    ) filas

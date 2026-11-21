@@ -265,7 +265,30 @@ export type Database = {
     }
     Functions: {
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      normalize_search_text: { Args: { value: string }; Returns: string }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
+      search_genera: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          id: string
+          is_quick_access: boolean
+          matched_abbreviation: string
+          name: string
+        }[]
+      }
+      search_species: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          genus_id: string
+          genus_name: string
+          id: string
+          matched_name: string
+          matched_name_type: Database['public']['Enums']['species_match_type']
+          scientific_name: string
+          status: Database['public']['Enums']['species_status']
+          type: Database['public']['Enums']['species_type']
+        }[]
+      }
     }
     Enums: {
       flower_color:
@@ -273,6 +296,7 @@ export type Database = {
       plant_status: 'active' | 'lost' | 'gifted'
       plant_type: 'species' | 'hybrid' | 'unknown'
       plant_validation: 'pending' | 'validated' | 'unidentifiable'
+      species_match_type: 'scientific' | 'synonym' | 'common'
       species_name_type: 'synonym' | 'common'
       species_source: 'gbif' | 'curated' | 'user_proposal'
       species_status: 'imported' | 'validated' | 'observed'
@@ -405,6 +429,7 @@ export const Constants = {
       plant_status: ['active', 'lost', 'gifted'],
       plant_type: ['species', 'hybrid', 'unknown'],
       plant_validation: ['pending', 'validated', 'unidentifiable'],
+      species_match_type: ['scientific', 'synonym', 'common'],
       species_name_type: ['synonym', 'common'],
       species_source: ['gbif', 'curated', 'user_proposal'],
       species_status: ['imported', 'validated', 'observed'],

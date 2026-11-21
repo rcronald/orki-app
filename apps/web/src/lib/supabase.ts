@@ -164,6 +164,16 @@ export function initSupabase(appConfig: AppConfig): void {
 }
 
 /**
+ * Si la app guardó la configuración de Supabase. En la app siempre es true (sin
+ * configuración válida, main.tsx muestra el error y no monta nada más); en las
+ * pruebas que no llaman a initSupabase es false. Sirve a quien tiene datos de
+ * reserva, como la página de muestra.
+ */
+export function isSupabaseConfigured(): boolean {
+  return config !== undefined
+}
+
+/**
  * Devuelve el cliente compartido; la primera vez carga supabase-js y lo crea.
  * Falla si la app no se ha inicializado. Si la carga falla (por ejemplo, el
  * chunk no llega), la siguiente llamada lo vuelve a intentar.

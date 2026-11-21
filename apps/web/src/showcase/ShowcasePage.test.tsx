@@ -136,6 +136,37 @@ describe('ShowcasePage', () => {
     ).toBeInTheDocument()
   })
 
+  it('sin configuración de Supabase, los buscadores usan los datos fijos', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const user = userEvent.setup({
+        advanceTimers: (ms) => vi.advanceTimersByTime(ms),
+      })
+      render(<ShowcasePage />)
+      expect(screen.getAllByText(/^Datos fijos/)).toHaveLength(2)
+
+      await user.type(
+        screen.getByRole('combobox', { name: 'Nombre científico' }),
+        'wakanki',
+      )
+      await act(() => vi.advanceTimersByTimeAsync(1000))
+      expect(
+        screen.getByRole('option', { name: /^Masdevallia veitchiana,/ }),
+      ).toBeVisible()
+
+      await user.type(
+        screen.getByRole('combobox', { name: 'Otro género' }),
+        'den',
+      )
+      expect(screen.getByRole('option', { name: 'Dendrobium' })).toBeVisible()
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('no tiene fallos de accesibilidad A ni AA al cargar', async () => {
     render(<ShowcasePage />)
     await expectNoAxeViolations()
