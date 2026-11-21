@@ -15,6 +15,8 @@ La fila tiene ``action = 'catalog_import'``, ``actor`` = el identificador de la 
 - ``counts``: por tabla (``genera``, ``species`` y ``species_names``), cuántas filas se
   crearon (``created``), se actualizaron (``updated``) y se quedaron sin cambios
   (``unchanged``).
+- ``omitted_by_merge``: cuántos registros de la fuente no se crearon ni se actualizaron porque
+  su clave está en la memoria de las fusiones de especies (#137); 0 si no hay fusiones.
 - ``run``: en GitHub Actions, los datos de la ejecución del workflow; en local, ``null``.
 
 Nada de datos personales: ni el usuario del sistema, ni el de GitHub, ni el nombre de la
@@ -34,7 +36,7 @@ from typing import Any
 
 import psycopg
 
-from .load import COMMON_NAME, GENUS, NEW, SPECIES, SYNONYM, UNCHANGED, UPDATED, Plan
+from .load import COMMON_NAME, GENUS, MERGED, NEW, SPECIES, SYNONYM, UNCHANGED, UPDATED, Plan
 
 ACTION = 'catalog_import'
 LOG_FUNCTION = 'private.log_catalog_action(text, jsonb, text, uuid, text)'
@@ -186,6 +188,7 @@ def details(audit: LoadAudit, plan: Plan) -> dict[str, Any]:
         'environment': audit.environment,
         'source': dict(audit.source),
         'counts': table_counts(plan),
+        'omitted_by_merge': plan.counts[(SPECIES, MERGED)],
         'run': dict(audit.run) if audit.run is not None else None,
     }
 
