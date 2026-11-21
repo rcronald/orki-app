@@ -8,6 +8,10 @@ proyecto de producción.
 La URL de la base llega por la variable de entorno ``ORKI_CATALOG_DB_URL`` y nunca se
 imprime. El ambiente (``--ambiente``) es obligatorio y tiene que coincidir con esa URL
 (ver :mod:`catalog_import.target`).
+
+Las opciones, la protección de ambiente y la conexión (:func:`add_load_options`,
+:func:`resolve_target` y :func:`connect_and_run`) son comunes con
+``orki-catalogo cargar-hibridos`` (:mod:`catalog_import.hybrids_cli`).
 """
 
 from __future__ import annotations
@@ -16,19 +20,22 @@ import argparse
 import os
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import psycopg
 
 from .cli import run
-from .load import LoadError, run_load
+from .load import LoadError, LoadResult, run_load
 from .reader import SourceFormatError
-from .report import default_report_path, format_summary, write_csv
+from .report import default_report_path, format_summary, issue_rows, write_csv
 from .target import (
     PROD_REF,
     URL_VARIABLE,
     Environment,
+    Target,
     TargetError,
     parse_target,
     scrub,
@@ -36,17 +43,8 @@ from .target import (
 )
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog='orki-catalogo cargar',
-        description=(
-            'Normaliza la exportación de ChecklistBank y la carga en la base de datos del '
-            f'ambiente indicado. La URL de la base se lee de {URL_VARIABLE}. Por defecto es '
-            'una simulación: hace todo dentro de una transacción, la revierte y escribe el '
-            'reporte.'
-        ),
-    )
-    parser.add_argument('archivo', type=Path, help='export.zip de ChecklistBank o su TSV.')
+def add_load_options(parser: argparse.ArgumentParser, report_prefix: str) -> None:
+    """Opciones comunes a las dos cargas: ambiente, escritura, confirmación y reporte."""
     parser.add_argument(
         '--ambiente',
         required=True,
@@ -67,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--reporte',
         type=Path,
-        help='Ruta del reporte CSV. Por defecto, reporte-carga-<ambiente>-<modo>-<fecha>.csv '
+        help=f'Ruta del reporte CSV. Por defecto, {report_prefix}-<ambiente>-<modo>-<fecha>.csv '
         'en la carpeta actual.',
     )
     parser.add_argument(
@@ -75,71 +73,117 @@ def build_parser() -> argparse.ArgumentParser:
         action='store_true',
         help='Escribe también en el CSV una fila por cada registro sin cambios.',
     )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog='orki-catalogo cargar',
+        description=(
+            'Normaliza la exportación de ChecklistBank y la carga en la base de datos del '
+            f'ambiente indicado. La URL de la base se lee de {URL_VARIABLE}. Por defecto es '
+            'una simulación: hace todo dentro de una transacción, la revierte y escribe el '
+            'reporte.'
+        ),
+    )
+    parser.add_argument('archivo', type=Path, help='export.zip de ChecklistBank o su TSV.')
+    add_load_options(parser, 'reporte-carga')
     return parser
 
 
-def _error(message: str) -> int:
+def error(message: str) -> int:
     print(f'Error: {message}', file=sys.stderr)
     return 1
 
 
-def main(argv: list[str]) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def resolve_target(args: argparse.Namespace) -> Target | int:
+    """Protección de ambiente, antes de leer la fuente y de conectar.
+
+    Devuelve el destino o, si no se puede cargar, el código de salida (ya con el error
+    impreso).
+    """
     environment = Environment(args.ambiente)
-    if not args.archivo.is_file():
-        parser.error(f'No existe el archivo {args.archivo}.')
     if environment is Environment.PROD and args.escribir and args.confirmar_produccion != PROD_REF:
-        return _error(
+        return error(
             'Para escribir en producción hace falta --confirmar-produccion con el identificador '
             'del proyecto de producción. No se ha conectado a nada.'
         )
     if args.confirmar_produccion and environment is not Environment.PROD:
-        return _error('--confirmar-produccion solo se usa con --ambiente prod.')
-
+        return error('--confirmar-produccion solo se usa con --ambiente prod.')
     try:
-        target = parse_target(os.environ.get(URL_VARIABLE), environment)
-    except TargetError as error:
-        return _error(str(error))
+        return parse_target(os.environ.get(URL_VARIABLE), environment)
+    except TargetError as problem:
+        return error(str(problem))
 
-    started = datetime.now(UTC)
-    mode = 'ESCRITURA' if args.escribir else 'SIMULACIÓN (no se escribirá nada)'
+
+def announce(target: Target, write: bool) -> None:
+    mode = 'ESCRITURA' if write else 'SIMULACIÓN (no se escribirá nada)'
     print(f'Destino: {target.describe()}\nModo: {mode}\n')
 
-    mark = time.perf_counter()
-    try:
-        catalog, summary = run(args.archivo)
-    except SourceFormatError as error:
-        return _error(f'formato de la fuente: {error}')
-    timings = {'lectura_fuente': time.perf_counter() - mark}
 
+def connect_and_run(
+    target: Target, work: Callable[[psycopg.Connection[Any]], LoadResult]
+) -> LoadResult | int:
+    """Conecta con la URL validada y ejecuta la carga. Los errores salen sin credenciales.
+
+    Devuelve el resultado o, si la carga falló (y se revirtió), el código de salida.
+    """
     try:
         with without_pg_environment():
             connection = psycopg.connect(
                 **target.connect_kwargs(), autocommit=False, prepare_threshold=None
             )
         with connection:
-            result = run_load(connection, catalog, write=args.escribir)
-    except psycopg.Error as error:
-        detail = scrub(str(error).strip(), target)
-        state = f' ({error.sqlstate})' if error.sqlstate else ''
-        return _error(
+            return work(connection)
+    except psycopg.Error as problem:
+        detail = scrub(str(problem).strip(), target)
+        state = f' ({problem.sqlstate})' if problem.sqlstate else ''
+        return error(
             f'la base de datos respondió con un error{state}: {detail}\n'
             'La transacción se revirtió: no se ha escrito nada.'
         )
-    except LoadError as error:
-        return _error(f'{scrub(str(error), target)}\nNo se ha escrito nada.')
+    except LoadError as problem:
+        return error(f'{scrub(str(problem), target)}\nNo se ha escrito nada.')
+
+
+def main(argv: list[str]) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.archivo.is_file():
+        parser.error(f'No existe el archivo {args.archivo}.')
+    target = resolve_target(args)
+    if isinstance(target, int):
+        return target
+
+    started = datetime.now(UTC)
+    announce(target, args.escribir)
+
+    mark = time.perf_counter()
+    try:
+        catalog, summary = run(args.archivo)
+    except SourceFormatError as problem:
+        return error(f'formato de la fuente: {problem}')
+    timings = {'lectura_fuente': time.perf_counter() - mark}
+
+    result = connect_and_run(target, lambda conn: run_load(conn, catalog, write=args.escribir))
+    if isinstance(result, int):
+        return result
 
     timings |= result.timings
     context = {
         'source': summary['source'],
-        'environment': environment.value,
+        'environment': target.environment.value,
         'target': target.describe(),
         'started': started,
         'timings': timings,
     }
-    report = args.reporte or default_report_path(environment.value, started, args.escribir)
-    rows = write_csv(report, context, catalog, result, include_unchanged=args.detalle_sin_cambios)
+    report = args.reporte or default_report_path(target.environment.value, started, args.escribir)
+    rows = write_csv(
+        report,
+        context,
+        result,
+        extra_rows=issue_rows(catalog.issues),
+        include_unchanged=args.detalle_sin_cambios,
+    )
     print(format_summary(context, catalog, result))
     print(f'\nReporte: {report} ({rows} filas)')
     return 0

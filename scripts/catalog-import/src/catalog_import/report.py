@@ -1,15 +1,21 @@
 """Reporte de la carga: un CSV con una fila por registro y un resumen para la pantalla.
 
+Lo usan las dos cargas: la del catálogo de COL (``orki-catalogo cargar``) y la de la lista
+curada de híbridos (``orki-catalogo cargar-hibridos``).
+
 Columnas del CSV (separado por comas, UTF-8 con BOM para que una hoja de cálculo lea bien
 las tildes y el «×»):
 
-- ``entidad``: ``carga`` (datos de la ejecución), ``genero``, ``especie`` o ``sinonimo``.
+- ``entidad``: ``carga`` (datos de la ejecución), ``genero``, ``especie``, ``sinonimo`` o
+  (en la lista curada) ``nombre_comun``.
 - ``resultado``: ``info`` (solo en ``carga``), ``nuevo``, ``actualizado``, ``sin_cambios``,
-  ``conflicto``, ``rechazado`` o ``no_en_fuente``, y para lo que la normalización dejó
-  fuera o cambió, ``descartado`` o ``ajustado``.
+  ``conflicto``, ``rechazado``, ``no_en_fuente`` u ``omitido`` (entradas de la lista sin
+  revisar), y para lo que la normalización de COL dejó fuera o cambió, ``descartado`` o
+  ``ajustado``.
 - ``codigo``: código estable del motivo (``ESPECIE_NUEVA``, ``ESPECIE_PROTEGIDA``,
   ``FORMULA_HIBRIDA``…).
-- ``source_ref``: identificador de COL del registro.
+- ``source_ref``: identificador del registro en su fuente (clave de COL o identificador de
+  la fila de la lista curada).
 - ``nombre``: nombre del registro (sin autoría).
 - ``especie``: en los sinónimos, la especie a la que pertenecen, «Nombre (clave)».
 - ``detalle``: qué cambió o por qué se rechazó o se descartó.
@@ -22,7 +28,7 @@ resumen.
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +40,7 @@ from .load import (
     INFO,
     NEW,
     NOT_IN_SOURCE,
+    OMITTED,
     REJECTED,
     RUN,
     SPECIES,
@@ -48,7 +55,7 @@ from .normalize import SYNONYM_STATUSES
 
 HEADER = ('entidad', 'resultado', 'codigo', 'source_ref', 'nombre', 'especie', 'detalle', 'id_base')
 
-_ENTITY_LABELS = {GENUS: 'Géneros', SPECIES: 'Especies', SYNONYM: 'Sinónimos'}
+COL_ENTITY_LABELS = {GENUS: 'Géneros', SPECIES: 'Especies', SYNONYM: 'Sinónimos'}
 _RESULT_LABELS = {
     NEW: 'nuevos',
     UPDATED: 'actualizados',
@@ -56,6 +63,7 @@ _RESULT_LABELS = {
     CONFLICT: 'en conflicto',
     REJECTED: 'rechazados',
     NOT_IN_SOURCE: 'en la base y no en la fuente',
+    OMITTED: 'omitidos',
 }
 
 
@@ -91,20 +99,25 @@ def issue_rows(issues: Iterable[Issue]) -> list[ReportRow]:
 
 
 def run_rows(context: dict[str, Any], result: LoadResult) -> list[ReportRow]:
-    """Filas de la entidad «carga»: fuente, ambiente, modo, recuentos, tamaños y tiempos."""
+    """Filas de la entidad «carga»: fuente, ambiente, modo, recuentos, tamaños y tiempos.
+
+    ``context['source']`` describe la fuente; si trae ``detail``, ese es el detalle de la
+    fila FUENTE (la lista curada); si no, se compone con los metadatos de COL.
+    """
     source = context['source']
     m = result.measures
+    source_detail = source.get('detail') or (
+        f'archivo: {source.get("file", "")}; versión: {source.get("version", "")}; '
+        f'publicada: {source.get("issued", "")}; DOI: {source.get("doi", "")}'
+    )
     rows = [
         ReportRow(
             RUN,
             INFO,
             'FUENTE',
-            source.get('key', ''),
+            str(source.get('key', '')),
             source.get('alias', ''),
-            detail=(
-                f'archivo: {source.get("file", "")}; versión: {source.get("version", "")}; '
-                f'publicada: {source.get("issued", "")}; DOI: {source.get("doi", "")}'
-            ),
+            detail=source_detail,
         ),
         ReportRow(RUN, INFO, 'AMBIENTE', name=context['environment'], detail=context['target']),
         ReportRow(
@@ -123,19 +136,13 @@ def run_rows(context: dict[str, Any], result: LoadResult) -> list[ReportRow]:
     ]
     for (entity, outcome), count in sorted(result.plan.counts.items()):
         rows.append(ReportRow(RUN, INFO, 'TOTAL', name=f'{entity} {outcome}', detail=str(count)))
-    rows.append(
-        ReportRow(
-            RUN,
-            INFO,
-            'TOTAL',
-            name='sinonimo no_en_fuente',
-            detail=str(result.plan.synonyms_not_in_source),
-        )
-    )
     rows += [
         ReportRow(RUN, INFO, 'RECUENTO', name='generos', detail=str(m.genera)),
         ReportRow(RUN, INFO, 'RECUENTO', name='especies', detail=str(m.species)),
         ReportRow(RUN, INFO, 'RECUENTO', name='especies de COL', detail=str(m.species_col)),
+        ReportRow(
+            RUN, INFO, 'RECUENTO', name='especies de la lista curada', detail=str(m.species_curated)
+        ),
         ReportRow(RUN, INFO, 'RECUENTO', name='sinonimos', detail=str(m.synonyms)),
         ReportRow(RUN, INFO, 'RECUENTO', name='nombres comunes', detail=str(m.common_names)),
         ReportRow(RUN, INFO, 'TAMANO', name='base de datos', detail=str(m.database_bytes)),
@@ -154,15 +161,18 @@ def run_rows(context: dict[str, Any], result: LoadResult) -> list[ReportRow]:
 def write_csv(
     path: Path,
     context: dict[str, Any],
-    catalog: Catalog,
     result: LoadResult,
     *,
+    extra_rows: Iterable[ReportRow] = (),
     include_unchanged: bool = False,
 ) -> int:
-    """Escribe el reporte. Devuelve el número de filas escritas (sin la cabecera)."""
+    """Escribe el reporte. Devuelve el número de filas escritas (sin la cabecera).
+
+    ``extra_rows`` va al final: los descartes y ajustes de la normalización de COL.
+    """
     rows = run_rows(context, result)
     rows += [r for r in result.plan.rows if include_unchanged or r.result != UNCHANGED]
-    rows += issue_rows(catalog.issues)
+    rows += extra_rows
     with path.open('w', encoding='utf-8-sig', newline='') as handle:
         writer = csv.writer(handle)
         writer.writerow(HEADER)
@@ -183,6 +193,28 @@ def write_csv(
 
 
 def format_summary(context: dict[str, Any], catalog: Catalog, result: LoadResult) -> str:
+    """Resumen por pantalla de la carga de COL."""
+    discarded = sum(1 for i in catalog.issues if i.action is Action.DISCARDED)
+    adjusted = len(catalog.issues) - discarded
+    return format_load_summary(
+        context,
+        result,
+        COL_ENTITY_LABELS,
+        [
+            f'Sinónimos de especies de COL en la base que esta fuente no trae (se conservan): '
+            f'{result.plan.synonyms_not_in_source}',
+            f'Normalización: {discarded} registros descartados y {adjusted} ajustados (en el CSV).',
+        ],
+    )
+
+
+def format_load_summary(
+    context: dict[str, Any],
+    result: LoadResult,
+    entities: Mapping[str, str],
+    notes: Iterable[str] = (),
+) -> str:
+    """Resumen por pantalla: fuente, modo, recuentos por entidad, notas, base y tiempos."""
     source = context['source']
     m = result.measures
     counts = result.plan.counts
@@ -201,27 +233,22 @@ def format_summary(context: dict[str, Any], catalog: Catalog, result: LoadResult
         else 'Modo: SIMULACIÓN (transacción revertida: no se escribió nada)',
         '',
     ]
-    for entity, label in _ENTITY_LABELS.items():
+    for entity, label in entities.items():
         parts = [
             f'{counts[(entity, outcome)]} {text}'
             for outcome, text in _RESULT_LABELS.items()
             if counts[(entity, outcome)] or outcome in (NEW, UPDATED, UNCHANGED, CONFLICT)
         ]
         lines.append(f'{label}: ' + ', '.join(parts))
-    lines.append(
-        f'Sinónimos de especies de COL en la base que esta fuente no trae (se conservan): '
-        f'{result.plan.synonyms_not_in_source}'
-    )
-    discarded = sum(1 for i in catalog.issues if i.action is Action.DISCARDED)
-    adjusted = len(catalog.issues) - discarded
+    lines += list(notes)
     lines += [
-        f'Normalización: {discarded} registros descartados y {adjusted} ajustados (en el CSV).',
         '',
         'Base de datos tras la carga'
         + ('' if result.written else ' (medida dentro de la transacción, antes de revertirla)')
         + ':',
-        f'  {m.genera} géneros, {m.species} especies ({m.species_col} de COL), '
-        f'{m.synonyms} sinónimos y {m.common_names} nombres comunes',
+        f'  {m.genera} géneros, {m.species} especies ({m.species_col} de COL y '
+        f'{m.species_curated} de la lista curada), {m.synonyms} sinónimos y {m.common_names} '
+        'nombres comunes',
         f'  Tamaño de la base: {megabytes(m.database_bytes)}',
         '  Tablas del catálogo (con índices): '
         + ', '.join(f'{t} {megabytes(m.table_bytes[t])}' for t in CATALOG_TABLES),
@@ -235,6 +262,9 @@ def format_summary(context: dict[str, Any], catalog: Catalog, result: LoadResult
     return '\n'.join(lines)
 
 
-def default_report_path(environment: str, started: datetime, written: bool) -> Path:
+def default_report_path(
+    environment: str, started: datetime, written: bool, prefix: str = 'reporte-carga'
+) -> Path:
+    """Ruta por defecto del reporte. Empieza por «reporte-carga», que .gitignore excluye."""
     mode = 'escritura' if written else 'simulacion'
-    return Path(f'reporte-carga-{environment}-{mode}-{started:%Y%m%dT%H%M%SZ}.csv')
+    return Path(f'{prefix}-{environment}-{mode}-{started:%Y%m%dT%H%M%SZ}.csv')
