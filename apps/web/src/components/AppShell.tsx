@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router'
+import { Link, NavLink, Outlet } from 'react-router'
 import { AccountControls } from '../auth/AccountControls.tsx'
 import { useIsCatalogAdmin } from '../auth/roles.ts'
 import { PATHS } from '../routes/paths.ts'
@@ -39,6 +39,12 @@ export function AppShell() {
       >
         <Outlet />
       </main>
+      {/* Pie discreto con la página de privacidad (#111), pública. */}
+      <footer className="px-space-4 pb-space-4 text-center text-sm">
+        <Link to={PATHS.privacy} className="text-neutral-700 underline">
+          Privacidad
+        </Link>
+      </footer>
     </div>
   )
 }

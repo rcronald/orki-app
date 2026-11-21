@@ -553,6 +553,52 @@ Sin huérfanos:
 - **Eliminar una planta** (lo llamará el #16): `deletePlantWithPhotos({ userId, plantId, onPlantRemoved: removePlant })` (`src/photos/delete.ts`) borra primero la fila, la quita de la colección y después toda la carpeta `<usuario>/<planta>/` (`deletePlantPhotoFolder`, que también se lleva restos de subidas anteriores). Si falla el borrado de la planta no se toca nada; si fallan los archivos, la planta ya no existe y devuelve `photosDeleted: false`.
 - **Script de limpieza:** un fallo de red a mitad puede dejar archivos sin planta. `npm run fotos:huerfanas -- --ambiente desarrollo` los lista (modo de prueba, por defecto) y con `--borrar` los borra; ver [su sección](supabase/README.md#limpieza-de-fotos-huérfanas) en el README de Supabase.
 
+## Eliminación de la cuenta
+
+`/cuenta` (#110, parte de #26) muestra el correo de la sesión (de Clerk) y la acción "Eliminar mi cuenta". Exige sesión y se abre desde el enlace "Tu cuenta" de la cabecera. Para cambiar el correo, el nombre o la foto sigue estando el menú del avatar de Clerk, al que se le oculta su propio "Eliminar cuenta" (elemento `profileSection__danger`, en `src/auth/AccountControls.tsx`): borraría solo el usuario de Clerk y dejaría los datos sin dueño.
+
+**Orden del borrado**, sin backend, con el token de la sesión y las políticas que ya dejan a cada usuario borrar lo suyo (`src/account/deletion.ts`, una función pura con los efectos inyectados):
+
+| Paso                                                                                                  | Si falla                                                                                                       |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1. Fotos: todo lo que hay bajo `<usuario>/` en el bucket, listado carpeta por carpeta y de 100 en 100 | No se borró nada más.                                                                                          |
+| 2. Plantas: `delete from plants where user_id = <usuario>`                                            | Las fotos ya no están; las plantas, el perfil y la cuenta siguen.                                              |
+| 3. Perfil: `delete from profiles where id = <usuario>`                                                | Fotos y plantas borradas; perfil y cuenta siguen.                                                              |
+| 4. Cuenta de Clerk: `user.delete()` dentro de `useReverification()`                                   | Los datos ya se borraron y la cuenta sigue, vacía. Se dice por qué (sin permiso, verificación cancelada, red). |
+
+- Los datos van antes que la cuenta porque, una vez borrada la cuenta de Clerk, su token deja de servir y la app ya no puede borrar nada en Supabase. Entre `plants` y `profiles` no hay clave foránea.
+- Si un paso falla, los siguientes no se ejecutan; el diálogo explica qué falló, por qué y qué quedó, y "Volver a intentarlo" sigue desde ese paso. Todos los pasos son idempotentes (borrar lo que ya no está no da error), así que repetir desde el principio también termina.
+- Antes de empezar se mira `user.deleteSelfEnabled`: si Clerk no deja eliminar la cuenta (el ajuste del #109 sin activar), el botón está deshabilitado con el motivo y no se borra nada.
+- **Perfil sin recrear:** antes del paso 1 se guarda una marca en `localStorage` (`orki:cuenta:eliminacion:<usuario>`, `src/lib/account-deletion-marker.ts`) y `ensureProfile()` no crea el perfil mientras existe. Sin ella, una recarga o la vuelta de la conexión entre los pasos 3 y 4 lo volverían a crear. Si la eliminación queda a medias, `/cuenta` lo dice y ofrece "Continuar la eliminación" o "Seguir usando Orki" (quita la marca y vuelve a crear el perfil).
+- **Dispositivo:** con los datos ya borrados se limpia el borrador del registro, las preferencias del inventario, las miniaturas de Cache Storage (`orki-miniaturas-v1:<usuario>`), las imágenes en memoria y cualquier clave `orki:` con el id del usuario en `localStorage` o `sessionStorage` (`src/account/device-cleanup.ts`); al terminar, también la marca y la colección en memoria. El precache del service worker no se toca. La app no usa IndexedDB.
+- **Final:** `setActive({ session: null })`, como hace el `<UserProfile>` de Clerk, y vuelta al inicio con "Tu cuenta se eliminó…" en una región `role="status"`. `AccountDeletionGate` (por encima de `RequireAuth` en `/cuenta`) evita que, al caer la sesión, se mande al inicio de sesión.
+- **Confirmación:** diálogo modal propio (`src/account/DeleteAccountDialog.tsx`) que explica qué se borra y que no se puede deshacer; el botón (variante `danger`) no se habilita hasta escribir "ELIMINAR". Foco atrapado, Escape cancela (no mientras se borra), el foco vuelve al botón que lo abrió y el resto de la página queda `inert`. Cada paso se anuncia en una región `role="status"` ("Paso 2 de 4: borrando tus plantas…"); los fallos, en `role="alert"`. Sin doble envío; mientras borra no hay "Cancelar" y salir de la página pide confirmación al navegador (`beforeunload`).
+- **Sin conexión,** el botón queda deshabilitado con el motivo.
+- **Lo comprobado en Clerk** (21 de noviembre de 2026, detalle y fuentes en `src/account/clerk-deletion.ts`): `user.delete()` y `user.deleteSelfEnabled` existen en los tipos de `@clerk/shared`; eliminar la cuenta pide reverificación por defecto (ventana de 10 minutos, [guía](https://clerk.com/docs/guides/secure/reverification)); cerrar la ventana de verificación rechaza con `reverification_cancelled`. **Sin comprobar** (nada se probó contra Clerk ni Supabase reales): el error exacto con el ajuste desactivado (se supone un 403) y que la sesión desaparezca sola tras `user.delete()`.
+- **Pendiente:** ofrecer la exportación del inventario (#17) antes de eliminar, cuando exista. Lo que no pueda borrar la app (por ejemplo, una cuenta eliminada desde el panel de Clerk) lo detectará el script del #112.
+- **Pruebas:** `src/account/*.test.ts(x)` (orquestadora con cada fallo, efectos de Supabase con un cliente simulado, errores de Clerk, limpieza del dispositivo, diálogo con teclado y axe), `src/lib/profile.test.ts` (la marca) y `src/pages/AccountPage.test.tsx` (con el doble de Clerk, de `/cuenta` al inicio). En `/muestra`, sección "Pantalla de cuenta", se ve con pasos simulados y se elige cuál falla.
+
+## Página de privacidad
+
+`/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie de la app, desde las pantallas de acceso, desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`); de la atribución del catálogo importa solo `src/backoffice/attribution.ts`, sin la pantalla del backoffice.
+
+**Es un borrador pendiente de revisión por una persona.** Lo redactó un agente comprobándolo contra el código de esta rama el 21 de noviembre de 2026. No es asesoría legal: conviene que lo revise alguien con criterio legal (ley peruana de protección de datos personales). La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
+
+Contacto: `src/privacy/contact.ts` tiene la constante `PRIVACY_CONTACT` con el marcador `CONTACTO_PENDIENTE`. Mientras sea el marcador, la página dice que aún no hay un medio de contacto publicado; al poner un correo o una URL real, lo muestra enlazado. Hay que completarlo antes de publicar.
+
+Afirmaciones que debe verificar una persona:
+
+1. Clerk recibe, si se entra con Google, datos del perfil de Google «como tu nombre y tu foto» (depende de los permisos que pida la instancia de Clerk).
+2. Los proveedores son solo Clerk (acceso), Supabase (base de datos y fotos) y Vercel (alojamiento). No dice en qué países guardan los datos ni qué registros técnicos (por ejemplo, direcciones IP) guardan por su cuenta: conviene revisarlo en sus condiciones y decidir si se menciona.
+3. «Orki no usa analítica ni publicidad»: cierto en el código de hoy (no hay Sentry ni eventos de producto). La especificación prevé Sentry y dos eventos de producto: al añadirlos, hay que cambiar el texto.
+4. Quién ve qué: las políticas solo entregan a cada usuario sus plantas; un administrador del catálogo ve, con `count_species_plants`, cuántas plantas hay enlazadas a una especie (solo el número) y, por la política del bucket, puede abrir la foto actual de las plantas «por validar». La cola de propuestas (#22) aún no existe; el texto dice en futuro que entonces verá también el nombre ingresado.
+5. Lo que se guarda en el dispositivo (borrador con caducidad de 24 horas, miniaturas que se borran al cerrar sesión, preferencias del inventario, archivos de la app y la sesión de Clerk) y que las fotos se reducen y pierden sus metadatos, incluida la ubicación, antes de subirlas.
+6. Que no hay exportación de datos (#17 aún no está en esta rama): al añadirla, cambiar el texto.
+7. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «Orki lo filtró a las orquídeas y lo normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
+8. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
+
+Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
+
 ## Base de datos y migraciones
 
 Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.

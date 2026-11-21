@@ -11,6 +11,10 @@ export const PATHS = {
   collection: '/coleccion',
   newPlant: '/coleccion/nueva',
   catalogAdmin: '/administracion/catalogo',
+  /** Datos de la sesión y eliminación de la cuenta (#110). */
+  account: '/cuenta',
+  /** Página pública de privacidad (#111). */
+  privacy: '/privacidad',
   signIn: '/iniciar-sesion',
   signUp: '/registro',
   /** Página interna del design system; solo existe fuera de producción. */
