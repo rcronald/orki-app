@@ -4,6 +4,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import { Icon } from '../components/ui/Icon.tsx'
 
@@ -19,6 +20,8 @@ export interface InventorySearchProps {
    * responder sobre el mismo texto, con OwnershipAnswer.
    */
   children?: ReactNode
+  /** Referencia al campo, para devolverle el foco desde fuera. */
+  inputRef?: RefObject<HTMLInputElement | null>
 }
 
 // Buscador del inventario: campo con etiqueta visible, icono de lupa y botón
@@ -34,11 +37,13 @@ export function InventorySearch({
   onValueChange,
   status,
   children,
+  inputRef: externalRef,
 }: InventorySearchProps) {
   const id = useId()
   const inputId = `${id}-buscar`
   const statusId = `${id}-estado`
-  const inputRef = useRef<HTMLInputElement>(null)
+  const ownRef = useRef<HTMLInputElement>(null)
+  const inputRef = externalRef ?? ownRef
 
   const clear = () => {
     onValueChange('')

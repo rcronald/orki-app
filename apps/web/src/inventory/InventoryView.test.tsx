@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_FILTERS, type PlantFilters } from '../collection/filters.ts'
 import { toCollectionPlant, type CollectionPlant } from '../collection/model.ts'
 import { CollectionLoadError } from '../collection/source.ts'
 import type { CollectionStatus } from '../collection/store.ts'
@@ -32,18 +33,21 @@ interface Props {
   error?: CollectionLoadError | null
   onRetry?: () => void
   initialQuery?: string
+  initialFilters?: PlantFilters
 }
 
-// La vista con el buscador controlado por un estado local, como lo hace
-// CollectionPage con la URL.
+// La vista con el buscador y los filtros controlados por un estado local, como
+// lo hace CollectionPage con la URL.
 function Harness({
   plants,
   status,
   error = null,
   onRetry = () => {},
   initialQuery = '',
+  initialFilters = DEFAULT_FILTERS,
 }: Props & { plants: readonly CollectionPlant[] | null }) {
   const [query, setQuery] = useState(initialQuery)
+  const [filters, setFilters] = useState(initialFilters)
   return (
     <InventoryView
       status={status ?? (plants === null ? 'loading' : 'ready')}
@@ -52,6 +56,8 @@ function Harness({
       onRetry={onRetry}
       query={query}
       onQueryChange={setQuery}
+      filters={filters}
+      onFiltersChange={setFilters}
     />
   )
 }
@@ -476,8 +482,9 @@ describe('InventoryView: buscador', () => {
 
     await user.type(searchbox(), text)
     expect(cardNames()).toEqual([expected])
-    // Los contadores de cabecera siguen siendo los de toda la colección.
-    expect(screen.getByText('6 orquídeas')).toBeInTheDocument()
+    // La cabecera dice cuántas se ven de las activas.
+    expect(screen.getByText('1 de 6 orquídeas')).toBeInTheDocument()
+    expect(screen.getByText('1 género')).toBeInTheDocument()
     expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
   })
 
@@ -490,9 +497,7 @@ describe('InventoryView: buscador', () => {
     expect(status()).toHaveTextContent('2 de 6 orquídeas coinciden.')
     expect(searchbox()).toHaveFocus()
     await user.type(searchbox(), 'zzz')
-    expect(status()).toHaveTextContent(
-      'Ninguna orquídea coincide con la búsqueda.',
-    )
+    expect(status()).toHaveTextContent('Ninguna de tus 6 orquídeas coincide.')
     expect(searchbox()).toHaveFocus()
   })
 
@@ -581,6 +586,7 @@ describe('InventoryView: vacía, carga y error', () => {
     ).toHaveAttribute('href', '/coleccion/nueva')
     expect(screen.queryByRole('searchbox')).toBeNull()
     expect(screen.queryByRole('group', { name: 'Vista' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Filtros/ })).toBeNull()
     // Una sola acción principal: el acceso fijo no se repite.
     expect(screen.getAllByRole('link')).toHaveLength(1)
     await expectNoAxeViolations()

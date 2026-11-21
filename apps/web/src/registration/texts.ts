@@ -66,19 +66,6 @@ export const PLANT_FORM_TEXT = {
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
 } as const
 
-/** Etiquetas de los chips de color de flor (enumerado flower_color). */
-export const FLOWER_COLOR_LABEL = {
-  white: 'Blanco',
-  pink: 'Rosado',
-  purple: 'Morado',
-  yellow: 'Amarillo',
-  orange: 'Naranja',
-  bicolor: 'Bicolor',
-} as const
-
-/** Etiquetas de los chips de tipo (enumerado plant_type). */
-export const PLANT_TYPE_LABEL = {
-  species: 'Especie',
-  hybrid: 'Híbrido',
-  unknown: 'No sé',
-} as const
+// Etiquetas de los chips de color de flor y de tipo: viven en
+// collection/labels.ts, compartidas con el inventario y la exportación.
+export { FLOWER_COLOR_LABEL, PLANT_TYPE_LABEL } from '../collection/labels.ts'
