@@ -21,6 +21,8 @@ interface FakeClerkState {
   appRole: string | null
   /** Id del usuario con sesión (userId y claim sub). */
   userId: string
+  /** user.deleteSelfEnabled: si Clerk deja eliminar la cuenta (#109). */
+  deleteSelfEnabled: boolean
 }
 
 /** Id de usuario de la sesión simulada por defecto (userId y claim sub). */
@@ -31,6 +33,7 @@ export const fakeClerk: FakeClerkState = {
   signedIn: false,
   appRole: null,
   userId: FAKE_USER_ID,
+  deleteSelfEnabled: true,
 }
 
 /** Token de sesión que devuelve getToken() por defecto con sesión. */
@@ -73,9 +76,14 @@ export function resetFakeClerk() {
     signedIn: false,
     appRole: null,
     userId: FAKE_USER_ID,
+    deleteSelfEnabled: true,
   })
   signOut.mockReset()
   signOut.mockImplementation(() => Promise.resolve())
+  setActive.mockReset()
+  setActive.mockImplementation(() => Promise.resolve())
+  deleteUser.mockReset()
+  deleteUser.mockImplementation(() => Promise.resolve())
   getToken.mockReset()
   getToken.mockImplementation(defaultGetToken)
   lastProviderProps = undefined
@@ -97,8 +105,54 @@ export function ClerkProvider({
   return children
 }
 
+/** setActive() de useClerk() (cerrar la sesión tras eliminar la cuenta). */
+export const setActive = vi.fn<(params: unknown) => Promise<void>>(() =>
+  Promise.resolve(),
+)
+
 export function useClerk() {
-  return { status: fakeClerk.status, signOut }
+  return { status: fakeClerk.status, signOut, setActive }
+}
+
+// Usuario de useUser() --------------------------------------------------------
+//
+// Solo lo que usa la pantalla de cuenta (#110): id, correo principal,
+// deleteSelfEnabled y delete(). Una prueba cambia el permiso con
+// setFakeClerk({ deleteSelfEnabled: false }) y el resultado de delete() con
+// deleteUser.mockImplementation().
+
+/** Correo principal del usuario simulado. */
+export const FAKE_USER_EMAIL = 'persona@example.com'
+
+/** user.delete() del usuario simulado. */
+export const deleteUser = vi.fn<() => Promise<void>>(() => Promise.resolve())
+
+export function useUser() {
+  if (!isLoaded())
+    return { isLoaded: false, isSignedIn: undefined, user: undefined }
+  if (!fakeClerk.signedIn)
+    return { isLoaded: true, isSignedIn: false, user: null }
+  return {
+    isLoaded: true,
+    isSignedIn: true,
+    user: {
+      id: fakeClerk.userId,
+      primaryEmailAddress: { emailAddress: FAKE_USER_EMAIL },
+      deleteSelfEnabled: fakeClerk.deleteSelfEnabled,
+      delete: deleteUser,
+    },
+  }
+}
+
+/**
+ * useReverification(): aquí no hay ventana de Clerk; devuelve el fetcher tal
+ * cual. Para simular que la persona cierra la verificación, haz que
+ * deleteUser rechace con { code: 'reverification_cancelled' }.
+ */
+export function useReverification<T extends (...args: never[]) => unknown>(
+  fetcher: T,
+): T {
+  return fetcher
 }
 
 // Como el real (tabla de valores de la documentación de useAuth): mientras

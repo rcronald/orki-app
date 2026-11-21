@@ -8,10 +8,24 @@ import { useAppIdentity } from './useAppIdentity.ts'
 import { useAuthAvailability } from './useAuthAvailability.ts'
 
 // Controles de cuenta de la cabecera. Con sesión: el botón de usuario de Clerk
-// (avatar con el menú para administrar la cuenta) y un botón para salir. Sin
+// (avatar con el menú para administrar la cuenta), el enlace a la pantalla de
+// cuenta de Orki (/cuenta, donde se elimina la cuenta) y un botón para salir. Sin
 // sesión: enlaces a las pantallas de acceso. Si Clerk no carga, un aviso breve;
 // la app pública se sigue viendo igual. Si además se está viendo la copia del
-// último usuario (sin conexión, #18), también el botón para salir.
+// último usuario (sin conexión, #18), también el botón para salir (sin el
+// enlace a /cuenta: eliminar la cuenta necesita la sesión confirmada).
+// El perfil de Clerk (menú del avatar > Administrar cuenta) trae su propio
+// "Eliminar cuenta" en la sección de peligro (elemento profileSection__danger,
+// id "danger" en los tipos de @clerk/shared, dist/types/elementIds.d.ts) en
+// cuanto se activa el ajuste del #109. Ese botón borraría solo el usuario de
+// Clerk y dejaría las plantas, las fotos y el perfil sin dueño, porque sin la
+// cuenta ya no hay token para borrarlos. Se oculta: la cuenta se elimina desde
+// /cuenta, que borra antes los datos (#110). Va aquí y no en appearance.ts
+// porque ese archivo solo admite variables de tokens.css.
+const USER_PROFILE_PROPS = {
+  appearance: { elements: { profileSection__danger: { display: 'none' } } },
+}
+
 export function AccountControls() {
   const availability = useAuthAvailability()
   const identity = useAppIdentity()
@@ -31,7 +45,10 @@ export function AccountControls() {
     case 'signed-in':
       return (
         <div className="flex items-center gap-space-3">
-          <UserButton />
+          <UserButton userProfileProps={USER_PROFILE_PROPS} />
+          <Link to={PATHS.account} className="orki-btn orki-btn--secondary">
+            Tu cuenta
+          </Link>
           <SignOutHere userId={identity.userId} />
         </div>
       )

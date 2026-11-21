@@ -15,6 +15,8 @@ export const PATHS = {
   /** Edición de un ejemplar (#16); construir con plantEditPath(). */
   editPlant: '/coleccion/:plantId/editar',
   catalogAdmin: '/administracion/catalogo',
+  /** Datos de la sesión y eliminación de la cuenta (#110). */
+  account: '/cuenta',
   signIn: '/iniciar-sesion',
   signUp: '/registro',
   /** Página interna del design system; solo existe fuera de producción. */
