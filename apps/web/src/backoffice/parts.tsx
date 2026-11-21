@@ -235,3 +235,62 @@ export function Notice({
     </div>
   )
 }
+
+/** Selector con etiqueta, error y ayuda asociados, con el estilo de los campos. */
+export function SelectField<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  labels,
+  onChange,
+  error,
+  hint,
+}: {
+  id: string
+  label: string
+  value: T
+  options: readonly T[]
+  labels: Record<T, string>
+  onChange: (value: T) => void
+  error?: string
+  hint?: string
+}) {
+  const errorId = `${id}-error`
+  const hintId = `${id}-ayuda`
+  const describedBy =
+    [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(' ') ||
+    undefined
+  return (
+    <div className="orki-field">
+      <label className="orki-field__label" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        className="orki-field__input cursor-pointer"
+        value={value}
+        onChange={(event) => onChange(event.target.value as T)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {labels[option]}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <span id={errorId} className="orki-field__error">
+          <Icon name="triangle-alert" />
+          {error}
+        </span>
+      )}
+      {hint && (
+        <span id={hintId} className="orki-field__hint">
+          {hint}
+        </span>
+      )}
+    </div>
+  )
+}

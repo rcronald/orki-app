@@ -1,5 +1,7 @@
 import type {
   Database,
+  Json,
+  SpeciesHistoryRow,
   SpeciesMatchType,
   SpeciesNameType,
   SpeciesSource,
@@ -22,6 +24,8 @@ import type { OrkiSupabaseClient } from './supabase.ts'
 // - searchCatalogSpecies: con texto, por relevancia, por número de página.
 // - listCatalogGenera, getCatalogSummary, getSpeciesDetail,
 //   countSpeciesPlants y getGenus.
+// - getSpeciesHistory: el historial de una especie, de la auditoría (#133,
+//   migración 20261121150000_historial_de_especie.sql), por páginas de clave.
 //
 // Todas aceptan un AbortSignal y fallan con CatalogAdminError, que dice el
 // motivo. Las funciones de listado solo las puede llamar un administrador del
@@ -37,6 +41,7 @@ type ListRow = Functions['list_catalog_species']['Returns'][number]
 type SearchRow = Functions['search_catalog_species']['Returns'][number]
 type GenusRow = Functions['list_catalog_genera']['Returns'][number]
 type SummaryRow = Functions['catalog_summary']['Returns'][number]
+type HistoryRow = SpeciesHistoryRow
 
 /** Filtros de la tabla de especies; cada uno es opcional. */
 export interface CatalogSpeciesFilters {
@@ -140,6 +145,49 @@ export interface CatalogSpeciesDetail {
   names: CatalogSpeciesName[]
 }
 
+/** Entradas por página del historial de una especie. La base admite hasta 100. */
+export const SPECIES_HISTORY_PAGE_SIZE = 20
+
+/** Valores de una fila en la auditoría: columna → valor. */
+export type AuditValues = Record<string, Json | undefined>
+
+/** Un cambio de fila de la auditoría: alta, edición o baja. */
+export interface AuditRowChange {
+  /** species o species_names. */
+  table: string
+  rowId: string
+  action: 'insert' | 'update' | 'delete'
+  /** Baja: la fila entera; edición: lo que cambió; alta: null. */
+  oldValues: AuditValues | null
+  /** Alta: la fila entera; edición: lo que cambió; baja: null. */
+  newValues: AuditValues | null
+}
+
+/** Una entrada del historial: todo lo que hizo una acción sobre la especie. */
+export interface SpeciesHistoryEntry {
+  /** Clave de la entrada (para pedir la página siguiente). */
+  id: number
+  actionId: string
+  /** Id de usuario de Clerk o identificador de una carga por script. */
+  actor: string
+  /** Acción con sentido propio (merge_species...), o null si son solo cambios de fila. */
+  action: HistoryRow['action'] | null
+  details: AuditValues | null
+  createdAt: string
+  /** Cambios de la especie y de sus nombres, en orden. */
+  changes: AuditRowChange[]
+  /** Cambios de la misma acción en otras filas del catálogo. */
+  otherChangeCount: number
+  /** Nombre de cada género que aparece en los cambios, por id. */
+  genusNames: Record<string, string>
+}
+
+export interface SpeciesHistoryPage {
+  entries: SpeciesHistoryEntry[]
+  /** Si hay entradas más antiguas que pedir. */
+  hasMore: boolean
+}
+
 export interface RequestOptions {
   /** Cancela la petición; la promesa se rechaza con CatalogAdminError('aborted'). */
   signal?: AbortSignal
@@ -196,9 +244,9 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 /**
  * Clasifica el `error` de supabase-js: cancelada, sin token de sesión, sin
  * respuesta (estado 0), token rechazado (401), sin permiso (código 42501 de
- * Postgres) o fallo.
+ * Postgres) o fallo. También la usan las escrituras (catalogWrites.ts).
  */
-function toAdminError(
+export function toAdminError(
   error: unknown,
   status: number,
   signal: AbortSignal | undefined,
@@ -223,7 +271,8 @@ function toAdminError(
   return new CatalogAdminError('failed', { cause: error })
 }
 
-async function loadClient(
+/** El cliente de Supabase, o CatalogAdminError si no se puede cargar. */
+export async function loadClient(
   signal: AbortSignal | undefined,
 ): Promise<OrkiSupabaseClient> {
   throwIfAborted(signal)
@@ -516,6 +565,69 @@ export async function countSpeciesPlants(
   return data ?? 0
 }
 
+/** Detalle de un género para editarlo: sus abreviaturas (con id) y especies. */
+export interface CatalogGenusDetail {
+  id: string
+  name: string
+  isQuickAccess: boolean
+  /** En orden alfabético. */
+  abbreviations: { id: string; abbreviation: string }[]
+  speciesCount: number
+}
+
+/**
+ * Detalle de un género, leído de las tablas (de lectura pública): nombre,
+ * acceso rápido, abreviaturas y número de especies. null si no existe.
+ */
+export async function getGenusDetail(
+  id: string,
+  { signal }: RequestOptions = {},
+): Promise<CatalogGenusDetail | null> {
+  const supabase = await loadClient(signal)
+  const genusRequest = withSignal(
+    supabase
+      .from('genera')
+      .select(
+        'id, name, is_quick_access, genus_abbreviations(id, abbreviation)',
+      )
+      .eq('id', id),
+    signal,
+  ).maybeSingle()
+  const countRequest = withSignal(
+    supabase
+      .from('species')
+      .select('id', { count: 'exact', head: true })
+      .eq('genus_id', id),
+    signal,
+  )
+  const [row, count] = await Promise.all([
+    settle(genusRequest, signal),
+    (async () => {
+      let response: Awaited<typeof countRequest>
+      try {
+        response = await countRequest
+      } catch (error) {
+        throw toAdminError(error, 0, signal)
+      }
+      if (response.error) {
+        throw toAdminError(response.error, response.status, signal)
+      }
+      return response.count ?? 0
+    })(),
+  ])
+  if (!row) return null
+  const collator = new Intl.Collator('es')
+  return {
+    id: row.id,
+    name: row.name,
+    isQuickAccess: row.is_quick_access,
+    abbreviations: row.genus_abbreviations
+      .map((item) => ({ id: item.id, abbreviation: item.abbreviation }))
+      .sort((a, b) => collator.compare(a.abbreviation, b.abbreviation)),
+    speciesCount: count,
+  }
+}
+
 /** Nombre de un género por su id (para el filtro de la URL); null si no existe. */
 export async function getGenus(
   id: string,
@@ -527,4 +639,87 @@ export async function getGenus(
     signal,
   ).maybeSingle()
   return settle(request, signal)
+}
+
+// Historial ----------------------------------------------------------------------
+
+function asObject(value: Json | undefined): AuditValues | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value
+    : null
+}
+
+function toChange(value: Json): AuditRowChange | null {
+  const item = asObject(value)
+  const action = item?.action
+  if (
+    item === null ||
+    typeof item.table_name !== 'string' ||
+    typeof item.row_id !== 'string' ||
+    (action !== 'insert' && action !== 'update' && action !== 'delete')
+  ) {
+    return null
+  }
+  return {
+    table: item.table_name,
+    rowId: item.row_id,
+    action,
+    oldValues: asObject(item.old_values),
+    newValues: asObject(item.new_values),
+  }
+}
+
+function toHistoryEntry(row: HistoryRow): SpeciesHistoryEntry {
+  const genusNames: Record<string, string> = {}
+  for (const [id, name] of Object.entries(asObject(row.genus_names) ?? {})) {
+    if (typeof name === 'string') genusNames[id] = name
+  }
+  return {
+    id: row.entry_id,
+    actionId: row.action_id,
+    actor: row.actor,
+    action: row.action,
+    details: asObject(row.details),
+    createdAt: row.created_at,
+    changes: (Array.isArray(row.changes) ? row.changes : [])
+      .map(toChange)
+      .filter((change): change is AuditRowChange => change !== null),
+    otherChangeCount: row.other_change_count,
+    genusNames,
+  }
+}
+
+export interface SpeciesHistoryOptions extends RequestOptions {
+  /** Entradas más antiguas que esta (la última de la página anterior). */
+  before?: number
+  pageSize?: number
+}
+
+/**
+ * Historial de una especie (sus cambios, los de sus nombres y las acciones
+ * que la tienen como objetivo), de lo más reciente a lo más antiguo. Solo
+ * para administradores del catálogo.
+ */
+export async function getSpeciesHistory(
+  id: string,
+  {
+    before,
+    pageSize = SPECIES_HISTORY_PAGE_SIZE,
+    signal,
+  }: SpeciesHistoryOptions = {},
+): Promise<SpeciesHistoryPage> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(
+    supabase.rpc('species_history', {
+      target_species_id: id,
+      page_size: pageSize,
+      ...(before !== undefined && { before_entry_id: before }),
+    }),
+    signal,
+  )
+  const data = (await settle(request, signal)) ?? []
+  return {
+    entries: data.map(toHistoryEntry),
+    hasMore: data[0]?.has_more ?? false,
+  }
 }

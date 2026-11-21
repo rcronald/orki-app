@@ -39,7 +39,7 @@ export function CatalogAdminSection({ delayMs }: { delayMs?: number }) {
     <Section
       id="backoffice"
       title="Backoffice del catálogo"
-      description="CatalogAdminView, la pantalla de /administracion/catalogo, con unas 150 especies de muestra. La búsqueda de la muestra solo compara por prefijo o por contener el texto; la de la base tolera errores de tipeo."
+      description="CatalogAdminView, la pantalla de /administracion/catalogo, con unas 150 especies de muestra. Se pueden dar de alta, editar, borrar y cambiar de estado especies (también por lote), editar sus sinónimos y nombres comunes, ver el historial de cambios de cada especie (la primera trae entradas de ejemplo: una carga, una edición y una fusión), y crear, editar y borrar géneros y abreviaturas: los cambios viven en memoria hasta cambiar de escenario. La búsqueda de la muestra solo compara por prefijo o por contener el texto; la de la base tolera errores de tipeo."
     >
       <ChipGroup aria-label="Estado del backoffice">
         {SCENARIOS.map((option) => (

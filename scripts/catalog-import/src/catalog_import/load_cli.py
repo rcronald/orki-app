@@ -5,6 +5,9 @@ revierte, así que el reporte es exacto y no se escribe nada. Para escribir hay 
 ``--escribir``; en producción, además, ``--confirmar-produccion`` con el identificador del
 proyecto de producción.
 
+Cada carga deja una fila de resumen en la auditoría del catálogo (:mod:`catalog_import.audit`)
+con el identificador de la carga; la de una simulación se revierte con todo lo demás.
+
 La URL de la base llega por la variable de entorno ``ORKI_CATALOG_DB_URL`` y nunca se
 imprime. El ambiente (``--ambiente``) es obligatorio y tiene que coincidir con esa URL
 (ver :mod:`catalog_import.target`).
@@ -27,6 +30,15 @@ from typing import Any
 
 import psycopg
 
+from .audit import (
+    ACTION,
+    CATALOG_LOAD,
+    AuditError,
+    LoadAudit,
+    col_source,
+    load_actor,
+    missing_audit_message,
+)
 from .cli import run
 from .load import LoadError, LoadResult, run_load
 from .reader import SourceFormatError
@@ -120,6 +132,44 @@ def announce(target: Target, write: bool) -> None:
     print(f'Destino: {target.describe()}\nModo: {mode}\n')
 
 
+def prepare_audit(
+    load_type: str, target: Target, source: Callable[[], dict[str, Any]]
+) -> LoadAudit | int:
+    """Identificador de la carga y fuente para el resumen de la auditoría, antes de conectar.
+
+    Devuelve los datos o, si no se pueden preparar, el código de salida (con el error impreso).
+    """
+    try:
+        actor, run_info = load_actor(os.environ)
+        return LoadAudit(actor, load_type, target.environment.value, source(), run_info)
+    except AuditError as problem:
+        return error(f'{problem}\nNo se ha conectado a nada.')
+
+
+def audit_notice(audit: LoadAudit, result: LoadResult) -> str:
+    """Línea del resumen por pantalla sobre la fila de la auditoría."""
+    if result.written:
+        return (
+            f'Auditoría: resumen registrado ({ACTION}) con el identificador de la carga '
+            f'{audit.actor} (acción {result.audit_action_id}).'
+        )
+    if result.audit_ready:
+        return (
+            'Auditoría: la simulación insertó el resumen y lo revirtió con lo demás; no queda '
+            'registro.'
+        )
+    return f'Aviso: {missing_audit_message()} Con --escribir, esta carga se negaría.'
+
+
+def audit_row_detail(result: LoadResult) -> str:
+    """Detalle de la fila AUDITORIA del reporte CSV."""
+    if result.written:
+        return f'Resumen registrado en la auditoría ({ACTION}), acción {result.audit_action_id}.'
+    if result.audit_ready:
+        return 'Simulación: el resumen de la auditoría se insertó y se revirtió.'
+    return 'Simulación: la base no tiene la auditoría del catálogo; con --escribir se negaría.'
+
+
 def connect_and_run(
     target: Target, work: Callable[[psycopg.Connection[Any]], LoadResult]
 ) -> LoadResult | int:
@@ -154,6 +204,10 @@ def main(argv: list[str]) -> int:
     if isinstance(target, int):
         return target
 
+    audit = prepare_audit(CATALOG_LOAD, target, lambda: col_source(args.archivo))
+    if isinstance(audit, int):
+        return audit
+
     started = datetime.now(UTC)
     announce(target, args.escribir)
 
@@ -164,7 +218,9 @@ def main(argv: list[str]) -> int:
         return error(f'formato de la fuente: {problem}')
     timings = {'lectura_fuente': time.perf_counter() - mark}
 
-    result = connect_and_run(target, lambda conn: run_load(conn, catalog, write=args.escribir))
+    result = connect_and_run(
+        target, lambda conn: run_load(conn, catalog, write=args.escribir, audit=audit)
+    )
     if isinstance(result, int):
         return result
 
@@ -175,6 +231,7 @@ def main(argv: list[str]) -> int:
         'target': target.describe(),
         'started': started,
         'timings': timings,
+        'audit': (audit.actor, audit_row_detail(result)),
     }
     report = args.reporte or default_report_path(target.environment.value, started, args.escribir)
     rows = write_csv(
@@ -185,5 +242,6 @@ def main(argv: list[str]) -> int:
         include_unchanged=args.detalle_sin_cambios,
     )
     print(format_summary(context, catalog, result))
+    print(audit_notice(audit, result))
     print(f'\nReporte: {report} ({rows} filas)')
     return 0

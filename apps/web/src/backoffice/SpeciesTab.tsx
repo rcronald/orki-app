@@ -10,8 +10,10 @@ import {
   type CatalogSpeciesFilters,
   type CatalogSpeciesRow,
 } from '../lib/catalogAdmin.ts'
+import type { WrittenSpecies } from '../lib/catalogWrites.ts'
 import { prepareSearchQuery, speciesMatchText } from '../lib/catalogSearch.ts'
 import { useCatalogSearch } from '../lib/useCatalogSearch.ts'
+import { BatchStatusBar } from './BatchStatusBar.tsx'
 import {
   LoadError,
   Notice,
@@ -24,6 +26,7 @@ import {
   SpeciesDetailPanel,
   type SpeciesDetailData,
 } from './SpeciesDetailPanel.tsx'
+import { SpeciesForm } from './SpeciesForm.tsx'
 import {
   formatCount,
   pageText,
@@ -44,8 +47,9 @@ import {
 } from './url-state.ts'
 import { useDebouncedValue, useRemoteData } from './useRemoteData.ts'
 
-// Pestaña "Especies": buscador, filtros, tabla paginada en el servidor y
-// detalle de la especie elegida.
+// Pestaña "Especies": buscador, filtros, tabla paginada en el servidor,
+// detalle de la especie elegida (con su edición y su baja), alta de especies y
+// cambio de estado por lote de las filas seleccionadas.
 //
 // Sin texto (o con menos de 2 caracteres) la tabla es el listado alfabético,
 // paginado por clave; con texto, la búsqueda por relevancia, paginada por
@@ -73,9 +77,14 @@ export interface SpeciesTabProps {
    * la página de muestra, es un botón.
    */
   hrefFor?: (state: CatalogAdminState) => string
+  /** Cambia tras cada escritura: la tabla y el detalle se vuelven a leer. */
+  revision?: number
+  /** Se guardó un cambio en el catálogo: la pantalla lo anuncia y relee. */
+  onCatalogChanged?: (message: string) => void
 }
 
 const CHIP = 'py-space-3'
+const CHECKBOX = 'size-[24px] cursor-pointer accent-secondary'
 const NAME_LINK =
   'scientific-name text-md text-neutral-900 underline decoration-neutral-700 underline-offset-2 [overflow-wrap:anywhere]'
 
@@ -85,6 +94,8 @@ export function SpeciesTab({
   source,
   fullState,
   hrefFor,
+  revision = 0,
+  onCatalogChanged = () => {},
 }: SpeciesTabProps) {
   const statusId = useId()
   const captionId = useId()
@@ -102,61 +113,98 @@ export function SpeciesTab({
       ? { modo: 'lista', filters, cursor }
       : { modo: 'busqueda', q: prepared, filters, page },
   )
-  const table = useRemoteData<TableData>(key, async (signal) => {
-    if (prepared !== null) {
-      const result = await source.searchSpecies(prepared, {
-        filters,
-        page,
-        signal,
-      })
+  const table = useRemoteData<TableData>(
+    key,
+    async (signal) => {
+      if (prepared !== null) {
+        const result = await source.searchSpecies(prepared, {
+          filters,
+          page,
+          signal,
+        })
+        const pageCount = Math.ceil(result.total / CATALOG_PAGE_SIZE)
+        return {
+          rows: result.rows,
+          total: result.total,
+          page: result.page,
+          pageCount,
+          hasPrevious: result.page > 1,
+          hasNext: result.page < pageCount,
+          searching: true,
+        }
+      }
+      const result = await source.listSpecies({ filters, cursor, signal })
       const pageCount = Math.ceil(result.total / CATALOG_PAGE_SIZE)
+      const shownPage =
+        cursor.kind === 'first'
+          ? 1
+          : cursor.kind === 'last'
+            ? pageCount
+            : Math.min(Math.max(page, result.hasPrevious ? 2 : 1), pageCount)
       return {
         rows: result.rows,
         total: result.total,
-        page: result.page,
+        page: result.hasPrevious ? shownPage : 1,
         pageCount,
-        hasPrevious: result.page > 1,
-        hasNext: result.page < pageCount,
-        searching: true,
+        hasPrevious: result.hasPrevious,
+        hasNext: result.hasNext,
+        searching: false,
       }
-    }
-    const result = await source.listSpecies({ filters, cursor, signal })
-    const pageCount = Math.ceil(result.total / CATALOG_PAGE_SIZE)
-    const shownPage =
-      cursor.kind === 'first'
-        ? 1
-        : cursor.kind === 'last'
-          ? pageCount
-          : Math.min(Math.max(page, result.hasPrevious ? 2 : 1), pageCount)
-    return {
-      rows: result.rows,
-      total: result.total,
-      page: result.hasPrevious ? shownPage : 1,
-      pageCount,
-      hasPrevious: result.hasPrevious,
-      hasNext: result.hasNext,
-      searching: false,
-    }
-  })
+    },
+    { revision },
+  )
   const loading = typing || table.status === 'loading'
   const data = !typing && table.status === 'success' ? table.data : null
 
   // Género del filtro: su nombre, para mostrarlo (en la URL solo va el id).
   const genusId = filters.genusId ?? null
-  const genus = useRemoteData(genusId, (signal) =>
-    source.genus(genusId ?? '', { signal }),
+  const genus = useRemoteData(
+    genusId,
+    (signal) => source.genus(genusId ?? '', { signal }),
+    { revision },
   )
 
   // Detalle.
   const detailId = state.detailId
-  const detail = useRemoteData<SpeciesDetailData>(detailId, async (signal) => {
-    const id = detailId ?? ''
-    const [species, plantCount] = await Promise.all([
-      source.speciesDetail(id, { signal }),
-      source.plantCount(id, { signal }),
-    ])
-    return { species, plantCount }
-  })
+  const detail = useRemoteData<SpeciesDetailData>(
+    detailId,
+    async (signal) => {
+      const id = detailId ?? ''
+      const [species, plantCount] = await Promise.all([
+        source.speciesDetail(id, { signal }),
+        source.plantCount(id, { signal }),
+      ])
+      return { species, plantCount }
+    },
+    { revision },
+  )
+  const [creating, setCreating] = useState(false)
+  const createHeadingRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (creating) createHeadingRef.current?.focus()
+  }, [creating])
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+
+  // Selección para el cambio de estado por lote: solo filas de la página que
+  // se ve. Cambiar de página, de búsqueda o de filtros la vacía.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [selectionKey, setSelectionKey] = useState(key)
+  if (selectionKey !== key) {
+    setSelectionKey(key)
+    setSelected(new Set())
+  }
+  const pageRows = data?.rows ?? []
+  const selectedRows = pageRows.filter((row) => selected.has(row.id))
+  const toggleSelected = (ids: readonly string[], value: boolean) =>
+    setSelected((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (value) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+
   const [focusRequest, setFocusRequest] = useState(0)
   const [returnFocusTo, setReturnFocusTo] = useState<string | null>(null)
   // Al cerrar el detalle, el foco vuelve al nombre de la especie en la tabla
@@ -285,15 +333,37 @@ export function SpeciesTab({
         <p id={statusId} role="status" className="text-sm text-neutral-700">
           {statusText}
         </p>
-        {criteria && (
-          <Button icon="x" onClick={clearAll}>
-            Limpiar búsqueda y filtros
+        <div className="flex flex-wrap gap-space-3">
+          {criteria && (
+            <Button icon="x" onClick={clearAll}>
+              Limpiar búsqueda y filtros
+            </Button>
+          )}
+          <Button
+            ref={addButtonRef}
+            icon="plus"
+            aria-expanded={creating}
+            onClick={() => setCreating(true)}
+          >
+            Añadir especie o híbrido
           </Button>
-        )}
+        </div>
       </div>
 
+      {selectedRows.length > 0 && (
+        <BatchStatusBar
+          rows={selectedRows}
+          source={source}
+          onClear={() => setSelected(new Set())}
+          onDone={(message) => {
+            setSelected(new Set())
+            onCatalogChanged(message)
+          }}
+        />
+      )}
+
       <div
-        className={`grid gap-space-4 ${detailId ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]' : ''}`}
+        className={`grid gap-space-4 ${detailId || creating ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]' : ''}`}
       >
         <div ref={tableRef} className="flex min-w-[0] flex-col gap-space-3">
           {table.status === 'error' && !typing ? (
@@ -341,6 +411,8 @@ export function SpeciesTab({
               rows={data?.rows ?? null}
               skeletonRows={skeletonRows}
               selectedId={detailId}
+              checked={selected}
+              onCheck={toggleSelected}
               detailHref={detailHref}
               onOpen={(id) => {
                 openDetail(id)
@@ -390,19 +462,62 @@ export function SpeciesTab({
             />
           )}
         </div>
-        {detailId && (
-          <SpeciesDetailPanel
-            detail={detail}
-            focusRequest={focusRequest}
-            onClose={() => {
-              setReturnFocusTo(detailId)
-              onChange({ ...state, detailId: null })
-            }}
-          />
+        {creating ? (
+          <section
+            aria-labelledby={`${statusId}-alta`}
+            className="flex flex-col gap-space-3 self-start rounded-lg bg-neutral-50 p-space-4"
+          >
+            <h2
+              id={`${statusId}-alta`}
+              ref={createHeadingRef}
+              tabIndex={-1}
+              className="text-lg font-semibold text-secondary"
+            >
+              Alta en el catálogo
+            </h2>
+            <SpeciesForm
+              source={source}
+              onCancel={() => {
+                setCreating(false)
+                addButtonRef.current?.focus()
+              }}
+              onSaved={(written) => {
+                setCreating(false)
+                setFocusRequest((value) => value + 1)
+                setReturnFocusTo(written.id)
+                onChange({ ...state, detailId: written.id })
+                onCatalogChanged(createdMessage(written))
+              }}
+            />
+          </section>
+        ) : (
+          detailId && (
+            <SpeciesDetailPanel
+              detail={detail}
+              focusRequest={focusRequest}
+              source={source}
+              revision={revision}
+              onChanged={onCatalogChanged}
+              onDeleted={(message) => {
+                setReturnFocusTo(detailId)
+                onChange({ ...state, detailId: null })
+                onCatalogChanged(message)
+              }}
+              onClose={() => {
+                setReturnFocusTo(detailId)
+                onChange({ ...state, detailId: null })
+              }}
+            />
+          )
         )}
       </div>
     </div>
   )
+}
+
+function createdMessage(written: WrittenSpecies): string {
+  const kind = written.type === 'hybrid' ? 'híbrido' : 'especie'
+  return `Se dio de alta «${written.scientificName}» (${kind}, ${STATUS_LABEL[written.status].toLowerCase()}).`
 }
 
 function rowLinkId(speciesId: string): string {
@@ -419,6 +534,8 @@ function SpeciesTable({
   rows,
   skeletonRows,
   selectedId,
+  checked,
+  onCheck,
   detailHref,
   onOpen,
 }: {
@@ -428,9 +545,15 @@ function SpeciesTable({
   rows: readonly CatalogSpeciesRow[] | null
   skeletonRows: number
   selectedId: string | null
+  /** Filas marcadas para el cambio de estado por lote. */
+  checked: ReadonlySet<string>
+  onCheck: (ids: readonly string[], value: boolean) => void
   detailHref: ((id: string) => string) | null
   onOpen: (id: string) => void
 }) {
+  const pageIds = rows?.map((row) => row.id) ?? []
+  const checkedCount = pageIds.filter((id) => checked.has(id)).length
+  const allChecked = pageIds.length > 0 && checkedCount === pageIds.length
   const th =
     'border-b-2 border-secondary px-space-3 py-space-2 text-left text-sm font-semibold whitespace-nowrap text-neutral-900'
   const td = 'border-b border-neutral-50 px-space-3 py-space-2 align-top'
@@ -453,6 +576,20 @@ function SpeciesTable({
         </caption>
         <thead>
           <tr>
+            <th scope="col" className={`${th} w-[48px]`}>
+              <input
+                type="checkbox"
+                className={CHECKBOX}
+                aria-label="Seleccionar todas las especies de esta página"
+                checked={allChecked}
+                disabled={pageIds.length === 0}
+                ref={(element) => {
+                  if (element)
+                    element.indeterminate = checkedCount > 0 && !allChecked
+                }}
+                onChange={(event) => onCheck(pageIds, event.target.checked)}
+              />
+            </th>
             <th scope="col" className={th}>
               Nombre científico
             </th>
@@ -480,7 +617,7 @@ function SpeciesTable({
           {rows === null
             ? Array.from({ length: skeletonRows }, (_, index) => (
                 <tr key={index} aria-hidden="true">
-                  {Array.from({ length: 7 }, (_, cell) => (
+                  {Array.from({ length: 8 }, (_, cell) => (
                     <td key={cell} className={`${td} h-[49px]`}>
                       <span className="block h-space-4 w-3/4 rounded-sm bg-neutral-50 motion-safe:animate-pulse" />
                     </td>
@@ -501,6 +638,17 @@ function SpeciesTable({
                     key={row.id}
                     className={selected ? 'bg-primary-soft' : undefined}
                   >
+                    <td className={td}>
+                      <input
+                        type="checkbox"
+                        className={CHECKBOX}
+                        aria-label={`Seleccionar ${row.scientificName}`}
+                        checked={checked.has(row.id)}
+                        onChange={(event) =>
+                          onCheck([row.id], event.target.checked)
+                        }
+                      />
+                    </td>
                     <th scope="row" className={`${td} text-left font-normal`}>
                       {detailHref ? (
                         <Link

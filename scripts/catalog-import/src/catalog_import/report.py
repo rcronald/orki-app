@@ -134,6 +134,10 @@ def run_rows(context: dict[str, Any], result: LoadResult) -> list[ReportRow]:
         ),
         ReportRow(RUN, INFO, 'FECHA', name=context['started'].isoformat(timespec='seconds')),
     ]
+    if 'audit' in context:
+        # Identificador de la carga y qué pasó con su fila de resumen en la auditoría.
+        actor, detail = context['audit']
+        rows.append(ReportRow(RUN, INFO, 'AUDITORIA', name=actor, detail=detail))
     for (entity, outcome), count in sorted(result.plan.counts.items()):
         rows.append(ReportRow(RUN, INFO, 'TOTAL', name=f'{entity} {outcome}', detail=str(count)))
     rows += [

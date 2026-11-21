@@ -203,6 +203,9 @@ jobs:
       # del proyecto del ambiente pedido y no la imprime nunca.
       # cargar-hibridos valida el CSV antes de conectarse: con un solo error de formato
       # termina sin conectar a nada.
+      # Al escribir, la carga deja una fila de resumen en la auditoría del catálogo con el
+      # identificador github-actions:<GITHUB_RUN_ID>:<GITHUB_RUN_ATTEMPT>; esas variables las
+      # pone el ejecutor (no hace falta pasarlas) y nunca se usa GITHUB_ACTOR.
       - name: Cargar el catálogo
         id: carga
         env:

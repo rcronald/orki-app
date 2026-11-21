@@ -107,6 +107,46 @@ exception when others then
 end;
 $$;
 
+-- Ejecuta la sentencia y devuelve el motivo de su error: el campo "reason" del detalle JSON
+-- que ponen las funciones de escritura del backoffice (private.raise_catalog_error), precedido
+-- del código SQLSTATE ("23505 duplicate_name"). Falla si la sentencia no da error o si el
+-- detalle no es JSON con motivo. Con "dato", devuelve además ese campo del detalle
+-- ("23505 duplicate_name Phalaenopsis amabilis").
+create function pruebas.motivo_error(sentencia text, dato text default null)
+returns text
+language plpgsql
+as $$
+declare
+  codigo text;
+  mensaje text;
+  detalle text;
+  motivo jsonb;
+begin
+  begin
+    execute sentencia;
+  exception when others then
+    get stacked diagnostics
+      codigo = returned_sqlstate,
+      mensaje = message_text,
+      detalle = pg_exception_detail;
+  end;
+  if codigo is null then
+    raise exception 'FALLO: la sentencia no dio error y se esperaba un error del catálogo: %', sentencia;
+  end if;
+  begin
+    motivo := detalle::jsonb;
+  exception when others then
+    motivo := null;
+  end;
+  if motivo is null or motivo ->> 'reason' is null then
+    raise exception 'FALLO: el error % «%» no trae un motivo en el detalle («%»)',
+      pruebas.nombre_error(codigo), mensaje, coalesce(detalle, '');
+  end if;
+  return codigo || ' ' || (motivo ->> 'reason')
+    || coalesce(' ' || (motivo ->> dato), '');
+end;
+$$;
+
 -- Atajos para los datos de partida -------------------------------------------------------
 
 -- Id de un género por nombre (sin distinguir mayúsculas); falla si no existe.

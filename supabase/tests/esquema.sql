@@ -4,13 +4,13 @@
 -- orden sobre una base vacía. Estas pruebas comprueban además que el resultado tiene las
 -- piezas que el resto de pruebas y la app dan por hechas.
 
--- prueba: existen las seis tablas del esquema en public
+-- prueba: existen las siete tablas del esquema en public
 select pruebas.iguales(
   'tablas de public',
   (select string_agg(c.relname, ', ' order by c.relname)
      from pg_class c
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')),
-  'genera, genus_abbreviations, plants, profiles, species, species_names'
+  'catalog_audit_log, genera, genus_abbreviations, plants, profiles, species, species_names'
 );
 
 -- prueba: los enumerados tienen los valores acordados, en orden
@@ -43,9 +43,12 @@ select pruebas.iguales(
   (select string_agg(c.relname || '.' || t.tgname || ':' || t.tgenabled::text, ', ' order by c.relname, t.tgname)
      from pg_trigger t join pg_class c on c.oid = t.tgrelid
      where c.relnamespace = 'public'::regnamespace and not t.tgisinternal),
-  'genera.set_updated_at:O, genus_abbreviations.set_updated_at:O, plants.set_updated_at:O, '
-    || 'plants.sync_with_species:O, profiles.set_updated_at:O, species.propagate_to_plants:O, '
-    || 'species.set_updated_at:O, species_names.set_updated_at:O'
+  'catalog_audit_log.fill_species_id:O, genera.audit_change:O, genera.set_updated_at:O, genus_abbreviations.audit_change:O, '
+    || 'genus_abbreviations.set_updated_at:O, plants.set_updated_at:O, '
+    || 'plants.sync_with_species:O, profiles.set_updated_at:O, species.audit_change:O, '
+    || 'species.propagate_to_plants:O, species.set_updated_at:O, '
+    || 'species.validate_edited_imported:O, species_names.audit_change:O, '
+    || 'species_names.set_updated_at:O'
 );
 
 -- prueba: las funciones de los disparadores y el guardián de administrador viven en private y fijan un search_path vacío
@@ -54,10 +57,24 @@ select pruebas.iguales(
   (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ','), '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'private'::regnamespace),
-  'propagate_species_to_plants definer=true search_path=""; '
+  'audit_catalog_change definer=true search_path=""; '
+    || 'check_abbreviation_free definer=false search_path=""; '
+    || 'check_alternative_name definer=false search_path=""; '
+    || 'check_genus_name_free definer=false search_path=""; '
+    || 'check_species_name_free definer=false search_path=""; '
+    || 'clean_abbreviation definer=false search_path=""; '
+    || 'clean_catalog_text definer=false search_path=""; '
+    || 'clean_genus_name definer=false search_path=""; '
+    || 'clean_name_language definer=false search_path=""; '
+    || 'current_catalog_action_id definer=false search_path=""; '
+    || 'log_catalog_action definer=false search_path=""; '
+    || 'propagate_species_to_plants definer=true search_path=""; '
+    || 'raise_catalog_error definer=false search_path=""; '
     || 'require_catalog_admin definer=false search_path=""; '
+    || 'set_audit_species_id definer=false search_path=""; '
     || 'set_updated_at definer=false search_path=""; '
-    || 'sync_plant_with_species definer=true search_path=""'
+    || 'sync_plant_with_species definer=true search_path=""; '
+    || 'validate_edited_imported_species definer=false search_path=""'
 );
 
 -- prueba: las tablas y las funciones pertenecen a postgres, como en Supabase
