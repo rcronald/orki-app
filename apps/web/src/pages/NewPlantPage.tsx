@@ -27,7 +27,9 @@ export default function NewPlantPage() {
   const navigate = useNavigate()
   // También retiene la colección: si aún no estaba cargada, se carga, y la
   // planta nueva se suma a ella al guardar. Con ella salen las sugerencias de
-  // origen; mientras se lee, el formulario funciona sin ellas.
+  // origen y el aviso de duplicado (#88); mientras se lee, o si falla, el
+  // formulario funciona sin ellos. No hace falta otra consulta: la colección
+  // se pide igualmente y llega en una sola lectura.
   //
   // Su usuario es el dueño del borrador (#86). Se toma de la colección y no
   // de Clerk para no sumar Clerk a este chunk. Al abrir esta ruta

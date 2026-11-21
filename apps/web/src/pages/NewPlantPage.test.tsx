@@ -251,7 +251,11 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>
 }
 
-async function renderPage(plants: readonly CollectionPlant[] = []) {
+/**
+ * Pinta la pantalla de registro. Con `plants` (por defecto, vacía), la
+ * colección llega enseguida; con null, la lectura queda pendiente.
+ */
+async function renderPage(plants: readonly CollectionPlant[] | null = []) {
   const view = render(
     <MemoryRouter initialEntries={['/coleccion', '/coleccion/nueva']}>
       <NavigationFocusProvider>
@@ -270,7 +274,7 @@ async function renderPage(plants: readonly CollectionPlant[] = []) {
   // La colección del usuario (vacía si no se indica) y los géneros de acceso
   // rápido.
   await act(async () => {
-    source.last().resolve(plants)
+    if (plants !== null) source.last().resolve(plants)
     await Promise.resolve()
   })
   await screen.findByRole('button', { name: 'Phalaenopsis' })
@@ -1171,5 +1175,121 @@ describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
     )
     expect(plantInserts()).toHaveLength(0)
     await expectNoAxeViolations()
+  })
+})
+
+/** Planta de la colección enlazada a Phalaenopsis amabilis. */
+function amabilisPlant(overrides: Partial<CollectionPlant> = {}) {
+  return plant({
+    species: {
+      id: AMABILIS.id,
+      scientificName: AMABILIS.scientific_name,
+      type: 'species',
+      status: 'validated',
+    },
+    ...overrides,
+  })
+}
+
+const duplicateRegion = () =>
+  screen.getByText(/^Ya tienes/).closest('[role="status"]')
+
+describe('NewPlantPage: aviso de duplicado (#88)', () => {
+  it('al elegir una especie que ya tiene, dice cuántos ejemplares activos hay, sin mover el foco', async () => {
+    const user = userEvent.setup()
+    await renderPage([
+      amabilisPlant(),
+      amabilisPlant({ nickname: 'La de la sala' }),
+      // Las dadas de baja no cuentan.
+      amabilisPlant({ status: 'lost' }),
+      amabilisPlant({ status: 'gifted' }),
+      // Otra especie, tampoco.
+      plant({ species: null, displayName: 'Cattleya rex' }),
+    ])
+    expect(screen.queryByText(/^Ya tienes/)).toBeNull()
+
+    await chooseAmabilis(user)
+    const region = duplicateRegion()
+    expect(region).toHaveTextContent(
+      'Ya tienes 2 ejemplares de Phalaenopsis amabilis. Puedes registrar otro igualmente.',
+    )
+    // Lo anuncia una región role="status" que ya estaba montada.
+    expect(region).toHaveAttribute('role', 'status')
+    expect(nameInput()).toHaveFocus()
+    await expectNoAxeViolations()
+
+    // Cambiar el nombre desenlaza la especie: el aviso desaparece.
+    await user.type(nameInput(), ' x')
+    expect(screen.queryByText(/^Ya tienes/)).toBeNull()
+  })
+
+  it('con un solo ejemplar, en singular', async () => {
+    const user = userEvent.setup()
+    await renderPage([amabilisPlant()])
+    await chooseAmabilis(user)
+    expect(duplicateRegion()).toHaveTextContent(
+      'Ya tienes 1 ejemplar de Phalaenopsis amabilis.',
+    )
+  })
+
+  it('no aparece sin especie enlazada ni con una especie que no tiene', async () => {
+    const user = userEvent.setup()
+    await renderPage([
+      // Un nombre por validar igual al de la especie no cuenta.
+      plant({
+        species: null,
+        validation: 'pending',
+        displayName: 'Phalaenopsis amabilis',
+        enteredName: 'Phalaenopsis amabilis',
+      }),
+      amabilisPlant({ status: 'lost' }),
+    ])
+
+    await user.type(nameInput(), 'Phalaenopsis amabilis')
+    expect(screen.queryByText(/^Ya tienes/)).toBeNull()
+
+    await user.clear(nameInput())
+    await chooseAmabilis(user)
+    expect(screen.queryByText(/^Ya tienes/)).toBeNull()
+  })
+
+  it('no bloquea: se guarda igual y crea otro ejemplar', async () => {
+    const user = userEvent.setup()
+    await renderPage([amabilisPlant(), amabilisPlant()])
+    await chooseAmabilis(user)
+    expect(duplicateRegion()).toBeInTheDocument()
+
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert().species_id).toBe(AMABILIS.id)
+    expect(screen.getAllByRole('article')).toHaveLength(3)
+  })
+
+  it('si la colección llega después de elegir la especie, el aviso aparece entonces', async () => {
+    const user = userEvent.setup()
+    await renderPage(null)
+    await chooseAmabilis(user)
+    expect(screen.queryByText(/^Ya tienes/)).toBeNull()
+
+    await act(async () => {
+      source.last().resolve([amabilisPlant()])
+      await Promise.resolve()
+    })
+    expect(duplicateRegion()).toHaveTextContent('Ya tienes 1 ejemplar')
+  })
+
+  it('si la colección no se pudo leer, no hay aviso y el formulario funciona', async () => {
+    const user = userEvent.setup()
+    await renderPage(null)
+    await act(async () => {
+      source.last().reject(new Error('Fallo de la colección'))
+      await Promise.resolve()
+    })
+
+    await chooseAmabilis(user)
+    expect(screen.queryByText(/^Ya tienes/)).toBeNull()
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(plantInserts()).toHaveLength(1)
   })
 })

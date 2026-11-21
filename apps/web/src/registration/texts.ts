@@ -21,6 +21,10 @@ export const PLANT_FORM_TEXT = {
   namePendingHint:
     'Sin especie del catálogo: se guardará con este nombre, por validar.',
   freeNameAction: (name: string) => `No la encuentro: guardarla como «${name}»`,
+  /** Aviso de duplicado (#88), antes y después del nombre científico. */
+  duplicateBefore: (count: number) =>
+    `Ya tienes ${String(count)} ${count === 1 ? 'ejemplar' : 'ejemplares'} de `,
+  duplicateAfter: '. Puedes registrar otro igualmente.',
   genusLabel: 'Género',
   otherGenus: 'Otro',
   otherGenusSearchLabel: 'Buscar otro género',

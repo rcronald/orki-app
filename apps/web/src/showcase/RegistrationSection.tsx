@@ -28,9 +28,43 @@ import { Example, Section } from './layout.tsx'
 // simula el fallo elegido. Va plegado para no repetir en la página los nombres
 // de los campos de las secciones de componentes.
 //
-// Las sugerencias de origen salen de la colección de ejemplo del inventario.
+// Las sugerencias de origen y el aviso de duplicado salen de la colección de
+// ejemplo del inventario, con Phalaenopsis amabilis enlazada a la especie de
+// esta muestra: dos ejemplares activos y uno regalado (que no cuenta).
 // El borrador es real (localStorage, usuario "muestra"): recargar la página a
 // mitad lo recupera.
+
+const AMABILIS_SPECIES = {
+  id: 'especie-amabilis',
+  scientificName: 'Phalaenopsis amabilis',
+  type: 'species',
+  status: 'validated',
+} as const
+
+const KNOWN_PLANTS: readonly CollectionPlant[] = [
+  ...SAMPLE_COLLECTION.map((plant) =>
+    plant.displayName === AMABILIS_SPECIES.scientificName
+      ? { ...plant, species: AMABILIS_SPECIES }
+      : plant,
+  ),
+  ...SAMPLE_COLLECTION.filter(
+    (plant) => plant.displayName === AMABILIS_SPECIES.scientificName,
+  ).flatMap((plant) => [
+    {
+      ...plant,
+      id: `${plant.id}-otra`,
+      nickname: null,
+      species: AMABILIS_SPECIES,
+    },
+    {
+      ...plant,
+      id: `${plant.id}-regalada`,
+      nickname: null,
+      status: 'gifted' as const,
+      species: AMABILIS_SPECIES,
+    },
+  ]),
+]
 
 /** Dueño del borrador de la muestra; no es un usuario de Clerk. */
 const SHOWCASE_DRAFT_USER = 'muestra'
@@ -239,7 +273,7 @@ export function RegistrationSection() {
     <Section
       id="registro"
       title="Formulario de registro"
-      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). Lo escrito se conserva como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
+      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). Lo escrito se conserva como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
     >
       <Collapsible title="Ver el formulario" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -269,7 +303,7 @@ export function RegistrationSection() {
                 key={formKey}
                 services={services}
                 online={online}
-                knownPlants={SAMPLE_COLLECTION}
+                knownPlants={KNOWN_PLANTS}
                 draftUserId={SHOWCASE_DRAFT_USER}
                 onSaved={(plant) =>
                   setResult(

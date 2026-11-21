@@ -29,6 +29,7 @@ import {
   LOCKED_CHIP_CLASSES,
 } from './ChoiceField.tsx'
 import { clearPlantDraft, readPlantDraft, writePlantDraft } from './draft.ts'
+import { DuplicateNotice } from './DuplicateNotice.tsx'
 import {
   initialPlantFormValues,
   isPlantFormDirty,
@@ -80,7 +81,8 @@ export interface PlantFormProps {
   onCancel: () => void
   /**
    * Plantas del usuario ya cargadas (la colección en memoria), para las
-   * sugerencias de origen; null o sin indicar si aún no están.
+   * sugerencias de origen y el aviso de duplicado; null o sin indicar si aún
+   * no están (el formulario funciona igual, sin ellos).
    */
   knownPlants?: readonly CollectionPlant[] | null
   /**
@@ -180,8 +182,8 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
 
 /**
  * Formulario de registro de una planta: los cuatro campos obligatorios
- * (nombre, género, tipo y fecha de adquisición, #85), el origen y la sección
- * plegable "Más detalles" (#86). Todo el estado de los campos vive en un
+ * (nombre, género, tipo y fecha de adquisición, #85), el aviso de duplicado
+ * (#88), el origen y la sección plegable "Más detalles" (#86). Todo el estado de los campos vive en un
  * reductor (form-state.ts); aquí van la validación al enviar, el guardado y
  * sus errores, y el borrador en el dispositivo (draft.ts).
  *
@@ -377,15 +379,17 @@ export function PlantForm({
         disabled={!online}
         className="flex min-w-[0] flex-col gap-space-5"
       >
-        <NameField
-          values={values}
-          dispatch={dispatch}
-          searchSpecies={services.searchSpecies}
-          error={errors.name}
-          inputRef={nameRef}
-        />
-
-        {/* #88: el aviso de "ya la tienes" irá aquí, bajo el nombre. */}
+        {/* El aviso de duplicado (#88) va pegado al nombre, sin hueco propio. */}
+        <div>
+          <NameField
+            values={values}
+            dispatch={dispatch}
+            searchSpecies={services.searchSpecies}
+            error={errors.name}
+            inputRef={nameRef}
+          />
+          <DuplicateNotice species={values.species} knownPlants={knownPlants} />
+        </div>
 
         <GenusField
           values={values}
