@@ -438,6 +438,58 @@ const { photo, thumbnail } = await processPhoto(file, { signal })
 - **Prueba a mano:** fuera de producción, la sección "Fotos" de `/muestra` deja elegir una foto (o hacerla con la cámara en el celular) y muestra el original, el formato, las dimensiones, el peso y la calidad de la foto y la miniatura, los intentos, el tiempo y los metadatos que quedan. Es la que sirve para la prueba en iPhone y Android (#84).
 - **Pruebas:** jsdom no tiene canvas, así que la lógica pura (tamaños, orientación, búsqueda de calidad, formato, metadatos, errores) se prueba directamente y la orquestación con un doble de la capa del navegador (`ImageBackend`). Los accesorios de `src/photos/fixtures/` son imágenes sintéticas de 48 × 32 px, entre ellas un JPEG con EXIF, GPS inventado y orientación 6, y un WebP con EXIF y XMP.
 
+### Campo de foto y subida
+
+`PhotoField` (`src/photos/PhotoField.tsx`, #82) es el campo de foto de los formularios: elegir, vista previa, reemplazar y quitar. Prepara la foto con el módulo anterior y la entrega ya preparada; no sube nada. El formulario decide cuándo subirla.
+
+```tsx
+import { PhotoField, type PhotoFieldValue } from '../photos/PhotoField.tsx'
+import { replacePlantPhoto, removePlantPhoto } from '../photos/upload.ts'
+import { usePhotoUpload } from '../photos/usePhotoUpload.ts'
+
+const [foto, setFoto] = useState<PhotoFieldValue | null>(null)
+// { kind: 'new', photo: ProcessedPhoto, fileName } | { kind: 'stored', src } | null
+const subida = usePhotoUpload<PlantPhotoChangeResult>()
+
+<PhotoField
+  value={foto}
+  onChange={(valor) => { subida.reset(); setFoto(valor) }}
+  upload={subida.state}            // opcional: lo muestra con "Reintentar" y "Cancelar subida"
+  onRetryUpload={() => void subida.retry()}
+  onCancelUpload={subida.cancel}
+/>
+
+// Al guardar, con la planta ya escrita (#87) o al editar (#16):
+if (foto?.kind === 'new') {
+  const files = foto.photo
+  await subida.start(({ signal, onProgress }) =>
+    replacePlantPhoto(files, { userId, plant, signal, onProgress, onPlantUpdated: upsertPlant }))
+}
+if (foto === null && plant.photoPath) await removePlantPhoto({ userId, plant, onPlantUpdated: upsertPlant })
+```
+
+- **Cámara y galería:** en el celular, dos botones: "Tomar foto" abre un `<input type="file" accept="image/*" capture="environment">` y "Elegir de la galería", uno sin `capture`. Con `capture`, iOS y Android abren directamente la cámara trasera. Sin él, el iPhone muestra su menú (fototeca, hacer foto, elegir archivo), pero Chrome en Android 14 y 15 abre el selector de fotos del sistema, que muchas veces ya no ofrece la cámara; por eso hay un botón para cada cosa. Los navegadores de escritorio ignoran `capture` (es una pista, según MDN), así que donde el puntero principal no es táctil (`(pointer: coarse)` no se cumple) queda un solo botón, "Elegir foto", que abre el selector de archivos, con cámara en el equipo o sin ella. La prop `camera` (`'auto' | 'show' | 'hide'`) lo fuerza.
+- **Estados:** preparando (con "Cancelar"), lista (con el peso) y error con el texto del motivo (formato no admitido, HEIC, no es una imagen, demasiado grande...). Los estados se anuncian en una región `role="status"` y los errores en `role="alert"`. Mientras se prepara o se sube, los botones quedan con `aria-disabled` en vez de `disabled`, para no perder el foco.
+- **Foco:** al quitar la foto, o al cancelar o terminar cuando el botón con el foco desaparece, el foco vuelve al primer botón de elegir. Todo funciona con el teclado; los `<input type="file">` están ocultos, fuera del orden de tabulación y del árbol de accesibilidad, y los abren los botones.
+- **Vista previa:** una URL de objeto de la foto preparada, que se revoca al cambiar de foto, al quitarla y al desmontar. La caja es de 4:3 fija, así que la vista previa no mueve nada al aparecer. Con `{ kind: 'stored', src }` muestra una foto ya subida (edición, #16).
+
+Subida (`src/photos/upload.ts`), sobre una interfaz mínima del bucket (`PhotoStorage`, en `storage.ts`) y otra de las escrituras de la planta (`PlantPhotoRecords`, en `plant-record.ts`), con dobles en memoria para las pruebas y la página de muestra (`memory-storage.ts`):
+
+- **`uploadPhotoFiles(files, { userId, plantId, signal, onProgress })`:** sube la foto y la miniatura a la vez con la [convención de rutas](supabase/README.md#fotos-de-plantas-storage) (`src/photos/paths.ts`): `<usuario>/<planta>/photo-<versión>.<webp|jpg>` y `thumb-<versión>`, con una versión nueva (`crypto.randomUUID()`) por foto preparada y la misma en sus reintentos. El tipo de contenido es el del Blob (con un Blob, supabase-js envía un formulario y Storage toma el tipo de la parte del archivo, no de `contentType`) y la caché es de un año (`cacheControl: '31536000'`): las rutas llevan versión y nunca cambian de contenido. Sin `upsert`; si la ruta ya existe (409), se da por subida, porque solo puede ser un intento anterior de esta misma foto cuya respuesta se perdió. Si falla una de las dos, borra las dos rutas antes de rechazar.
+- **Progreso:** archivos y bytes terminados (`UploadProgress`); supabase-js no da el progreso de cada petición.
+- **Cancelar:** supabase-js no deja abortar una subida (`upload` no acepta `AbortSignal`). Al cancelar se deja de esperar enseguida (rechaza con `aborted`) y, cuando terminan las peticiones en curso, se borra lo que haya llegado. El reintento usa otra versión para que ese borrado tardío no se lleve sus archivos.
+- **Errores** (`PhotoStorageError`, con `reason` y `message` en español): `offline`, `session-ended`, `too-large` y `unsupported-type` (rechazo del bucket por el tope de 1 MiB o el tipo), `forbidden` (políticas), `not-found`, `failed` y `aborted`. Storage a veces responde 400 con el código real en `statusCode` (`"413"`, `"403"`); se mira ese también. `uncertain` indica que la petición salió y no hubo respuesta, así que no se sabe si se aplicó.
+- **Reintentar sin volver a elegir ni preparar la foto:** `usePhotoUpload()` guarda la última tarea y `retry()` la vuelve a lanzar con la misma foto ya preparada. Con la sesión terminada o la planta borrada no se ofrece "Reintentar".
+
+Orden de las operaciones sobre una planta que ya existe (la planta nunca apunta a un archivo que no existe; lo peor que queda es un archivo sin planta, que encuentra el script de limpieza):
+
+| Operación           | Pasos                                                                                                                                                                | Si falla un paso                                                                                                                                                                                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `replacePlantPhoto` | 1. Subir foto y miniatura nuevas. 2. Apuntar la planta (`photo_path`, `thumbnail_path`). 3. Reflejarla en la colección (`onPlantUpdated`). 4. Borrar las anteriores. | 1: se borra lo subido; la planta sigue igual. 2 rechazado por la base: se borra lo nuevo y la planta sigue con la anterior. 2 sin respuesta (`uncertain`): no se borra nada, porque la planta quizá ya apunta a lo nuevo; reintentar lo termina. 4: la operación vale y las rutas viejas vuelven en `leftovers`. |
+| `removePlantPhoto`  | 1. Poner las rutas de la planta a `null`. 2. Reflejarla. 3. Borrar los archivos.                                                                                     | 1: no se borra nada. 3: la planta ya está sin foto y los archivos vuelven en `leftovers`.                                                                                                                                                                                                                        |
+
+La cancelación vale hasta que sale la escritura en la base. En `/muestra`, sección "Fotos", el campo sube a un bucket simulado en memoria (la página no tiene sesión de Clerk ni usa Supabase), con las rutas reales y la opción de simular un fallo de red, de la miniatura o de tamaño para ver el reintento.
+
 ## Base de datos y migraciones
 
 Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.

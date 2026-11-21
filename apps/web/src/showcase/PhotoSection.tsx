@@ -11,6 +11,7 @@ import type { MetadataKind } from '../photos/metadata.ts'
 import { loadPhotoProcessing } from '../photos/load.ts'
 import type { EncodedImage, ProcessedPhoto } from '../photos/process.ts'
 import { Example, Section } from './layout.tsx'
+import { PhotoFieldExample } from './PhotoFieldExample.tsx'
 
 // Banco de pruebas del procesamiento de fotos (#81) para probarlo a mano en
 // un navegador real, también en iPhone y Android (#84): eliges una foto y se
@@ -145,8 +146,9 @@ export function PhotoSection() {
     <Section
       id="fotos"
       title="Fotos"
-      description="Procesamiento de fotos en el navegador (src/photos/): compresión, miniatura, orientación y retirada de metadatos. Elige una foto de la galería o haz una con la cámara para ver el resultado real en este dispositivo."
+      description="Fotos de plantas (src/photos/): el campo de foto con su subida y, debajo, el procesamiento en el navegador (compresión, miniatura, orientación y retirada de metadatos). Elige una foto de la galería o haz una con la cámara para ver el resultado real en este dispositivo."
     >
+      <PhotoFieldExample />
       <Example
         title="Preparar una foto"
         description="Topes: foto de 1600 px y menos de 300 KB; miniatura de 400 px y menos de 30 KB."
