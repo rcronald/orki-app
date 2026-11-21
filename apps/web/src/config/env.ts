@@ -13,6 +13,8 @@ export interface AppConfig {
   supabasePublishableKey: string
   appEnv: AppEnv
   clerkPublishableKey: string
+  /** DSN de Sentry; sin él Sentry queda apagado (ver observability/). */
+  sentryDsn?: string
 }
 
 export type EnvVarName =
@@ -20,6 +22,7 @@ export type EnvVarName =
   | 'VITE_SUPABASE_PUBLISHABLE_KEY'
   | 'VITE_APP_ENV'
   | 'VITE_CLERK_PUBLISHABLE_KEY'
+  | 'VITE_SENTRY_DSN'
 
 export interface EnvIssue {
   variable: EnvVarName
@@ -86,6 +89,35 @@ function clerkKeyProblem(
   return undefined
 }
 
+/**
+ * Problema del DSN de Sentry, o undefined si es válido. Un DSN tiene la forma
+ * https://<clave pública>@<host>/<id del proyecto>. La clave pública no es un
+ * secreto (va en el JavaScript del build); los DSN antiguos con clave secreta
+ * (https://<clave>:<secreto>@...) se rechazan.
+ */
+function sentryDsnProblem(dsn: string): string | undefined {
+  let url: URL
+  try {
+    url = new URL(dsn)
+  } catch {
+    return 'No es un DSN de Sentry válido (https://<clave>@<host>/<proyecto>).'
+  }
+  if (url.password !== '') {
+    return 'Lleva una clave secreta; usa el DSN público del proyecto, sin la parte tras los dos puntos.'
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username === '' ||
+    url.hostname === '' ||
+    !/^\/\d+$/.test(url.pathname) ||
+    url.search !== '' ||
+    url.hash !== ''
+  ) {
+    return 'No es un DSN de Sentry válido (https://<clave>@<host>/<proyecto>).'
+  }
+  return undefined
+}
+
 export function parseEnv(source: EnvSource): EnvParseResult {
   const issues: EnvIssue[] = []
   const fail = (variable: EnvVarName, problem: string) => {
@@ -133,6 +165,14 @@ export function parseEnv(source: EnvSource): EnvParseResult {
     if (problem !== undefined) fail('VITE_CLERK_PUBLISHABLE_KEY', problem)
   }
 
+  // Opcional: sin DSN, Sentry queda apagado (local, pruebas e integración
+  // continua). Si está, tiene que ser válido, como las demás variables.
+  const sentryDsn = readString(source, 'VITE_SENTRY_DSN')
+  if (sentryDsn !== undefined) {
+    const problem = sentryDsnProblem(sentryDsn)
+    if (problem !== undefined) fail('VITE_SENTRY_DSN', problem)
+  }
+
   if (
     issues.length > 0 ||
     supabaseUrl === undefined ||
@@ -150,6 +190,7 @@ export function parseEnv(source: EnvSource): EnvParseResult {
       supabasePublishableKey,
       appEnv,
       clerkPublishableKey,
+      sentryDsn,
     },
   }
 }
