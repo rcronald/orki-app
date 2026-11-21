@@ -85,6 +85,54 @@ export const PLANT_FORM_TEXT = {
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
 } as const
 
+/** Textos del formulario, con las mismas claves para registrar y editar. */
+export type PlantFormTexts = {
+  [Key in keyof typeof PLANT_FORM_TEXT]: (typeof PLANT_FORM_TEXT)[Key] extends (
+    ...args: infer Args
+  ) => string
+    ? (...args: Args) => string
+    : string
+}
+
+/**
+ * El mismo formulario al editar una planta (#16). Tras guardar los datos, la
+ * foto nueva se sube (o la anterior se quita) aparte: si eso falla, los
+ * cambios ya están guardados y la planta conserva la foto que tenía.
+ */
+export const PLANT_EDIT_TEXT: PlantFormTexts = {
+  ...PLANT_FORM_TEXT,
+  title: 'Editar orquídea',
+  photoUploading: 'Cambios guardados. Actualizando la foto…',
+  photoUploadProgress: (done: number, total: number) =>
+    `Cambios guardados. Subiendo la foto nueva… (${String(done)} de ${String(total)} archivos)`,
+  photoUploadingButton: 'Actualizando la foto…',
+  photoUploadFailed:
+    'Los cambios quedaron guardados, pero no se pudo cambiar la foto.',
+  photoUploadCancelled:
+    'Los cambios quedaron guardados, pero la foto no cambió: se canceló la subida.',
+  photoUploadRetryHint:
+    'Puedes volver a intentarlo o continuar con la foto que tenía.',
+  photoUploadRetry: 'Reintentar la foto',
+  photoContinueWithout: 'Continuar sin cambiar la foto',
+  duplicateAfter: '. Puedes guardarla igualmente.',
+  submit: 'Guardar cambios',
+  submitting: 'Guardando…',
+  confirmDiscard:
+    '¿Salir sin guardar? Se perderán los cambios que hiciste en el formulario.',
+  offline:
+    'Sin conexión. Editar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
+}
+
+/** Avisos propios de la edición. */
+export const PLANT_EDIT_NOTICE_TEXT = {
+  /** Al cambiar el nombre de una planta enlazada por uno que no es del catálogo. */
+  unlinkBefore: 'Al guardar, la planta dejará de estar enlazada a ',
+  unlinkAfter: ' y volverá a «Nombre por validar».',
+  storedPhotoAlt: 'Foto actual de la planta',
+  storedPhotoLoading: 'Foto actual de la planta: cargando',
+  storedPhotoFailed: 'Foto actual de la planta: no se pudo cargar',
+} as const
+
 // Etiquetas de los chips de color de flor y de tipo: viven en
 // collection/labels.ts, compartidas con el inventario y la exportación.
 export { FLOWER_COLOR_LABEL, PLANT_TYPE_LABEL } from '../collection/labels.ts'

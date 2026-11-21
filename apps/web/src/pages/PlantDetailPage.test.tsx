@@ -152,7 +152,7 @@ describe('PlantDetailPage', () => {
     await user.tab({ shift: true })
     expect(screen.getByRole('link', { name: DETAIL_TEXT.back })).toHaveFocus()
     await user.tab()
-    expect(screen.getByRole('button', { name: DETAIL_TEXT.edit })).toHaveFocus()
+    expect(screen.getByRole('link', { name: DETAIL_TEXT.edit })).toHaveFocus()
   })
 
   it('al abrir la dirección directamente espera a la colección', async () => {

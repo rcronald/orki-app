@@ -34,6 +34,7 @@ export const DETAIL_TEXT = {
   noPhoto: 'Sin foto',
   actionsLabel: 'Acciones',
   edit: 'Editar',
+  saved: 'Guardaste los cambios.',
   retire: 'Dar de baja',
   reactivate: 'Reactivar',
   delete: 'Eliminar',

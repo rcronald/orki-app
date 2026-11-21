@@ -32,6 +32,10 @@ const NewPlantPage = lazy(() => import('./pages/NewPlantPage.tsx'))
 // lista no lo necesita hasta que se toca una tarjeta.
 const PlantDetailPage = lazy(() => import('./pages/PlantDetailPage.tsx'))
 
+// Edición de un ejemplar (#16): comparte con el registro el formulario, que
+// Vite deja en un chunk común a los dos.
+const EditPlantPage = lazy(() => import('./pages/EditPlantPage.tsx'))
+
 // Backoffice del catálogo (/administracion/catalogo, #99): solo para
 // administradores, así que va en su propio chunk y no lo descarga nadie más.
 const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
@@ -84,6 +88,14 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
               element={
                 <Suspense fallback={null}>
                   <PlantDetailPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path={PATHS.editPlant}
+              element={
+                <Suspense fallback={null}>
+                  <EditPlantPage />
                 </Suspense>
               }
             />
