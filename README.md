@@ -401,7 +401,7 @@ Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `Co
 - **Solo plantas activas**, en los contadores de cabecera (orquídeas y géneros, en singular o plural) y en la lista.
 - **Lista o cuadrícula.** Lista: una tarjeta por fila con la miniatura a la izquierda (`SpecimenCard` con `layout="row"`). Cuadrícula: dos por fila en el celular, tres desde 640 px y cuatro desde 1024 px.
 - **Agrupar por género** o no. Agrupada: un encabezado por género con su contador ("Phalaenopsis, 3 orquídeas" para el lector de pantalla), los géneros y las plantas en orden alfabético sin tener en cuenta el signo "×". Sin agrupar: las más recientes primero (por fecha de alta).
-- **Cada tarjeta** lleva el nombre mostrado, el apodo, el género y la insignia de validación ("Nombre por validar" también para las no identificables). Sin foto, el marcador neutro: la miniatura llegará con el #10 por `plantThumbnail()` (`src/inventory/plant-display.ts`), que hoy no devuelve nada. Para el detalle (#16), la tarjeta se convierte en enlace pasando `renderName` a `SpecimenCard` en `PlantCard.tsx`.
+- **Cada tarjeta** lleva el nombre mostrado, el apodo, el género y la insignia de validación ("Nombre por validar" también para las no identificables). Con foto, la miniatura (`usePlantThumbnail`, ver [Lectura de fotos](#lectura-de-fotos-y-borrado-sin-huérfanos)); sin foto, el marcador neutro. Para el detalle (#16), la tarjeta se convierte en enlace pasando `renderName` a `SpecimenCard` en `PlantCard.tsx`.
 - **Registrar orquídea:** enlace a `/coleccion/nueva`; en el celular queda fijo abajo, al alcance del pulgar.
 - **Buscador fijo arriba** (se queda visible al desplazarse): filtra mientras se escribe con `filterByText` por nombre mostrado, nombre ingresado, género, apodo y origen, sin tildes, mayúsculas ni el signo "×". Escape o el botón de la cruz lo limpian. Los contadores de cabecera siguen siendo los de toda la colección; bajo el campo se dice cuántas coinciden, en una región `role="status"` que el lector de pantalla anuncia sin mover el foco. Agrupada, los géneros sin coincidencias desaparecen. `InventorySearch` acepta un bloque debajo (`children`), donde "¿Ya la tengo?" (#19) pondrá su respuesta.
 - **La búsqueda va en la URL** (`/coleccion?q=phal`): se conserva al volver con "atrás" desde el registro o el detalle, al recargar y al compartir el enlace. Cada pulsación sustituye la entrada del historial en vez de añadir una, y no mueve el foco (`useFocusOnNavigation` solo lo mueve al cambiar de ruta).
@@ -489,6 +489,32 @@ Orden de las operaciones sobre una planta que ya existe (la planta nunca apunta 
 | `removePlantPhoto`  | 1. Poner las rutas de la planta a `null`. 2. Reflejarla. 3. Borrar los archivos.                                                                                     | 1: no se borra nada. 3: la planta ya está sin foto y los archivos vuelven en `leftovers`.                                                                                                                                                                                                                        |
 
 La cancelación vale hasta que sale la escritura en la base. En `/muestra`, sección "Fotos", el campo sube a un bucket simulado en memoria (la página no tiene sesión de Clerk ni usa Supabase), con las rutas reales y la opción de simular un fallo de red, de la miniatura o de tamaño para ver el reintento.
+
+### Lectura de fotos y borrado sin huérfanos
+
+El bucket es privado (#83): las imágenes no tienen una dirección pública. Hay dos formas de leerlas: URL firmadas (`createSignedUrls`, una petición firma muchas rutas) o descarga autenticada a `Blob` (`download`, con el token de la sesión). La app usa la **descarga autenticada, guardada por ruta**:
+
+- Una URL firmada caduca y cambia en cada firma: el navegador la trata como otra dirección y la vuelve a bajar en cada sesión, y la caché sin conexión del #18 no puede usarla como clave. Firmar en lote ahorra una petición por imagen, pero las imágenes se bajan igual una a una.
+- La ruta es una clave estable y su contenido nunca cambia (lleva la versión). Cada miniatura se baja una vez por dispositivo: queda en memoria mientras dura la pestaña y en **Cache Storage**, en una caché por usuario (`orki-miniaturas-v1:<usuario>`) con clave `/_orki/plant-photos/<ruta>` (una dirección del propio origen que nadie sirve). Desde la segunda visita, una lista de cientos de miniaturas no hace ninguna petición, y Cache Storage se lee sin red y también desde el service worker, que es lo que necesita el #18.
+- Las descargas van como mucho de 6 en 6. Cada imagen se muestra con una URL de objeto que se revoca 30 s después de que ninguna pantalla la use (así no se recrea al desplazarse arriba y abajo).
+- Al cambiar de usuario o cerrar sesión, `CollectionProvider` llama a `forgetPlantImagesExcept(usuario)`: vacía la memoria y borra de Cache Storage las miniaturas de los demás usuarios.
+
+La estrategia vive en `src/photos/read.ts` detrás de `PlantImageSource` (`acquire(ruta, 'thumbnail' | 'photo')` devuelve una URL de objeto y `release(ruta)` la suelta) y de `PersistentImageCache`. Las pantallas solo usan los hooks de `src/photos/usePlantImage.ts`, así que el #18 puede cambiarla (por ejemplo, que el service worker sirva la caché) pasando otra fuente con `<PlantImagesContext value={...}>`, sin tocarlas:
+
+```ts
+const miniatura = usePlantImage(plant.thumbnailPath, 'thumbnail', visible)
+const foto = usePlantImage(plant.photoPath, 'photo') // detalle (#16), bajo demanda
+// { status: 'none' | 'loading' | 'error' } o { status: 'ready', src }
+```
+
+- **Inventario:** `PlantCard` usa `usePlantThumbnail(plant, ref)` (`src/inventory/usePlantThumbnail.ts`), que pide solo `thumbnailPath`, nunca la foto grande, y solo cuando la tarjeta está en pantalla o a menos de 300 px (`useNearViewport`, con `IntersectionObserver`). Mientras carga o si falla, el marcador neutro del sistema, con un texto alternativo que lo dice ("Foto de _Cattleya labiata_: cargando"); la caja de la foto tiene proporción fija, así que la imagen no mueve nada al llegar. Tras un fallo se reintenta al volver la conexión (evento `online`) o al volver a montar la tarjeta: el fallo no se guarda. Las plantas sin foto siguen con "Sin foto".
+- **Foto grande:** `usePlantImage(plant.photoPath, 'photo')` la baja bajo demanda y la guarda solo en memoria (no ocupa Cache Storage). Para el campo de foto de la edición: `{ kind: 'stored', src }` con la `src` que devuelve.
+
+Sin huérfanos:
+
+- **Reemplazar y quitar** borran los archivos anteriores (ver la tabla de arriba).
+- **Eliminar una planta** (lo llamará el #16): `deletePlantWithPhotos({ userId, plantId, onPlantRemoved: removePlant })` (`src/photos/delete.ts`) borra primero la fila, la quita de la colección y después toda la carpeta `<usuario>/<planta>/` (`deletePlantPhotoFolder`, que también se lleva restos de subidas anteriores). Si falla el borrado de la planta no se toca nada; si fallan los archivos, la planta ya no existe y devuelve `photosDeleted: false`.
+- **Script de limpieza:** un fallo de red a mitad puede dejar archivos sin planta. `npm run fotos:huerfanas -- --ambiente desarrollo` los lista (modo de prueba, por defecto) y con `--borrar` los borra; ver [su sección](supabase/README.md#limpieza-de-fotos-huérfanas) en el README de Supabase.
 
 ## Base de datos y migraciones
 

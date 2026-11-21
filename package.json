@@ -25,7 +25,8 @@
     "db:test": "node scripts/db-test.mjs",
     "db:perf": "node scripts/db-perf.mjs",
     "db:types": "node scripts/db-types.mjs",
-    "db:types:check": "node scripts/db-types.mjs --comprobar"
+    "db:types:check": "node scripts/db-types.mjs --comprobar",
+    "fotos:huerfanas": "node scripts/fotos-huerfanas.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

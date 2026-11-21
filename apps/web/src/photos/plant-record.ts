@@ -26,6 +26,8 @@ export interface PlantPhotoRecords {
     userId: string,
     paths: PlantPhotoPaths | null,
   ): Promise<CollectionPlant>
+  /** Borra la planta. Rechaza como setPhotoPaths. */
+  deletePlant(plantId: string, userId: string): Promise<void>
 }
 
 interface PostgrestErrorLike {
@@ -88,6 +90,19 @@ export function createSupabasePlantPhotoRecords({
         .single()
       if (error) throw recordError(error, status)
       return toCollectionPlant(data)
+    },
+
+    async deletePlant(plantId, userId) {
+      const supabase = await client()
+      // Pide la fila borrada: sin filas, la planta no existía o no es suya.
+      const { error, status } = await supabase
+        .from('plants')
+        .delete()
+        .eq('id', plantId)
+        .eq('user_id', userId)
+        .select('id')
+        .single()
+      if (error) throw recordError(error, status)
     },
   }
 }

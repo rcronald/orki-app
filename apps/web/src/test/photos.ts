@@ -50,6 +50,9 @@ export interface FakeRecords extends PlantPhotoRecords {
       ) => Promise<CollectionPlant>
     >
   >
+  deletePlant: ReturnType<
+    typeof vi.fn<(plantId: string, userId: string) => Promise<void>>
+  >
 }
 
 /** Escrituras de la planta que devuelven la planta con las rutas nuevas. */
@@ -64,5 +67,6 @@ export function fakeRecords(): FakeRecords {
         }),
       ),
     ),
+    deletePlant: vi.fn(() => Promise.resolve()),
   }
 }
