@@ -24,9 +24,10 @@ Las tablas viven en el esquema `public` y sus identificadores están en inglés:
 - Backoffice: `public.list_catalog_species()`, `public.search_catalog_species()`, `public.list_catalog_genera()`, `public.catalog_summary()` y `public.count_species_plants()`, solo para administradores del catálogo, para la pantalla `/administracion/catalogo` (#99). Ver [Listado del catálogo para el backoffice](#listado-del-catálogo-para-el-backoffice). La pantalla escribe con funciones de administrador (especies: `create_catalog_species()`, `update_catalog_species()`, `set_catalog_species_status()` y `delete_catalog_species()`, #106; nombres, géneros y abreviaturas: `add_species_name()`, `update_species_name()`, `delete_species_name()`, `create_catalog_genus()`, `update_catalog_genus()`, `delete_catalog_genus()`, `add_genus_abbreviation()`, `update_genus_abbreviation()` y `delete_genus_abbreviation()`, #107) y el disparador `validate_edited_imported` deja validada una especie importada que edita un administrador. Ver [Escritura del catálogo desde el backoffice](#escritura-del-catálogo-desde-el-backoffice).
 - Auditoría: `catalog_audit_log` registra cada alta, edición y baja del catálogo hecha con un token de usuario (disparador `audit_change`) y las acciones con sentido propio (`private.log_catalog_action()`, para la fusión y la cola). Es de solo anexar: la leen solo los administradores del catálogo y nadie la escribe por la API. `species_history()` devuelve el historial de una especie para su detalle en el backoffice (#133). Ver [Auditoría del catálogo](#auditoría-del-catálogo).
 - Fusión de especies: `preview_species_merge()` y `merge_species()`, funciones de administrador que muestran y hacen la fusión de una especie duplicada en otra (#135, parte de #21), y `species_merge_keys`, la memoria de a qué especie fue a parar la clave de fuente de cada especie absorbida, para que la importación no la vuelva a crear. Solo la leen los administradores del catálogo; nadie la escribe por la API. Ver [Fusión de especies](#fusión-de-especies).
-- Disparadores, con sus funciones en el esquema `private` (no expuesto en la API): al enlazar una planta a una especie, la planta toma el género y el tipo de la especie y queda validada; al desenlazarla vuelve a "por validar"; si cambian el género o el tipo de una especie, se propagan a sus plantas; y `updated_at` se actualiza solo en todas las tablas.
+- Eventos de producto: `product_events`, de solo inserción, con los eventos "registro completado" y "búsqueda ¿Ya la tengo?" para medir los objetivos de 1 minuto y 5 segundos (#145). La app los envía con `public.record_product_events(events)`; nadie los lee por la API. Ver [Eventos de producto](#eventos-de-producto).
+- Disparadores, con sus funciones en el esquema `private` (no expuesto en la API): al enlazar una planta a una especie, la planta toma el género y el tipo de la especie y queda validada; al desenlazarla vuelve a "por validar"; si cambian el género o el tipo de una especie, se propagan a sus plantas; al borrar un perfil se borran los eventos de producto de ese usuario; y `updated_at` se actualiza solo en todas las tablas.
 
-Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` solo puede leer el catálogo; `authenticated` lee el catálogo, lo escribe solo si es administrador (lo deciden las políticas) y gestiona su propio perfil y sus plantas; y `service_role` puede leer y escribir todo, salvo la auditoría y la memoria de las fusiones, que solo lee.
+Todas las tablas tienen Row Level Security activada y privilegios explícitos: `anon` solo puede leer el catálogo; `authenticated` lee el catálogo, lo escribe solo si es administrador (lo deciden las políticas) gestiona su propio perfil y sus plantas y registra sus eventos de producto sin poder leerlos; y `service_role` puede leer y escribir todo, salvo la auditoría y la memoria de las fusiones, que solo lee, y los eventos de producto, que solo lee y borra.
 
 ## Reglas para las migraciones
 
@@ -66,6 +67,7 @@ Las pruebas están organizadas por tema, un archivo por tema:
 | `historial_especie.sql`               | Historial de una especie: `species_id` de cada registro (también en la edición de un nombre, y de un nombre editado y después borrado sin token), orden del más reciente al más antiguo, una entrada por acción (una baja con sus nombres, una fusión vista desde las dos especies), cambios de otras filas solo contados, nombres de los géneros, paginación por clave, tamaño de página, permisos e índice.                                                                                                                                               |
 | `fusion_especies.sql`                 | Fusión de especies: permisos de las funciones y de la memoria (solo leen los administradores, nadie escribe por la API), vista previa sin cambios (plantas, nombres que pasan y que ya existían, género, tipo, validación y claves), rechazos, plantas de dos usuarios con el género y el tipo de la conservada, nombres sin duplicar, `search_species()` con el nombre absorbido, memoria (A en B y B en C, clave repetida, sin referencia, híbridos curados, baja de la conservada), atomicidad ante un fallo forzado y una sola entrada en el historial. |
 | `fotos_storage.sql`                   | Bucket `plant-photos` (privado, límite y tipos) y políticas de `storage.objects`: anónimo, dos usuarios y un administrador que solo lee las fotos de plantas por validar; otros buckets sin afectar.                                                                                                                                                                                                                                                                                                                                                        |
+| `eventos_de_producto.sql`             | `product_events` y `record_product_events()`: solo inserción de eventos propios, nada para `anon`, reenvíos sin duplicar, listas cerradas y topes, borrado con el perfil y las consultas de `docs/indicadores-de-eventos.sql` sobre datos de prueba.                                                                                                                                                                                                                                                                                                        |
 | `seguridad_general.sql`               | Reglas que valen para cualquier tabla o función futura: RLS en todo `public`, `anon` solo lee, funciones protegidas, ningún bucket público y políticas de Storage solo para `authenticated`.                                                                                                                                                                                                                                                                                                                                                                |
 
 `seguridad_general.sql` no nombra tablas concretas: recorre el catálogo de Postgres, así que falla sola si una migración nueva crea una tabla sin Row Level Security, concede escritura a `anon`, deja una función de `private` ejecutable desde la API o expone una función `security definer` de `public` sin seguir el patrón de las [funciones de administrador](#funciones-de-administrador).
@@ -494,6 +496,58 @@ npm run fotos:huerfanas -- --ambiente produccion --borrar --confirmar-produccion
 - Credencial: `SUPABASE_SECRET_KEY`, la clave secreta del proyecto (`sb_secret_...`, en Project Settings > API Keys; o la `service_role` heredada), y `SUPABASE_PROJECT_REF`. Se leen del entorno o de `supabase/.env` y nunca se imprimen. Hace falta esa clave porque el script tiene que ver los objetos y las plantas de todos los usuarios y las políticas solo dejan a cada uno ver lo suyo. Leer `storage.objects` con una conexión directa a Postgres serviría para listar, pero no para borrar: Supabase no deja borrar objetos con SQL, solo con la API de Storage.
 - **Riesgo:** la clave secreta se salta RLS y puede leer y borrar todo el proyecto. No está en GitHub ni en ningún workflow; tenla en tu máquina solo mientras haces la limpieza, empieza siempre por el modo de prueba y revisa la lista antes de `--borrar`.
 - La comparación es lógica pura en `apps/web/src/photos/orphans.ts`, probada con Vitest (`orphans.test.ts`, que comprueba también que el modo de prueba no borra). Node la carga quitando los tipos de TypeScript (Node 24). El script no se ha ejecutado contra ningún proyecto real.
+
+## Eventos de producto
+
+Los dos eventos con los que se miden los objetivos de la Fase 1 (#24) viven en `public.product_events`, de la migración `20261121170000_eventos_de_producto.sql` (#145), donde están explicadas las decisiones. Los envía la app (#146).
+
+| Columna             | Qué es                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `id`                | uuid generado por la app al crear el evento; evita duplicados al reintentar. Obligatorio.                     |
+| `user_id`           | Id de Clerk del token (`public.requesting_user_id()`). Lo pone la base: `authenticated` no puede escribirlo.  |
+| `type`              | `plant_registered` (registro completado) o `have_it_search` (búsqueda "¿Ya la tengo?").                       |
+| `result`            | Solo en `have_it_search`, obligatorio: `owned` (la tengo), `not_owned` (no la tengo) o `similar` (parecidas). |
+| `duration_ms`       | Duración medida en la app, de 0 a 86 400 000 (24 horas).                                                      |
+| `has_photo`         | Solo en `plant_registered`, obligatorio: si se registró con foto.                                             |
+| `name_pending`      | Solo en `plant_registered`, obligatorio: si el nombre quedó por validar.                                      |
+| `generated_offline` | Si se generó sin conexión y se envió después.                                                                 |
+| `occurred_at`       | Cuándo ocurrió, según el dispositivo: de 30 días antes a 1 hora después de `received_at`.                     |
+| `received_at`       | Cuándo llegó a la base (`now()`). `authenticated` no puede escribirlo.                                        |
+
+No hay ninguna columna de texto libre (ni nombres de plantas, ni textos buscados, ni correo, ni nombre) ni de ambiente (cada proyecto de Supabase es uno). Cada fila tiene forma y tamaño fijos y solo admite los valores de las listas cerradas, así que la tabla no sirve de almacén arbitrario.
+
+Envío, con sesión:
+
+```ts
+const { error } = await supabase.rpc('record_product_events', {
+  events: [
+    {
+      id: crypto.randomUUID(),
+      type: 'have_it_search',
+      result: 'owned',
+      duration_ms: 2300,
+      generated_offline: false,
+      occurred_at: new Date().toISOString(),
+    },
+  ],
+})
+```
+
+- `public.record_product_events(events jsonb) returns void`: inserta un lote de 0 a 100 eventos (el tipo de cada elemento es `ProductEventPayload`, en `apps/web/src/lib/database.ts`). Es `security invoker` y con `search_path` vacío; solo la ejecuta `authenticated`.
+- **Reintentos:** un evento con un `id` ya registrado se ignora sin error y sin cambiarlo (`on conflict do nothing`), también dentro del mismo lote. La función no dice si un id ya existía. Reenviar un lote cuya respuesta se perdió es seguro.
+- **Errores:** el lote es atómico. Si no es un arreglo o tiene más de 100 elementos da `22023`; un valor que no es del tipo (un enumerado desconocido, un id que no es uuid) da `22P02`; un campo obligatorio que falta, `23502`; una restricción incumplida, `23514`. Ninguno se arregla reintentando: la app debe descartar ese lote. Los errores de red, de sesión o 5xx sí se reintentan.
+- **Fuera de la función:** un `insert` directo en la tabla funciona, pero un id repetido da `23505`, y un upsert de supabase-js con `ignoreDuplicates` (como el de `profiles`) da `42501`, porque `on conflict (id)` exige leer la columna `id`. Por eso la app usa la función.
+
+Quién puede qué:
+
+- `authenticated`: solo insertar eventos suyos (permiso por columna sin `user_id` ni `received_at`, y la política "Cada usuario registra sus eventos" exige `user_id = (select public.requesting_user_id())`). No puede leer, editar, borrar ni vaciar, tampoco sus propios eventos. Un token sin `sub` no puede registrar nada.
+- `anon`: nada. La app guarda los eventos hasta tener sesión.
+- `service_role`: leer y borrar, para scripts de mantenimiento (como el de datos sin dueño del #26). No inserta ni edita.
+- Los indicadores se consultan como dueño de la tabla, en el editor SQL de Supabase o con una conexión directa.
+
+Borrado con la cuenta: como `plants`, la tabla no tiene clave foránea hacia `profiles` (un evento puede llegar antes de que exista el perfil). El disparador `delete_product_events` de `profiles` (función `private.delete_profile_events()`, `security definer`) borra los eventos del usuario al borrar su perfil, venga de la app (eliminación de cuenta, #26), de la clave de servicio o del editor SQL. La app debe vaciar su cola de eventos antes de borrar el perfil; un evento que llegue después queda sin perfil, como lo que deja un fallo a medias, y lo detecta el script de datos sin dueño del #26.
+
+Indicadores: [`docs/indicadores-de-eventos.sql`](../docs/indicadores-de-eventos.sql) da, por semana (de lunes a domingo, en hora de Lima, por `occurred_at`), el total, cuántos cumplen el objetivo y su porcentaje, y la mediana y el percentil 90 de la duración: registros en menos de 1 minuto y búsquedas "¿Ya la tengo?" en menos de 5 segundos. `tests/eventos_de_producto.sql` ejecuta ese mismo archivo sobre datos de prueba.
 
 ## Tipos de TypeScript
 

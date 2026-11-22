@@ -51,6 +51,15 @@ export type Plant = Tables<'plants'>
 export type PlantInsert = TablesInsert<'plants'>
 export type PlantUpdate = TablesUpdate<'plants'>
 
+// Eventos de producto: solo se insertan, con la función record_product_events (no hay
+// Update, y la API no deja leer la tabla). user_id y received_at los pone la base.
+export type ProductEvent = Tables<'product_events'>
+/** Cada elemento del arreglo `events` de `record_product_events`. */
+export type ProductEventPayload = Omit<
+  TablesInsert<'product_events'>,
+  'user_id' | 'received_at'
+>
+
 // Funciones ----------------------------------------------------------------------------
 
 /** Una entrada del historial de una especie (species_history). */
@@ -77,6 +86,10 @@ export type PlantType = Enums<'plant_type'>
 export type PlantStatus = Enums<'plant_status'>
 export type PlantValidation = Enums<'plant_validation'>
 export type FlowerColor = Enums<'flower_color'>
+/** Tipo de evento de producto: registro completado o búsqueda "¿Ya la tengo?". */
+export type ProductEventType = Enums<'product_event_type'>
+/** Resultado de una búsqueda "¿Ya la tengo?": la tengo, no la tengo o parecidas. */
+export type ProductEventResult = Enums<'product_event_result'>
 
 /**
  * Valores de cada enumerado en el orden en que los declara la base de datos, para recorrerlos

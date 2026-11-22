@@ -196,6 +196,46 @@ export type Database = {
           },
         ]
       }
+      product_events: {
+        Row: {
+          duration_ms: number
+          generated_offline: boolean
+          has_photo: boolean | null
+          id: string
+          name_pending: boolean | null
+          occurred_at: string
+          received_at: string
+          result: Database['public']['Enums']['product_event_result'] | null
+          type: Database['public']['Enums']['product_event_type']
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          duration_ms: number
+          generated_offline: boolean
+          has_photo?: boolean | null
+          id: string
+          name_pending?: boolean | null
+          occurred_at: string
+          received_at?: string
+          result?: Database['public']['Enums']['product_event_result'] | null
+          type: Database['public']['Enums']['product_event_type']
+          user_id?: string
+        }
+        Update: {
+          duration_ms?: number
+          generated_offline?: boolean
+          has_photo?: boolean | null
+          id?: string
+          name_pending?: boolean | null
+          occurred_at?: string
+          received_at?: string
+          result?: Database['public']['Enums']['product_event_result'] | null
+          type?: Database['public']['Enums']['product_event_type']
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -554,6 +594,7 @@ export type Database = {
           type_differs: boolean
         }[]
       }
+      record_product_events: { Args: { events: Json }; Returns: undefined }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
       search_catalog_species: {
         Args: {
@@ -725,6 +766,8 @@ export type Database = {
       plant_status: 'active' | 'lost' | 'gifted'
       plant_type: 'species' | 'hybrid' | 'unknown'
       plant_validation: 'pending' | 'validated' | 'unidentifiable'
+      product_event_result: 'owned' | 'not_owned' | 'similar'
+      product_event_type: 'plant_registered' | 'have_it_search'
       species_match_type: 'scientific' | 'synonym' | 'common'
       species_name_type: 'synonym' | 'common'
       species_source: 'gbif' | 'curated' | 'user_proposal' | 'col'
@@ -858,6 +901,8 @@ export const Constants = {
       plant_status: ['active', 'lost', 'gifted'],
       plant_type: ['species', 'hybrid', 'unknown'],
       plant_validation: ['pending', 'validated', 'unidentifiable'],
+      product_event_result: ['owned', 'not_owned', 'similar'],
+      product_event_type: ['plant_registered', 'have_it_search'],
       species_match_type: ['scientific', 'synonym', 'common'],
       species_name_type: ['synonym', 'common'],
       species_source: ['gbif', 'curated', 'user_proposal', 'col'],
