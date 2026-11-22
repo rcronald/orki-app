@@ -22,6 +22,19 @@ async function sinDesplazamientoHorizontal(page: Page) {
   expect(anchos.documento).toBeLessThanOrEqual(anchos.ventana)
 }
 
+/**
+ * Espera a que la app haya sustituido la portada prerrenderada de index.html
+ * (#204) por la suya. Hasta entonces los localizadores pueden casar con la
+ * prerrenderada, que la app quita de golpe: una medida a medias saldría de un
+ * elemento ya retirado.
+ */
+async function portadaDeLaApp(page: Page) {
+  await expect(page.locator('#portada-previa')).toHaveCount(0)
+  await expect(
+    page.getByRole('heading', { name: TITULO, level: 1 }),
+  ).toBeVisible()
+}
+
 async function fotoCargada(page: Page) {
   const foto = page.getByRole('img', {
     name: 'Phalaenopsis rosada en floración',
@@ -43,9 +56,7 @@ test('a 360 px: una columna, sin desplazamiento horizontal y acciones de 44 px',
 }) => {
   await page.setViewportSize({ width: 360, height: 780 })
   await page.goto('/')
-  await expect(
-    page.getByRole('heading', { name: TITULO, level: 1 }),
-  ).toBeVisible()
+  await portadaDeLaApp(page)
   await sinDesplazamientoHorizontal(page)
 
   // La cabecera queda solo con el logotipo, centrado: las acciones están en
@@ -112,9 +123,7 @@ test('en escritorio: dos columnas, foto a toda la altura hasta el borde y ventaj
 }) => {
   await page.setViewportSize({ width: 1536, height: 1024 })
   await page.goto('/')
-  await expect(
-    page.getByRole('heading', { name: TITULO, level: 1 }),
-  ).toBeVisible()
+  await portadaDeLaApp(page)
   await sinDesplazamientoHorizontal(page)
 
   const cabecera = page.getByRole('banner')
@@ -189,6 +198,11 @@ test.describe('portada prerrenderada', () => {
     expect(html).toMatch(/imagesrcset/)
     // Todas las direcciones son las del build y existen.
     expect(html).not.toContain('/src/')
+    // Pero la plantilla no lleva ningún src ni srcset de archivo: Firefox
+    // descargaría la foto en cualquier ruta (su lector previo del HTML no
+    // respeta que un <template> sea inerte).
+    const plantilla = html.slice(html.indexOf('<template'))
+    expect(plantilla).not.toMatch(/\ssrc(set)?="(?!data:)/i)
     const direcciones = new Set(
       html.match(/\/assets\/portada-\d+-[\w-]+\.(avif|jpg)/g) ?? [],
     )
@@ -220,6 +234,50 @@ test.describe('portada prerrenderada', () => {
     )
     expect(new Set(pedidas)).toEqual(new Set([elegida]))
   })
+
+  for (const ancho of [360, 1536]) {
+    test(`a ${ancho} px, al sustituirla por la de la app nada se mueve`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: ancho, height: 900 })
+      // El chunk de la app espera hasta que la prueba lo suelta.
+      let soltar = () => {}
+      const suelto = new Promise<void>((resolver) => {
+        soltar = resolver
+      })
+      await page.route(/\/assets\/App-[\w-]+\.js$/, async (ruta) => {
+        await suelto
+        await ruta.continue()
+      })
+      await page.goto('/', { waitUntil: 'domcontentloaded' })
+      await expect(page.locator('#portada-previa')).toHaveCount(1)
+      await fotoCargada(page)
+      const cajas = () =>
+        page.evaluate(() =>
+          [
+            '.orki-nav',
+            'h1',
+            '.orki-hero__actions',
+            'img.orki-hero__photo',
+            '.orki-features',
+            'footer',
+          ].map((selector) => {
+            const caja = document
+              .querySelector(selector)
+              ?.getBoundingClientRect()
+            return caja
+              ? [caja.x, caja.y, caja.width, caja.height].map(Math.round)
+              : null
+          }),
+        )
+      const antes = await cajas()
+      expect(antes).not.toContain(null)
+
+      soltar()
+      await portadaDeLaApp(page)
+      expect(await cajas()).toEqual(antes)
+    })
+  }
 
   test('al llegar la app queda una sola portada, sin volver a pedir la foto', async ({
     page,
