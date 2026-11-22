@@ -177,9 +177,6 @@ export function CollectionPage() {
       width="wide"
       header={{
         meta: summary ?? undefined,
-        // La ilustración no va en el precaché: sin red, el navegador pintaría
-        // el hueco de una imagen rota. Sin conexión, la cabecera va sin ella.
-        art: readOnly !== 'offline',
         actions: empty ? undefined : (
           <CollectionActions disabledBy={writeDisabledBy} />
         ),

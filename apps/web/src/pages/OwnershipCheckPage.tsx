@@ -99,7 +99,6 @@ export default function OwnershipCheckPage() {
     ? null
     : (readOnly ?? (copy?.unreachable === 'offline' ? 'unreachable' : null))
   const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
-  const withArt = readOnly !== 'offline'
 
   // Después del efecto de Page, que lleva el foco al título al navegar: este
   // componente lo contiene, así que su efecto corre después.
@@ -132,17 +131,8 @@ export default function OwnershipCheckPage() {
       header={{
         variant: 'center',
         meta: CHECK_TEXT.intro,
-        // La ilustración no va en el precaché: sin red, el navegador pintaría
-        // el hueco de una imagen rota en su lugar.
-        art: withArt,
         back: (
-          <BackToCollection
-            className={`orki-link orki-pagehead__back${
-              // En el celular, el enlace se aparta de la ilustración; sin
-              // ella, va al borde.
-              withArt ? '' : ' publico-estrecho:ml-[0]'
-            }`}
-          >
+          <BackToCollection className="orki-link orki-pagehead__back">
             <Icon name="arrow-left" />
             {CHECK_TEXT.back}
           </BackToCollection>

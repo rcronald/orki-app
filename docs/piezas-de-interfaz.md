@@ -1,11 +1,11 @@
-# Piezas de interfaz para «Mi colección», «¿Ya la tengo?» y «Tu cuenta»
+# Piezas de interfaz para «Mi colección», «¿Ya la tengo?», «Tu cuenta» y el registro
 
-Guía de uso de las piezas del design system que dejaron listas el #206, el #213
-y el #207 para los rediseños de «Mi colección» (#208), «¿Ya la tengo?» (#209) y
-«Tu cuenta» (#214). Basta con esta página: no hace falta abrir ni tocar
-`apps/web/src/styles/bundle.css`, `tokens.css`, `Icon` ni la barra. Todas se
-ven, con sus variantes, en `/muestra` (secciones «Mi colección: piezas» y
-«Tu cuenta: piezas»).
+Guía de uso de las piezas del design system que dejaron listas el #206, el #213,
+el #207 y el #220 para los rediseños de «Mi colección» (#208), «¿Ya la tengo?»
+(#209), «Tu cuenta» (#214) y el registro con galería (#221). Basta con esta
+página: no hace falta abrir ni tocar `apps/web/src/styles/bundle.css`,
+`tokens.css`, `Icon` ni la barra. Todas se ven, con sus variantes, en `/muestra`
+(secciones «Mi colección: piezas», «Tu cuenta: piezas» y «Registro: piezas»).
 
 Rutas relativas a `apps/web/src/`. Los componentes se importan cada uno de su
 archivo (no hay índice).
@@ -103,7 +103,9 @@ interface PageHeaderProps {
 - Ilustración en color, decorativa (`alt=""`), arriba a la izquierda: el texto
   se aparta (`padding-left`) y no hay desplazamiento horizontal. Una por
   pantalla. Es `assets/ilustraciones/cabecera-{240,480}.webp` (ver su `LEEME.md`);
-  no va en el precaché: sin conexión, la cabecera se ve sin ella.
+  no va en el precaché: si no carga (sin conexión), la pieza la quita sola
+  (`onError`) y la cabecera se ve sin ella, sin el hueco de una imagen rota.
+  No hace falta pasar `art: false` sin conexión.
 - `variant="center"`: pantallas de una sola tarea («¿Ya la tengo?»): enlace de
   volver arriba, título y frase centrados, sin acciones.
 
@@ -444,7 +446,10 @@ type ActionRowProps = {
 
 Fila de todo el ancho (mínimo 56 px) con icono, título, texto y
 `chevron-right`; con `to`, un `Link`; sin él, un botón. Deshabilitada sigue
-recibiendo el foco (se lee el motivo) y no hace nada. El nombre accesible es
+recibiendo el foco (se lee el motivo) y no hace nada; se ve atenuada por sí
+sola (`.orki-action[aria-disabled="true"]`: texto en `color-neutral-700`,
+título sin negrita, chevron en `color-neutral-200` y `cursor: not-allowed`),
+sin utilidades alrededor. El nombre accesible es
 el título seguido del texto secundario (o del motivo): todo el texto visible
 de la fila, como pide WCAG 2.5.3 y comprueba axe
 (`label-content-name-mismatch`, #214). `ActionList`
@@ -559,6 +564,130 @@ import { privacyLinkProps } from '../routes/text-page-origin.ts'
 Orígenes: `inicio`, `registro`, `coleccion` y `cuenta`. Para otra página de
 texto, `textPageState(origen)` como `state` del `Link`. Un origen nuevo se
 añade a `ORIGINS` en ese archivo.
+
+## Piezas del registro (#220)
+
+Para el formulario de registro y edición con galería (#221). En `/muestra`,
+sección «Registro: piezas».
+
+### `PhotoGallery` (`components/ui/PhotoGallery.tsx`)
+
+```ts
+type GalleryPhotoState =
+  | { status: 'preparing' } // sin imagen todavía: «Preparando…»
+  | { status: 'ready' } // lista, sin texto
+  | { status: 'uploading'; progress?: number } // «Subiendo… 40 %» y barra
+  | { status: 'saved' } // «Guardada» con check
+  | { status: 'error'; message?: string } // «No se subió» y «Reintentar»
+interface GalleryPhoto {
+  id: string
+  src?: string
+  state: GalleryPhotoState
+}
+interface PhotoGalleryProps {
+  photos: readonly GalleryPhoto[] // la primera es la principal
+  max: number // 6
+  title?: string // «Fotos»
+  titleSuffix?: string // «(opcional)»
+  headingLevel?: 2 | 3
+  onRemove?: (id: string) => void // sin él, no hay botón de quitar
+  onRetry?: (id: string) => void // «Reintentar» en las que tienen error
+  onTakePhoto?: () => void // «Tomar foto»; sin él, no se muestra
+  onChoosePhotos: () => void // «Elegir fotos»
+  disabled?: boolean // nada que añadir ni quitar (aria-disabled)
+  help?: ReactNode // por defecto «Puedes añadir hasta 6 fotos.»
+  notice?: ReactNode // aviso bajo el título; describe el recuadro
+  emptyText?: string // «Aún no hay fotos.»
+  children?: ReactNode // al final: mensajes, inputs ocultos, «Deshacer»
+}
+```
+
+- Recuadro `orki-gallery` (región con el nombre del título): fondo
+  `color-neutral-50` y borde `color-neutral-200` en escritorio; hasta 720 px,
+  fondo `color-neutral-0` y borde `color-secondary`. Contador «3 de 6» en
+  píldora (`orki-gallery__count`, `color-secondary-strong` sobre
+  `color-secondary-soft`).
+- Cuadrícula de tres columnas (`orki-gallery__grid`, lista «Fotos elegidas»)
+  con miniaturas cuadradas (`orki-gallery__item`). Cada imagen tiene nombre:
+  «Foto principal», «Foto 2 de 3» (`galleryPhotoLabel` en
+  `components/ui/gallery-label.ts`). «Principal» (`orki-gallery__badge`) es
+  visual (`aria-hidden`) y se aparta cuando la miniatura muestra un estado.
+- Quitar: `orki-gallery__remove`, de 44 × 44 px en la esquina con el círculo de
+  28 px dentro; nombre «Quitar foto 2 de 3». Al quitar, el foco pasa al botón
+  de quitar de la que ocupa su lugar, a la anterior o, si no queda ninguna, a
+  «Elegir fotos». Subiendo o guardada no se puede quitar.
+- Estados de cada miniatura (`orki-gallery__item--{estado}` y
+  `orki-gallery__state` abajo): preparando (hueco con el texto), subiendo
+  (texto y `orki-gallery__bar`), guardada, y error (`color-danger` sobre
+  `color-danger-soft`, la foto atenuada y `orki-gallery__retry`, «Reintentar
+  foto 2 de 3»).
+- Acciones: «Tomar foto» (`camera`) y «Elegir fotos» (`image`), botones
+  secundarios en `orki-gallery__actions` (columnas automáticas). Llena, las dos
+  quedan con `aria-disabled` y su descripción es el motivo, que sustituye a la
+  ayuda: «Ya tienes 6 fotos. Quita una para añadir otra.».
+- Vacía: `orki-gallery__empty`, recuadro discontinuo con `image` y el texto.
+- No sabe de archivos: quien la usa abre sus `<input type="file">`, prepara las
+  fotos y anuncia los cambios en su región `role="status"`. «Tomar foto» solo
+  donde hay pantalla táctil: `useTouchDevice()` (`photos/useCoarsePointer.ts`).
+
+```tsx
+<PhotoGallery
+  photos={fotos}
+  max={6}
+  onRemove={quitar}
+  onTakePhoto={tactil ? () => camara.current?.click() : undefined}
+  onChoosePhotos={() => archivos.current?.click()}
+>
+  <input ref={archivos} type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden="true" onChange={elegir} />
+</PhotoGallery>
+```
+
+### `MatchBadge` (`components/ui/MatchBadge.tsx`)
+
+Insignia «Coincidencia en el catálogo» con `check`, `color-secondary-strong`
+sobre `color-secondary-soft`, en píldora (`orki-match`). Bajo el campo de
+nombre, dentro de su ayuda (así el lector la lee con el campo). `children`
+cambia el texto.
+
+### Grupo de opciones segmentado
+
+`ChipGroup segmented` (`orki-chips--segmented`): en escritorio, chips como
+siempre (el elegido relleno en verde); hasta 720 px, una fila de ancho
+completo con borde `color-secondary` y aspecto de control segmentado (cada chip
+ocupa lo mismo, 44 px de alto). Los chips siguen siendo botones de alternar con
+`aria-pressed` dentro de un grupo con nombre, como `SegmentedControl`. Para dos
+o tres opciones cortas (el tipo del registro). `ChoiceField` del registro lo
+pasa con su prop `segmented`.
+
+### `FormLayout`, `FormPair` y `FormActions` (`components/ui/FormLayout.tsx`)
+
+```ts
+interface FormLayoutProps {
+  main: ReactNode // datos: columna izquierda
+  aside?: ReactNode // galería: columna derecha, arriba
+  extra?: ReactNode // «Más detalles»: bajo main en escritorio
+}
+```
+
+- `orki-form`: en escritorio, dos columnas (3 y 2 partes) con `aside` alineado
+  arriba con el primer campo y ocupando dos filas, así `extra` sigue bajo
+  `main`. Hasta 720 px, una columna en el orden del documento: main, aside y
+  extra (la galería después de la fecha y el origen). El orden del tabulador es
+  siempre el del documento.
+- `FormPair` (`orki-form__pair`): dos campos cortos en una fila (fecha y
+  origen); uno sobre otro hasta 720 px.
+- `FormActions` (`orki-formactions`): las acciones al final del formulario,
+  a la derecha, la secundaria antes de la principal. Hasta 720 px, en columna:
+  la secundaria con la clase `orki-formactions__secondary` se ve como un enlace
+  centrado y la principal ocupa todo el ancho, al final. Nada queda fijo al
+  desplazar la página (sin `data-barra-inferior`).
+
+```tsx
+<FormActions>
+  <Button className="orki-formactions__secondary" onClick={cancelar}>Cancelar</Button>
+  <Button type="submit" variant="primary">Registrar orquídea</Button>
+</FormActions>
+```
 
 ## Contraste
 
