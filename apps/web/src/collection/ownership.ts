@@ -271,6 +271,8 @@ interface GenusEntry {
 export interface OwnershipIndex {
   readonly names: ReadonlyMap<string, NameEntry>
   readonly genera: readonly GenusEntry[]
+  /** Plantas enlazadas a cada especie, por id de especie (#124). */
+  readonly bySpecies: ReadonlyMap<string, readonly CollectionPlant[]>
 }
 
 // Por qué nombre se prefiere decir que coincidió, si una planta coincide por
@@ -295,6 +297,7 @@ export function buildOwnershipIndex(
 ): OwnershipIndex {
   const names = new Map<string, NameEntry>()
   const genera = new Map<string, GenusEntry>()
+  const bySpecies = new Map<string, CollectionPlant[]>()
 
   const add = (
     plant: CollectionPlant,
@@ -318,6 +321,9 @@ export function buildOwnershipIndex(
 
   for (const plant of plants) {
     if (plant.species !== null) {
+      const linked = bySpecies.get(plant.species.id)
+      if (linked) linked.push(plant)
+      else bySpecies.set(plant.species.id, [plant])
       add(plant, plant.species.scientificName, 'scientific')
       for (const extra of extras.speciesNames?.get(plant.species.id) ?? []) {
         add(plant, extra.name, extra.type)
@@ -349,7 +355,7 @@ export function buildOwnershipIndex(
     }
   }
 
-  return { names, genera: [...genera.values()] }
+  return { names, genera: [...genera.values()], bySpecies }
 }
 
 // Respuesta ----------------------------------------------------------------
@@ -511,4 +517,108 @@ export function answerOwnership(
     }
   }
   return decideOwnership(key, best.values())
+}
+
+// Con el catálogo (#124) ------------------------------------------------------
+
+/**
+ * Una especie que devolvió la búsqueda del catálogo (search_species, #7), con
+ * el nombre por el que coincidió. Es un subconjunto de SpeciesSearchResult
+ * (lib/catalogSearch.ts), para no atar la colección al cliente de la red.
+ */
+export interface CatalogSpeciesMatch {
+  id: string
+  scientificName: string
+  genusName: string
+  matchedName: string
+  matchedNameType: 'scientific' | 'synonym' | 'common'
+}
+
+/**
+ * Cómo coincide `query` con una especie del catálogo, con las mismas reglas
+ * que la búsqueda local: por el nombre por el que coincidió en el catálogo o
+ * por su nombre científico. Si la primera palabra puede ser una abreviatura
+ * de su género (el catálogo las expande: "Blc." → Brassolaeliocattleya), se
+ * prueba también con el género escrito entero. Null si no coincide: el
+ * catálogo encuentra por similitud cosas más lejanas (umbral 0,3) de las que
+ * aquí se aceptan, y una respuesta "Sí" no puede basarse en ellas.
+ */
+export function catalogMatchQuality(
+  query: string,
+  species: CatalogSpeciesMatch,
+): OwnershipMatchQuality | null {
+  const words = prepareOwnershipQuery(query)
+  if (words === null) return null
+  const anywhere = [...words.join(' ')].length >= ANYWHERE_MIN_LENGTH
+  const forms: (readonly string[])[] = [words]
+  if (looksLikeAbbreviation(words[0], species.genusName)) {
+    forms.push([...searchWords(species.genusName), ...words.slice(1)])
+  }
+  let best: OwnershipMatchQuality | null = null
+  for (const name of new Set([species.matchedName, species.scientificName])) {
+    const nameWords = searchWords(name)
+    for (const form of forms) {
+      const quality = matchWords(form, nameWords, anywhere)
+      if (quality !== null)
+        best = best === null ? quality : better(best, quality)
+    }
+  }
+  return best
+}
+
+/** La respuesta local mejorada con el catálogo. */
+export interface CatalogOwnership {
+  ownership: Ownership
+  /** Si el catálogo añadió o mejoró alguna coincidencia. */
+  improved: boolean
+  /**
+   * Nombre científico del catálogo para "Aún no la tienes", si lo escrito
+   * corresponde a una sola especie (sin errores de tipeo); null si no.
+   */
+  catalogName: string | null
+}
+
+/**
+ * Mejora la respuesta local con las especies que encontró el catálogo (#124):
+ * un sinónimo o un nombre común de una especie que el usuario tiene enlazada
+ * en alguna planta responde "Sí". Solo añade coincidencias, nunca quita: un
+ * "Sí" local sigue siendo "Sí" y las parecidas solo pueden pasar a "Sí" por
+ * una coincidencia más fuerte. Las respuestas por género no se tocan.
+ */
+export function withCatalog(
+  local: Ownership,
+  index: OwnershipIndex,
+  query: string,
+  results: readonly CatalogSpeciesMatch[],
+): CatalogOwnership {
+  if (local.scope === 'genus' || results.length === 0) {
+    return { ownership: local, improved: false, catalogName: null }
+  }
+  const best = new Map<string, OwnershipMatch>()
+  for (const match of [...local.matches, ...local.pastMatches]) {
+    best.set(match.plant.id, match)
+  }
+  const strongSpecies: CatalogSpeciesMatch[] = []
+  let improved = false
+  for (const species of results) {
+    const quality = catalogMatchQuality(query, species)
+    if (quality === null) continue
+    if (quality !== 'similar') strongSpecies.push(species)
+    for (const plant of index.bySpecies.get(species.id) ?? []) {
+      const before = best.get(plant.id)
+      addMatch(best, {
+        plant,
+        matchedName: species.matchedName,
+        kind: species.matchedNameType,
+        quality,
+      })
+      if (best.get(plant.id) !== before) improved = true
+    }
+  }
+  const ownership = improved ? decideOwnership(local.key, best.values()) : local
+  const catalogName =
+    ownership.outcome === 'not-owned' && strongSpecies.length === 1
+      ? strongSpecies[0].scientificName
+      : null
+  return { ownership, improved, catalogName }
 }

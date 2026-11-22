@@ -12,8 +12,13 @@ import { Icon } from '../components/ui/Icon.tsx'
 import { OwnershipAnswer } from '../components/ui/OwnershipAnswer.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { PLANT_STATUS_LABEL } from '../collection/labels.ts'
-import { newPlantPathWithName } from '../registration/prefill-name.ts'
+import {
+  searchSpecies as catalogSearchSpecies,
+  type CatalogSearchFunction,
+  type SpeciesSearchResult,
+} from '../lib/catalogSearch.ts'
 import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
+import { newPlantPathWithName } from '../registration/prefill-name.ts'
 import { plantDetailPath } from '../routes/paths.ts'
 import {
   timed,
@@ -21,6 +26,7 @@ import {
   type OnOwnershipMeasure,
 } from './ownership-measure.ts'
 import { joinNames, OWNERSHIP_TEXT, pastSpecimensText } from './texts.ts'
+import { useCatalogOwnership } from './useCatalogOwnership.ts'
 
 export interface OwnershipPanelProps {
   /** Todas las plantas, también las dadas de baja; null si aún no hay datos. */
@@ -31,20 +37,34 @@ export interface OwnershipPanelProps {
   filtered?: boolean
   /** Sinónimos, nombres comunes y abreviaturas de la copia local (#18). */
   extras?: OwnershipExtras
+  /**
+   * Búsqueda del catálogo con la que se mejora la respuesta cuando hay
+   * conexión (#124). Por defecto, searchSpecies; null, sin catálogo (la
+   * página de muestra).
+   */
+  searchSpecies?: CatalogSearchFunction<SpeciesSearchResult> | null
+  /** Si hay conexión; por defecto, useOnlineStatus(). */
+  online?: boolean
   /** Punto de enganche para medir cada respuesta mostrada (#146). */
   onMeasure?: OnOwnershipMeasure
   /** Reloj en milisegundos, para las pruebas. Por defecto, performance.now. */
   now?: () => number
 }
 
-/** Ejemplares que se listan bajo la respuesta; el resto, "Y N más". */
-const LISTED_MATCHES = 5
+/**
+ * Ejemplares que se listan bajo la respuesta; el resto, "Y N más". Pocos: la
+ * respuesta va en la cabecera fija del inventario y en el celular no debe
+ * tapar la lista, que ya muestra todos los que coinciden por texto.
+ */
+const LISTED_MATCHES = 3
 
 const performanceNow = () => performance.now()
 
 // Respuesta de "¿Ya la tengo?" (#123) bajo el buscador del inventario. Sale de
 // la colección en memoria (collection/ownership.ts) mientras se escribe, sin
 // esperar a la red, y es sobre toda la colección, sin los filtros de la lista.
+// Con conexión, el catálogo la mejora cuando llega (#124, useCatalogOwnership):
+// un sinónimo de una especie que el usuario tiene pasa a "Sí".
 //
 // Accesibilidad: la región role="status" está siempre montada (vacía sin
 // respuesta), y dentro van la respuesta (OwnershipAnswer sin región propia) y
@@ -56,6 +76,8 @@ export function OwnershipPanel({
   query,
   filtered = false,
   extras,
+  searchSpecies = catalogSearchSpecies,
+  online: onlineProp,
   onMeasure,
   now = performanceNow,
 }: OwnershipPanelProps) {
@@ -71,14 +93,22 @@ export function OwnershipPanel({
         : timed(() => answerOwnership(index, deferredQuery), now),
     [index, deferredQuery, now],
   )
-  const ownership = local.value
-  const online = useOnlineStatus()
+  const deviceOnline = useOnlineStatus()
+  const online = onlineProp ?? deviceOnline
+  const improved = useCatalogOwnership({
+    local: local.value,
+    index,
+    query: deferredQuery,
+    search: searchSpecies,
+    online,
+  })
+  const ownership = improved?.ownership ?? null
 
   useOwnershipMeasurement(
     query,
     {
       ownership,
-      source: 'local',
+      source: improved?.improved ? 'catalog' : 'local',
       computeMs: local.ms,
       online,
     },
@@ -87,12 +117,15 @@ export function OwnershipPanel({
   )
 
   const typed = deferredQuery.trim().replace(/\s+/g, ' ')
+  // Para "Aún no la tienes", el nombre del catálogo si lo escrito es una
+  // especie; si no, lo escrito.
+  const name = improved?.catalogName ?? typed
 
   return (
     <div className="flex flex-col gap-space-3">
       <div role="status">
         {ownership !== null && (
-          <AnswerSummary ownership={ownership} typed={typed} />
+          <AnswerSummary ownership={ownership} typed={name} />
         )}
       </div>
       {ownership !== null && (
@@ -100,7 +133,7 @@ export function OwnershipPanel({
           <MatchList ownership={ownership} />
           {ownership.outcome !== 'owned' && (
             <Link
-              to={newPlantPathWithName(typed)}
+              to={newPlantPathWithName(name)}
               className={`orki-btn self-start ${
                 ownership.outcome === 'not-owned'
                   ? 'orki-btn--primary'

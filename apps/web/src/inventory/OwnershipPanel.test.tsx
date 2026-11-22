@@ -1,9 +1,15 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
+import {
+  CatalogSearchError,
+  type CatalogSearchFunction,
+  type CatalogSearchOptions,
+  type SpeciesSearchResult,
+} from '../lib/catalogSearch.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
 import type { OwnershipMeasurement } from './ownership-measure.ts'
@@ -79,7 +85,13 @@ function Harness({
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
-      <OwnershipPanel plants={PLANTS} query={query} {...props} />
+      {/* Sin catálogo salvo que la prueba lo pida. */}
+      <OwnershipPanel
+        plants={PLANTS}
+        query={query}
+        searchSpecies={null}
+        {...props}
+      />
     </>
   )
 }
@@ -263,5 +275,183 @@ describe('OwnershipPanel', () => {
     const next = onMeasure.mock.calls.at(-1)?.[0]
     expect(next?.outcome).toBe('not-owned')
     expect(next?.searchId).not.toBe(firstId)
+  })
+})
+
+// Búsqueda del catálogo controlada por la prueba: cada llamada queda pendiente
+// hasta que la prueba la resuelve o la rechaza.
+interface PendingSearch {
+  query: string
+  options: CatalogSearchOptions | undefined
+  resolve: (results: SpeciesSearchResult[]) => void
+  reject: (error: unknown) => void
+}
+
+function fakeCatalog() {
+  const calls: PendingSearch[] = []
+  const search: CatalogSearchFunction<SpeciesSearchResult> = (query, options) =>
+    new Promise((resolve, reject) => {
+      calls.push({ query, options, resolve, reject })
+    })
+  return { calls, search }
+}
+
+function catalogSpecies(
+  overrides: Partial<SpeciesSearchResult> = {},
+): SpeciesSearchResult {
+  return {
+    id: 'species-amabilis',
+    scientificName: 'Phalaenopsis amabilis',
+    genusId: 'genus-phal',
+    genusName: 'Phalaenopsis',
+    type: 'species',
+    status: 'validated',
+    matchedName: 'Phalaenopsis grandiflora',
+    matchedNameType: 'synonym',
+    ...overrides,
+  }
+}
+
+// La espera entre pulsaciones es de 250 ms; en un equipo cargado, más.
+const LONG = { timeout: 3000 }
+
+async function settle(call: PendingSearch, results: SpeciesSearchResult[]) {
+  await act(async () => {
+    call.resolve(results)
+    await Promise.resolve()
+  })
+}
+
+describe('OwnershipPanel con el catálogo (#124)', () => {
+  it('un sinónimo de una especie que tiene pasa de "Aún no" a "Sí" cuando llega el catálogo', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    const onMeasure = vi.fn<(measurement: OwnershipMeasurement) => void>()
+    renderPanel({ searchSpecies: catalog.search, online: true, onMeasure })
+
+    await user.type(field(), 'Phalaenopsis grandiflora')
+    // La respuesta local sale primero, sin esperar a la red.
+    expect(region()).toHaveTextContent('Aún no la tienes')
+    await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
+    expect(catalog.calls[0].query).toBe('Phalaenopsis grandiflora')
+
+    await settle(catalog.calls[0], [catalogSpecies()])
+    expect(region()).toHaveTextContent(
+      'Sí, la tienesTienes 2 ejemplares de Phalaenopsis amabilis.',
+    )
+    const list = screen.getByRole('list', { name: 'Ejemplares que coinciden' })
+    expect(
+      within(list).getAllByText('Sinónimo: Phalaenopsis grandiflora', {
+        exact: false,
+      }),
+    ).toHaveLength(2)
+    expect(onMeasure.mock.calls.at(-1)?.[0]).toMatchObject({
+      outcome: 'owned',
+      source: 'catalog',
+    })
+    await expectNoAxeViolations()
+  })
+
+  it('una respuesta tardía de una consulta anterior no pisa la actual', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    renderPanel({ searchSpecies: catalog.search, online: true })
+
+    await user.type(field(), 'Phalaenopsis grandiflora')
+    await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
+    const first = catalog.calls[0]
+
+    await user.clear(field())
+    await user.type(field(), 'Phragmipedium kovachii')
+    expect(first.options?.signal?.aborted).toBe(true)
+    // La primera llega tarde: no cuenta para lo escrito ahora.
+    await settle(first, [catalogSpecies()])
+    expect(region()).toHaveTextContent(
+      'Aún no la tienesPhragmipedium kovachii no está en tu colección.',
+    )
+    expect(region()).not.toHaveTextContent('Sí, la tienes')
+  })
+
+  it('al seguir escribiendo no parpadea: la mejora sigue mientras llega la siguiente', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    renderPanel({ searchSpecies: catalog.search, online: true })
+
+    await user.type(field(), 'Phalaenopsis grandi')
+    await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
+    await settle(catalog.calls[0], [catalogSpecies()])
+    expect(region()).toHaveTextContent('Sí, la tienes')
+
+    await user.type(field(), 'flora')
+    // Aún sin la respuesta de lo nuevo, las especies anteriores siguen
+    // valiendo porque corresponden a lo escrito.
+    expect(region()).toHaveTextContent('Sí, la tienes')
+  })
+
+  it('sin conexión no consulta el catálogo y la respuesta local funciona igual', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    renderPanel({ searchSpecies: catalog.search, online: false })
+
+    await user.type(field(), 'Phalaenopsis grandiflora')
+    expect(region()).toHaveTextContent('Aún no la tienes')
+    await user.clear(field())
+    await user.type(field(), 'phal amab')
+    expect(region()).toHaveTextContent('Sí, la tienes')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(catalog.calls).toHaveLength(0)
+  })
+
+  it('un fallo del catálogo no se muestra: queda la respuesta local', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    renderPanel({ searchSpecies: catalog.search, online: true })
+
+    await user.type(field(), 'Phalaenopsis grandiflora')
+    await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
+    await act(async () => {
+      catalog.calls[0].reject(new CatalogSearchError('failed'))
+      await Promise.resolve()
+    })
+    expect(region()).toHaveTextContent('Aún no la tienes')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/No se pudo|Sin conexión/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('con un "Sí" local no consulta el catálogo', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    renderPanel({ searchSpecies: catalog.search, online: true })
+
+    await user.type(field(), 'Phalaenopsis amabilis')
+    expect(region()).toHaveTextContent('Sí, la tienes')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(catalog.calls).toHaveLength(0)
+  })
+
+  it('"Aún no la tienes" con el nombre del catálogo, también para registrarla', async () => {
+    const user = userEvent.setup()
+    const catalog = fakeCatalog()
+    renderPanel({ searchSpecies: catalog.search, online: true })
+
+    await user.type(field(), 'phrag kovachii')
+    await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
+    await settle(catalog.calls[0], [
+      catalogSpecies({
+        id: 'species-kovachii',
+        scientificName: 'Phragmipedium kovachii',
+        genusName: 'Phragmipedium',
+        matchedName: 'Phragmipedium kovachii',
+        matchedNameType: 'scientific',
+      }),
+    ])
+    expect(region()).toHaveTextContent(
+      'Phragmipedium kovachii no está en tu colección.',
+    )
+    expect(
+      screen.getByRole('link', { name: 'Registrarla con este nombre' }),
+    ).toHaveAttribute('href', '/coleccion/nueva?nombre=Phragmipedium+kovachii')
   })
 })

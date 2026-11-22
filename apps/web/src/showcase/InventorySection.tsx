@@ -110,6 +110,8 @@ export function InventorySection() {
               plants={state.plants}
               query={query}
               filtered={countActiveFilters(filters) > 0}
+              // Datos fijos: sin consultar el catálogo.
+              searchSpecies={null}
             />
           }
         />

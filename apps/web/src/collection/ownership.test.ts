@@ -9,7 +9,10 @@ import type { CollectionPlant } from './model.ts'
 import {
   answerOwnership,
   buildOwnershipIndex,
+  catalogMatchQuality,
   looksLikeAbbreviation,
+  withCatalog,
+  type CatalogSpeciesMatch,
   matchWords,
   prepareOwnershipQuery,
   type OwnershipExtras,
@@ -472,4 +475,117 @@ describe('answerOwnership: rendimiento', () => {
       expect(performance.now() - buildStart).toBeLessThan(200)
     },
   )
+})
+
+describe('con el catálogo (#124)', () => {
+  // Lo que devolvería search_species para cada texto.
+  const AMABILIS_BY_SYNONYM: CatalogSpeciesMatch = {
+    id: 'species-amabilis',
+    scientificName: 'Phalaenopsis amabilis',
+    genusName: 'Phalaenopsis',
+    matchedName: 'Phalaenopsis grandiflora',
+    matchedNameType: 'synonym',
+  }
+  const MAXIMA_BY_COMMON: CatalogSpeciesMatch = {
+    id: 'species-maxima',
+    scientificName: 'Cattleya maxima',
+    genusName: 'Cattleya',
+    matchedName: 'Flor de mayo',
+    matchedNameType: 'common',
+  }
+  const KOVACHII: CatalogSpeciesMatch = {
+    id: 'species-kovachii',
+    scientificName: 'Phragmipedium kovachii',
+    genusName: 'Phragmipedium',
+    matchedName: 'Phragmipedium kovachii',
+    matchedNameType: 'scientific',
+  }
+
+  function improve(query: string, results: readonly CatalogSpeciesMatch[]) {
+    const local = ask(query)
+    return { local, ...withCatalog(local, index, query, results) }
+  }
+
+  it('un sinónimo de una especie que tiene responde "Sí"', () => {
+    const { local, ownership, improved } = improve('Phalaenopsis grandiflora', [
+      AMABILIS_BY_SYNONYM,
+    ])
+    expect(local.outcome).toBe('not-owned')
+    expect(improved).toBe(true)
+    expect(ownership.outcome).toBe('owned')
+    expect(ids(ownership.matches).sort()).toEqual(
+      [amabilis1.id, amabilis2.id].sort(),
+    )
+    expect(ownership.matches[0]).toMatchObject({
+      kind: 'synonym',
+      matchedName: 'Phalaenopsis grandiflora',
+    })
+  })
+
+  it('también por nombre común, con tildes y a medias', () => {
+    const { ownership } = improve('flor de may', [MAXIMA_BY_COMMON])
+    expect(ownership.outcome).toBe('owned')
+    expect(ids(ownership.matches)).toEqual([maxima.id])
+  })
+
+  it('con un error de tipeo, parecidas', () => {
+    const { ownership } = improve('Phalaenopsis grandiflra', [
+      AMABILIS_BY_SYNONYM,
+    ])
+    expect(ownership.outcome).toBe('similar')
+  })
+
+  it('lo que el catálogo encontró solo por similitud lejana no cuenta', () => {
+    const { ownership, improved } = improve('Phalaenopsis gigantea', [
+      AMABILIS_BY_SYNONYM,
+    ])
+    expect(improved).toBe(false)
+    expect(ownership.outcome).toBe('not-owned')
+  })
+
+  it('una abreviatura que el catálogo expandió', () => {
+    const blc: CatalogSpeciesMatch = {
+      id: 'species-amabilis',
+      scientificName: 'Phalaenopsis amabilis',
+      genusName: 'Brassolaeliocattleya',
+      matchedName: 'Brassolaeliocattleya Gold',
+      matchedNameType: 'synonym',
+    }
+    expect(catalogMatchQuality('Blc. Gold', blc)).toBe('exact')
+    expect(catalogMatchQuality('Blc. Go', blc)).toBe('prefix')
+    expect(catalogMatchQuality('Cal. Gold', blc)).toBeNull()
+  })
+
+  it('una especie dada de baja sigue sin dar un "Sí"', () => {
+    const labiata: CatalogSpeciesMatch = {
+      id: 'species-labiata',
+      scientificName: 'Cattleya labiata',
+      genusName: 'Cattleya',
+      matchedName: 'Cattleya labiata var. alba',
+      matchedNameType: 'synonym',
+    }
+    const { ownership } = improve('Cattleya labiata var. alba', [labiata])
+    expect(ownership.outcome).toBe('not-owned')
+    expect(ids(ownership.pastMatches)).toEqual([labiataLost.id])
+  })
+
+  it('"Aún no la tienes" con el nombre del catálogo si es una sola especie', () => {
+    const { ownership, catalogName, improved } = improve('phrag kovachii', [
+      KOVACHII,
+    ])
+    expect(ownership.outcome).toBe('not-owned')
+    expect(improved).toBe(false)
+    expect(catalogName).toBe('Phragmipedium kovachii')
+    expect(
+      improve('phrag', [KOVACHII, { ...KOVACHII, id: 'otra' }]).catalogName,
+    ).toBeNull()
+  })
+
+  it('nunca empeora la respuesta local ni toca la de género', () => {
+    const owned = improve('Phalaenopsis amabilis', [KOVACHII])
+    expect(owned.ownership).toBe(owned.local)
+    const genus = improve('Cattleya', [MAXIMA_BY_COMMON])
+    expect(genus.ownership).toBe(genus.local)
+    expect(genus.improved).toBe(false)
+  })
 })
