@@ -37,7 +37,9 @@ async function focoALaVista(page: Page) {
       () =>
         page.evaluate(() => {
           const r = document.activeElement?.getBoundingClientRect()
-          return r ? r.top >= 0 && r.bottom <= window.innerHeight : false
+          // Con 1 px de margen: al desplazar el control justo hasta el
+          // borde, Firefox y WebKit de Linux dan medidas con decimales.
+          return r ? r.top >= -1 && r.bottom <= window.innerHeight + 1 : false
         }),
       { message: 'el control con el foco queda fuera de la vista' },
     )
