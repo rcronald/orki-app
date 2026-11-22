@@ -10,11 +10,7 @@ import { PhotoProcessingError } from '../photos/errors.ts'
 import type { ProcessedPhoto } from '../photos/process.ts'
 import { clearQuickAccessGeneraCache } from '../registration/quick-genera.ts'
 import { PLANT_UPDATE_ERROR_TEXT } from '../registration/save-plant.ts'
-import {
-  PLANT_EDIT_NOTICE_TEXT,
-  PLANT_EDIT_TEXT,
-  PLANT_FORM_TEXT,
-} from '../registration/texts.ts'
+import { PLANT_EDIT_TEXT, PLANT_FORM_TEXT } from '../registration/texts.ts'
 import { PATHS } from '../routes/paths.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -145,8 +141,42 @@ const nicknameInput = () => screen.getByLabelText('Apodo')
 const typeGroup = () => screen.getByRole('group', { name: 'Tipo' })
 const submitButton = () =>
   screen.getByRole('button', {
-    name: /^(Guardar cambios|Guardando…|Actualizando la foto…)$/,
+    name: /^(Guardar cambios|Guardando…|Subiendo las fotos…)$/,
   })
+const gallery = () => screen.getByRole('region', { name: 'Fotos (opcional)' })
+const thumbnails = () =>
+  within(gallery())
+    .queryAllByRole('img')
+    .map(
+      (image) => image.getAttribute('aria-label') ?? image.getAttribute('alt'),
+    )
+
+/** Elige `count` fotos nuevas y espera a que estén preparadas. */
+async function choosePhotos(
+  user: ReturnType<typeof userEvent.setup>,
+  container: HTMLElement,
+  count = 1,
+) {
+  const input = container.querySelector<HTMLInputElement>(
+    'input[type="file"][multiple]',
+  )
+  if (!input) throw new Error('Sin campo de archivos.')
+  await user.upload(
+    input,
+    Array.from(
+      { length: count },
+      (_, index) =>
+        new File([new Uint8Array(10)], `IMG_10${String(index)}.jpg`, {
+          type: 'image/jpeg',
+        }),
+    ),
+  )
+  await waitFor(() =>
+    expect(
+      container.querySelector('.orki-gallery__item--preparing'),
+    ).toBeNull(),
+  )
+}
 
 function datum(label: string): HTMLElement {
   const term = screen.getByText(label, { selector: 'dt' })
@@ -182,14 +212,16 @@ describe('EditPlantPage', () => {
     )
     // "Más detalles" se abre sola: trae el apodo.
     expect(nicknameInput()).toHaveValue('La blanca')
-    // La foto ya subida, con "en floración" marcado.
-    const photo = await screen.findByRole('img', {
-      name: PLANT_EDIT_NOTICE_TEXT.storedPhotoAlt,
-    })
-    expect(photo).toHaveAttribute(
-      'src',
-      `blob:${USER}/${AMABILIS_ID}/photo-v1.webp`,
+    // La galería con la foto ya guardada (su miniatura), con "en floración"
+    // marcado.
+    // Mientras llega la miniatura, el hueco ya tiene nombre; después, la
+    // imagen.
+    await waitFor(() =>
+      expect(
+        within(gallery()).getByRole('img', { name: 'Foto principal' }),
+      ).toHaveAttribute('src', `blob:${USER}/${AMABILIS_ID}/thumb-v1.webp`),
     )
+    expect(within(gallery()).getByText('1 de 6')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: PLANT_FORM_TEXT.photoInBloom }),
     ).toHaveAttribute('aria-pressed', 'true')
@@ -281,19 +313,19 @@ describe('EditPlantPage', () => {
 
   it('con la foto que ya tenía, al pasar a «por validar» avisa de que el equipo del catálogo podrá verla', async () => {
     const { user } = await renderEdit([amabilis()])
-    const photoGroup = () => screen.getByRole('group', { name: 'Foto' })
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
     // Especie del catálogo: sin aviso ni enlace.
-    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
+    expect(gallery()).not.toHaveAccessibleDescription()
     expect(screen.queryByRole('link', { name: /^Privacidad/ })).toBeNull()
 
     await user.clear(nameInput())
     await user.type(nameInput(), 'Mariposa blanca')
 
     // La edición no guarda borrador: el enlace se abre en otra pestaña.
-    expect(photoGroup()).toHaveAccessibleDescription(
-      `${PLANT_EDIT_TEXT.pendingPhotoNotice} Más en Privacidad (se abre en otra pestaña).`,
+    expect(gallery()).toHaveAccessibleDescription(
+      `${PLANT_EDIT_TEXT.pendingPhotoNotice(1)} Más en Privacidad (se abre en otra pestaña).`,
     )
-    const link = within(photoGroup()).getByRole('link', {
+    const link = within(gallery()).getByRole('link', {
       name: 'Privacidad (se abre en otra pestaña)',
     })
     expect(link).toHaveAttribute('href', PATHS.privacy)
@@ -304,9 +336,7 @@ describe('EditPlantPage', () => {
 
   it('una planta por validar sin foto recomienda añadirla, con el aviso', async () => {
     await renderEdit([pending()])
-    expect(
-      screen.getByRole('group', { name: 'Foto' }),
-    ).toHaveAccessibleDescription(
+    expect(gallery()).toHaveAccessibleDescription(
       `${PLANT_EDIT_TEXT.pendingPhotoHint} Más en Privacidad (se abre en otra pestaña).`,
     )
     await expectNoAxeViolations()
@@ -363,65 +393,161 @@ describe('EditPlantPage', () => {
     expect(screen.queryByText(/^Ya tienes/)).toBeNull()
   })
 
-  it('reemplazar la foto sube la nueva, apunta la planta y borra la anterior', async () => {
+  it('añadir fotos las sube detrás de la que ya tenía, sin tocar la principal', async () => {
     const { user, container } = await renderEdit([amabilis()])
-    const input =
-      container.querySelector<HTMLInputElement>('input[type="file"]')
-    if (!input) throw new Error('Sin campo de archivo.')
-    await user.upload(
-      input,
-      new File([new Uint8Array(10)], 'IMG_0002.jpg', { type: 'image/jpeg' }),
-    )
-    await screen.findByRole('img', { name: 'Vista previa de la foto elegida' })
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
+    await choosePhotos(user, container, 2)
+    expect(thumbnails()).toEqual([
+      'Foto principal',
+      'Foto 2 de 3',
+      'Foto 3 de 3',
+    ])
+    await expectNoAxeViolations()
 
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe(`/coleccion/${AMABILIS_ID}`))
-
     const uploads = supabase.uploads()
-    expect(uploads).toHaveLength(2)
+    expect(uploads).toHaveLength(4)
     for (const path of uploads) {
       expect(path.startsWith(`${USER}/${AMABILIS_ID}/`)).toBe(true)
     }
-    // Una sola escritura: las rutas nuevas (los datos no cambiaron).
-    expect(supabase.patches()).toEqual([
-      {
-        photo_path: expect.stringMatching(/photo-.+\.webp$/) as unknown,
-        thumbnail_path: expect.stringMatching(/thumb-.+\.webp$/) as unknown,
-      },
-    ])
-    // Sin huérfanos: la foto y la miniatura anteriores se borran.
-    expect(supabase.removed().sort()).toEqual([
-      `${USER}/${AMABILIS_ID}/photo-v1.webp`,
-      `${USER}/${AMABILIS_ID}/thumb-v1.webp`,
-    ])
-    expect(supabase.rows.get(AMABILIS_ID)?.photo_path).toBe(
-      uploads.find((path) => path.includes('/photo-')),
-    )
+    // Los datos no cambiaron: ninguna escritura en plants.
+    expect(supabase.patches()).toEqual([])
+    const photos = supabase.photosOf(AMABILIS_ID)
+    expect(photos.map((photo) => photo.position)).toEqual([0, 1, 2])
+    expect(photos[0]?.photo_path).toBe(`${USER}/${AMABILIS_ID}/photo-v1.webp`)
+    expect(supabase.removed()).toEqual([])
     expect(await screen.findByText(DETAIL_TEXT.saved)).toBeInTheDocument()
   })
 
-  it('quitar la foto deja la planta sin foto y borra los archivos', async () => {
+  it('hasta el máximo: con 5 guardadas solo cabe una más', async () => {
+    const { user, container } = await renderEdit([amabilis()])
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
+    // Otras cuatro ya guardadas.
+    for (let position = 1; position <= 4; position += 1) {
+      supabase.photos.push({
+        id: `foto-extra-${String(position)}`,
+        plant_id: AMABILIS_ID,
+        photo_path: `${USER}/${AMABILIS_ID}/photo-e${String(position)}.webp`,
+        thumbnail_path: `${USER}/${AMABILIS_ID}/thumb-e${String(position)}.webp`,
+        in_bloom: false,
+        taken_at: null,
+        note: null,
+        position,
+        created_at: '2026-11-03T10:00:00+00:00',
+      })
+    }
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    await user.click(screen.getByRole('link', { name: DETAIL_TEXT.edit }))
+    await waitFor(() => expect(thumbnails()).toHaveLength(5))
+
+    await choosePhotos(user, container, 3)
+    expect(thumbnails()).toHaveLength(6)
+    expect(
+      within(gallery()).getByText(
+        'Se añadió 1 foto; 2 quedaron fuera: el máximo es 6.',
+      ),
+    ).toBeInTheDocument()
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe(`/coleccion/${AMABILIS_ID}`))
+    expect(supabase.photosOf(AMABILIS_ID)).toHaveLength(6)
+  })
+
+  it('quitar la foto guardada pide guardar para borrarla, se puede deshacer y, al guardar, deja la planta sin foto', async () => {
     const { user } = await renderEdit([amabilis()])
-    await screen.findByRole('img', {
-      name: PLANT_EDIT_NOTICE_TEXT.storedPhotoAlt,
-    })
-    await user.click(screen.getByRole('button', { name: 'Quitar foto' }))
-    // Sin foto, "en floración" desaparece y se desmarca.
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
+    // Aún no se borra nada: se dice y se puede deshacer.
+    expect(supabase.removed()).toEqual([])
+    expect(
+      within(gallery()).getByText(
+        'Una foto guardada se borrará al guardar los cambios.',
+      ),
+    ).toBeInTheDocument()
+    expect(thumbnails()).toEqual([])
+    // Sin fotos, "en floración" desaparece.
     expect(
       screen.queryByRole('button', { name: PLANT_FORM_TEXT.photoInBloom }),
     ).toBeNull()
+    await user.click(
+      within(gallery()).getByRole('button', {
+        name: PLANT_FORM_TEXT.undoRemove,
+      }),
+    )
+    expect(thumbnails()).toEqual(['Foto principal'])
 
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe(`/coleccion/${AMABILIS_ID}`))
-    expect(supabase.patches()).toEqual([
-      { photo_in_bloom: false },
-      { photo_path: null, thumbnail_path: null },
-    ])
+    expect(supabase.patches()).toEqual([{ photo_in_bloom: false }])
+    expect(supabase.photosOf(AMABILIS_ID)).toEqual([])
     expect(supabase.removed().sort()).toEqual([
       `${USER}/${AMABILIS_ID}/photo-v1.webp`,
       `${USER}/${AMABILIS_ID}/thumb-v1.webp`,
     ])
     expect(screen.getByRole('img', { name: DETAIL_TEXT.noPhoto })).toBeVisible()
+  })
+
+  it('quitar la principal y añadir otra: la nueva pasa a ser la principal y la tarjeta la usa', async () => {
+    const { user, container } = await renderEdit([amabilis()])
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
+    await choosePhotos(user, container)
+    expect(thumbnails()).toEqual(['Foto principal'])
+
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe(`/coleccion/${AMABILIS_ID}`))
+    const [main] = supabase.photosOf(AMABILIS_ID)
+    expect(supabase.photosOf(AMABILIS_ID)).toHaveLength(1)
+    expect(main?.photo_path).not.toBe(`${USER}/${AMABILIS_ID}/photo-v1.webp`)
+    // La planta (y la colección) apuntan a la nueva principal.
+    expect(supabase.rows.get(AMABILIS_ID)?.photo_path).toBe(main?.photo_path)
+    expect(supabase.removed().sort()).toEqual([
+      `${USER}/${AMABILIS_ID}/photo-v1.webp`,
+      `${USER}/${AMABILIS_ID}/thumb-v1.webp`,
+    ])
+  })
+
+  it('si no se puede borrar una foto guardada, los cambios quedan guardados y se puede reintentar', async () => {
+    const { user } = await renderEdit([amabilis()])
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
+    supabase.photoDeleteResponder = () =>
+      json({ message: 'Internal error' }, 500)
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
+    await user.click(submitButton())
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Los cambios quedaron guardados, pero no se pudo quitar 1 foto.',
+    )
+    supabase.photoDeleteResponder = null
+    await user.click(
+      screen.getByRole('button', { name: PLANT_FORM_TEXT.photosRetry }),
+    )
+    await waitFor(() => expect(location()).toBe(`/coleccion/${AMABILIS_ID}`))
+    expect(supabase.photosOf(AMABILIS_ID)).toEqual([])
+  })
+
+  it('cancelar después de quitar una foto guardada no borra nada', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { user } = await renderEdit([amabilis()])
+    await within(gallery()).findByRole('img', { name: 'Foto principal' })
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
+    // El enlace de volver hace lo mismo que "Cancelar": pregunta.
+    await user.click(screen.getByRole('link', { name: PLANT_EDIT_TEXT.back }))
+    expect(confirm).toHaveBeenCalledWith(PLANT_EDIT_TEXT.confirmDiscard)
+    expect(location()).toBe(`/coleccion/${AMABILIS_ID}`)
+    expect(supabase.photosOf(AMABILIS_ID)).toHaveLength(1)
+    expect(supabase.removed()).toEqual([])
   })
 
   it('si falla el guardado lo dice según el motivo, conserva lo escrito y permite reintentar', async () => {
@@ -490,7 +616,9 @@ describe('EditPlantPage', () => {
       [`/coleccion/${PENDING_ID}/editar`],
     )
     // Sin nada dentro, "Más detalles" empieza cerrada.
-    await user.click(screen.getByRole('button', { name: 'Más detalles' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Más detalles (opcional)' }),
+    )
     await user.type(nicknameInput(), 'Naranjita')
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe(`/coleccion/${PENDING_ID}`))

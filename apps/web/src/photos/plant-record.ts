@@ -1,32 +1,21 @@
 import {
-  COLLECTION_PLANT_SELECT,
-  toCollectionPlant,
-  type CollectionPlant,
-} from '../collection/model.ts'
-import {
   getSupabase,
   sessionTokenFailure,
   type OrkiSupabaseClient,
 } from '../lib/supabase.ts'
-import type { PlantPhotoPaths } from './paths.ts'
 import { PhotoStorageError } from './storage.ts'
 
-// Escrituras en public.plants que acompañan a las fotos: apuntar la planta a
-// sus rutas nuevas (o a ninguna) y borrarla. Detrás de una interfaz para que
-// upload.ts no sepa de PostgREST y las pruebas pasen un doble.
+// Escrituras en public.plants que acompañan a las fotos: borrar la planta
+// (delete.ts). Detrás de una interfaz para que las pruebas pasen un doble.
+// Apuntar la planta a una foto (setPhotoPaths) se retiró con el formulario
+// de una sola foto (#221): la galería escribe en plant_photos y la base copia
+// la principal a plants.
 
 export interface PlantPhotoRecords {
   /**
-   * Fija photo_path y thumbnail_path (las dos o ninguna, null) y devuelve la
-   * planta actualizada con las columnas de la colección. Rechaza con
-   * PhotoStorageError; `uncertain` si la petición salió y no hubo respuesta.
+   * Borra la planta. Rechaza con PhotoStorageError; `uncertain` si la
+   * petición salió y no hubo respuesta.
    */
-  setPhotoPaths(
-    plantId: string,
-    userId: string,
-    paths: PlantPhotoPaths | null,
-  ): Promise<CollectionPlant>
-  /** Borra la planta. Rechaza como setPhotoPaths. */
   deletePlant(plantId: string, userId: string): Promise<void>
 }
 
@@ -79,23 +68,6 @@ export function createSupabasePlantPhotoRecords({
   }
 
   return {
-    async setPhotoPaths(plantId, userId, paths) {
-      const supabase = await client()
-      // Filtrar también por usuario: con el token de otra cuenta no toca nada.
-      const { data, error, status } = await supabase
-        .from('plants')
-        .update({
-          photo_path: paths?.photoPath ?? null,
-          thumbnail_path: paths?.thumbnailPath ?? null,
-        })
-        .eq('id', plantId)
-        .eq('user_id', userId)
-        .select(COLLECTION_PLANT_SELECT)
-        .single()
-      if (error) throw recordError(error, status)
-      return toCollectionPlant(data)
-    },
-
     async deletePlant(plantId, userId) {
       const supabase = await client()
       // Pide la fila borrada: sin filas, la planta no existía o no es suya.

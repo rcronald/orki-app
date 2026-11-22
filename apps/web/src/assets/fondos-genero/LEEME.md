@@ -1,5 +1,10 @@
 # Fotos de fondo por género
 
+> **Sin uso desde el #221.** El formulario nuevo de registro (con galería) no
+> lleva fondo por género. Las fotos y el script (`npm run fondos`) se conservan
+> por si vuelve; `genus-backgrounds.ts`, `GenusBackdrop.tsx` y su prueba de
+> contraste se retiraron (están en el historial de git).
+
 Fotos del fondo dinámico del registro (#13): una por género de acceso rápido,
 con el nombre del género en minúsculas (`phalaenopsis.avif`, `cattleya.avif`,
 `dendrobium.avif`, `oncidium.avif`, `vanda.avif`). La app las enlaza en

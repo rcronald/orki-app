@@ -32,20 +32,11 @@
   }
 
   /*
-   * El foco no queda tapado por las barras que se quedan fijas al desplazar
-   * la página (WCAG 2.4.11, #151): al llegar con el tabulador a un control,
-   * el navegador deja libre este margen abajo. La barra lo pide con un
-   * atributo:
-   * - data-barra-inferior="siempre": las acciones del formulario de registro
-   *   y edición (sticky abajo; unos 76 px).
-   * El inventario ya no tiene barras fijas (#208): el buscador va en su sitio
-   * y registrar, en la cabecera.
+   * Ninguna pantalla tiene barras fijas al desplazar la página (WCAG 2.4.11,
+   * #151): el inventario dejó de tenerlas en el #208 y el registro en el #221
+   * (sus acciones van al final del formulario). Si vuelve alguna, que pida
+   * aquí su scroll-padding para que el foco no quede debajo.
    */
-  html:has([data-barra-inferior='siempre']) {
-    scroll-padding-bottom: calc(
-      var(--space-6) * 3 + env(safe-area-inset-bottom)
-    );
-  }
 
   /* Anillo de foco del sistema: 2 px en color-secondary, separado 2 px. */
   :focus-visible {

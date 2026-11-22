@@ -1,9 +1,6 @@
 import { vi } from 'vitest'
-import type { CollectionPlant } from '../collection/model.ts'
-import type { PlantPhotoPaths } from '../photos/paths.ts'
 import type { PlantPhotoRecords } from '../photos/plant-record.ts'
 import type { ProcessedPhoto } from '../photos/process.ts'
-import { plant } from './collection.ts'
 
 // Dobles de las fotos: una foto ya preparada y las escrituras de la planta.
 
@@ -41,32 +38,14 @@ export function processedPhoto(
 }
 
 export interface FakeRecords extends PlantPhotoRecords {
-  setPhotoPaths: ReturnType<
-    typeof vi.fn<
-      (
-        plantId: string,
-        userId: string,
-        paths: PlantPhotoPaths | null,
-      ) => Promise<CollectionPlant>
-    >
-  >
   deletePlant: ReturnType<
     typeof vi.fn<(plantId: string, userId: string) => Promise<void>>
   >
 }
 
-/** Escrituras de la planta que devuelven la planta con las rutas nuevas. */
+/** Escrituras de la planta: borrarla sale bien. */
 export function fakeRecords(): FakeRecords {
   return {
-    setPhotoPaths: vi.fn((plantId, _userId, paths) =>
-      Promise.resolve(
-        plant({
-          id: plantId,
-          photoPath: paths?.photoPath ?? null,
-          thumbnailPath: paths?.thumbnailPath ?? null,
-        }),
-      ),
-    ),
     deletePlant: vi.fn(() => Promise.resolve()),
   }
 }

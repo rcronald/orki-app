@@ -63,8 +63,8 @@ interface CommonInput {
 }
 
 /**
- * Registro completado: desde que se abre el formulario (o se elige la foto
- * en "Con foto") hasta que la planta queda guardada. null si la duración no
+ * Registro completado: desde que se abre el formulario hasta que la planta
+ * queda guardada (con sus fotos, si las lleva). null si la duración no
  * cabe en la base (un formulario abierto de un día para otro).
  */
 export function plantRegisteredEvent(

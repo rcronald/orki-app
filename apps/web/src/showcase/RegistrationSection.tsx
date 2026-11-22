@@ -13,7 +13,9 @@ import {
 import { normalizeSearchText } from '../collection/normalize.ts'
 import { createMemoryPhotoStorage } from '../photos/memory-storage.ts'
 import { PhotoStorageError } from '../photos/storage.ts'
-import { replacePlantPhoto } from '../photos/upload.ts'
+import { uploadPlantPhotos } from '../photos/gallery.ts'
+import { createMemoryPlantPhotoRows } from '../photos/memory-photo-rows.ts'
+import { photoVersionFor } from '../photos/upload.ts'
 import type { FormGenus, NewPlantInsert } from '../registration/form-state.ts'
 import {
   PlantForm,
@@ -34,15 +36,10 @@ import { Example, Section } from './layout.tsx'
 // Las sugerencias de origen y el aviso de duplicado salen de la colección de
 // ejemplo del inventario, con Phalaenopsis amabilis enlazada a la especie de
 // esta muestra: dos ejemplares activos y uno regalado (que no cuenta).
-// El borrador es real (localStorage y, la foto, IndexedDB, usuario
-// "muestra"): recargar la página a mitad lo recupera. La foto se sube con
-// replacePlantPhoto a un bucket en memoria (memory-storage.ts), como en la
-// sección "Fotos", y puede fallar a voluntad.
-//
-// El fondo por género (#13) va dentro de la zona de ejemplo (backdrop
-// "contained"), no en toda la página: al elegir Phalaenopsis o Cattleya (o
-// cualquiera de los cinco de acceso rápido) aparece su foto, hoy PROVISIONAL,
-// bajo el velo overlay-genus.
+// El borrador es real (localStorage y, las fotos, IndexedDB, usuario
+// "muestra"): recargar la página a mitad lo recupera. Las fotos se suben con
+// uploadPlantPhotos a un bucket y unas filas en memoria (memory-storage.ts y
+// memory-photo-rows.ts) y pueden fallar a voluntad.
 
 const AMABILIS_SPECIES = {
   id: 'especie-amabilis',
@@ -208,14 +205,16 @@ const OUTCOMES = [
 type OutcomeId = (typeof OUTCOMES)[number]['id']
 
 const PHOTO_OUTCOMES = [
-  { id: 'ok', label: 'La foto sube bien' },
-  { id: 'offline', label: 'La foto falla sin conexión' },
-  { id: 'session-ended', label: 'La foto falla por la sesión' },
+  { id: 'ok', label: 'Las fotos suben bien' },
+  { id: 'second', label: 'Falla la segunda foto' },
+  { id: 'offline', label: 'Fallan sin conexión' },
+  { id: 'session-ended', label: 'Fallan por la sesión' },
 ] as const
 
 type PhotoOutcomeId = (typeof PHOTO_OUTCOMES)[number]['id']
 
 const photoStorage = createMemoryPhotoStorage(700)
+const photoRows = createMemoryPlantPhotoRows()
 
 /** La planta que devolvería la base para `insert`. */
 function samplePlant(insert: NewPlantInsert): CollectionPlant {
@@ -258,11 +257,9 @@ function samplePlant(insert: NewPlantInsert): CollectionPlant {
 export function RegistrationSection() {
   const [outcome, setOutcome] = useState<OutcomeId>('ok')
   const [photoOutcome, setPhotoOutcome] = useState<PhotoOutcomeId>('ok')
-  // El reintento repite la tarea de la primera subida (usePhotoUpload), con
-  // los servicios de entonces: el resultado elegido se lee de una ref para
-  // que valga el que esté elegido al reintentar.
+  // El resultado elegido se lee de una ref al subir, para que el reintento
+  // use el que esté elegido entonces.
   const photoOutcomeRef = useRef(photoOutcome)
-  const [photoFirst, setPhotoFirst] = useState(false)
   const [online, setOnline] = useState(true)
   const [result, setResult] = useState<string | null>(null)
   // Cambiar la clave vuelve a montar el formulario vacío.
@@ -277,8 +274,15 @@ export function RegistrationSection() {
       setLastInsert(insert)
       await delay(DELAY_MS * 2)
       switch (outcome) {
-        case 'ok':
-          return samplePlant(insert)
+        case 'ok': {
+          const plant = samplePlant(insert)
+          // La planta "en la base", para que las filas de fotos la encuentren.
+          photoRows.plants.set(plant.id, {
+            ...plant,
+            userId: SHOWCASE_DRAFT_USER,
+          })
+          return plant
+        }
         case 'invalid':
           throw new PlantSaveError('invalid', {
             message: PLANT_INVALID_TEXT.futureDate,
@@ -287,30 +291,33 @@ export function RegistrationSection() {
           throw new PlantSaveError(outcome)
       }
     },
-    uploadPhoto: (files, options) => {
+    uploadPhotos: (photos, options) => {
       // El fallo elegido se aplica justo antes de cada subida, así el
-      // reintento usa el que esté elegido entonces.
+      // reintento usa el que esté elegido entonces. "Falla la segunda" falla
+      // la segunda foto del primer intento (su versión), no la del reintento.
       const failure = photoOutcomeRef.current
+      const second = photos[1]
+      const secondVersion = second ? photoVersionFor(second.files) : null
       photoStorage.failUploads =
         failure === 'ok'
           ? undefined
-          : () =>
-              new PhotoStorageError(failure, {
-                uncertain: failure === 'offline',
-              })
-      return replacePlantPhoto(files, {
+          : failure === 'second'
+            ? (path) =>
+                secondVersion !== null && path.includes(secondVersion)
+                  ? new PhotoStorageError('failed')
+                  : null
+            : () =>
+                new PhotoStorageError(failure, {
+                  uncertain: failure === 'offline',
+                })
+      if (failure === 'second') {
+        photoOutcomeRef.current = 'ok'
+        setPhotoOutcome('ok')
+      }
+      return uploadPlantPhotos(photos, {
         ...options,
         storage: photoStorage,
-        // La planta "en la base" es la que devolvió el guardado.
-        records: {
-          setPhotoPaths: (_plantId, _userId, paths) =>
-            Promise.resolve({
-              ...options.plant,
-              photoPath: paths?.photoPath ?? null,
-              thumbnailPath: paths?.thumbnailPath ?? null,
-            }),
-          deletePlant: () => Promise.resolve(),
-        },
+        rows: photoRows,
       })
     },
   }
@@ -325,7 +332,7 @@ export function RegistrationSection() {
     <Section
       id="registro"
       title="Formulario de registro"
-      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). La foto es opcional: se sube después de guardar la planta a un bucket simulado, y si falla se puede reintentar o continuar sin ella. Lo escrito y la foto se conservan como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada. Al fijar uno de los cinco géneros de acceso rápido, el fondo del ejemplo pasa a su foto (provisional) bajo el velo; los demás géneros dejan el fondo neutro."
+      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). Las fotos (hasta 6) son opcionales: se suben después de guardar la planta a un bucket simulado, y si alguna falla se puede reintentar solo esa o continuar sin ella. Lo escrito y las fotos se conservan como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
     >
       <Collapsible title="Ver el formulario" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -354,17 +361,6 @@ export function RegistrationSection() {
               </Chip>
             ))}
           </ChipGroup>
-          <ChipGroup aria-label="Entrada al registro">
-            <Chip
-              selected={photoFirst}
-              onClick={() => {
-                setPhotoFirst(!photoFirst)
-                restart()
-              }}
-            >
-              Empezar por la foto (?foto=1)
-            </Chip>
-          </ChipGroup>
           <ChipGroup aria-label="Conexión del dispositivo">
             <Chip selected={!online} onClick={() => setOnline(!online)}>
               Sin conexión
@@ -372,8 +368,7 @@ export function RegistrationSection() {
           </ChipGroup>
           <Example
             title="Registrar una orquídea"
-            description="En el celular, las acciones quedan fijas abajo."
-            className="relative isolate mx-auto w-full max-w-lg"
+            description="A dos columnas en escritorio (la galería a la derecha) y a una hasta 720 px. «Tomar foto» solo sale en dispositivos táctiles."
           >
             {result === null ? (
               <PlantForm
@@ -382,15 +377,13 @@ export function RegistrationSection() {
                 online={online}
                 knownPlants={KNOWN_PLANTS}
                 draftUserId={SHOWCASE_DRAFT_USER}
-                photoFirst={photoFirst}
-                backdrop="contained"
-                onSaved={(plant) =>
+                onSaved={(plant, { photos }) =>
                   setResult(
                     `Guardada: «${plant.displayName}», ${
                       plant.validation === 'validated'
                         ? 'validada'
                         : 'nombre por validar'
-                    }, ${plant.photoPath ? `con foto (${plant.photoPath})` : 'sin foto'}.`,
+                    }, ${photos === 0 ? 'sin foto' : `con ${photos === 1 ? '1 foto' : `${String(photos)} fotos`} (principal: ${plant.photoPath ?? '?'})`}.`,
                   )
                 }
                 onCancel={() => setResult('Cancelado sin guardar.')}

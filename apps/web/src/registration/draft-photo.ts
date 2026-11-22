@@ -35,8 +35,10 @@ import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 // Cualquier otra cosa (otra versión, una foto sin Blob, más de 6) se borra al leer.
 //
 // API: readDraftPhotos, writeDraftPhotos y clearDraftPhotos para varias fotos
-// (formulario con galería, #221); readDraftPhoto, writeDraftPhoto y
-// clearDraftPhoto para el formulario actual, de una foto, que siguen igual.
+// (el formulario con galería, #221). readDraftPhoto, writeDraftPhoto y
+// clearDraftPhoto, de una foto, siguen para quien ya los usa (la limpieza del
+// dispositivo de «Tu cuenta» borra con clearDraftPhoto, que es el mismo
+// borrado).
 
 /** Una foto pendiente: el nombre del archivo elegido y la foto ya preparada. */
 export interface DraftPhotoItem {

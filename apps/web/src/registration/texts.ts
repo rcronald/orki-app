@@ -13,44 +13,88 @@ export const PLANT_FORM_ERROR_TEXT = {
   textTooLong: 'No puede pasar de 120 caracteres.',
 } as const
 
+/** «1 foto», «3 fotos». */
+export function photoCount(count: number): string {
+  return count === 1 ? '1 foto' : `${String(count)} fotos`
+}
+
+/** «la foto principal», «la foto principal y la foto 3». */
+function photoList(labels: readonly string[]): string {
+  const items = labels.map((label) => `la ${label.toLowerCase()}`)
+  if (items.length <= 1) return items.join('')
+  return `${items.slice(0, -1).join(', ')} y ${items.at(-1) ?? ''}`
+}
+
 export const PLANT_FORM_TEXT = {
   title: 'Registrar una orquídea',
+  back: 'Volver a Mi colección',
   nameLabel: 'Nombre',
   nameHint: 'Busca por nombre científico, sinónimo o nombre común.',
-  nameLinkedHint: 'Especie del catálogo.',
+  /** Insignia bajo el nombre con una especie del catálogo elegida (#221). */
+  nameMatch: 'Coincidencia en el catálogo',
   /** Qué pasará con un nombre que no está en el catálogo (#12). */
   namePendingHint:
     'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
   /**
-   * Ayuda del campo de foto con un nombre por validar (#12, #210): sin foto,
-   * la recomienda (sin exigirla); con foto, avisa de quién podrá verla. Las
-   * dos siguen con «Más en Privacidad» (pendingPhotoMore y privacyLink).
+   * Aviso de la galería con un nombre por validar (#12, #210, #221): sin
+   * fotos, las recomienda (sin exigirlas); con fotos, avisa de quién podrá
+   * verlas. Los dos siguen con «Más en Privacidad» (pendingPhotoMore y
+   * privacyLink).
    */
   pendingPhotoHint:
-    'Te recomendamos añadir una foto: el equipo del catálogo podrá verla para validar el nombre.',
-  pendingPhotoNotice:
-    'Como el nombre queda por validar, el equipo del catálogo podrá ver esta foto para identificarla.',
+    'Te recomendamos añadir fotos: el equipo del catálogo podrá verlas para validar el nombre.',
+  pendingPhotoNotice: (count: number) =>
+    count === 1
+      ? 'Como el nombre queda por validar, el equipo del catálogo podrá ver esta foto para identificarla.'
+      : 'Como el nombre queda por validar, el equipo del catálogo podrá ver estas fotos para identificarla.',
   pendingPhotoMore: 'Más en',
   privacyLink: 'Privacidad',
-  photoLabel: 'Foto',
-  photoHint: 'Opcional.',
-  /** Ayuda del campo de foto al entrar desde la cámara (?foto=1). */
-  photoFirstHint: 'Empieza por la foto; después completa los datos.',
-  photoInBloom: 'La foto es en floración',
-  photoPreparing: 'Preparando la foto…',
-  photoUploading: 'Tu orquídea quedó registrada. Subiendo la foto…',
-  photoUploadProgress: (done: number, total: number) =>
-    `Tu orquídea quedó registrada. Subiendo la foto… (${String(done)} de ${String(total)} archivos)`,
-  photoUploadingButton: 'Subiendo la foto…',
-  photoUploadFailed:
-    'Tu orquídea quedó registrada, pero no se pudo subir la foto.',
-  photoUploadCancelled:
-    'Tu orquídea quedó registrada, pero sin foto: se canceló la subida.',
-  photoUploadRetryHint:
-    'Puedes volver a intentarlo con la misma foto o continuar sin ella.',
-  photoUploadRetry: 'Reintentar subida',
-  photoUploadCancel: 'Cancelar subida',
-  photoContinueWithout: 'Continuar sin foto',
+  photosTitle: 'Fotos',
+  photoInBloom: 'La foto principal es en floración',
+  photosPreparing: 'Preparando las fotos…',
+  /** Anuncio al elegir fotos (role="status"). */
+  photosAdding: (count: number) =>
+    count === 1 ? 'Preparando la foto…' : `Preparando ${photoCount(count)}…`,
+  /** Algunas no cabían: se añadieron las que caben (#221). */
+  photosLeftOut: (accepted: number, leftOut: number, max: number) =>
+    `${accepted === 0 ? 'No se añadió ninguna' : `Se ${accepted === 1 ? 'añadió' : 'añadieron'} ${photoCount(accepted)}`}; ${leftOut === 1 ? '1 quedó fuera' : `${String(leftOut)} quedaron fuera`}: el máximo es ${String(max)}.`,
+  photoAdded: (count: number, max: number) =>
+    `Foto añadida: ${String(count)} de ${String(max)}.`,
+  photoRemoved: (count: number, max: number, wasMain: boolean) =>
+    `Foto quitada: quedan ${String(count)} de ${String(max)}.${wasMain && count > 0 ? ' La siguiente pasa a ser la principal.' : ''}`,
+  /** Al editar: la foto ya guardada se borra al guardar los cambios. */
+  storedPhotoRemoved: (count: number, max: number) =>
+    `Foto quitada: quedan ${String(count)} de ${String(max)}. Se borrará al guardar los cambios.`,
+  storedPhotoRestored: 'Foto recuperada.',
+  storedPhotosPending: (count: number) =>
+    count === 1
+      ? 'Una foto guardada se borrará al guardar los cambios.'
+      : `${String(count)} fotos guardadas se borrarán al guardar los cambios.`,
+  undoRemove: 'Deshacer',
+  photoPrepareFailed: (fileName: string, message: string) =>
+    `No se pudo preparar «${fileName}». ${message}`,
+  photosLoading: 'Cargando las fotos de la planta…',
+  photosLoadFailed: 'No se pudieron cargar las fotos de la planta.',
+  photosLoadRetry: 'Volver a cargar las fotos',
+  /** Lo que ya quedó guardado antes de subir las fotos. */
+  savedPrefix: 'Tu orquídea quedó registrada',
+  photosUploading: (prefix: string, done: number, total: number) =>
+    `${prefix}. Subiendo las fotos… (${String(done)} de ${String(total)})`,
+  photosUploadingButton: 'Subiendo las fotos…',
+  photosFailed: (prefix: string, labels: readonly string[]) =>
+    labels.length === 1
+      ? `${prefix}, pero no se pudo subir ${photoList(labels)}.`
+      : `${prefix}, pero no se pudieron subir ${photoCount(labels.length)}: ${photoList(labels)}.`,
+  photosRemoveFailed: (prefix: string, count: number) =>
+    `${prefix}, pero no se ${count === 1 ? 'pudo quitar 1 foto' : `pudieron quitar ${String(count)} fotos`}.`,
+  photosCancelled: (prefix: string) =>
+    `${prefix}, pero se canceló la subida de las fotos.`,
+  photosRetryHint:
+    'Puedes reintentar solo las que fallaron (las demás ya están guardadas) o continuar sin ellas.',
+  photosRetry: 'Reintentar fotos',
+  photosUploadCancel: 'Cancelar subida',
+  photosContinueWithout: 'Continuar sin ellas',
+  photosContinue: 'Continuar',
   freeNameAction: (name: string) => `No la encuentro: guardarla como «${name}»`,
   /** Aviso de duplicado (#88), antes y después del nombre científico. */
   duplicateBefore: (count: number) =>
@@ -72,6 +116,7 @@ export const PLANT_FORM_TEXT = {
   originLabel: 'Origen',
   originHint: 'Tienda, vivero, intercambio… Opcional.',
   detailsTitle: 'Más detalles',
+  optional: '(opcional)',
   locationLabel: 'Ubicación',
   locationHint: 'Dónde está en casa, como «Ventana de la sala». Opcional.',
   nicknameLabel: 'Apodo',
@@ -100,25 +145,16 @@ export type PlantFormTexts = {
 }
 
 /**
- * El mismo formulario al editar una planta (#16). Tras guardar los datos, la
- * foto nueva se sube (o la anterior se quita) aparte: si eso falla, los
- * cambios ya están guardados y la planta conserva la foto que tenía.
+ * El mismo formulario al editar una planta (#16). Tras guardar los datos, las
+ * fotos quitadas se borran y las nuevas se suben aparte: si eso falla, los
+ * cambios ya están guardados.
  */
 export const PLANT_EDIT_TEXT: PlantFormTexts = {
   ...PLANT_FORM_TEXT,
   title: 'Editar orquídea',
-  photoUploading: 'Cambios guardados. Actualizando la foto…',
-  photoUploadProgress: (done: number, total: number) =>
-    `Cambios guardados. Subiendo la foto nueva… (${String(done)} de ${String(total)} archivos)`,
-  photoUploadingButton: 'Actualizando la foto…',
-  photoUploadFailed:
-    'Los cambios quedaron guardados, pero no se pudo cambiar la foto.',
-  photoUploadCancelled:
-    'Los cambios quedaron guardados, pero la foto no cambió: se canceló la subida.',
-  photoUploadRetryHint:
-    'Puedes volver a intentarlo o continuar con la foto que tenía.',
-  photoUploadRetry: 'Reintentar la foto',
-  photoContinueWithout: 'Continuar sin cambiar la foto',
+  back: 'Volver a la planta',
+  savedPrefix: 'Los cambios quedaron guardados',
+  photosContinueWithout: 'Continuar sin ellas',
   duplicateAfter: '. Puedes guardarla igualmente.',
   submit: 'Guardar cambios',
   submitting: 'Guardando…',
@@ -133,12 +169,9 @@ export const PLANT_EDIT_NOTICE_TEXT = {
   /** Al cambiar el nombre de una planta enlazada por uno que no es del catálogo. */
   unlinkBefore: 'Al guardar, la planta dejará de estar enlazada a ',
   unlinkAfter: ' y volverá a «Nombre por validar».',
-  storedPhotoAlt: 'Foto actual de la planta',
-  storedPhotoLoading: 'Foto actual de la planta: cargando',
-  storedPhotoFailed: 'Foto actual de la planta: no se pudo cargar',
   /**
-   * La edición no guarda borrador: el enlace a Privacidad del campo de foto
-   * se abre en otra pestaña para no perder los cambios (#210).
+   * La edición no guarda borrador: el enlace a Privacidad del aviso de la
+   * galería se abre en otra pestaña para no perder los cambios (#210).
    */
   privacyNewTab: '(se abre en otra pestaña)',
 } as const

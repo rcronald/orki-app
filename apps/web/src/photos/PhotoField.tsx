@@ -13,7 +13,10 @@ import { useCoarsePointer } from './useCoarsePointer.ts'
 import type { ProcessedPhoto } from './process.ts'
 import { canRetryUpload, type PhotoUploadState } from './usePhotoUpload.ts'
 
-// Campo de foto reutilizable (#82): tomar con la cámara o elegir de la
+// Campo de una sola foto (#82). Desde el #221 el registro y la edición usan
+// la galería (PhotoGallery y registration/usePhotoEntries.ts); este campo
+// queda para la sección «Fotos» de /muestra, la de la prueba a mano en el
+// iPhone y en Android (#84). Tomar con la cámara o elegir de la
 // galería, vista previa, reemplazar y quitar. Prepara la imagen con el módulo
 // de procesamiento (carga diferida) y entrega la foto y la miniatura ya
 // preparadas; no sube nada: el formulario decide cuándo (ver upload.ts y

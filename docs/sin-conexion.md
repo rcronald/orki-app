@@ -256,9 +256,9 @@ El código está en `src/telemetry/`.
   Nunca el texto buscado, nombres de plantas, correo ni nombre: el usuario lo
   pone la base con el token.
 - **Registro completado** (`telemetry/useRegistrationEvent.ts`): desde que se
-  abre el formulario o, con "Con foto", desde que se elige la primera foto
-  (si no se elige ninguna, desde que se abrió), hasta que el registro termina
-  (planta guardada y, si llevaba foto, subida, o se siguió sin ella).
+  abre el formulario hasta que el registro termina (planta guardada y, si
+  llevaba fotos, subidas, o se siguió sin las que fallaron). «Con foto» es
+  verdadero si quedó al menos una (#221).
 - **Cuándo cuenta una búsqueda de "¿Ya la tengo?"**
   (`telemetry/useHaveItSearchEvents.ts`): una por búsqueda, con la primera
   respuesta que se queda 2 s en pantalla sin cambiar, o la que había al salir

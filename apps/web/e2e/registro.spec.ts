@@ -1,17 +1,54 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { Locator, Page } from '@playwright/test'
 import { ESPECIES, GENEROS, USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 
-// Registro de una planta (#11, #12, #85, #87): con una especie del catálogo y
-// sin foto, y con un nombre que no está en el catálogo ("por validar") y con
-// foto. La foto la procesa el navegador de verdad (decodificar, reducir y
-// codificar) y se sube al Storage simulado.
+// Registro de una planta con galería (#11, #12, #85, #221): con una especie
+// del catálogo y con un nombre que no está en el catálogo ("por validar"),
+// con 0, 1 y 6 fotos; la recarga con el borrador (también de las fotos); un
+// fallo de subida y su reintento. Las fotos las prepara el navegador de verdad
+// (decodificar, reducir y codificar) y se suben al Storage simulado, que
+// también atiende plant_photos (supabase.fotosDe).
 
-const FOTO = path.resolve(
+const FIXTURES = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../src/photos/fixtures/sin-metadatos.jpg',
+  '../src/photos/fixtures',
 )
+const FOTOS = [
+  'sin-metadatos.jpg',
+  'sin-metadatos.png',
+  'sin-metadatos.webp',
+  'exif-gps-orientacion-6.jpg',
+  'exif-xmp.webp',
+  'sin-metadatos.jpg',
+].map((nombre) => path.join(FIXTURES, nombre))
+
+const galeria = (page: Page) =>
+  page.getByRole('region', { name: 'Fotos (opcional)' })
+
+/** Elige fotos con «Elegir fotos» y espera a que estén preparadas. */
+async function elegirFotos(page: Page, archivos: string[]) {
+  const selector = page.waitForEvent('filechooser')
+  await galeria(page).getByRole('button', { name: 'Elegir fotos' }).click()
+  const eleccion = await selector
+  expect(eleccion.isMultiple()).toBe(true)
+  await eleccion.setFiles(archivos)
+  await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(0)
+}
+
+async function elegirTipo(page: Page, tipo: string) {
+  await page
+    .getByRole('group', { name: 'Tipo' })
+    .getByRole('button', { name: tipo })
+    .click()
+}
+
+/** La miniatura de la tarjeta ya cargó del bucket (no es el marcador). */
+async function tarjetaConFoto(tarjeta: Locator) {
+  await expect(tarjeta.getByRole('img')).not.toHaveAccessibleName('Sin foto')
+  await expect(tarjeta.getByRole('img')).toHaveAttribute('src', /^blob:/)
+}
 
 test('registrar una especie del catálogo sin foto', async ({
   page,
@@ -23,13 +60,21 @@ test('registrar una especie del catálogo sin foto', async ({
   await expect(
     page.getByRole('heading', { name: 'Registrar una orquídea', level: 1 }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'Volver a Mi colección' }),
+  ).toBeVisible()
+  await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
+    '0 de 6',
+  )
   await revisarAccesibilidad('registro vacío')
 
   const nombre = page.getByRole('combobox', { name: 'Nombre' })
   await nombre.fill('Phal. amab')
   await page.getByRole('option', { name: 'Phalaenopsis amabilis' }).click()
 
-  // La especie fija el género y el tipo, y la app avisa del duplicado.
+  // La especie fija el género y el tipo, dice que coincide con el catálogo y
+  // avisa del duplicado.
+  await expect(page.getByText('Coincidencia en el catálogo')).toBeVisible()
   const genero = page.getByRole('group', { name: 'Género' })
   await expect(
     genero.getByRole('button', { name: 'Phalaenopsis' }),
@@ -63,12 +108,45 @@ test('registrar una especie del catálogo sin foto', async ({
     genus_id: GENEROS.phalaenopsis,
     photo_path: null,
   })
+  expect(supabase.fotosDe(nueva?.id ?? '')).toEqual([])
 })
 
-test('registrar un nombre por validar con foto', async ({
+test('registrar una especie del catálogo con una foto: la tarjeta la usa', async ({
+  page,
+  supabase,
+}) => {
+  await page.goto('/coleccion/nueva')
+  await page.getByRole('combobox', { name: 'Nombre' }).fill('Cattleya max')
+  await page.getByRole('option', { name: /^Cattleya maxima/ }).click()
+  await expect(page.getByText('Coincidencia en el catálogo')).toBeVisible()
+  await elegirFotos(page, FOTOS.slice(0, 1))
+  await expect(
+    galeria(page).getByRole('img', { name: 'Foto principal' }),
+  ).toBeVisible()
+  await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
+    '1 de 6',
+  )
+  await page.getByRole('button', { name: 'Registrar orquídea' }).click()
+
+  await expect(page).toHaveURL(/\/coleccion$/)
+  const nueva = supabase
+    .plantasDe(USUARIO)
+    .find(
+      (p) => p.species_id === ESPECIES.cattleyaMaxima && p.photo_path !== null,
+    )
+  expect(nueva).toBeDefined()
+  const fotos = supabase.fotosDe(nueva?.id ?? '')
+  expect(fotos).toHaveLength(1)
+  expect(nueva?.photo_path).toBe(fotos[0]?.photo_path)
+  expect(supabase.archivos.has(fotos[0]?.photo_path ?? '')).toBe(true)
+  expect(supabase.archivos.has(fotos[0]?.thumbnail_path ?? '')).toBe(true)
+})
+
+test('registrar un nombre por validar con seis fotos, recargando a mitad', async ({
   page,
   supabase,
   revisarAccesibilidad,
+  browserName,
 }) => {
   await page.goto('/coleccion/nueva')
 
@@ -83,51 +161,57 @@ test('registrar un nombre por validar con foto', async ({
   await expect(
     page.getByText(/quedará en tu inventario como «Nombre por validar»/),
   ).toBeVisible()
-  // Junto a la foto, un solo mensaje: la recomendación, quién podrá verla y
-  // el enlace a Privacidad (#210), como descripción del grupo.
-  const grupoFoto = page.getByRole('group', { name: 'Foto' })
-  await expect(grupoFoto).toHaveAccessibleDescription(
-    'Te recomendamos añadir una foto: el equipo del catálogo podrá verla para validar el nombre. Más en Privacidad.',
-  )
-
-  // El enlace no pierde lo escrito: al volver, el borrador se recupera.
-  await grupoFoto.getByRole('link', { name: 'Privacidad' }).click()
-  await expect(page).toHaveURL(/\/privacidad$/)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Privacidad' }),
-  ).toBeVisible()
-  await page.goBack()
-  await expect(page).toHaveURL(/\/coleccion\/nueva$/)
-  await expect(
-    page.getByText('Recuperamos lo que estabas escribiendo.'),
-  ).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Nombre' })).toHaveValue(
-    'Vanda Pachara Delight',
+  // Junto a la galería, un solo mensaje: la recomendación, quién podrá ver
+  // las fotos y el enlace a Privacidad (#210), como descripción.
+  await expect(galeria(page)).toHaveAccessibleDescription(
+    'Te recomendamos añadir fotos: el equipo del catálogo podrá verlas para validar el nombre. Más en Privacidad.',
   )
 
   await page
     .getByRole('group', { name: 'Género' })
     .getByRole('button', { name: 'Vanda' })
     .click()
-  await page
-    .getByRole('group', { name: 'Tipo' })
-    .getByRole('button', { name: 'Híbrido' })
-    .click()
-
-  // En el celular hay dos botones (cámara y galería); en el escritorio, uno.
-  const selector = page.waitForEvent('filechooser')
-  await page
-    .getByRole('button', { name: /^Elegir (foto|de la galería)$/ })
-    .click()
-  await (await selector).setFiles(FOTO)
-  await expect(
-    page.getByRole('img', { name: 'Vista previa de la foto elegida' }),
-  ).toBeVisible()
-  // Con la foto elegida, el aviso dice que el equipo del catálogo podrá verla.
-  await expect(grupoFoto).toHaveAccessibleDescription(
-    'Como el nombre queda por validar, el equipo del catálogo podrá ver esta foto para identificarla. Más en Privacidad.',
+  await elegirTipo(page, 'Híbrido')
+  await elegirFotos(page, FOTOS.slice(0, 2))
+  await expect(galeria(page)).toHaveAccessibleDescription(
+    'Como el nombre queda por validar, el equipo del catálogo podrá ver estas fotos para identificarla. Más en Privacidad.',
   )
-  await revisarAccesibilidad('registro por validar con foto')
+
+  // La recarga: lo escrito y las fotos, en su orden, vuelven del borrador.
+  await page.reload()
+  await expect(
+    page.getByText('Recuperamos lo que estabas escribiendo.'),
+  ).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Nombre' })).toHaveValue(
+    'Vanda Pachara Delight',
+  )
+  if (browserName === 'webkit') {
+    // El WebKit de Playwright usa un perfil efímero, como la navegación
+    // privada de Safari, que no guarda Blob en IndexedDB: lo escrito vuelve,
+    // las fotos no (el formulario sigue igual). En un iPhone real con la app
+    // instalada sí se guardan; no se puede comprobar aquí.
+    await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
+      '0 de 6',
+    )
+    await elegirFotos(page, FOTOS.slice(0, 2))
+  } else {
+    await expect(galeria(page).getByRole('img')).toHaveCount(2)
+    await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
+      '2 de 6',
+    )
+  }
+
+  // Cuatro más (seis): las acciones se deshabilitan con su motivo.
+  await elegirFotos(page, FOTOS.slice(2, 6))
+  await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
+    '6 de 6',
+  )
+  const elegir = galeria(page).getByRole('button', { name: 'Elegir fotos' })
+  await expect(elegir).toHaveAttribute('aria-disabled', 'true')
+  await expect(elegir).toHaveAccessibleDescription(
+    'Ya tienes 6 fotos. Quita una para añadir otra.',
+  )
+  await revisarAccesibilidad('registro por validar con seis fotos')
 
   await page.getByRole('button', { name: 'Registrar orquídea' }).click()
 
@@ -147,15 +231,148 @@ test('registrar un nombre por validar con foto', async ({
     genus_id: GENEROS.vanda,
     type: 'hybrid',
   })
-  // La foto y su miniatura, en la carpeta de la planta.
-  await expect.poll(() => nueva?.photo_path ?? null).not.toBeNull()
-  expect(nueva?.photo_path).toMatch(new RegExp(`^${USUARIO}/${nueva?.id}/`))
-  expect(supabase.archivos.has(nueva?.photo_path ?? '')).toBe(true)
-  expect(supabase.archivos.has(nueva?.thumbnail_path ?? '')).toBe(true)
-
-  // La tarjeta de la planta muestra la miniatura descargada del bucket.
+  const fotos = supabase.fotosDe(nueva?.id ?? '')
+  expect(fotos.map((foto) => foto.position)).toEqual([0, 1, 2, 3, 4, 5])
+  for (const foto of fotos) {
+    expect(foto.photo_path).toMatch(new RegExp(`^${USUARIO}/${nueva?.id}/`))
+    expect(supabase.archivos.has(foto.photo_path)).toBe(true)
+  }
+  // La principal (la primera elegida) está en la planta y en su tarjeta.
+  expect(nueva?.photo_path).toBe(fotos[0]?.photo_path)
   const tarjeta = page.getByRole('article', { name: 'Vanda Pachara Delight' })
   await expect(tarjeta.getByText('Nombre por validar')).toBeVisible()
-  await expect(tarjeta.getByRole('img')).not.toHaveAccessibleName('Sin foto')
+  await tarjetaConFoto(tarjeta)
   await revisarAccesibilidad('inventario tras registrar')
 })
+
+test('registrar un nombre por validar sin fotos y con «Otro»', async ({
+  page,
+  supabase,
+}) => {
+  await page.goto('/coleccion/nueva')
+  await page
+    .getByRole('combobox', { name: 'Nombre' })
+    .fill('Masdevallia del jardín')
+  await page
+    .getByRole('group', { name: 'Género' })
+    .getByRole('button', { name: 'Otro' })
+    .click()
+  await page.getByRole('combobox', { name: 'Buscar otro género' }).fill('Masde')
+  await page.getByRole('option', { name: /^Masdevallia/ }).click()
+  await elegirTipo(page, 'No sé')
+  await page.getByRole('button', { name: 'Registrar orquídea' }).click()
+
+  await expect(page).toHaveURL(/\/coleccion$/)
+  const nueva = supabase
+    .plantasDe(USUARIO)
+    .find((p) => p.entered_name === 'Masdevallia del jardín')
+  expect(nueva).toMatchObject({
+    species_id: null,
+    validation: 'pending',
+    genus_id: GENEROS.masdevallia,
+    type: 'unknown',
+    photo_path: null,
+  })
+})
+
+test('si una foto falla al subir, la planta queda registrada y se reintenta solo esa', async ({
+  page,
+  supabase,
+  revisarAccesibilidad,
+}) => {
+  await page.goto('/coleccion/nueva')
+  await page.getByRole('combobox', { name: 'Nombre' }).fill('Phal. amab')
+  await page.getByRole('option', { name: 'Phalaenopsis amabilis' }).click()
+  await elegirFotos(page, FOTOS.slice(0, 3))
+
+  // Los dos archivos de la segunda foto fallan hasta que se diga.
+  const versiones: string[] = []
+  let fallar = true
+  await page.route(/\/storage\/v1\/object\/plant-photos\/.+/, async (ruta) => {
+    const peticion = ruta.request()
+    const version = /(?:photo|thumb)-([^./]+)\./.exec(peticion.url())?.[1]
+    if (peticion.method() === 'POST' && version) {
+      if (!versiones.includes(version)) versiones.push(version)
+      if (fallar && versiones.indexOf(version) === 1) {
+        await ruta.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ statusCode: '503', message: 'Fallo' }),
+        })
+        return
+      }
+    }
+    await ruta.fallback()
+  })
+
+  await page.getByRole('button', { name: 'Registrar orquídea' }).click()
+  const alerta = page.getByRole('alert')
+  await expect(alerta).toContainText(
+    'Tu orquídea quedó registrada, pero no se pudo subir la foto 2 de 3.',
+  )
+  await expect(galeria(page).getByText('No se subió')).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Reintentar fotos' }),
+  ).toBeFocused()
+  await revisarAccesibilidad('registro con una foto sin subir')
+
+  const planta = supabase
+    .plantasDe(USUARIO)
+    .filter((p) => p.species_id === ESPECIES.phalaenopsisAmabilis)
+  expect(planta).toHaveLength(2)
+  const nueva = planta.find((p) => p.photo_path !== null)
+  expect(supabase.fotosDe(nueva?.id ?? '')).toHaveLength(2)
+
+  fallar = false
+  await page.getByRole('button', { name: 'Reintentar fotos' }).click()
+  await expect(page).toHaveURL(/\/coleccion$/)
+  // Sin duplicar la planta: la misma, ya con las tres fotos en su orden.
+  expect(
+    supabase
+      .plantasDe(USUARIO)
+      .filter((p) => p.species_id === ESPECIES.phalaenopsisAmabilis),
+  ).toHaveLength(2)
+  expect(
+    supabase.fotosDe(nueva?.id ?? '').map((foto) => foto.position),
+  ).toEqual([0, 1, 2])
+})
+
+for (const ancho of [360, 1440]) {
+  test(`a ${String(ancho)} px, sin desplazamiento horizontal y con axe`, async ({
+    page,
+    revisarAccesibilidad,
+  }) => {
+    await page.setViewportSize({ width: ancho, height: 900 })
+    await page.goto('/coleccion/nueva')
+    await page.getByRole('combobox', { name: 'Nombre' }).fill('Cattleya max')
+    await page.getByRole('option', { name: /^Cattleya maxima/ }).click()
+    await elegirFotos(page, FOTOS.slice(0, 3))
+    await page.getByRole('button', { name: 'Más detalles (opcional)' }).click()
+    const sobra = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    )
+    expect(sobra).toBeLessThanOrEqual(0)
+    // En escritorio, la galería a la derecha de los datos; en el celular,
+    // debajo del origen.
+    const nombre = await page
+      .getByRole('combobox', { name: 'Nombre' })
+      .boundingBox()
+    const caja = await galeria(page).boundingBox()
+    const origen = await page
+      .getByRole('combobox', { name: 'Origen' })
+      .boundingBox()
+    expect(nombre && caja && origen).toBeTruthy()
+    if (nombre && caja && origen) {
+      if (ancho > 720) {
+        expect(Math.round(caja.x)).toBeGreaterThan(
+          Math.round(nombre.x + nombre.width),
+        )
+      } else {
+        expect(Math.round(caja.y)).toBeGreaterThan(
+          Math.round(origen.y + origen.height),
+        )
+      }
+    }
+    await revisarAccesibilidad(`registro a ${String(ancho)} px`)
+  })
+}

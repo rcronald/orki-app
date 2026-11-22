@@ -28,6 +28,8 @@ export interface ChoiceFieldProps {
   children: (describedBy: string | undefined) => ReactNode
   /** Lo que va bajo los chips, antes de la explicación y el error. */
   after?: ReactNode
+  /** Hasta 720 px, los chips como control segmentado de ancho completo. */
+  segmented?: boolean
 }
 
 export function ChoiceField({
@@ -37,6 +39,7 @@ export function ChoiceField({
   containerRef,
   children,
   after,
+  segmented = false,
 }: ChoiceFieldProps) {
   const baseId = useId()
   const labelId = `${baseId}-label`
@@ -51,7 +54,11 @@ export function ChoiceField({
       <p id={labelId} className="orki-field__label">
         {label}
       </p>
-      <ChipGroup aria-labelledby={labelId} aria-describedby={describedBy}>
+      <ChipGroup
+        aria-labelledby={labelId}
+        aria-describedby={describedBy}
+        segmented={segmented}
+      >
         {children(describedBy)}
       </ChipGroup>
       {after}
