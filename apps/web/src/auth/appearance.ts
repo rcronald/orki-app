@@ -14,7 +14,8 @@ export type ClerkAppearance = NonNullable<ClerkProviderProps['appearance']>
 // https://clerk.com/docs/react/guides/customizing-clerk/appearance-prop/variables
 export const clerkAppearance = {
   variables: {
-    colorPrimary: 'var(--color-primary)',
+    // La acción principal es verde en toda la app (#206).
+    colorPrimary: 'var(--color-secondary-strong)',
     colorPrimaryForeground: 'var(--color-neutral-0)',
     colorBackground: 'var(--color-neutral-0)',
     colorForeground: 'var(--color-neutral-900)',

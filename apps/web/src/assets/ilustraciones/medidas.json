@@ -1,0 +1,26 @@
+{
+  "recorte": {
+    "x": 0,
+    "y": 114,
+    "ancho": 1335,
+    "alto": 1038
+  },
+  "variantes": [
+    {
+      "archivo": "cabecera-240.webp",
+      "ancho": 240,
+      "alto": 186,
+      "calidad": 0.8,
+      "bytes": 12462,
+      "sha256": "4356930af943d8bf7bdb244c11c6da7a807c6dc41ff4d0f849c147a3ff9ad5e3"
+    },
+    {
+      "archivo": "cabecera-480.webp",
+      "ancho": 480,
+      "alto": 374,
+      "calidad": 0.8,
+      "bytes": 32154,
+      "sha256": "480c9dd96edef0d9b8967f3997d628ec2b979519ec197d22869b568a16e6300d"
+    }
+  ]
+}

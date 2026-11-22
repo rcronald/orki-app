@@ -21,7 +21,8 @@ export const ACCOUNT_TEXT = {
   emailLabel: 'Correo',
   noEmail: 'Sin correo (entraste con otro método)',
   manageHint:
-    'Para cambiar tu correo, tu nombre o tu foto, usa el menú de la cuenta (el botón con tu avatar, arriba).',
+    'Para cambiar tu correo, tu nombre o tu foto, usa «Editar perfil».',
+  editProfile: 'Editar perfil',
   deleteHeading: 'Eliminar tu cuenta',
   deleteIntro:
     'Al eliminar tu cuenta se borran tus plantas con todos sus detalles, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso, y lo que orqui.apps guarda de ti en este dispositivo. No se puede deshacer.',

@@ -22,12 +22,6 @@ const text = (foreground: string, background: string): ContrastPair => ({
   kind: 'texto',
   min: NORMAL_TEXT,
 })
-const largeText = (foreground: string, background: string): ContrastPair => ({
-  foreground,
-  background,
-  kind: 'texto grande',
-  min: LARGE_TEXT,
-})
 const ui = (foreground: string, background: string): ContrastPair => ({
   foreground,
   background,
@@ -36,11 +30,13 @@ const ui = (foreground: string, background: string): ContrastPair => ({
 })
 
 // No están color-warning como texto ni color-primary como texto sobre
-// color-primary-soft, que el sistema prohíbe.
+// color-primary-soft, que el sistema prohíbe. Desde el #206 el rosa
+// (color-primary y color-primary-soft) es solo color de marca (el logotipo):
+// las acciones y la selección van en verde, así que sus pares de texto e
+// interfaz ya no están; queda el del botón rosa que el issue #3 publicó, como
+// referencia del cálculo.
 export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text('color-neutral-0', 'color-primary'),
-  text('color-neutral-900', 'color-primary-soft'),
-  text('color-secondary', 'color-primary-soft'),
   text('color-secondary', 'color-neutral-0'),
   text('color-secondary', 'color-neutral-50'),
   text('color-neutral-700', 'color-neutral-0'),
@@ -57,10 +53,6 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text('color-danger', 'color-neutral-50'),
   text('color-danger', 'color-danger-soft'),
   text('color-neutral-900', 'color-danger-soft'),
-  largeText('color-primary', 'color-neutral-0'),
-  largeText('color-primary', 'color-neutral-50'),
-  // Chip seleccionado: borde color-primary sobre color-primary-soft.
-  ui('color-primary', 'color-primary-soft'),
   // Bordes de campos y anillo de foco en color-secondary.
   ui('color-secondary', 'color-neutral-0'),
   ui('color-secondary', 'color-neutral-50'),
@@ -68,10 +60,6 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   ui('color-danger', 'color-danger-soft'),
   // Borde del campo con error.
   ui('color-danger', 'color-neutral-0'),
-  // Sugerencia activa del buscador: texto secundario
-  // y acción final sobre color-primary-soft, con el anillo color-secondary.
-  text('color-neutral-700', 'color-primary-soft'),
-  ui('color-secondary', 'color-primary-soft'),
   // Páginas públicas (#190): botón orki-btn--strong (y su hover, que pasa a
   // color-secondary con el par ya listado), títulos y enlaces en
   // color-secondary-strong, e iconos de las ventajas en su recuadro
@@ -92,6 +80,18 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text('color-neutral-900', 'color-secondary-soft'),
   ui('color-secondary', 'color-secondary-soft'),
   ui('color-secondary-strong', 'color-neutral-0'),
+  // Verde como acción principal en toda la app (#206): orki-btn--primary
+  // (color-neutral-0 sobre color-secondary-strong y, al pasar por encima,
+  // sobre color-secondary, pares ya listados); chip seleccionado, opción
+  // elegida del control segmentado e indicador de filtros, igual. Fondo
+  // color-secondary-soft del chip al pasar por encima, de la sugerencia
+  // activa del buscador, de las opciones del menú y del resultado «Sí, la
+  // tienes»: texto color-neutral-900 (ya listado), texto secundario
+  // color-neutral-700, acción y títulos en color-secondary-strong y el anillo
+  // color-secondary (ya listados). Pestaña activa de la barra y su subrayado
+  // en color-secondary-strong sobre color-neutral-0 (ya listado). Iniciales
+  // del avatar en color-neutral-900 sobre color-neutral-50 (ya listado).
+  text('color-neutral-700', 'color-secondary-soft'),
 ]
 
 function relativeLuminance(hex: string): number {

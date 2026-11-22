@@ -153,7 +153,7 @@ export function CatalogAdminView({
                 onKeyDown={onTabKeyDown}
                 className={`-mb-[2px] min-h-[48px] cursor-pointer rounded-t-md border-b-2 px-space-4 text-md ${
                   selected
-                    ? 'border-primary font-semibold text-neutral-900'
+                    ? 'border-secondary-strong font-semibold text-neutral-900'
                     : 'border-transparent text-neutral-700 hover:bg-neutral-50'
                 }`}
               >
@@ -164,7 +164,7 @@ export function CatalogAdminView({
                       aria-hidden="true"
                       className={`ml-space-2 inline-block rounded-full px-space-2 text-sm tabular-nums ${
                         pendingGroups > 0
-                          ? 'bg-primary text-neutral-0'
+                          ? 'bg-secondary-strong text-neutral-0'
                           : 'bg-neutral-50 text-neutral-700'
                       }`}
                     >

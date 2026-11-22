@@ -74,12 +74,24 @@ test.describe('sin sesión', () => {
 
     // Clerk vuelve al inicio, que con sesión lleva a la colección.
     await expect(page).toHaveURL(/\/coleccion$/)
-    await expect(
-      page.getByRole('button', { name: 'Cerrar sesión' }),
-    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Tu cuenta' })).toBeVisible()
     await expect(
       page.getByRole('heading', { name: 'Mi colección', level: 1 }),
     ).toBeVisible()
+  })
+
+  test('las páginas de texto llevan la barra pública', async ({ page }) => {
+    await page.goto('/privacidad')
+    const cabecera = page.getByRole('banner')
+    // Hasta 720 px la barra pública deja solo el logotipo (como en la
+    // portada): los enlaces existen, pero no se ven en el celular.
+    await expect(cabecera.locator('a[href="/iniciar-sesion"]')).toHaveText(
+      'Iniciar sesión',
+    )
+    await expect(cabecera.locator('a[href="/registro"]')).toHaveText(
+      'Crear cuenta gratis',
+    )
+    await expect(page.getByRole('button', { name: 'Tu cuenta' })).toHaveCount(0)
   })
 })
 
@@ -91,7 +103,8 @@ test('cerrar sesión vuelve al inicio y protege de nuevo la colección', async (
     page.getByRole('heading', { name: 'Phalaenopsis amabilis', level: 2 }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Cerrar sesión' }).click()
+  await page.getByRole('button', { name: 'Tu cuenta' }).click()
+  await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click()
 
   await expect(page).toHaveURL(/\/$/)
   await expect(
@@ -112,17 +125,21 @@ test('sin el rol de administrador no hay backoffice', async ({
   page,
   revisarAccesibilidad,
 }) => {
-  // Con sesión, el inicio lleva a la colección; sin «Inicio» ni «Catálogo».
+  // Con sesión, el inicio lleva a la colección; la barra solo tiene «Mi
+  // colección» y el menú «Tu cuenta» no ofrece «Administración».
   await page.goto('/')
   await expect(page).toHaveURL(/\/coleccion$/)
   const navegacion = page.getByRole('navigation', { name: 'Principal' })
   await expect(navegacion.getByRole('link')).toHaveText(['Mi colección'])
   await expect(
     navegacion.getByRole('link', { name: 'Mi colección' }),
-  ).toBeVisible()
-  await expect(
-    navegacion.getByRole('link', { name: 'Administración' }),
-  ).toHaveCount(0)
+  ).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('button', { name: 'Tu cuenta' }).click()
+  await expect(page.getByRole('menuitem')).toHaveText([
+    'Mi cuenta',
+    'Cerrar sesión',
+  ])
+  await page.keyboard.press('Escape')
 
   await page.goto('/administracion/catalogo')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(

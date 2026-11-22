@@ -12,6 +12,7 @@ import {
   fakeClerk,
   FAKE_USER_EMAIL,
   FAKE_USER_ID,
+  openUserProfile,
   resetFakeClerk,
   setActive,
   setFakeClerk,
@@ -101,6 +102,15 @@ describe('AccountPage', () => {
     expect(document.title).toBe('Tu cuenta · orqui.apps')
     expect(screen.getByText(FAKE_USER_EMAIL)).toBeInTheDocument()
     await expectNoAxeViolations()
+  })
+
+  it('«Editar perfil» abre el editor de Clerk sin su «Eliminar cuenta» (#207)', async () => {
+    const user = userEvent.setup()
+    renderAt('/cuenta')
+    await user.click(screen.getByRole('button', { name: 'Editar perfil' }))
+    expect(openUserProfile).toHaveBeenCalledWith({
+      appearance: { elements: { profileSection__danger: { display: 'none' } } },
+    })
   })
 
   it('sin sesión: al inicio de sesión', () => {

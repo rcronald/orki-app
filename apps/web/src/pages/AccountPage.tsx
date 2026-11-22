@@ -6,7 +6,9 @@ import type { AccountDeletionEffects } from '../account/deletion.ts'
 import { setAccountDeletionPhase } from '../account/deletion-status.ts'
 import { appAccountDataEffects } from '../account/supabase-effects.ts'
 import { ACCOUNT_TEXT } from '../account/texts.ts'
+import { useProfileEditor } from '../auth/profile-editor.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
+import { Button } from '../components/ui/Button.tsx'
 import { Page } from '../components/Page.tsx'
 import { ensureProfile, forgetEnsuredProfile } from '../lib/profile.ts'
 
@@ -35,6 +37,9 @@ export function AccountPage({ dataEffects }: AccountPageProps) {
   const { user } = useUser()
   const { setActive } = useClerk()
   const readOnly = useReadOnly()
+  // El menú de Clerk ya no está en la barra (#207): el editor de perfil se
+  // abre desde aquí hasta el rediseño de esta pantalla (#214).
+  const profileEditor = useProfileEditor()
   const deleteUser = useReverification(async () => {
     if (!user) throw new Error('No hay usuario con sesión.')
     await user.delete()
@@ -89,6 +94,15 @@ export function AccountPage({ dataEffects }: AccountPageProps) {
         canDeleteAccount={user.deleteSelfEnabled}
         effects={effects}
         onDeleted={onDeleted}
+        profileAction={
+          <Button
+            className="self-start"
+            disabled={!profileEditor.available}
+            onClick={profileEditor.open}
+          >
+            {ACCOUNT_TEXT.editProfile}
+          </Button>
+        }
         onKeepUsing={() => {
           forgetEnsuredProfile(user.id)
           void ensureProfile(user.id)

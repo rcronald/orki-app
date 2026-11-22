@@ -12,10 +12,8 @@ test('resumen, búsqueda y detalle de una especie', async ({
   revisarAccesibilidad,
 }) => {
   await page.goto('/')
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Administración' })
-    .click()
+  await page.getByRole('button', { name: 'Tu cuenta' }).click()
+  await page.getByRole('menuitem', { name: 'Administración' }).click()
   await expect(
     page.getByRole('heading', {
       name: 'Administración del catálogo',

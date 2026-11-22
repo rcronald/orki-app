@@ -1,14 +1,17 @@
 import type { ComponentPropsWithRef } from 'react'
 import { Icon, type IconName } from './Icon.tsx'
 
-export type ButtonVariant = 'primary' | 'strong' | 'secondary' | 'danger'
+export type ButtonVariant =
+  'primary' | 'strong' | 'secondary' | 'danger' | 'danger-outline'
 
 export type ButtonProps = ComponentPropsWithRef<'button'> & {
   /**
-   * primary: la acción principal de la pantalla (una sola por pantalla).
-   * strong: la acción principal de las páginas públicas (verde); dentro de
-   * la app manda primary y no se mezclan en una pantalla.
-   * secondary: todo lo demás. danger: acciones destructivas, como borrar.
+   * primary: la acción principal de la pantalla (una sola por pantalla), en
+   * verde (color-secondary-strong) en toda la app desde el #206. strong: alias
+   * de primary que conservan las páginas públicas; se ven igual.
+   * secondary: todo lo demás. danger: acciones destructivas, como borrar;
+   * relleno, para la confirmación final. danger-outline: la misma acción con
+   * borde y sin relleno, la que abre esa confirmación (#213).
    */
   variant?: ButtonVariant
   /** Ocupa el ancho del contenedor; para la acción principal en móvil. */

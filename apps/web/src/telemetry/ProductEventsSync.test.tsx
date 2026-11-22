@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AccountControls } from '../auth/AccountControls.tsx'
+import { AccountMenu } from '../auth/AccountMenu.tsx'
 import { rememberUser, resetOfflineIdentity } from '../auth/offline-identity.ts'
 import { RequireAuth } from '../auth/RouteGuards.tsx'
 import { createCachedCollectionSource } from '../collection/cached-source.ts'
@@ -97,7 +97,7 @@ function app() {
       <ProductEventsSync />
       <CollectionProvider source={source} thumbnailSync={null}>
         <PlantImagesContext value={fakeImageSource().source}>
-          <AccountControls />
+          <AccountMenu />
           <Routes>
             <Route path="/" element={<p>Inicio</p>} />
             <Route element={<RequireAuth />}>
@@ -185,7 +185,8 @@ describe('eventos de producto en la app', () => {
     expect(queue.queues.get('user_a')).toHaveLength(1)
 
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
+    await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
     await settle()
     expect(queue.queues.size).toBe(0)
 
