@@ -272,10 +272,31 @@ select pruebas.iguales(
 );
 
 -- prueba: un usuario no puede abrirle al administrador la foto de otro apuntando su planta a ella
--- Caso 1: user_a apunta su planta pendiente a la foto de la planta validada de user_b. La
--- planta se toma de la ruta (la validada), así que no se abre.
+-- Desde el #182 la foto de plants se copia a plant_photos, que exige que la ruta esté en la
+-- carpeta de la planta: apuntar la planta a una ruta ajena se rechaza. Además, como defensa en
+-- profundidad, is_pending_plant_photo tampoco abre nada si una planta llegara a quedar así:
+-- ese estado se fuerza con la sincronización desactivada (marca orki.photo_sync, la misma que
+-- usan los disparadores para no llamarse en bucle).
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
+select pruebas.debe_fallar(
+  'user_a apunta su planta a la foto de la planta validada de user_b',
+  $$update public.plants
+      set photo_path = 'user_b/bbbbbbbb-0000-4000-8000-000000000002/photo-v1.webp',
+          thumbnail_path = 'user_b/bbbbbbbb-0000-4000-8000-000000000002/thumb-v1.webp'
+      where id = 'aaaaaaaa-0000-4000-8000-000000000001'$$,
+  '23514', 'plant_photos_photo_path_valid'
+);
+select pruebas.debe_fallar(
+  'user_a apunta su planta a un objeto de la carpeta de user_b con el id de su planta',
+  $$update public.plants
+      set photo_path = 'user_b/aaaaaaaa-0000-4000-8000-000000000001/photo-v9.webp'
+      where id = 'aaaaaaaa-0000-4000-8000-000000000001'$$,
+  '23514', 'plant_photos_photo_path_valid'
+);
+set local orki.photo_sync = 'on';
+-- Caso 1: user_a apunta su planta pendiente a la foto de la planta validada de user_b. La
+-- planta se toma de la ruta (la validada), así que no se abre.
 update public.plants
   set photo_path = 'user_b/bbbbbbbb-0000-4000-8000-000000000002/photo-v1.webp',
       thumbnail_path = 'user_b/bbbbbbbb-0000-4000-8000-000000000002/thumb-v1.webp'
@@ -371,9 +392,11 @@ select pruebas.iguales(
 -- Es la misma consulta que hace la función, con los valores ya extraídos de la ruta, sobre
 -- 5000 plantas más del mismo usuario y con estadísticas, para que el plan sea el de una tabla
 -- con datos y no el de una casi vacía.
-insert into public.plants (user_id, entered_name, genus_id, type, photo_path)
-select 'user_b', 'Relleno ' || i, pruebas.genero('Vanda'), 'unknown', 'user_b/' || gen_random_uuid() || '/photo-v1.webp'
-from generate_series(1, 5000) i;
+-- Con foto y miniatura en la carpeta de cada planta, como exige plant_photos desde el #182.
+insert into public.plants (id, user_id, entered_name, genus_id, type, photo_path, thumbnail_path)
+select r.id, 'user_b', 'Relleno ' || r.i, pruebas.genero('Vanda'), 'unknown',
+       'user_b/' || r.id::text || '/photo-v1.webp', 'user_b/' || r.id::text || '/thumb-v1.webp'
+from (select i, gen_random_uuid() as id from generate_series(1, 5000) i) r;
 analyze public.plants;
 do $$
 declare

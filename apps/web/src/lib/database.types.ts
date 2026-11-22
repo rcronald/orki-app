@@ -117,6 +117,54 @@ export type Database = {
           },
         ]
       }
+      plant_photos: {
+        Row: {
+          created_at: string
+          id: string
+          in_bloom: boolean
+          note: string | null
+          photo_path: string
+          plant_id: string
+          position: number
+          taken_at: string | null
+          thumbnail_path: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          id?: string
+          in_bloom?: boolean
+          note?: string | null
+          photo_path: string
+          plant_id: string
+          position: number
+          taken_at?: string | null
+          thumbnail_path: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          in_bloom?: boolean
+          note?: string | null
+          photo_path?: string
+          plant_id?: string
+          position?: number
+          taken_at?: string | null
+          thumbnail_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'plant_photos_plant_id_fkey'
+            columns: ['plant_id']
+            isOneToOne: false
+            referencedRelation: 'plants'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       plants: {
         Row: {
           acquired_on: string
@@ -526,6 +574,7 @@ export type Database = {
         Returns: undefined
       }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      is_pending_plant: { Args: { target_plant_id: string }; Returns: boolean }
       is_pending_plant_photo: {
         Args: { object_name: string }
         Returns: boolean
