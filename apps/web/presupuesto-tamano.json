@@ -4,16 +4,16 @@
   "margen": 0.05,
   "metricas": {
     "jsInicialGzip": {
-      "referencia": 86025,
-      "limite": 90327
+      "referencia": 86020,
+      "limite": 90321
     },
     "cssGzip": {
-      "referencia": 7258,
-      "limite": 7621
+      "referencia": 7539,
+      "limite": 7916
     },
     "precacheBytes": {
-      "referencia": 1194535,
-      "limite": 1254262
+      "referencia": 1299445,
+      "limite": 1364418
     }
   }
 }
