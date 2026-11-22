@@ -7,23 +7,22 @@ con el nombre del género en minúsculas (`phalaenopsis.avif`, `cattleya.avif`,
 (`src/registration/GenusBackdrop.tsx`) y el service worker las precachea
 (`globPatterns` de `vite.config.ts`).
 
-> **Las cinco fotos actuales son PROVISIONALES.** No son orquídeas: son
-> degradados con manchas claras y oscuras y la palabra PROVISIONAL, generados con
-> `npm run fondos --workspace=apps/web -- provisionales`. Sirven para probar el
-> fondo y el contraste hasta tener las definitivas (#126 y #128).
+Las cinco son las definitivas (#126 y #128). `npm run fondos --workspace=apps/web
+-- provisionales` sigue existiendo para generar fondos de prueba al añadir un
+género nuevo.
 
 ## Fuente y licencia
 
 Cada foto lleva aquí su fuente y su licencia. No se versiona ninguna foto sin
 licencia clara que permita usarla en la app.
 
-| Género       | Archivo             | Fuente                                                | Licencia                 |
-| ------------ | ------------------- | ----------------------------------------------------- | ------------------------ |
-| Cattleya     | `cattleya.avif`     | Provisional, generada por `scripts/fondos-genero.mjs` | Obra propia del proyecto |
-| Dendrobium   | `dendrobium.avif`   | Provisional, generada por `scripts/fondos-genero.mjs` | Obra propia del proyecto |
-| Oncidium     | `oncidium.avif`     | Provisional, generada por `scripts/fondos-genero.mjs` | Obra propia del proyecto |
-| Phalaenopsis | `phalaenopsis.avif` | Provisional, generada por `scripts/fondos-genero.mjs` | Obra propia del proyecto |
-| Vanda        | `vanda.avif`        | Provisional, generada por `scripts/fondos-genero.mjs` | Obra propia del proyecto |
+| Género       | Archivo             | Fuente                                                                              | Licencia                                                                                                                                 |
+| ------------ | ------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Cattleya     | `cattleya.avif`     | Imagen generada con ChatGPT (OpenAI) a petición del autor del proyecto, 21 nov 2026 | Del autor del proyecto: los términos de OpenAI ceden al usuario los derechos sobre lo generado. No es una fotografía de un ejemplar real |
+| Dendrobium   | `dendrobium.avif`   | Imagen generada con ChatGPT (OpenAI) a petición del autor del proyecto, 21 nov 2026 | Del autor del proyecto: los términos de OpenAI ceden al usuario los derechos sobre lo generado. No es una fotografía de un ejemplar real |
+| Oncidium     | `oncidium.avif`     | Imagen generada con ChatGPT (OpenAI) a petición del autor del proyecto, 21 nov 2026 | Del autor del proyecto: los términos de OpenAI ceden al usuario los derechos sobre lo generado. No es una fotografía de un ejemplar real |
+| Phalaenopsis | `phalaenopsis.avif` | Imagen generada con ChatGPT (OpenAI) a petición del autor del proyecto, 21 nov 2026 | Del autor del proyecto: los términos de OpenAI ceden al usuario los derechos sobre lo generado. No es una fotografía de un ejemplar real |
+| Vanda        | `vanda.avif`        | Imagen generada con ChatGPT (OpenAI) a petición del autor del proyecto, 21 nov 2026 | Del autor del proyecto: los términos de OpenAI ceden al usuario los derechos sobre lo generado. No es una fotografía de un ejemplar real |
 
 Al cargar una definitiva, se sustituye su fila por la fuente (URL de la página
 de la foto y autor) y la licencia exacta (por ejemplo, CC BY-SA 4.0), con la
@@ -39,7 +38,7 @@ atribución que pida la licencia.
 - **Peso:** menos de 100 KB cada una; lo normal con estas medidas es entre 30 y
   80 KB. La prueba de contraste falla si alguna pasa de 100 KB.
 
-## Cómo sustituir una provisional por la definitiva
+## Cómo sustituir una foto
 
 1. Partir de la foto original con su licencia ya comprobada (JPEG, PNG, HEIC o
    TIFF, de al menos 720 × 1280 píxeles útiles en vertical).

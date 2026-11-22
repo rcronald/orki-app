@@ -1,42 +1,42 @@
 {
   "cattleya": {
-    "provisional": true,
+    "provisional": false,
     "calidad": 60,
-    "bytes": 8401,
-    "sha256": "e569cf8a61004814caef86f9b7d534342387dca0ff287c6ffad8378f31661541",
-    "zonaClara": "#fefeff",
-    "zonaOscura": "#08050c"
+    "bytes": 15540,
+    "sha256": "07b281f0474b50f520a2268fcf48e297a1c4d234c0a5fbc666b127763cc9ff36",
+    "zonaClara": "#e3bff4",
+    "zonaOscura": "#231d07"
   },
   "dendrobium": {
-    "provisional": true,
+    "provisional": false,
     "calidad": 60,
-    "bytes": 8328,
-    "sha256": "8f23f4f8326118ec1d4588012de11761d877c5cf119eabb6f0bee56cc51f6fd7",
-    "zonaClara": "#fffeff",
-    "zonaOscura": "#050306"
+    "bytes": 12677,
+    "sha256": "52a781a556c34bfdd233038d44f7b59c9a5b2f503e7b73a32cd9ec23f98ac94d",
+    "zonaClara": "#f2eef3",
+    "zonaOscura": "#3e0415"
   },
   "oncidium": {
-    "provisional": true,
+    "provisional": false,
     "calidad": 60,
-    "bytes": 9287,
-    "sha256": "79d9e0f5b1a636968f040eb74ff78be188be6a3a8e953bad07c067f2b5d41968",
-    "zonaClara": "#ffffff",
-    "zonaOscura": "#080609"
+    "bytes": 16539,
+    "sha256": "53d4c8e0595b1ea1b356d00f98b7c38225e664dc2171bf3a9ce1974a22778ebc",
+    "zonaClara": "#f6e02f",
+    "zonaOscura": "#702b0c"
   },
   "phalaenopsis": {
-    "provisional": true,
+    "provisional": false,
     "calidad": 60,
-    "bytes": 8164,
-    "sha256": "ce7a377db6b2bab78d0a1577929d922ef0625dca2a1332914ff35aabf2d514fc",
-    "zonaClara": "#fdfffe",
-    "zonaOscura": "#08050c"
+    "bytes": 10124,
+    "sha256": "62664cde88740e4448f49d1e3d5a5a62a03820ac00a84834a60a10074e9f12fc",
+    "zonaClara": "#f9f7f6",
+    "zonaOscura": "#131900"
   },
   "vanda": {
-    "provisional": true,
+    "provisional": false,
     "calidad": 60,
-    "bytes": 9829,
-    "sha256": "0e4fc0d55757bfbd3a82f27d124fef9aa1764e8420525e6897f0d309801f1706",
-    "zonaClara": "#fefeff",
-    "zonaOscura": "#060408"
+    "bytes": 16247,
+    "sha256": "30a753b40ca07908c4223b9c51fa967d5fc221feaa70c66fca1eeb1cc68d65b9",
+    "zonaClara": "#e1dada",
+    "zonaOscura": "#192d00"
   }
 }

@@ -12,8 +12,8 @@ import vanda from '../assets/fondos-genero/vanda.avif?no-inline'
 // registro, que es un chunk diferido. `?no-inline` impide que Vite meta una
 // foto pequeña dentro del JavaScript como data URL.
 //
-// Hoy son fotos PROVISIONALES generadas por script; cómo se sustituyen por las
-// definitivas está en src/assets/fondos-genero/LEEME.md.
+// Su fuente, su licencia y cómo se sustituyen están en
+// src/assets/fondos-genero/LEEME.md.
 //
 // Se buscan por el nombre del género (los cinco de acceso rápido), sin
 // distinguir mayúsculas: los ids de genera dependen de cada base de datos.
