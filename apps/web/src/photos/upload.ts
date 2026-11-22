@@ -90,7 +90,7 @@ function untilAborted<T>(
 }
 
 /** Borra sin fallar; devuelve las rutas que no se pudieron borrar. */
-async function removeQuietly(
+export async function removeQuietly(
   storage: PhotoStorage,
   paths: readonly string[],
 ): Promise<string[]> {

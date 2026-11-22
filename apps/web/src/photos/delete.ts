@@ -9,6 +9,10 @@ import { appPhotoStorage, type PhotoStorage } from './storage.ts'
 // Si se borraran antes los archivos y fallara el borrado de la planta,
 // quedaría una planta apuntando a archivos que no existen; así, lo peor que
 // queda es una carpeta sin planta, que encuentra el script de limpieza.
+//
+// Con varias fotos por planta (#219) no cambia nada: todas (la principal y
+// las secundarias de plant_photos) están en la carpeta de la planta, y sus
+// filas se borran con la planta (on delete cascade).
 
 export interface DeletePlantPhotosOptions {
   userId: string

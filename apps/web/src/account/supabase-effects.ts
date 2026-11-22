@@ -24,6 +24,11 @@ import {
 //   (migración 20261120180000): borran las filas propias.
 // Un borrado que no encuentra nada no es un error, así que los tres son
 // idempotentes.
+//
+// Varias fotos por planta (#182, #219): las fotos secundarias están en la
+// misma carpeta <usuario>/<planta>/, así que deletePhotos se las lleva con la
+// principal, y sus filas de plant_photos se borran al borrar las plantas
+// (plant_id con on delete cascade; lo prueba supabase/tests/fotos_de_plantas.sql).
 
 type DataEffects = Omit<AccountDeletionEffects, 'deleteAccount'>
 

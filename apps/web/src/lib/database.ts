@@ -51,6 +51,21 @@ export type Plant = Tables<'plants'>
 export type PlantInsert = TablesInsert<'plants'>
 export type PlantUpdate = TablesUpdate<'plants'>
 
+// Fotos de una planta (de 0 a 6; la principal es la de position más baja). La API solo deja
+// cambiar photo_path, thumbnail_path, in_bloom, taken_at, note y position: una foto no cambia
+// de planta ni de dueño (PlantPhotoUpdate lo refleja, aunque los tipos generados no).
+export type PlantPhoto = Tables<'plant_photos'>
+export type PlantPhotoInsert = TablesInsert<'plant_photos'>
+export type PlantPhotoUpdate = Pick<
+  TablesUpdate<'plant_photos'>,
+  | 'photo_path'
+  | 'thumbnail_path'
+  | 'in_bloom'
+  | 'taken_at'
+  | 'note'
+  | 'position'
+>
+
 // Eventos de producto: solo se insertan, con la función record_product_events (no hay
 // Update, y la API no deja leer la tabla). user_id y received_at los pone la base.
 export type ProductEvent = Tables<'product_events'>
