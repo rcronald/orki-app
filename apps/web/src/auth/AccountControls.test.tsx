@@ -19,7 +19,7 @@ beforeEach(() => {
   resetFakeClerk()
   // Como en index.html.
   document.documentElement.lang = 'es'
-  document.title = 'Orki'
+  document.title = 'orqui.apps'
 })
 
 describe('AccountControls', () => {

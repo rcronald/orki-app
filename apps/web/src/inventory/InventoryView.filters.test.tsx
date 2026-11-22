@@ -23,7 +23,7 @@ import { VISIBLE_OPTIONS } from './InventoryFilters.tsx'
 beforeEach(() => {
   onFiltersChange.mockClear()
   document.documentElement.lang = 'es'
-  document.title = 'Mi colección · Orki'
+  document.title = 'Mi colección · orqui.apps'
   window.localStorage.clear()
 })
 

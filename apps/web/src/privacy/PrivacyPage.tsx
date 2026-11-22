@@ -65,21 +65,21 @@ export default function PrivacyPage() {
     <Page title="Privacidad">
       <div className="flex flex-col gap-space-4 text-md">
         <p>
-          Qué datos guarda Orki, dónde, quién puede verlos y cómo borrarlos.
-          Última actualización:{' '}
+          Qué datos guarda orqui.apps, dónde, quién puede verlos y cómo
+          borrarlos. Última actualización:{' '}
           <time dateTime={PRIVACY_LAST_UPDATED_ISO}>
             {PRIVACY_LAST_UPDATED}
           </time>
           .
         </p>
 
-        <Section id="privacidad-datos" title="Qué datos guarda Orki">
+        <Section id="privacidad-datos" title="Qué datos guarda orqui.apps">
           <ul className="list-disc space-y-space-1 pl-space-4">
             <li>
               <strong>Tu cuenta:</strong> tu correo y, si entras con Google, los
               datos de tu perfil de Google que recibe el servicio de acceso
-              (como tu nombre y tu foto). Orki guarda además un perfil con tu
-              identificador de usuario y el idioma de la app.
+              (como tu nombre y tu foto). Además, orqui.apps guarda un perfil
+              con tu identificador de usuario y el idioma de la app.
             </li>
             <li>
               <strong>Tus plantas:</strong> lo que registras de cada una: el
@@ -147,7 +147,7 @@ export default function PrivacyPage() {
             cuántas veces termina con un fallo.
           </p>
           <p>
-            Orki no muestra publicidad ni usa otros servicios de analítica o de
+            En orqui.apps no hay publicidad ni otros servicios de analítica o de
             publicidad.
           </p>
         </Section>
@@ -269,10 +269,10 @@ export default function PrivacyPage() {
               Tu cuenta, Eliminar mi cuenta
             </Link>
             . Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil,
-            tus eventos de uso y tu cuenta de acceso. También lo que Orki guarda
-            en ese dispositivo: la copia de tu inventario, las miniaturas, los
-            eventos pendientes de enviar, tu identificador, el borrador y tus
-            preferencias. No se puede deshacer.
+            tus eventos de uso y tu cuenta de acceso. También lo que orqui.apps
+            guarda en ese dispositivo: la copia de tu inventario, las
+            miniaturas, los eventos pendientes de enviar, tu identificador, el
+            borrador y tus preferencias. No se puede deshacer.
           </p>
           <p>
             No se borran los informes de errores que ya se enviaron a Sentry
@@ -297,8 +297,8 @@ export default function PrivacyPage() {
             El catálogo de especies se basa en el{' '}
             <span lang="en">Catalogue of Life</span> ({version}),{' '}
             <External href={doiUrl}>{doiUrl}</External>, con licencia{' '}
-            <External href={licenseUrl}>{license}</External>. Orki lo filtró a
-            las orquídeas y lo normalizó.
+            <External href={licenseUrl}>{license}</External>. En orqui.apps se
+            filtró a las orquídeas y se normalizó.
           </p>
         </Section>
 

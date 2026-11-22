@@ -16,7 +16,7 @@ test.describe('sin sesión', () => {
   }) => {
     await page.goto('/')
     await expect(
-      page.getByRole('heading', { name: 'Orki', level: 1 }),
+      page.getByRole('heading', { name: 'orqui.apps', level: 1 }),
     ).toBeVisible()
     await expect(
       page.getByRole('link', { name: 'Iniciar sesión' }),

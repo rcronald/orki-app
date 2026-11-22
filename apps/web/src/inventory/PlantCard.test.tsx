@@ -66,7 +66,7 @@ function renderCard(source: PlantImageSource, value: CollectionPlant) {
 beforeEach(() => {
   vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
   document.documentElement.lang = 'es'
-  document.title = 'Mi colección · Orki'
+  document.title = 'Mi colección · orqui.apps'
 })
 
 afterEach(() => {

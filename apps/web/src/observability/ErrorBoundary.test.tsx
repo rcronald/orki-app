@@ -10,7 +10,7 @@ function Broken(): never {
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Orki'
+  document.title = 'orqui.apps'
   // React escribe en la consola cada error capturado; aquí es esperado.
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })

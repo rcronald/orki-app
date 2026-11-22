@@ -22,7 +22,7 @@ export function AppShell() {
         Saltar al contenido
       </a>
       <header className="flex flex-wrap items-center justify-between gap-space-3 px-space-4 py-space-3">
-        <p className="font-display text-xl font-semibold">Orki</p>
+        <p className="font-display text-xl font-semibold">orqui.apps</p>
         <AccountControls />
       </header>
       <nav aria-label="Principal" className="px-space-4 pb-space-3">

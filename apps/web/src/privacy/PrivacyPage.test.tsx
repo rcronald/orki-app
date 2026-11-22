@@ -17,7 +17,7 @@ vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 beforeEach(() => {
   resetFakeClerk()
   document.documentElement.lang = 'es'
-  document.title = 'Orki'
+  document.title = 'orqui.apps'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 
@@ -45,12 +45,12 @@ describe('PrivacyPage', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Privacidad' }),
     ).toBeInTheDocument()
-    expect(document.title).toBe('Privacidad · Orki')
+    expect(document.title).toBe('Privacidad · orqui.apps')
     const headings = screen
       .getAllByRole('heading', { level: 2 })
       .map((heading) => heading.textContent)
     expect(headings).toEqual([
-      'Qué datos guarda Orki',
+      'Qué datos guarda orqui.apps',
       'Mediciones de uso y errores',
       'Dónde se guardan y quién los procesa',
       'Quién puede ver tus datos',
@@ -111,7 +111,7 @@ describe('PrivacyPage', () => {
       'No lleva el texto que buscaste, los nombres de tus plantas',
     )
     expect(measures).toHaveTextContent('envía el error a Sentry')
-    expect(measures).toHaveTextContent('Orki no muestra publicidad')
+    expect(measures).toHaveTextContent('En orqui.apps no hay publicidad')
 
     const providers = section('Dónde se guardan y quién los procesa')
     expect(providers).toHaveTextContent('Sentry recibe los informes de errores')

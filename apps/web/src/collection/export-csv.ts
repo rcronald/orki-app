@@ -127,7 +127,7 @@ export function inventoryCsv(plants: readonly CollectionPlant[]): string {
   return BOM + lines.join(LINE_END) + LINE_END
 }
 
-/** Nombre del archivo con la fecha local: "orki-inventario-2026-11-21.csv". */
+/** Nombre del archivo con la fecha local: "orqui-apps-inventario-2026-11-21.csv". */
 export function exportFileName(date: Date = new Date()): string {
-  return `orki-inventario-${localDateString(date)}.csv`
+  return `orqui-apps-inventario-${localDateString(date)}.csv`
 }

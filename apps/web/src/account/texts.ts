@@ -24,7 +24,7 @@ export const ACCOUNT_TEXT = {
     'Para cambiar tu correo, tu nombre o tu foto, usa el menú de la cuenta (el botón con tu avatar, arriba).',
   deleteHeading: 'Eliminar tu cuenta',
   deleteIntro:
-    'Al eliminar tu cuenta se borran tus plantas con todos sus detalles, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso, y lo que Orki guarda de ti en este dispositivo. No se puede deshacer.',
+    'Al eliminar tu cuenta se borran tus plantas con todos sus detalles, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso, y lo que orqui.apps guarda de ti en este dispositivo. No se puede deshacer.',
   exportHint:
     'Si quieres conservar una copia de tu inventario, antes expórtalo a CSV (sin las fotos) al final de',
   exportLink: 'Mi colección',
@@ -34,24 +34,24 @@ export const ACCOUNT_TEXT = {
   unverified:
     'No se pudo confirmar tu sesión: el servicio de acceso no responde. Para eliminar la cuenta hace falta conexión y la sesión confirmada. Vuelve cuando la tengas.',
   notAllowed:
-    'Orki todavía no permite eliminar la cuenta desde la app. No se ha borrado nada. Para eliminarla, escribe al contacto de la página de privacidad.',
+    'Todavía no se puede eliminar la cuenta desde orqui.apps. No se ha borrado nada. Para eliminarla, escribe al contacto de la página de privacidad.',
   pendingHeading: 'La eliminación de tu cuenta quedó a medias',
   pendingText:
-    'Empezaste a eliminar tu cuenta y no terminó. Puede que parte de tus datos ya se haya borrado. Continúa para terminar, o sigue usando Orki con lo que quede.',
+    'Empezaste a eliminar tu cuenta y no terminó. Puede que parte de tus datos ya se haya borrado. Continúa para terminar, o sigue usando orqui.apps con lo que quede.',
   pendingContinue: 'Continuar la eliminación',
-  pendingKeep: 'Seguir usando Orki',
-  privacyLink: 'Qué datos guarda Orki (privacidad)',
+  pendingKeep: 'Seguir usando orqui.apps',
+  privacyLink: 'Qué datos guarda orqui.apps (privacidad)',
 } as const
 
 export const DIALOG_TEXT = {
   title: '¿Eliminar tu cuenta?',
-  intro: 'Se borrará todo lo tuyo en Orki:',
+  intro: 'Se borrará todo lo tuyo en orqui.apps:',
   items: [
     'Tus plantas, con todos sus detalles (nombre, género, tipo, fecha de adquisición, origen, ubicación, apodo, color de la flor y estado).',
     'Las fotos de tus plantas y sus miniaturas.',
     'Tu perfil y tus eventos de uso (cuándo registraste una planta y cuándo buscaste si ya la tenías).',
     'Tu cuenta de acceso: no podrás volver a entrar con ella.',
-    'Lo que Orki guarda en este dispositivo: la copia de tu inventario para usarlo sin conexión, las miniaturas, los eventos de uso pendientes de enviar, el borrador del registro y tus preferencias del inventario.',
+    'Lo que orqui.apps guarda en este dispositivo: la copia de tu inventario para usarlo sin conexión, las miniaturas, los eventos de uso pendientes de enviar, el borrador del registro y tus preferencias del inventario.',
   ],
   irreversible: 'No se puede deshacer. Nadie podrá recuperar tus datos.',
   confirmLabel: `Para confirmar, escribe ${CONFIRMATION_WORD}`,
@@ -105,7 +105,7 @@ const REASON_TEXT: Record<DeletionFailureReason, string> = {
   offline: 'No hay conexión.',
   'session-ended':
     'Tu sesión terminó. Vuelve a iniciar sesión y entra en «Tu cuenta» para terminar.',
-  'not-allowed': 'Orki todavía no permite eliminar la cuenta desde la app.',
+  'not-allowed': 'Todavía no se puede eliminar la cuenta desde orqui.apps.',
   'reverification-cancelled':
     'Para eliminar la cuenta hay que confirmar que eres tú, y esa confirmación se cerró sin terminar.',
   failed: 'Hubo un fallo al comunicarse con el servidor.',

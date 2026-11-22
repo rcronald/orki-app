@@ -26,7 +26,7 @@ export function AuthPageLayout({ title, children }: AuthPageLayoutProps) {
           to={PATHS.home}
           className="font-display text-xl font-semibold text-neutral-900"
         >
-          <span className="sr-only">Volver al inicio de</span> Orki
+          <span className="sr-only">Volver al inicio de</span> orqui.apps
         </Link>
       </header>
       <main

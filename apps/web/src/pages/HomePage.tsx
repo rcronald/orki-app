@@ -49,7 +49,7 @@ export function HomePage() {
         tabIndex={-1}
         className="font-display text-display font-semibold text-neutral-900"
       >
-        Orki
+        orqui.apps
       </h1>
       <p className="max-w-sm text-lg text-neutral-700">
         Tu colección de orquídeas, siempre a mano.

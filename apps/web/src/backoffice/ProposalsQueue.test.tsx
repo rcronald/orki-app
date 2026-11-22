@@ -64,7 +64,7 @@ afterAll(() => configure({ asyncUtilTimeout: defaultTimeout }))
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Cola de propuestas · Orki'
+  document.title = 'Cola de propuestas · orqui.apps'
 })
 
 /** La tarjeta de un grupo, por su nombre propuesto. */

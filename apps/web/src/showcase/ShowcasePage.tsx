@@ -15,7 +15,7 @@ import { TokenSections } from './TokenSections.tsx'
 // VITE_APP_ENV=prod, el build no la incluye.
 
 const DESIGN_SYSTEM_URL = 'https://claude.ai/artifact/BCQrAtoNqdjgkxEBfLpoaK'
-const PAGE_TITLE = 'Muestra del design system · Orki'
+const PAGE_TITLE = 'Muestra del design system · orqui.apps'
 
 const tokens = parseTokens(tokensCss)
 
@@ -54,7 +54,7 @@ export default function ShowcasePage() {
       <div className="mx-auto flex max-w-6xl flex-col gap-space-5 px-space-4 pt-space-6 pb-space-6">
         <header className="flex flex-col gap-space-3">
           <p className="text-sm text-neutral-700">
-            Orki · página interna, solo fuera de producción
+            orqui.apps · página interna, solo fuera de producción
           </p>
           <h1 className="font-display text-display text-neutral-900">
             Muestra del design system
@@ -66,7 +66,7 @@ export default function ShowcasePage() {
               className="font-semibold text-secondary underline"
               href={DESIGN_SYSTEM_URL}
             >
-              design system de Orki
+              design system de orqui.apps
             </a>
             .
           </p>
