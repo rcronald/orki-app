@@ -58,13 +58,12 @@ function sections(): TextPageSection[] {
       id: 'creditos-fotos',
       title: 'Imágenes',
       summary:
-        'La foto de la portada y los fondos del registro son imágenes generadas con IA.',
+        'La foto de la portada y la ilustración de las cabeceras son imágenes generadas con IA.',
       children: (
         <p>
-          La foto de la portada y los fondos por género del registro (Cattleya,
-          Dendrobium, Oncidium, Phalaenopsis y Vanda) son imágenes generadas con
-          IA (OpenAI) a petición del autor del proyecto. No son fotos de plantas
-          reales de ninguna colección.
+          La foto de la portada y la ilustración de orquídea de las cabeceras
+          son imágenes generadas con IA (OpenAI) a petición del autor del
+          proyecto. No son fotos de plantas reales de ninguna colección.
         </p>
       ),
     },
