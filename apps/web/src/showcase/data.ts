@@ -95,8 +95,10 @@ export const PLANT_STATES = ['Activa', 'Perdida', 'Regalada'] as const
 
 /** Muestras de los estilos de texto (las de tokens.json del design system). */
 export const TEXT_SAMPLES: Readonly<Record<string, string>> = {
+  'text-hero': 'Tu colección de orquídeas',
   'text-display': 'Mi colección',
   'text-xl': 'Registrar orquídea',
+  'text-lead': 'Registra tus plantas con foto.',
   'text-lg': '¿Ya la tengo?',
   'text-md': 'Comprada en el vivero el 19 de noviembre.',
   'text-sm': 'Nombre por validar',
@@ -105,6 +107,7 @@ export const TEXT_SAMPLES: Readonly<Record<string, string>> = {
 
 /** Estilos que van con font-display; el resto, con font-body. */
 export const DISPLAY_TEXT_STYLES: ReadonlySet<string> = new Set([
+  'text-hero',
   'text-display',
   'text-xl',
 ])

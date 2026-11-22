@@ -5,6 +5,8 @@ import { ICON_NAMES } from './icons.ts'
 
 // Subconjunto del design system (design-system.json, assetGroups.Icons).
 const SYSTEM_ICONS: readonly IconName[] = [
+  'arrow-right',
+  'book-open',
   'calendar',
   'camera',
   'check',
@@ -12,6 +14,7 @@ const SYSTEM_ICONS: readonly IconName[] = [
   'chevron-right',
   'circle-check',
   'droplets',
+  'flower',
   'flower-2',
   'image',
   'map-pin',
@@ -24,6 +27,7 @@ const SYSTEM_ICONS: readonly IconName[] = [
   'tag',
   'trash-2',
   'triangle-alert',
+  'user',
   'x',
 ]
 

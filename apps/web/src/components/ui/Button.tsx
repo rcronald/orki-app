@@ -1,11 +1,13 @@
 import type { ComponentPropsWithRef } from 'react'
 import { Icon, type IconName } from './Icon.tsx'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger'
+export type ButtonVariant = 'primary' | 'strong' | 'secondary' | 'danger'
 
 export type ButtonProps = ComponentPropsWithRef<'button'> & {
   /**
    * primary: la acción principal de la pantalla (una sola por pantalla).
+   * strong: la acción principal de las páginas públicas (verde); dentro de
+   * la app manda primary y no se mezclan en una pantalla.
    * secondary: todo lo demás. danger: acciones destructivas, como borrar.
    */
   variant?: ButtonVariant

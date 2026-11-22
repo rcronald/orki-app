@@ -9,6 +9,14 @@
  */
 @import './styles/bundle.css' layer(components);
 
+/*
+ * Pantalla estrecha de las páginas públicas: el mismo corte que la media query
+ * de bundle.css (max-width: 720px), para que lo que la app ajusta alrededor de
+ * las piezas del sistema (#192) cambie a la vez que ellas. Tailwind no tiene un
+ * corte "hasta 720 px inclusive": max-[720px] sería "menos de 720 px".
+ */
+@custom-variant publico-estrecho (@media (max-width: 720px));
+
 @layer base {
   html {
     background-color: var(--color-neutral-0);

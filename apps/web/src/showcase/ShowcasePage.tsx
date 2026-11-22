@@ -7,6 +7,7 @@ import { CatalogAdminSection } from './CatalogAdminSection.tsx'
 import { ComponentSections } from './ComponentSections.tsx'
 import { DetailSection } from './DetailSection.tsx'
 import { InventorySection } from './InventorySection.tsx'
+import { LandingSection } from './LandingSection.tsx'
 import { RegistrationSection } from './RegistrationSection.tsx'
 import { PhotoSection } from './PhotoSection.tsx'
 import { TokenSections } from './TokenSections.tsx'
@@ -34,6 +35,7 @@ const SECTIONS = [
   { id: 'respuesta', label: 'Respuesta de ¿Ya la tengo?' },
   { id: 'buscador', label: 'Buscador' },
   { id: 'plegable', label: 'Sección plegable' },
+  { id: 'portada', label: 'Portada' },
   { id: 'inventario', label: 'Pantalla de inventario' },
   { id: 'registro', label: 'Formulario de registro' },
   { id: 'detalle', label: 'Detalle del ejemplar' },
@@ -91,6 +93,7 @@ export default function ShowcasePage() {
           <BrandSection />
           <TokenSections tokens={tokens} />
           <ComponentSections />
+          <LandingSection />
           <InventorySection />
           <RegistrationSection />
           <DetailSection />

@@ -13,12 +13,15 @@ describe('parseTokens con tokens.css', () => {
       'color-primary',
       'color-primary-soft',
       'color-secondary',
+      'color-secondary-strong',
+      'color-secondary-soft',
       'color-success',
       'color-warning',
       'color-danger',
       'color-danger-soft',
       'color-neutral-0',
       'color-neutral-50',
+      'color-neutral-200',
       'color-neutral-700',
       'color-neutral-900',
       'overlay-genus',
@@ -32,18 +35,35 @@ describe('parseTokens con tokens.css', () => {
 
   it('lee los estilos de texto con su interlineado y peso', () => {
     expect(names(tokens.textStyles)).toEqual([
+      'text-hero',
       'text-display',
       'text-xl',
+      'text-lead',
       'text-lg',
       'text-md',
       'text-sm',
       'text-xs',
     ])
-    expect(tokens.textStyles[1]).toEqual({
+    expect(tokens.textStyles[2]).toEqual({
       name: 'text-xl',
       fontSize: '22px',
       lineHeight: '28px',
       fontWeight: '600',
+    })
+  })
+
+  it('lee los estilos de las páginas públicas', () => {
+    expect(tokens.textStyles[0]).toEqual({
+      name: 'text-hero',
+      fontSize: '64px',
+      lineHeight: '68px',
+      fontWeight: '600',
+    })
+    expect(tokens.textStyles[3]).toEqual({
+      name: 'text-lead',
+      fontSize: '20px',
+      lineHeight: '30px',
+      fontWeight: '400',
     })
   })
 
