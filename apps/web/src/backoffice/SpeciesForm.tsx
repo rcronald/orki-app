@@ -9,6 +9,7 @@ import {
   validateSpeciesInput,
   type CatalogWriteError,
   type CatalogWriteField,
+  type ProposalSpeciesInput,
   type SpeciesInput,
   type WrittenSpecies,
 } from '../lib/catalogWrites.ts'
@@ -36,15 +37,34 @@ import {
 //   se vuelve a pedir en ese momento).
 // - Avisa de lo que hará la base: una importada editada pasa a validada; una
 //   entrada de la lista curada de híbridos la puede revertir la carga.
+// - Desde la cola de propuestas (#140, prop `proposal`) es un alta con el
+//   nombre, el género y el tipo del grupo ya rellenos, sin elegir el estado
+//   (la especie nace validada) y guardada con la función de la propuesta.
+
+/** Alta desde un grupo de la cola de propuestas. */
+export interface SpeciesFormProposal {
+  scientificName: string
+  genus: PickedGenus
+  type: SpeciesType
+  /** Plantas del grupo que se enlazarán a la especie. */
+  plantCount: number
+  /** Guarda la especie y enlaza el grupo; falla con CatalogWriteError. */
+  save: (input: ProposalSpeciesInput) => Promise<void>
+}
 
 export interface SpeciesFormProps {
   /** Sin especie, es un alta. */
   species?: CatalogSpeciesDetail
   /** Plantas enlazadas que se conocen (para el aviso antes de guardar). */
   plantCount?: number
+  /** Alta desde la cola de propuestas: valores iniciales y otra forma de guardar. */
+  proposal?: SpeciesFormProposal
   source: CatalogAdminSource
-  onSaved: (written: WrittenSpecies, autoValidated: boolean) => void
+  /** Tras guardar (no se llama en el alta desde una propuesta). */
+  onSaved?: (written: WrittenSpecies, autoValidated: boolean) => void
   onCancel: () => void
+  /** id del campo del nombre, para enfocarlo desde fuera. */
+  nameInputId?: string
 }
 
 type FieldErrors = Partial<Record<CatalogWriteField, string>>
@@ -65,20 +85,29 @@ function startsWithGenus(name: string, genus: string): boolean {
 export function SpeciesForm({
   species,
   plantCount = 0,
+  proposal,
   source,
   onSaved,
   onCancel,
+  nameInputId,
 }: SpeciesFormProps) {
   const editing = species !== undefined
   const id = useId()
-  const fieldId = (field: CatalogWriteField) => `${id}-${field}`
+  const fieldId = (field: CatalogWriteField) =>
+    field === 'scientificName' && nameInputId ? nameInputId : `${id}-${field}`
   const nameRef = useRef<HTMLInputElement>(null)
 
-  const [name, setName] = useState(species?.scientificName ?? '')
-  const [genus, setGenus] = useState<PickedGenus | null>(
-    species ? { id: species.genusId, name: species.genusName } : null,
+  const [name, setName] = useState(
+    species?.scientificName ?? proposal?.scientificName ?? '',
   )
-  const [type, setType] = useState<SpeciesType>(species?.type ?? 'species')
+  const [genus, setGenus] = useState<PickedGenus | null>(
+    species
+      ? { id: species.genusId, name: species.genusName }
+      : (proposal?.genus ?? null),
+  )
+  const [type, setType] = useState<SpeciesType>(
+    species?.type ?? proposal?.type ?? 'species',
+  )
   const [status, setStatus] = useState<SpeciesStatus>(
     species?.status ?? 'validated',
   )
@@ -121,6 +150,15 @@ export function SpeciesForm({
     setSaving(true)
     setDialogError(null)
     try {
+      if (proposal) {
+        await proposal.save({
+          scientificName: name,
+          genusId: genus?.id ?? null,
+          type,
+        })
+        setSaving(false)
+        return
+      }
       const written = editing
         ? await source.updateSpecies(species.id, input())
         : await source.createSpecies(input())
@@ -130,7 +168,7 @@ export function SpeciesForm({
         status === 'imported' &&
         written.status === 'validated'
       setConfirmPlants(null)
-      onSaved(written, autoValidated)
+      onSaved?.(written, autoValidated)
     } catch (caught) {
       const error = toCatalogWriteError(caught)
       setSaving(false)
@@ -209,7 +247,11 @@ export function SpeciesForm({
         id={`${id}-titulo`}
         className="text-md font-semibold text-neutral-900"
       >
-        {editing ? 'Editar la especie' : 'Nueva especie o híbrido'}
+        {editing
+          ? 'Editar la especie'
+          : proposal
+            ? 'Especie nueva desde la propuesta'
+            : 'Nueva especie o híbrido'}
       </h3>
 
       {editing && species.status === 'imported' && (
@@ -226,9 +268,19 @@ export function SpeciesForm({
           márcala como «Observada» para que la carga no la toque.
         </p>
       )}
-      {!editing && (
+      {!editing && !proposal && (
         <p className="text-sm text-neutral-700">
           Se da de alta con fuente «Lista curada», sin referencia.
+        </p>
+      )}
+      {proposal && (
+        <p className="text-sm text-neutral-700">
+          Se da de alta como «Validada», con fuente «Propuesta de usuario», y se
+          le enlazan{' '}
+          {proposal.plantCount === 1
+            ? 'la planta del grupo'
+            : `las ${formatCount(proposal.plantCount)} plantas del grupo`}
+          . Revisa el nombre: es el que verán todos los usuarios.
         </p>
       )}
 
@@ -277,23 +329,25 @@ export function SpeciesForm({
           onChange={setType}
           error={errors.type}
         />
-        <SelectField
-          id={fieldId('status')}
-          label="Estado"
-          value={status}
-          options={statusOptions}
-          labels={STATUS_LABEL}
-          onChange={setStatus}
-          error={errors.status}
-          hint={
-            editing &&
-            dataChanged &&
-            species.status === 'imported' &&
-            status === 'imported'
-              ? 'Al guardar quedará «Validada».'
-              : undefined
-          }
-        />
+        {!proposal && (
+          <SelectField
+            id={fieldId('status')}
+            label="Estado"
+            value={status}
+            options={statusOptions}
+            labels={STATUS_LABEL}
+            onChange={setStatus}
+            error={errors.status}
+            hint={
+              editing &&
+              dataChanged &&
+              species.status === 'imported' &&
+              status === 'imported'
+                ? 'Al guardar quedará «Validada».'
+                : undefined
+            }
+          />
+        )}
       </div>
 
       <p aria-live="polite" className="text-sm text-neutral-900">
@@ -315,7 +369,13 @@ export function SpeciesForm({
 
       <div className="flex flex-wrap gap-space-3">
         <Button type="submit" variant="primary" aria-disabled={saving}>
-          {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Dar de alta'}
+          {saving
+            ? 'Guardando…'
+            : editing
+              ? 'Guardar cambios'
+              : proposal
+                ? 'Dar de alta y enlazar'
+                : 'Dar de alta'}
         </Button>
         <Button onClick={onCancel}>Cancelar</Button>
       </div>

@@ -1,4 +1,5 @@
 import type {
+  PlantType,
   SpeciesNameType,
   SpeciesSource,
   SpeciesStatus,
@@ -79,6 +80,25 @@ export function plantCountText(count: number): string {
     : `${formatCount(count)} plantas de usuarios la tienen enlazada.`
 }
 
+// Cola de propuestas ------------------------------------------------------------
+
+/** Tipo de las plantas de una propuesta (el usuario puede no saberlo). */
+export const PLANT_TYPE_LABEL: Record<PlantType, string> = {
+  species: 'Especie',
+  hybrid: 'Híbrido',
+  unknown: 'Tipo sin indicar',
+}
+
+/** "3 plantas". */
+export function proposalPlantCountText(count: number): string {
+  return countText(count, 'planta', 'plantas')
+}
+
+/** "12 grupos". */
+export function proposalGroupCountText(count: number): string {
+  return countText(count, 'grupo', 'grupos')
+}
+
 /** "Página 3 de 650". */
 export function pageText(page: number, pageCount: number): string {
   return `Página ${formatCount(page)} de ${formatCount(pageCount)}`
@@ -113,6 +133,9 @@ const AUDIT_ACTION_LABEL: Partial<Record<string, string>> = {
   merge_species: 'Fusión de especies',
   validate_plant: 'Validación de una propuesta',
   catalog_import: 'Carga del catálogo',
+  link_proposal_group: 'Propuesta de usuarios enlazada',
+  create_species_from_proposal: 'Alta desde una propuesta de usuarios',
+  mark_proposal_unidentifiable: 'Propuesta marcada como no identificable',
 }
 
 /** Una acción con sentido propio en palabras; una desconocida, con su nombre. */

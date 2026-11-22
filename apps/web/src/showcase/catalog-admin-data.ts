@@ -10,7 +10,10 @@ import {
   type CatalogGenusDetail,
   type CatalogSpeciesDetail,
   type CatalogSpeciesRow,
+  type ProposalGroup,
+  type ProposalGroupKey,
   type SpeciesHistoryEntry,
+  PROPOSAL_PAGE_SIZE,
 } from '../lib/catalogAdmin.ts'
 import {
   cleanCatalogText,
@@ -29,6 +32,8 @@ import {
   type WrittenSpecies,
 } from '../lib/catalogWrites.ts'
 import type { GenusSearchResult } from '../lib/catalogSearch.ts'
+import type { PlantImageSource } from '../photos/read.ts'
+import samplePhoto from './foto-muestra.svg'
 import type {
   SpeciesNameType,
   SpeciesSource,
@@ -50,7 +55,10 @@ import type {
 // unas entradas de ejemplo (una carga, una edición y una fusión). La fusión de
 // especies sigue las reglas de preview_species_merge() y merge_species():
 // nombres sin duplicar tras normalizar, plantas a la conservada, la conservada
-// validada si era importada y una memoria de las claves absorbidas.
+// validada si era importada y una memoria de las claves absorbidas. La cola de
+// propuestas trae unos grupos de ejemplo (con la foto de muestra) que se
+// resuelven con las reglas de la base: todas las plantas del grupo a la vez y,
+// si el grupo ya no está, 0 plantas sin error.
 
 interface SampleGenus {
   id: string
@@ -515,6 +523,51 @@ function mergePlan(
   })
 }
 
+/** Normalización de la clave de un grupo, como normalize_search_text(). */
+function proposalKey(text: string): string {
+  return normalize(text)
+}
+
+/** Grupos de la cola de ejemplo (nombres inventados). */
+function buildProposals(): ProposalGroup[] {
+  const genus = (name: string) => {
+    const found = GENERA.find((item) => item.name === name)
+    if (!found) throw new Error(`no está el género ${name}`)
+    return found
+  }
+  const photos = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      photoPath: `muestra/${prefix}/photo-${index + 1}.svg`,
+      thumbnailPath: `muestra/${prefix}/thumb-${index + 1}.svg`,
+    }))
+  const group = (
+    proposedName: string,
+    genusName: string,
+    type: ProposalGroup['type'],
+    plantCount: number,
+    photoCount: number,
+  ): ProposalGroup => ({
+    nameKey: proposalKey(proposedName),
+    genusId: genus(genusName).id,
+    genusName,
+    proposedName,
+    type,
+    plantCount,
+    photos: photos(proposalKey(proposedName).replace(/\s+/g, '-'), photoCount),
+  })
+  return [
+    group('Phalaenopsis Rosa del Monte', 'Phalaenopsis', 'hybrid', 4, 3),
+    group('Cattleya de la abuela', 'Cattleya', 'unknown', 2, 1),
+    group('Vanda azul ficticia', 'Vanda', 'species', 1, 0),
+  ]
+}
+
+const sampleImages: PlantImageSource = {
+  acquire: () => Promise.resolve(samplePhoto),
+  release: () => {},
+  clear: () => {},
+}
+
 export type SampleScenario =
   'ejemplo' | 'cargando' | 'vacio' | 'sin-conexion' | 'fallo'
 
@@ -609,6 +662,34 @@ export function createSampleCatalogSource(
       },
     )
   }
+
+  // Cola de propuestas: grupos por validar, del más grande al más pequeño.
+  const proposals: ProposalGroup[] =
+    scenario === 'vacio' ? [] : buildProposals()
+  const sortedProposals = () =>
+    [...proposals].sort(
+      (a, b) =>
+        b.plantCount - a.plantCount ||
+        compareKey(a.nameKey, b.nameKey) ||
+        compareKey(a.genusName, b.genusName),
+    )
+  /** Quita el grupo de la cola y lo devuelve; null si ya no estaba. */
+  const takeProposal = (key: ProposalGroupKey) => {
+    const nameKey = proposalKey(key.nameKey)
+    const index = proposals.findIndex(
+      (item) => item.nameKey === nameKey && item.genusId === key.genusId,
+    )
+    if (index === -1) return null
+    const [taken] = proposals.splice(index, 1)
+    return taken ?? null
+  }
+  const proposalDetails = (group: ProposalGroup): AuditValues => ({
+    name_key: group.nameKey,
+    proposed_name: group.proposedName,
+    genus_id: group.genusId,
+    genus_name: group.genusName,
+    plant_count: group.plantCount,
+  })
 
   // Memoria de las fusiones: a qué especie fue a parar cada clave absorbida.
   const mergeKeys: (RememberedKey & { speciesId: string })[] = []
@@ -1342,6 +1423,84 @@ export function createSampleCatalogSource(
           rememberedKeys: keys,
         }
       }),
+    listProposals: (options = {}) =>
+      respond(options.signal, () => {
+        const list = sortedProposals()
+        const size = options.pageSize ?? PROPOSAL_PAGE_SIZE
+        const pageCount = Math.max(Math.ceil(list.length / size), 1)
+        const page = Math.min(Math.max(options.page ?? 1, 1), pageCount)
+        return {
+          rows: list
+            .slice((page - 1) * size, page * size)
+            .map((group) => ({ ...group, photos: [...group.photos] })),
+          total: list.length,
+          page,
+        }
+      }),
+    countProposals: (options = {}) =>
+      respond(options.signal, () => proposals.length),
+    linkProposal: (key, speciesId) =>
+      respond(undefined, () => {
+        const item = findSpecies(speciesId)
+        const group = takeProposal(key)
+        if (!group) return { plantCount: 0 }
+        item.plants += group.plantCount
+        record(item.id, [], {
+          action: 'link_proposal_group',
+          details: {
+            ...proposalDetails(group),
+            species_id: item.id,
+            scientific_name: item.scientificName,
+          },
+        })
+        return { plantCount: group.plantCount }
+      }),
+    createSpeciesFromProposal: (key, input) =>
+      respond(undefined, () => {
+        const name = checkSpecies({ ...input, status: 'validated' }, null)
+        const group = takeProposal(key)
+        if (!group) return { plantCount: 0, speciesId: null }
+        nextId += 1
+        const item: SampleSpecies = {
+          id: uuid(3, nextId),
+          scientificName: name,
+          genusId: input.genusId ?? '',
+          type: input.type,
+          status: 'validated',
+          source: 'user_proposal',
+          sourceRef: null,
+          names: [],
+          plants: group.plantCount,
+        }
+        species.push(item)
+        record(
+          item.id,
+          [
+            {
+              table: 'species',
+              rowId: item.id,
+              action: 'insert',
+              oldValues: null,
+              newValues: speciesValues(item),
+            },
+          ],
+          {
+            action: 'create_species_from_proposal',
+            details: {
+              ...proposalDetails(group),
+              species_id: item.id,
+              scientific_name: item.scientificName,
+            },
+          },
+        )
+        return { plantCount: group.plantCount, speciesId: item.id }
+      }),
+    markProposalUnidentifiable: (key) =>
+      respond(undefined, () => {
+        const group = takeProposal(key)
+        return { plantCount: group?.plantCount ?? 0 }
+      }),
+    proposalImages: () => sampleImages,
     deleteSpecies: (id) =>
       respond(undefined, () => {
         const item = findSpecies(id)

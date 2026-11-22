@@ -1,9 +1,11 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Icon } from '../components/ui/Icon.tsx'
 import { GeneraTab } from './GeneraTab.tsx'
+import { ProposalsTab } from './ProposalsTab.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesTab } from './SpeciesTab.tsx'
 import { Attribution, SummaryPanel } from './SummaryPanel.tsx'
+import { formatCount, proposalGroupCountText } from './texts.ts'
 import {
   INITIAL_CATALOG_ADMIN_STATE,
   type CatalogAdminState,
@@ -26,6 +28,7 @@ export interface CatalogAdminViewProps {
 const TABS: readonly { id: CatalogAdminTab; label: string }[] = [
   { id: 'especies', label: 'Especies' },
   { id: 'generos', label: 'Géneros' },
+  { id: 'propuestas', label: 'Por validar' },
 ]
 
 /**
@@ -56,6 +59,14 @@ export function CatalogAdminView({
     (signal) => source.summary({ signal }),
     { revision },
   )
+  // Grupos de la cola de propuestas, para el número de la pestaña.
+  const proposalCount = useRemoteData(
+    'propuestas:numero',
+    (signal) => source.countProposals({ signal }),
+    { revision },
+  )
+  const pendingGroups =
+    proposalCount.status === 'success' ? proposalCount.data : null
   const baseId = useId()
   const tabRefs = useRef(new Map<CatalogAdminTab, HTMLButtonElement>())
 
@@ -147,6 +158,23 @@ export function CatalogAdminView({
                 }`}
               >
                 {tab.label}
+                {tab.id === 'propuestas' && pendingGroups !== null && (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className={`ml-space-2 inline-block rounded-full px-space-2 text-sm tabular-nums ${
+                        pendingGroups > 0
+                          ? 'bg-primary text-neutral-0'
+                          : 'bg-neutral-50 text-neutral-700'
+                      }`}
+                    >
+                      {formatCount(pendingGroups)}
+                    </span>
+                    <span className="sr-only">
+                      {`, ${proposalGroupCountText(pendingGroups)}`}
+                    </span>
+                  </>
+                )}
               </button>
             )
           })}
@@ -156,7 +184,15 @@ export function CatalogAdminView({
           id={panelId(state.tab)}
           aria-labelledby={tabId(state.tab)}
         >
-          {state.tab === 'especies' ? (
+          {state.tab === 'propuestas' ? (
+            <ProposalsTab
+              state={state.proposals}
+              onChange={(proposals) => onStateChange({ ...state, proposals })}
+              source={source}
+              revision={revision}
+              onCatalogChanged={onCatalogChanged}
+            />
+          ) : state.tab === 'especies' ? (
             <SpeciesTab
               state={state.species}
               onChange={(species, options) =>
