@@ -149,12 +149,11 @@ describe('ShowcasePage', () => {
       within(section).getByRole('button', { name: 'Eliminar mi cuenta' }),
     ).toHaveClass('orki-btn--danger-outline')
     expect(
-      within(section).getByRole('link', { name: 'Aviso de privacidad' }),
+      within(section).getByRole('link', { name: /^Aviso de privacidad/ }),
     ).toHaveAttribute('href', '/privacidad')
     expect(
       within(section).getByRole('button', {
-        name: 'Editar perfil',
-        description: 'Necesitas conexión para editar tu perfil.',
+        name: 'Editar perfil Necesitas conexión para editar tu perfil.',
       }),
     ).toHaveAttribute('aria-disabled', 'true')
     await expectNoAxeViolations()

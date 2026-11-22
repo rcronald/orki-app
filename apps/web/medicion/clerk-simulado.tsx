@@ -22,7 +22,10 @@ import {
 //   clave, NOMBRE_POR_DEFECTO y sin foto (iniciales); null, sin nombre.
 //
 // openUserProfile() (el editor de perfil de Clerk, #207) no abre nada: marca
-// <body data-perfil-simulado="abierto"> para que la prueba lo compruebe.
+// <body data-perfil-simulado="abierto"> para que la prueba lo compruebe. Para
+// simular que se guardó un cambio en el editor, la prueba lanza en window el
+// evento "orki-perfil-simulado" con { nombre, foto } en detail: useUser()
+// trae los datos nuevos sin recargar, como el real (#214).
 //
 // El token que devuelve getToken() lleva el usuario y el rol en claro
 // (tokenSimulado), para que el Supabase simulado de las pruebas aplique las
@@ -123,6 +126,17 @@ function setActive({ session }: { session: null }) {
 
 function openUserProfile() {
   document.body.dataset.perfilSimulado = 'abierto'
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('orki-perfil-simulado', (evento) => {
+    const cambio = (evento as CustomEvent<Partial<Sesion>>).detail
+    cambiarSesion({
+      ...sesion,
+      ...('nombre' in cambio && { nombre: cambio.nombre ?? null }),
+      ...('foto' in cambio && { foto: cambio.foto ?? null }),
+    })
+  })
 }
 
 const CLERK = { status, signOut, setActive, openUserProfile }

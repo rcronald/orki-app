@@ -17,19 +17,31 @@ export function isConfirmationWord(value: string): boolean {
 
 export const ACCOUNT_TEXT = {
   title: 'Tu cuenta',
-  sessionHeading: 'Datos de la sesión',
-  emailLabel: 'Correo',
-  noEmail: 'Sin correo (entraste con otro método)',
-  manageHint:
-    'Para cambiar tu correo, tu nombre o tu foto, usa «Editar perfil».',
+  back: 'Volver a Mi colección',
+  profileHeading: 'Perfil',
   editProfile: 'Editar perfil',
-  deleteHeading: 'Eliminar tu cuenta',
-  deleteIntro:
-    'Al eliminar tu cuenta se borran tus plantas con todos sus detalles, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso, y lo que orqui.apps guarda de ti en este dispositivo. No se puede deshacer.',
-  exportHint:
-    'Si quieres conservar una copia de tu inventario, antes expórtalo a CSV (sin las fotos) al final de',
-  exportLink: 'Mi colección',
+  profileLoading: 'Cargando tu perfil…',
+  profileOffline:
+    'Sin conexión: para editar tu perfil hace falta conexión. Vuelve cuando la tengas.',
+  profileUnavailable: {
+    offline:
+      'Sin conexión: tus datos de perfil se verán, y podrás editarlos, cuando vuelva la conexión.',
+    unverified:
+      'No se pudo confirmar tu sesión: el servicio de acceso no responde. Tus datos de perfil se verán, y podrás editarlos, cuando se confirme.',
+  },
+  dataHeading: 'Datos y privacidad',
+  exportTitle: 'Exportar inventario a CSV',
+  exportDescription: 'El archivo CSV no incluye las fotos.',
+  exportLoading: 'Cargando tu colección para exportarla…',
+  exportRetry: 'Volver a cargar la colección',
+  privacyTitle: 'Aviso de privacidad',
+  privacyDescription: 'Consulta qué datos guardamos y quién puede verlos.',
+  deleteHeading: 'Eliminar cuenta',
+  deleteSummary:
+    'Se eliminarán tu cuenta, tus plantas y sus fotos. Esta acción es irreversible.',
   deleteButton: 'Eliminar mi cuenta',
+  signOut: 'Cerrar sesión',
+  loadingAccount: 'Cargando tu cuenta…',
   offline:
     'Sin conexión: para eliminar la cuenta hace falta conexión. Vuelve cuando la tengas.',
   unverified:
@@ -41,7 +53,6 @@ export const ACCOUNT_TEXT = {
     'Empezaste a eliminar tu cuenta y no terminó. Puede que parte de tus datos ya se haya borrado. Continúa para terminar, o sigue usando orqui.apps con lo que quede.',
   pendingContinue: 'Continuar la eliminación',
   pendingKeep: 'Seguir usando orqui.apps',
-  privacyLink: 'Qué datos guarda orqui.apps (privacidad)',
 } as const
 
 export const DIALOG_TEXT = {

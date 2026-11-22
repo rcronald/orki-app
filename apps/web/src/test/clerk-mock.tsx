@@ -1,5 +1,10 @@
 /* eslint-disable react-refresh/only-export-components -- módulo simulado solo para pruebas */
-import { cloneElement, isValidElement, type ReactNode } from 'react'
+import {
+  cloneElement,
+  isValidElement,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import { vi } from 'vitest'
 
 // Sustituto de @clerk/react para las pruebas: ninguna prueba carga Clerk ni
@@ -149,7 +154,30 @@ export const FAKE_USER_EMAIL = 'persona@example.com'
 /** user.delete() del usuario simulado. */
 export const deleteUser = vi.fn<() => Promise<void>>(() => Promise.resolve())
 
+// Como el real, useUser() es reactivo: changeFakeUser() cambia el nombre o la
+// foto y repinta a quien lo usa, como al cerrar el editor de perfil de Clerk
+// tras guardar. setFakeClerk() no avisa (se usa antes de pintar).
+const userListeners = new Set<() => void>()
+let userVersion = 0
+
+function subscribeToUser(listener: () => void) {
+  userListeners.add(listener)
+  return () => {
+    userListeners.delete(listener)
+  }
+}
+
+/** Cambia el nombre o la foto del usuario y avisa a quien usa useUser(). */
+export function changeFakeUser(
+  next: Partial<Pick<FakeClerkState, 'fullName' | 'imageUrl'>>,
+) {
+  Object.assign(fakeClerk, next)
+  userVersion += 1
+  for (const listener of userListeners) listener()
+}
+
 export function useUser() {
+  useSyncExternalStore(subscribeToUser, () => userVersion)
   if (!isLoaded())
     return { isLoaded: false, isSignedIn: undefined, user: undefined }
   if (!fakeClerk.signedIn)

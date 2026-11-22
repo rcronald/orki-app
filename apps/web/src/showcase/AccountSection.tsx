@@ -7,8 +7,11 @@ import {
   type DeletionStep,
 } from '../account/deletion.ts'
 import { noAccountDeletionDevice } from '../account/device-cleanup.ts'
+import { ActionRow } from '../components/ui/ActionRow.tsx'
+import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
+import { ProfileSummary } from '../components/ui/ProfileSummary.tsx'
 import { Example, Section } from './layout.tsx'
 
 // La pantalla de cuenta (/cuenta, #110) sin Clerk ni Supabase: los pasos de la
@@ -70,7 +73,7 @@ export function AccountSection() {
     <Section
       id="cuenta"
       title="Pantalla de cuenta"
-      description="AccountView, el contenido de /cuenta, con pasos de eliminación simulados. Elige qué falla la primera vez; el reintento sale bien."
+      description="AccountView, el contenido de /cuenta (sin Clerk ni la colección: el perfil y la exportación son de muestra), con pasos de eliminación simulados. Elige qué falla la primera vez; el reintento sale bien."
     >
       <ChipGroup aria-label="Resultado de la eliminación">
         {SCENARIOS.map((option) => (
@@ -96,7 +99,23 @@ export function AccountSection() {
           <AccountView
             key={scenario}
             userId="muestra"
-            email="persona@example.com"
+            headingLevel={3}
+            profile={
+              <ProfileSummary
+                name="Persona de Prueba"
+                email="persona@example.com"
+                action={<Button>Editar perfil</Button>}
+              />
+            }
+            exportRow={
+              <ActionRow
+                icon="file"
+                title="Exportar inventario a CSV"
+                description="El archivo CSV no incluye las fotos."
+                onClick={() => {}}
+              />
+            }
+            onSignOut={() => {}}
             canDeleteAccount={scenario !== 'not-allowed-before'}
             effects={effects}
             onDeleted={() => setDeleted(true)}
