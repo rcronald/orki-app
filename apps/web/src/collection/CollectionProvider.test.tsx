@@ -7,11 +7,14 @@ import {
   fakeCollectionSource,
   type FakeCollectionSource,
 } from '../test/collection-source.ts'
+import { createCachedCollectionSource } from './cached-source.ts'
 import { CollectionProvider } from './CollectionProvider.tsx'
+import { createMemoryCopyStorage } from './local-copy.ts'
 import { countPlants } from './selectors.ts'
 import { CollectionLoadError } from './source.ts'
 import { COLLECTION_REFRESH_AFTER_MS } from './store.ts'
 import { useCollection, type CollectionApi } from './useCollection.ts'
+import { useCollectionCopy } from './useCollectionCopy.ts'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
@@ -306,5 +309,131 @@ describe('CollectionProvider y useCollection', () => {
     } finally {
       error.mockRestore()
     }
+  })
+})
+
+describe('CollectionProvider con copia local (#18)', () => {
+  function CopyScreen() {
+    const { status, plants } = useCollection()
+    const copy = useCollectionCopy()
+    return (
+      <p data-testid="copia">
+        {status}:{plants === null ? '-' : plants.length}:
+        {copy === null ? 'sin-copia' : `${copy.userId}@${copy.savedAt ?? ''}`}
+        {copy?.unreachable ? `:${copy.unreachable}` : ''}
+      </p>
+    )
+  }
+
+  function cached() {
+    const storage = createMemoryCopyStorage()
+    const cachedSource = createCachedCollectionSource({
+      network: source,
+      storage,
+      fetchExtras: () => Promise.resolve({}),
+      now: () => new Date('2026-11-21T12:00:00.000Z'),
+      onSaved: () => {},
+    })
+    return { storage, cachedSource }
+  }
+
+  it('muestra la copia guardada sin esperar a la red y dice de cuándo es', async () => {
+    const { storage, cachedSource } = cached()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [plant(), plant()],
+      extras: {},
+    })
+    render(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(text('copia')).toBe('loading:2:user_a@2026-11-20T08:00:00.000Z')
+
+    await resolveLast([plant()])
+    expect(text('copia')).toBe('ready:1:user_a@2026-11-21T12:00:00.000Z')
+  })
+
+  it('al cerrar sesión borra las copias guardadas', async () => {
+    const { storage, cachedSource } = cached()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [plant()],
+      extras: {},
+    })
+    const { rerender } = render(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    setFakeClerk({ signedIn: false })
+    rerender(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(storage.copies.size).toBe(0)
+    expect(text('copia')).toBe('idle:-:sin-copia')
+  })
+
+  it('otra cuenta en el mismo dispositivo no ve la copia de la anterior', async () => {
+    const { storage, cachedSource } = cached()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [plant(), plant(), plant()],
+      extras: {},
+    })
+    setFakeClerk({ userId: 'user_b' })
+    render(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(text('copia')).toBe('loading:-:sin-copia')
+    expect(storage.copies.has('user_a')).toBe(false)
+  })
+
+  it('al recuperar la conexión vuelve a leer la colección sola', async () => {
+    render(
+      <Tree>
+        <Screen name="lista" />
+      </Tree>,
+    )
+    await resolveLast([plant()])
+    expect(source.loads).toHaveLength(1)
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(source.loads).toHaveLength(2)
+    await resolveLast([plant(), plant()])
+    expect(text('lista')).toBe('ready:2:')
+  })
+
+  it('el evento online sin colección pedida no lee nada', () => {
+    render(
+      <Tree>
+        <p>Inicio</p>
+      </Tree>,
+    )
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(source.loads).toHaveLength(0)
   })
 })

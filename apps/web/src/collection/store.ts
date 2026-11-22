@@ -28,13 +28,17 @@ import {
 //   cambia los datos cuando llegan. Si falla, no se muestra ningún error: se
 //   sigue con lo que había. La usa CollectionProvider al volver a la app tras
 //   un rato en segundo plano, para ver lo que cambió fuera de este dispositivo
-//   (por ejemplo, una propuesta que resolvió un administrador).
+//   (por ejemplo, una propuesta que resolvió un administrador), y al
+//   recuperar la conexión o confirmarse la sesión (resume(), #18).
 // - Operaciones locales (upsertPlant, removePlant): reflejan en memoria lo que
 //   otra pantalla ya escribió en la base (#11, #16) sin volver a leerlo todo.
 //   Se aplican al momento sobre los datos que haya en memoria; durante una
-//   lectura (también la de segundo plano), además, se guardan y se aplican sobre su resultado, porque la
-//   respuesta puede haber salido antes o después de la escritura. Sin datos ni
+//   lectura (también la de segundo plano), además, se guardan y se aplican
+//   sobre su resultado, porque la respuesta puede haber salido antes o
+//   después de la escritura. Sin datos ni
 //   lectura en curso se ignoran: la próxima lectura ya traerá el cambio.
+//   Con la colección completa, el resultado se pasa además a source.save()
+//   (si la fuente lo tiene) para que la copia local del #18 lo guarde.
 
 /**
  * Tiempo en segundo plano a partir del cual, al volver a la app, la colección
@@ -142,6 +146,19 @@ export class CollectionStore {
     this.start(userId, true)
   }
 
+  /**
+   * Al recuperar la conexión (#18): con la colección lista, la actualiza en
+   * segundo plano (refresh); si la última lectura falló, la vuelve a leer
+   * (reload: la pantalla pasa del error a la carga). Sin pedir o con una
+   * lectura en curso, nada.
+   */
+  resume(): void {
+    const { userId, status } = this.snapshot
+    if (userId === null) return
+    if (status === 'ready') this.refresh()
+    else if (status === 'error') this.reload()
+  }
+
   // Operaciones locales -------------------------------------------------------
 
   /** Añade una planta nueva o sustituye la que tiene su id. */
@@ -190,13 +207,18 @@ export class CollectionStore {
         (plants) => {
           if (!isCurrent()) return
           this.controller = null
+          const changed = this.pending.length > 0
+          const result = applyAll(plants, this.pending)
           this.update({
             userId,
             status: 'ready',
-            plants: applyAll(plants, this.pending),
+            plants: result,
             error: null,
           })
           this.pending = []
+          // La fuente guardó lo que leyó; los cambios hechos mientras tanto
+          // también deben quedar en su copia.
+          if (changed) this.source.save?.(userId, result)
         },
         (error: unknown) => {
           if (!isCurrent()) return
@@ -223,10 +245,18 @@ export class CollectionStore {
   }
 
   private apply(operation: LocalOperation): void {
-    const { plants } = this.snapshot
+    const { status, plants, userId } = this.snapshot
     if (this.controller !== null) this.pending.push(operation)
     if (plants === null) return
-    this.update({ ...this.snapshot, plants: applyAll(plants, [operation]) })
+    const result = applyAll(plants, [operation])
+    this.update({ ...this.snapshot, plants: result })
+    // Solo con la colección completa (también durante una lectura de fondo,
+    // que la vuelve a guardar al terminar). Durante una lectura con carga se
+    // guarda al terminar, y tras un error lo que hay en memoria puede estar
+    // incompleto.
+    if (status === 'ready' && userId !== null) {
+      this.source.save?.(userId, result)
+    }
   }
 
   private update(next: CollectionSnapshot): void {

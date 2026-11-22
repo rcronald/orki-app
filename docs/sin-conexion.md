@@ -107,6 +107,47 @@ en solo lectura.
 La copia local y las miniaturas van siempre por id de usuario: aunque falle
 algún borrado, la app nunca lee la copia de un id distinto del activo.
 
+## 3. Copia local del inventario (#118)
+
+- **Dónde:** IndexedDB, base `orki-coleccion`, almacén `copias`, un registro
+  por id de usuario (`collection/local-copy.ts`). Sin dependencias: la API
+  nativa con `try/catch` en todo; sin IndexedDB la app funciona como antes.
+- **Qué:** las plantas tal como están en memoria (`CollectionPlant`, también
+  las dadas de baja), la fecha de la última lectura desde la red y lo que
+  "¿Ya la tengo?" necesita además: los sinónimos y nombres comunes de sus
+  especies (`species_names`) y las abreviaturas de sus géneros
+  (`genus_abbreviations`), que se piden con cada lectura de la red
+  (`collection/extras-source.ts`, por grupos de 50 ids y paginadas).
+- **Formato:** `LOCAL_COPY_FORMAT` (hoy 1). Una copia de otro formato o
+  dañada se borra y se trata como si no hubiera; la siguiente lectura de la
+  red la vuelve a crear entera. No se migra: no hay nada en la copia que no
+  esté en la base.
+- **Fuente de la colección** (`collection/cached-source.ts`): entrega primero
+  la copia (`provide`) y después lo de la red, y guarda cada resultado. Si la
+  red falla por falta de conexión y hay copia, la colección queda lista con
+  la copia y la información de la copia lo dice (`unreachable: 'offline'`).
+  Con otro fallo (sesión terminada, servidor) se ve el aviso de error de
+  siempre, con la copia debajo.
+- **Actualización:** al abrir con conexión (la primera pantalla que pide la
+  colección), al recuperar la conexión (evento `online`, en
+  `CollectionProvider`) y después de cada cambio hecho en la app (el almacén
+  pasa la colección a `save()` tras `upsertPlant` y `removePlant`). La fecha
+  que se muestra es la de la última lectura completa desde la red; un cambio
+  hecho en la app no la mueve, porque otras plantas pueden haber cambiado
+  desde otro dispositivo. Los extras de una especie recién enlazada llegan en
+  la siguiente lectura.
+- **Por usuario:** `setActiveUser()` borra las copias de las demás cuentas al
+  entrar o al cerrar sesión, y desde ese momento solo se escribe la copia del
+  usuario activo (una lectura de la cuenta anterior que termine tarde no la
+  vuelve a crear).
+- **Almacenamiento persistente:** tras guardar la primera copia se llama una
+  vez a `navigator.storage.persist()` (`lib/persistent-storage.ts`). Lo que
+  responde cada plataforma se ve en `/diagnostico` → "Almacenamiento
+  persistente" y queda por anotar en el dispositivo (#121).
+- **Tamaño del bundle:** el código va en el chunk de la app con Clerk
+  (`App-*.js`, +5,8 kB, +1,8 kB comprimido); el chunk inicial (`index-*.js`)
+  mide lo mismo que antes (271,33 kB).
+
 ## Guion de prueba en el dispositivo (#117, #121)
 
 En un iPhone y en un Android, con la app **instalada** (pantalla de inicio) y

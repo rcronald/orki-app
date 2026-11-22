@@ -4,9 +4,10 @@ import type { CollectionPlant } from './model.ts'
 // Fuente de datos de la colección: de dónde sale la lista completa de plantas
 // de un usuario. El almacén (store.ts) no sabe de Supabase: recibe una fuente
 // por inyección (prop `source` de <CollectionProvider>). La de la app es
-// supabaseCollectionSource (supabase-source.ts); la caché local del #18 podrá
-// envolverla (leer primero la copia del dispositivo, entregarla como
-// provisional y después la de la red) sin tocar el almacén ni las pantallas.
+// supabaseCollectionSource (supabase-source.ts) envuelta por la copia local
+// del #18 (cached-source.ts): lee primero la copia del dispositivo, la entrega
+// como provisional y después la de la red, sin tocar el almacén ni las
+// pantallas.
 
 /**
  * Por qué no se pudo leer la colección. Los mismos motivos que los del token
@@ -61,6 +62,12 @@ export interface CollectionLoadRequest {
  */
 export interface CollectionSource {
   load(request: CollectionLoadRequest): Promise<readonly CollectionPlant[]>
+  /**
+   * Opcional: recibe la colección completa tras cada cambio hecho en la app
+   * (upsertPlant, removePlant), para que una fuente con copia local (#18) la
+   * guarde sin volver a leer de la red.
+   */
+  save?(userId: string, plants: readonly CollectionPlant[]): void
 }
 
 /** Motivo de un error cualquiera devuelto por una fuente. */

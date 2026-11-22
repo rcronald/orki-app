@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { countActiveFilters, type PlantFilters } from '../collection/filters.ts'
 import { useCollection } from '../collection/useCollection.ts'
+import { useOwnershipExtras } from '../collection/useCollectionCopy.ts'
 import { Page } from '../components/Page.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { ActionNotice } from '../detail/ActionNotice.tsx'
@@ -36,8 +37,10 @@ const SEARCH_PARAM = 'q'
 // Al volver de eliminar una planta (#16), "Eliminaste…" (detail/notice.ts).
 //
 // Bajo el buscador, la respuesta de "¿Ya la tengo?" (#19, OwnershipPanel),
-// sobre toda la colección y sin esperar a la red. Su prop onMeasure es el
-// punto de enganche del evento de producto de esa búsqueda (#146).
+// sobre toda la colección y sin esperar a la red. Con los sinónimos, nombres
+// comunes y abreviaturas de la copia local (#18, useOwnershipExtras), también
+// sin conexión. Su prop onMeasure es el punto de enganche del evento de
+// producto de esa búsqueda (#146).
 
 function deletedNotice() {
   const notice = peekPlantNotice()
@@ -46,6 +49,7 @@ function deletedNotice() {
 
 export function CollectionPage() {
   const { status, plants, error, reload } = useCollection()
+  const extras = useOwnershipExtras()
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get(SEARCH_PARAM) ?? ''
   const location = useLocation()
@@ -141,6 +145,7 @@ export function CollectionPage() {
             plants={plants}
             query={query}
             filtered={countActiveFilters(filters) > 0}
+            extras={extras}
           />
         }
       />
