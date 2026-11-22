@@ -17,7 +17,7 @@ vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 beforeEach(() => {
   resetFakeClerk()
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   localStorage.clear()
 })
@@ -27,7 +27,7 @@ beforeEach(() => {
 // catálogo, que pasó a «Créditos y fuentes» (CreditsPage.test.tsx). Si falta
 // una, la prueba falla: recortar el texto es una decisión del responsable.
 const APPROVED_TEXT = [
-  'Tu cuenta: tu correo y, si entras con Google, los datos de tu perfil de Google que recibe el servicio de acceso (como tu nombre y tu foto). Además, orqui.apps guarda un perfil con tu identificador de usuario y el idioma de la app.',
+  'Tu cuenta: tu correo y, si entras con Google, los datos de tu perfil de Google que recibe el servicio de acceso (como tu nombre y tu foto). Además, orqui.app guarda un perfil con tu identificador de usuario y el idioma de la app.',
   'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada).',
   'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura.',
   'Mediciones de uso y errores: lo explicamos en la sección siguiente.',
@@ -39,7 +39,7 @@ const APPROVED_TEXT = [
   'Los usamos para saber si la app cumple su objetivo: que registrar una orquídea tome menos de un minuto y que saber si ya la tienes tome menos de cinco segundos.',
   'Si la app falla, envía el error a Sentry para que podamos corregirlo. El informe lleva el mensaje del error, en qué parte del código ocurrió, la dirección de la pantalla, tu navegador y tu sistema, la versión de la app, tu identificador de usuario y los últimos pasos que hiciste en la app (pantallas abiertas, botones pulsados y peticiones al servidor). Antes de enviarlo, la app quita tu correo, tu nombre, tu dirección IP, las cookies, el contenido de las peticiones, lo que escribiste en la búsqueda y en otros parámetros de las direcciones, tu zona horaria y tu idioma, los mensajes de la consola y los textos de los botones pulsados. No graba la pantalla ni mide el rendimiento.',
   'Sentry también recibe un aviso cada vez que abres la app, con la versión, tu navegador y tu identificador de usuario, para saber cuántas veces termina con un fallo.',
-  'En orqui.apps no hay publicidad ni otros servicios de analítica o de publicidad.',
+  'En orqui.app no hay publicidad ni otros servicios de analítica o de publicidad.',
   'Clerk gestiona el acceso: tu cuenta, tu correo, el acceso con Google y tu sesión.',
   'Supabase guarda tu perfil, tus plantas, sus fotos y tus eventos de uso. Las fotos están en un almacenamiento privado: no tienen una dirección pública.',
   'Sentry recibe los informes de errores de la app.',
@@ -59,7 +59,7 @@ const APPROVED_TEXT = [
   'Cómo prefieres ver el inventario (lista o cuadrícula).',
   'Los archivos de la propia app, para que abra sin conexión, y lo que el servicio de acceso necesita para mantener tu sesión.',
   'Cerrar sesión borra la copia, las miniaturas, los eventos pendientes y tu identificador, también sin conexión. Mientras no la cierres, quien tenga tu dispositivo desbloqueado puede ver la copia de tu inventario.',
-  'Desde la app, con la sesión iniciada: Tu cuenta, Eliminar mi cuenta. Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso. También lo que orqui.apps guarda en ese dispositivo: la copia de tu inventario, las miniaturas, los eventos pendientes de enviar, tu identificador, el borrador y tus preferencias. No se puede deshacer.',
+  'Desde la app, con la sesión iniciada: Tu cuenta, Eliminar mi cuenta. Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso. También lo que orqui.app guarda en ese dispositivo: la copia de tu inventario, las miniaturas, los eventos pendientes de enviar, tu identificador, el borrador y tus preferencias. No se puede deshacer.',
   'No se borran los informes de errores que ya se enviaron a Sentry (llevan tu identificador, no tu correo). Tampoco el registro de cambios del catálogo: si ya se resolvió un nombre que escribiste, ese nombre sigue ahí, sin decir de quién era.',
   'Antes, o cuando quieras, puedes descargar tu inventario en un archivo CSV con «Exportar a CSV», al final de Mi colección. Incluye todas tus plantas, también las perdidas y regaladas, con todos sus datos y la fecha en que las registraste. No incluye las fotos.',
   `Para cualquier consulta sobre tus datos, escribe a ${PRIVACY_CONTACT}.`,
@@ -106,7 +106,7 @@ describe('PrivacyPage', () => {
     renderAt('/privacidad')
 
     expect(await findTitle()).toBeInTheDocument()
-    expect(document.title).toBe('Privacidad · orqui.apps')
+    expect(document.title).toBe('Privacidad · orqui.app')
     expect(
       screen
         .getAllByRole('heading', { level: 2 })

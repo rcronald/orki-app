@@ -42,7 +42,7 @@ function sections(): TextPageSection[] {
             El catálogo de especies se basa en el{' '}
             <span lang="en">Catalogue of Life</span> ({version}),{' '}
             <External href={doiUrl}>{doiUrl}</External>, con licencia{' '}
-            <External href={licenseUrl}>{license}</External>. En orqui.apps se
+            <External href={licenseUrl}>{license}</External>. En orqui.app se
             filtró a las orquídeas y se normalizó.
           </p>
           <p>
@@ -115,7 +115,7 @@ export default function CreditsPage() {
   return (
     <TextPage
       title="Créditos y fuentes"
-      lead="De dónde salen el catálogo, las imágenes, las tipografías y los iconos de orqui.apps, y con qué licencia."
+      lead="De dónde salen el catálogo, las imágenes, las tipografías y los iconos de orqui.app, y con qué licencia."
       sections={sections()}
     />
   )

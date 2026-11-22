@@ -11,7 +11,7 @@ vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 beforeEach(() => {
   resetFakeClerk()
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 
@@ -40,7 +40,7 @@ describe('CreditsPage', () => {
     renderAt('/creditos')
 
     expect(await findTitle()).toBeInTheDocument()
-    expect(document.title).toBe('Créditos y fuentes · orqui.apps')
+    expect(document.title).toBe('Créditos y fuentes · orqui.app')
     const toc = screen.getByRole('navigation', { name: 'En esta página' })
     expect(
       within(toc)
@@ -66,7 +66,7 @@ describe('CreditsPage', () => {
     const catalog = section('Catálogo de especies')
     expect(catalog).toHaveTextContent('Catalogue of Life (COL26.10 XR)')
     expect(catalog).toHaveTextContent(
-      'En orqui.apps se filtró a las orquídeas y se normalizó.',
+      'En orqui.app se filtró a las orquídeas y se normalizó.',
     )
     expect(catalog).toHaveTextContent('lista curada')
     const doi = within(catalog).getByRole('link', {

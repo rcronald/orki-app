@@ -27,7 +27,7 @@ for (const ancho of [1440, 360]) {
 
     const barra = page.getByRole('banner')
     await expect(
-      barra.getByRole('link', { name: 'Inicio de orqui.apps' }),
+      barra.getByRole('link', { name: 'Inicio de orqui.app' }),
     ).toBeVisible()
     const pestana = barra.getByRole('link', { name: 'Mi colección' })
     await expect(pestana).toBeVisible()

@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { portadaPrevia } from './prerender/portada-previa-plugin.ts'
 
 // Versión desplegada: el commit que Vercel construye. Vercel la expone durante
 // el build en VERCEL_GIT_COMMIT_SHA (variable de sistema, con "Automatically
@@ -80,6 +81,9 @@ export default defineConfig({
     releaseMeta(),
     react(),
     tailwindcss(),
+    // Portada prerrenderada en index.html (#204), antes del plugin de PWA:
+    // la revisión de index.html en el precaché tiene que ser la del HTML final.
+    portadaPrevia(),
     VitePWA({
       // El service worker nuevo se activa solo y toma el control sin preguntar.
       registerType: 'autoUpdate',
@@ -95,8 +99,8 @@ export default defineConfig({
         'apple-touch-icon-180x180.png',
       ],
       manifest: {
-        name: 'orqui.apps',
-        short_name: 'orqui.apps',
+        name: 'orqui.app',
+        short_name: 'orqui.app',
         description: 'Inventario de tu colección de orquídeas.',
         lang: 'es',
         start_url: '/',

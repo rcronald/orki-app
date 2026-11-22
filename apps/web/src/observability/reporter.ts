@@ -1,3 +1,4 @@
+import { esperarFotoDePortadaPrevia } from '../prerender/portada-previa.ts'
 import type {
   ErrorDetails,
   SentryHandle,
@@ -143,9 +144,16 @@ const loadSentry = import.meta.env.VITE_SENTRY_DSN
   ? () => import('./sentry.ts')
   : null
 
-/** El cargador de la app. */
+/**
+ * El cargador de la app. Con la portada prerrenderada a la vista (#204), el
+ * SDK espera además a que se pinte su foto, como el chunk de la app: así no
+ * le quita red al elemento más grande de la primera pantalla. Los errores de
+ * mientras tanto se guardan igual.
+ */
 export const errorReporter = createErrorReporter({
   loadSdk: loadSentry,
-  schedule: afterFirstPaint,
+  schedule: (task) => {
+    void esperarFotoDePortadaPrevia().then(() => afterFirstPaint(task))
+  },
   target: window,
 })

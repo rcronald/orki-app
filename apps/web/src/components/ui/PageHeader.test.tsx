@@ -100,6 +100,6 @@ describe('PageHeader', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Mi colección' }),
     ).toHaveClass('orki-pagehead__title')
-    expect(document.title).toBe('Mi colección · orqui.apps')
+    expect(document.title).toBe('Mi colección · orqui.app')
   })
 })
