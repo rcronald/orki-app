@@ -30,6 +30,7 @@ import {
   createMemoryDraftPhotoBackend,
 } from '../registration/draft-photo.ts'
 import { initialPlantFormValues } from '../registration/form-state.ts'
+import { genusBackgroundUrl } from '../registration/genus-backgrounds.ts'
 import { clearQuickAccessGeneraCache } from '../registration/quick-genera.ts'
 import {
   PLANT_INVALID_TEXT,
@@ -1931,5 +1932,87 @@ describe('NewPlantPage: foto (#87)', () => {
     expect(screen.getByRole('button', { name: 'Quitar foto' })).toBeDisabled()
     expect(previewImage()).toBeInTheDocument()
     await expectNoAxeViolations()
+  })
+})
+
+describe('NewPlantPage: fondo por género (#13)', () => {
+  // jsdom no carga imágenes: un doble de Image que "carga" al momento y
+  // apunta qué fotos se pidieron.
+  let requested: string[]
+
+  beforeEach(() => {
+    requested = []
+    class LoadingImage {
+      decoding = 'auto'
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(value: string) {
+        requested.push(value)
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+    vi.stubGlobal('Image', LoadingImage)
+  })
+
+  const backdrop = () => screen.getByTestId('fondo-genero')
+  const phalaenopsis = genusBackgroundUrl('Phalaenopsis')
+  const cattleya = genusBackgroundUrl('Cattleya')
+
+  it('cambia solo al fijarse el género, no mientras se escribe, y pasa la revisión de accesibilidad', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    expect(backdrop()).toHaveAttribute('data-fondo', 'neutro')
+
+    // Escribir y ver sugerencias no toca el fondo: ni descarga ni cambio.
+    const seen = new Set<string | null>()
+    const observer = new MutationObserver(() =>
+      seen.add(backdrop().getAttribute('data-fondo')),
+    )
+    observer.observe(backdrop(), { attributes: true, childList: true })
+    await user.type(nameInput(), 'phal amab')
+    await screen.findByRole('option', { name: 'Phalaenopsis amabilis' })
+    expect(requested).toEqual([])
+    expect(seen.size).toBe(0)
+
+    // Elegir la especie fija Phalaenopsis: aparece su foto.
+    await user.click(
+      screen.getByRole('option', { name: 'Phalaenopsis amabilis' }),
+    )
+    await waitFor(() =>
+      expect(backdrop()).toHaveAttribute('data-fondo', phalaenopsis),
+    )
+    expect(requested).toEqual([phalaenopsis])
+
+    // Seguir escribiendo desenlaza la especie pero el género se queda: el
+    // fondo no cambia.
+    seen.clear()
+    await user.type(nameInput(), ' x')
+    expect(backdrop()).toHaveAttribute('data-fondo', phalaenopsis)
+    expect([...seen].every((value) => value === phalaenopsis)).toBe(true)
+    await expectNoAxeViolations()
+
+    // Un chip de género con foto la cambia; "Otro" (sin género) la quita.
+    await user.click(chip('Cattleya'))
+    await waitFor(() =>
+      expect(backdrop()).toHaveAttribute('data-fondo', cattleya),
+    )
+    await user.click(chip('Otro'))
+    expect(backdrop()).toHaveAttribute('data-fondo', 'neutro')
+    observer.disconnect()
+  })
+
+  it('un género sin foto deja el fondo neutro', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'wakanki')
+    await user.click(
+      await screen.findByRole('option', {
+        name: /^Masdevallia veitchiana,\s*Nombre común: Wakanki$/,
+      }),
+    )
+    expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
+    expect(backdrop()).toHaveAttribute('data-fondo', 'neutro')
+    expect(requested).toEqual([])
   })
 })

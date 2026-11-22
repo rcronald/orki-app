@@ -38,6 +38,11 @@ import { Example, Section } from './layout.tsx'
 // "muestra"): recargar la página a mitad lo recupera. La foto se sube con
 // replacePlantPhoto a un bucket en memoria (memory-storage.ts), como en la
 // sección "Fotos", y puede fallar a voluntad.
+//
+// El fondo por género (#13) va dentro de la zona de ejemplo (backdrop
+// "contained"), no en toda la página: al elegir Phalaenopsis o Cattleya (o
+// cualquiera de los cinco de acceso rápido) aparece su foto, hoy PROVISIONAL,
+// bajo el velo overlay-genus.
 
 const AMABILIS_SPECIES = {
   id: 'especie-amabilis',
@@ -320,7 +325,7 @@ export function RegistrationSection() {
     <Section
       id="registro"
       title="Formulario de registro"
-      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). La foto es opcional: se sube después de guardar la planta a un bucket simulado, y si falla se puede reintentar o continuar sin ella. Lo escrito y la foto se conservan como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada."
+      description="PlantForm, la pantalla de /coleccion/nueva, con datos fijos: «phal», «wakanki» o «rhyncho» encuentran especies; cualquier otro nombre se guarda por validar. En «Otro», «mps» encuentra Miltoniopsis por su abreviatura. Phalaenopsis amabilis avisa de que ya tienes 2 ejemplares. El origen sugiere los de la colección de ejemplo (prueba «mercado» o «orquideas»). La foto es opcional: se sube después de guardar la planta a un bucket simulado, y si falla se puede reintentar o continuar sin ella. Lo escrito y la foto se conservan como borrador en este navegador: recarga la página a mitad y vuelve a abrir el formulario. Guardar no escribe nada. Al fijar uno de los cinco géneros de acceso rápido, el fondo del ejemplo pasa a su foto (provisional) bajo el velo; los demás géneros dejan el fondo neutro."
     >
       <Collapsible title="Ver el formulario" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -368,7 +373,7 @@ export function RegistrationSection() {
           <Example
             title="Registrar una orquídea"
             description="En el celular, las acciones quedan fijas abajo."
-            className="mx-auto w-full max-w-lg"
+            className="relative isolate mx-auto w-full max-w-lg"
           >
             {result === null ? (
               <PlantForm
@@ -378,6 +383,7 @@ export function RegistrationSection() {
                 knownPlants={KNOWN_PLANTS}
                 draftUserId={SHOWCASE_DRAFT_USER}
                 photoFirst={photoFirst}
+                backdrop="contained"
                 onSaved={(plant) =>
                   setResult(
                     `Guardada: «${plant.displayName}», ${
