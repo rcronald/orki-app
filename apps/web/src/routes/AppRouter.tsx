@@ -1,6 +1,14 @@
-import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type ComponentType,
+} from 'react'
 import { Route, Routes } from 'react-router'
 import type { AppEnv } from '../config/env.ts'
+import { quitarPortadaPrevia } from '../prerender/portada-previa.ts'
 import { NavigationFocusProvider } from './NavigationFocusProvider.tsx'
 import { PATHS } from './paths.ts'
 
@@ -78,9 +86,15 @@ function AppFromChunk(props: AppRouterProps) {
   return App === null ? null : <App {...props} />
 }
 
-// La app, cuando llega su chunk.
+// La app, cuando llega su chunk. Retira a la vez la portada prerrenderada de
+// index.html (#204): el efecto de diseño corre en la misma confirmación que
+// pinta la pantalla (en `/`, la misma portada), antes de que el navegador
+// vuelva a pintar. Hasta entonces se sigue viendo la prerrenderada.
 function LoadedApp(props: AppRouterProps) {
   const loaded = useAppLoaded()
+  useLayoutEffect(() => {
+    if (loaded) quitarPortadaPrevia()
+  }, [loaded])
   return loaded ? <AppFromChunk {...props} /> : null
 }
 

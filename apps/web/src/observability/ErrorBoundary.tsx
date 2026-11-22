@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { quitarPortadaPrevia } from '../prerender/portada-previa.ts'
 import { CrashScreen } from './CrashScreen.tsx'
 import { errorReporter, type ErrorReporter } from './reporter.ts'
 
@@ -30,6 +31,8 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
+    // La pantalla de fallo no queda debajo de la portada prerrenderada (#204).
+    quitarPortadaPrevia()
     const reporter = this.props.reporter ?? errorReporter
     reporter.report(
       error,

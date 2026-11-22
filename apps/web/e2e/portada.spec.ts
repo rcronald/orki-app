@@ -158,6 +158,116 @@ test('en escritorio: dos columnas, foto a toda la altura hasta el borde y ventaj
   await revisarAccesibilidad('portada en escritorio')
 })
 
+// Portada prerrenderada (#204): el index.html del build trae la portada y
+// precarga su foto, así se ve sin esperar al chunk de la app ni a Clerk.
+test.describe('portada prerrenderada', () => {
+  const FOTO = /\/assets\/portada-\d+-[\w-]+\.(avif|jpg)$/
+
+  /** El chunk de la app no llega nunca: solo se ve lo que trae el HTML. */
+  async function sinChunkDeLaApp(page: Page) {
+    await page.route(/\/assets\/App-[\w-]+\.js$/, () => {
+      // Sin responder.
+    })
+  }
+
+  function fotosPedidas(page: Page) {
+    const pedidas: string[] = []
+    page.on('request', (peticion) => {
+      if (FOTO.test(new URL(peticion.url()).pathname)) {
+        pedidas.push(new URL(peticion.url()).pathname)
+      }
+    })
+    return pedidas
+  }
+
+  test('el HTML inicial trae la portada y la precarga de su foto', async ({
+    request,
+  }) => {
+    const html = await (await request.get('/')).text()
+    expect(html).toContain('<template id="portada-previa-plantilla">')
+    expect(html).toContain(TITULO)
+    expect(html).toMatch(/imagesrcset/)
+    // Todas las direcciones son las del build y existen.
+    expect(html).not.toContain('/src/')
+    const direcciones = new Set(
+      html.match(/\/assets\/portada-\d+-[\w-]+\.(avif|jpg)/g) ?? [],
+    )
+    expect(direcciones.size).toBeGreaterThanOrEqual(5)
+    for (const direccion of direcciones) {
+      expect((await request.get(direccion)).ok(), direccion).toBe(true)
+    }
+  })
+
+  test('se pinta entera sin el chunk de la app, con su foto', async ({
+    page,
+  }) => {
+    await sinChunkDeLaApp(page)
+    const pedidas = fotosPedidas(page)
+    // Sin el chunk, WebKit no llega a disparar «load».
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await expect(
+      page.getByRole('heading', { name: TITULO, level: 1 }),
+    ).toBeVisible()
+    await expect(page.locator('#portada-previa')).toHaveCount(1)
+    await expect(
+      page.getByRole('link', { name: 'Crear cuenta gratis' }).first(),
+    ).toHaveAttribute('href', '/registro')
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(VENTAJAS)
+    const foto = await fotoCargada(page)
+    // La precarga pide la misma variante que elige el <img>.
+    const elegida = await foto.evaluate(
+      (img: HTMLImageElement) => new URL(img.currentSrc).pathname,
+    )
+    expect(new Set(pedidas)).toEqual(new Set([elegida]))
+  })
+
+  test('al llegar la app queda una sola portada, sin volver a pedir la foto', async ({
+    page,
+  }) => {
+    const pedidas = fotosPedidas(page)
+    await page.goto('/')
+    await expect(page.locator('#portada-previa')).toHaveCount(0)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    await expect(
+      page.getByRole('heading', { name: TITULO, level: 1 }),
+    ).toBeVisible()
+    const foto = await fotoCargada(page)
+    // El <img> de la app reutiliza la variante AVIF ya descargada. (WebKit
+    // pide además el JPEG de respaldo: React le pone `src` antes de meterlo
+    // en el <picture>. Pasaba ya antes de la portada prerrenderada; ver
+    // docs/medicion-de-carga.md.)
+    const elegida = await foto.evaluate(
+      (img: HTMLImageElement) => new URL(img.currentSrc).pathname,
+    )
+    expect(pedidas.filter((ruta) => ruta.endsWith('.avif'))).toEqual([elegida])
+  })
+
+  test('en otra ruta no se usa ni se pide la foto', async ({ page }) => {
+    const pedidas = fotosPedidas(page)
+    await page.goto('/catalogo')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: TITULO })).toHaveCount(0)
+    expect(pedidas).toEqual([])
+  })
+
+  test.describe('con un usuario recordado en el dispositivo', () => {
+    test.use({ sesion: { usuario: 'user_prueba_e2e' } })
+
+    test('no se pinta: `/` lleva a la colección', async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem('orki-ultimo-usuario', 'user_prueba_e2e')
+      })
+      const pedidas = fotosPedidas(page)
+      await page.goto('/')
+      await expect(page).toHaveURL(/\/coleccion$/)
+      await expect(
+        page.getByRole('heading', { name: 'Mi colección', level: 1 }),
+      ).toBeVisible()
+      expect(pedidas).toEqual([])
+    })
+  })
+})
+
 test.describe('con sesión', () => {
   test.use({ sesion: { usuario: 'user_prueba_e2e' } })
 

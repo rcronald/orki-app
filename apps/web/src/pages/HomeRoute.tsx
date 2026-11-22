@@ -4,7 +4,7 @@ import { useOfflineIdentity } from '../auth/offline-identity.ts'
 import { useAppIdentity } from '../auth/useAppIdentity.ts'
 import { PublicShell } from '../components/PublicShell.tsx'
 import { PATHS } from '../routes/paths.ts'
-import { HomePage } from './HomePage.tsx'
+import { PublicHome } from './PublicHome.tsx'
 
 /**
  * Qué se ve en `/` (#191). La portada solo tiene sentido sin sesión:
@@ -50,9 +50,5 @@ export function HomeRoute() {
     case 'unavailable':
       break
   }
-  return (
-    <PublicShell>
-      <HomePage />
-    </PublicShell>
-  )
+  return <PublicHome />
 }

@@ -25,6 +25,7 @@
     "vitest.config.ts",
     "medicion/vite.config.ts",
     "medicion/vite.config.e2e.ts",
-    "medicion/sustitutos.ts"
+    "medicion/sustitutos.ts",
+    "prerender/portada-previa-plugin.ts"
   ]
 }
