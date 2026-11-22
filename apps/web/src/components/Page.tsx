@@ -4,7 +4,7 @@ import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
 interface PageProps {
   /** Título visible (h1) y de la pestaña. */
   title: string
-  /** Título de la pestaña si difiere; null deja solo "Orki". */
+  /** Título de la pestaña si difiere; null deja solo "orqui.apps". */
   tabTitle?: string | null
   /**
    * Contenido del h1 si no es el texto de `title` tal cual; por ejemplo, un

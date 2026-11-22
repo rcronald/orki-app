@@ -167,7 +167,7 @@ describe('deleteAccountAndData', () => {
     expect(calls).toHaveLength(4)
     if (!result.ok) {
       expect(failureText(result.step, result.reason)).toBe(
-        'No se pudo eliminar tu cuenta de acceso. Orki todavía no permite eliminar la cuenta desde la app. Tus fotos, tus plantas y tu perfil ya se borraron; solo queda tu cuenta de acceso, vacía. Para eliminarla, escribe al contacto de la página de privacidad.',
+        'No se pudo eliminar tu cuenta de acceso. Todavía no se puede eliminar la cuenta desde orqui.apps. Tus fotos, tus plantas y tu perfil ya se borraron; solo queda tu cuenta de acceso, vacía. Para eliminarla, escribe al contacto de la página de privacidad.',
       )
     }
   })

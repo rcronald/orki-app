@@ -48,8 +48,8 @@ test('manifiesto instalable', async ({ page, request }) => {
     icons: { src: string; sizes: string; purpose?: string }[]
   }
   expect(manifiesto).toMatchObject({
-    name: 'Orki',
-    short_name: 'Orki',
+    name: 'orqui.apps',
+    short_name: 'orqui.apps',
     lang: 'es',
     start_url: '/',
     scope: '/',
@@ -81,7 +81,7 @@ test.describe('sin sesión', () => {
   }) => {
     await page.goto('/')
     await expect(
-      page.getByRole('heading', { name: 'Orki', level: 1 }),
+      page.getByRole('heading', { name: 'orqui.apps', level: 1 }),
     ).toBeVisible()
     await esperarServiceWorker(page)
 
@@ -98,7 +98,7 @@ test.describe('sin sesión', () => {
     }
     await page.reload()
     await expect(
-      page.getByRole('heading', { name: 'Orki', level: 1 }),
+      page.getByRole('heading', { name: 'orqui.apps', level: 1 }),
     ).toBeVisible()
     await expect(
       page.getByText('Tu colección de orquídeas, siempre a mano.'),

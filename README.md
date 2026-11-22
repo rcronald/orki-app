@@ -1,6 +1,6 @@
-# Orki
+# orqui.apps
 
-Orki es una aplicación web para coleccionistas de orquídeas. Es una PWA pensada primero para el celular y con la interfaz en español. En la Fase 1 cada persona registra las orquídeas que tiene y, al ver una nueva en una tienda o un vivero, comprueba al instante si ya la tiene para no comprarla repetida.
+Aplicación web para coleccionistas de orquídeas, que se llama «orqui.apps» (en minúsculas, también al inicio de frase). Hasta el issue #173 se llamaba Orki, y ese nombre sigue en el repositorio, los paquetes, las clases CSS `orki-`, las claves de almacenamiento y las herramientas internas. Es una PWA pensada primero para el celular y con la interfaz en español. En la Fase 1 cada persona registra las orquídeas que tiene y, al ver una nueva en una tienda o un vivero, comprueba al instante si ya la tiene para no comprarla repetida.
 
 La especificación completa de la Fase 1 está en [docs/specification.md](docs/specification.md).
 
@@ -78,7 +78,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run test:e2e:sin-build` | Ejecuta las pruebas de extremo a extremo sin volver a construir. Lo usa el CI.                                                                                                                  |
 | `npm run datos:sin-dueno`    | Detecta perfiles, plantas, eventos y fotos de usuarios que ya no existen en Clerk (`-- --ambiente desarrollo`); solo borra con `--borrar` (ver [su README](scripts/datos-sin-dueno/README.md)). |
 
-La app web tiene además un script propio para regenerar los iconos provisionales de la PWA en `apps/web/public`:
+La app web tiene además un script propio para regenerar los iconos de la PWA en `apps/web/public` a partir del logotipo (ver [Marca](#marca)):
 
 ```sh
 npm run icons --workspace=apps/web
@@ -136,6 +136,16 @@ orki-app/
 Las dependencias se declaran en el `package.json` de cada workspace y se instalan desde la raíz. Las herramientas comunes (ESLint, Prettier, la CLI de Supabase) viven en el `package.json` de la raíz.
 
 Hay dos versiones de TypeScript a propósito. La app compila y comprueba tipos con TypeScript 7 (`apps/web`). La raíz instala TypeScript 6 solo para ESLint, porque `typescript-eslint` todavía no soporta TypeScript 7. Cuando lo soporte, se elimina el TypeScript de la raíz.
+
+## Marca
+
+La app se llama «orqui.apps», siempre en minúsculas (#173). El logotipo está en `apps/web/src/assets/marca/`: `orqui-apps-light.svg` (flor y nombre) y `orqui-apps-light-icon.svg` (solo la flor, sobre fondo rosa pálido), para fondo claro, y sus variantes `-dark` para fondo oscuro, que no se usan porque la app no tiene tema oscuro. Son los SVG entregados por el responsable, optimizados a mano sin cambiar el dibujo. Sus colores son tokens: `color-primary` (pétalos), `color-secondary` (pétalo central, no `color-success`), `color-neutral-0` (marca de verificación), `color-neutral-900` («orqui»), `color-neutral-700` («.apps») y `color-primary-soft` (fondo del símbolo).
+
+En las pantallas se usa el componente `Logo` (`src/components/Logo.tsx`, variantes `full` y `symbol`): una imagen con el texto alternativo «orqui.apps», en línea en el JavaScript para que se vea sin conexión. Su nombre accesible ya es el de la app, así que al lado no se repite el nombre en texto.
+
+Los iconos de `apps/web/public` (`favicon.svg`, `favicon.ico` con 16, 32 y 48 px, `pwa-192x192.png`, `pwa-512x512.png`, `maskable-icon-512x512.png` y `apple-touch-icon-180x180.png`) salen del símbolo para fondo claro con `npm run icons --workspace=apps/web` (`apps/web/scripts/generate-icons.mjs`). El script rasteriza el SVG con el Chromium de Playwright (si falta: `npx playwright install chromium`) y guarda los PNG con paleta de colores para que pesen poco en el precaché. Todos tienen el fondo opaco hasta el borde; el script comprueba que en el enmascarable la flor queda dentro de la zona segura (círculo central de radio 0,4 del lado). El favicon recorta el margen del lienzo para que la flor se reconozca a 16 px. Tras cambiar el logotipo, se regeneran los iconos y se confirman junto con él.
+
+Quien ya instaló la app puede seguir viendo el icono y el nombre anteriores en la pantalla de inicio del celular: Android los actualiza por su cuenta pasado un tiempo, y en iOS hay que quitar la app de la pantalla de inicio y volver a añadirla.
 
 ## Design system en la app
 
@@ -340,7 +350,7 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 | Cualquier otra             | Página no encontrada                                                                                                                                          | Pública                    |
 
 - Navegación: `src/components/AppShell.tsx` pinta la cabecera, un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. El enlace "Administración" solo aparece con el rol de administrador.
-- Cada página pone el título de la pestaña ("Catálogo · Orki") y, al llegar navegando dentro de la app (no al cargarla), el foco va a su título (`h1` con `tabIndex={-1}`) para que el lector de pantalla anuncie la página nueva; en las pantallas de acceso, al contenido principal. Ver `src/routes/navigation.ts`.
+- Cada página pone el título de la pestaña ("Catálogo · orqui.apps") y, al llegar navegando dentro de la app (no al cargarla), el foco va a su título (`h1` con `tabIndex={-1}`) para que el lector de pantalla anuncie la página nueva; en las pantallas de acceso, al contenido principal. Ver `src/routes/navigation.ts`.
 - Recargar cualquier ruta funciona: en Vercel, la reescritura de `vercel.json` responde con `index.html` todo lo que no es `assets/` ni `workbox-`; con la app instalada, el `navigateFallback` del service worker hace lo mismo con cualquier navegación.
 - Carga: `src/routes/AppRouter.tsx` carga `App.tsx` (Clerk, su localización y las páginas) de forma diferida, en un chunk aparte del inicial. El service worker precachea todos los chunks, así que sin conexión también carga.
 
@@ -500,7 +510,7 @@ La fuente por defecto es la de la copia local del #18 (`cached-source.ts`, ver [
 - **Exportar a CSV** (#17): al final de la pantalla, "Exportar a CSV" genera el archivo en el dispositivo con la colección en memoria, sin peticiones (`src/collection/export-csv.ts`, función pura; `src/inventory/ExportAction.tsx` y `save-file.ts`). Sin plantas (o mientras carga) no aparece.
   - **Qué incluye:** todas las plantas del usuario, también las perdidas y regaladas, sin importar los filtros ni la búsqueda (lo dice el texto junto al botón). Una fila por ejemplar, ordenadas por género y nombre (como la vista agrupada, sin tener en cuenta el "×").
   - **Columnas:** Nombre científico (vacío si la planta está por validar), Nombre ingresado, Género, Tipo, Estado, Validación, Fecha de adquisición, Origen, Ubicación, Apodo, Color de flor, Foto en floración ("Sí", "No" o vacío si no hay foto) y Fecha de registro. Valores en español con los mismos textos que la interfaz (`src/collection/labels.ts`); fechas `AAAA-MM-DD` (la de registro, en la fecha local del dispositivo).
-  - **Formato:** UTF-8 con marca de orden de bytes (para que Excel muestre tildes, ñ y "×"), separador coma (configuración regional de Perú; un Excel configurado para España espera punto y coma y lo abriría en una columna), fin de línea CRLF y escapado RFC 4180: una celda con coma, comillas, salto de línea o espacios en los extremos va entre comillas, con las comillas duplicadas. Nombre: `orki-inventario-AAAA-MM-DD.csv`, con la fecha local.
+  - **Formato:** UTF-8 con marca de orden de bytes (para que Excel muestre tildes, ñ y "×"), separador coma (configuración regional de Perú; un Excel configurado para España espera punto y coma y lo abriría en una columna), fin de línea CRLF y escapado RFC 4180: una celda con coma, comillas, salto de línea o espacios en los extremos va entre comillas, con las comillas duplicadas. Nombre: `orqui-apps-inventario-AAAA-MM-DD.csv`, con la fecha local.
   - **Fórmulas:** una celda que empieza por `=`, `+`, `-`, `@`, tabulador o retorno de carro (también tras espacios) lleva delante un apóstrofo (regla de OWASP), y la hoja de cálculo la trata como texto. El valor sigue entero detrás: "-la pequeña" queda "'-la pequeña"; sin el apóstrofo, Excel lo tomaría por una fórmula y mostraría un error.
   - **Entrega:** en un dispositivo táctil con la Web Share API para archivos (`navigator.canShare({ files })`) se abre la hoja de compartir del sistema (guardar en Archivos, correo, abrir en Sheets); si el usuario la cierra no pasa nada más y, si falla, se descarga. En el resto, un enlace temporal con `download` a una URL de objeto del `Blob`, que se revoca un segundo después. El motivo: en la app instalada en iPhone (modo standalone), Safari no siempre respeta `download` con un `Blob`. Probado con pruebas automáticas y, en Chrome de escritorio (página de muestra), la generación del archivo y el enlace de descarga, sin llegar a guardarlo; la descarga en iPhone y Android y la apertura en Excel y Google Sheets están pendientes de la prueba manual del issue.
 
@@ -678,12 +688,12 @@ Afirmaciones que debe verificar una persona (revisadas contra el código el 21 d
 2. Proveedores: Clerk (acceso), Supabase (base de datos, fotos y eventos de uso), Sentry (errores) y Vercel (alojamiento). No dice en qué países guardan los datos, cuánto tiempo los conservan ni qué registros técnicos (por ejemplo, direcciones IP) guardan por su cuenta: conviene revisarlo en sus condiciones y decidir si se menciona.
 3. Eventos de uso (`src/telemetry/events.ts`, migración `20261121170000_eventos_de_producto.sql`): registro completado (duración, con foto, nombre por validar) y búsqueda «¿Ya la tengo?» (duración y resultado); los dos con el id de Clerk (lo pone la base), la hora y si se generó sin conexión. Sin textos. Nadie los lee por la API: solo el dueño de la base y la clave de servicio. Objetivos citados: registrar en menos de 1 minuto y responder en menos de 5 segundos (`docs/specification.md`).
 4. Sentry (`src/observability/`): solo errores (no hay trazas de rendimiento ni grabación de sesión). Lo que se quita y lo que queda está en `privacy.ts` y `sentry-options.ts`. La página menciona además las sesiones de «release health» que manda la integración por defecto `BrowserSession` (no se quita en `sentry-options.ts`): un aviso al abrir la app con la versión, el navegador y el id del usuario. Si no se quieren, hay que quitar esa integración y cambiar el texto.
-5. «Orki no muestra publicidad ni usa otros servicios de analítica o de publicidad»: en las dependencias y en `index.html` no hay nada más que Clerk, Supabase y Sentry. Que no se venden datos es una decisión del responsable, no algo que se pueda comprobar en el código: la página no lo dice.
+5. «En orqui.apps no hay publicidad ni otros servicios de analítica o de publicidad»: en las dependencias y en `index.html` no hay nada más que Clerk, Supabase y Sentry. Que no se venden datos es una decisión del responsable, no algo que se pueda comprobar en el código: la página no lo dice.
 6. Quién ve qué: cada usuario solo sus plantas; un administrador del catálogo ve cuántas plantas hay por especie (`count_species_plants`) y la cola de propuestas (`list_proposal_groups`, migración `20261121180000_cola_de_propuestas.sql`): por grupo de nombre normalizado y género, la forma más frecuente del nombre tal como se escribió, el género, el tipo más frecuente, el número de plantas y hasta cuatro fotos (las rutas llevan el id del usuario; la pantalla no lo muestra). La auditoría de una resolución guarda el nombre propuesto, el género y el número de plantas, sin ids de usuario ni rutas, y no se borra.
 7. Lo que se guarda en el dispositivo y cuándo se borra (`docs/sin-conexion.md` y `src/account/device-cleanup.ts`): copia del inventario, miniaturas, cola de eventos (29 días como mucho) y id del último usuario se borran al cerrar sesión, también sin conexión; el id se guarda hasta avisar a Clerk si se cerró sin conexión; el borrador (texto y foto) caduca a las 24 horas y no se borra al cerrar sesión; las preferencias tampoco.
 8. Exportación (`src/collection/export-csv.ts`, `src/inventory/ExportAction.tsx`): al final de «Mi colección», todas las plantas con todas sus columnas, sin fotos.
 9. Eliminación (sección «Eliminación de la cuenta»): lo que borra, y que no se borran los informes ya enviados a Sentry ni la auditoría del catálogo.
-10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «Orki lo filtró a las orquídeas y lo normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
+10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «En orqui.apps se filtró a las orquídeas y se normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
 11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
 
 Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, fecha, las secciones de eventos, Sentry, propuestas, dispositivo y exportación, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).

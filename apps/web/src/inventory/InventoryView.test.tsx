@@ -22,7 +22,7 @@ import { PREFERENCES_KEY } from './preferences.ts'
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Mi colección · Orki'
+  document.title = 'Mi colección · orqui.apps'
   window.localStorage.clear()
 })
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { isAccountDeletedState } from '../account/deletion-status.ts'
 import { DELETED_NOTICE } from '../account/texts.ts'
+import { Logo } from '../components/Logo.tsx'
 import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
 
 // Pantalla de inicio provisional. Es pública: se ve con o sin sesión y aunque
@@ -44,12 +45,9 @@ export function HomePage() {
           )}
         </div>
       )}
-      <h1
-        ref={headingRef}
-        tabIndex={-1}
-        className="font-display text-display font-semibold text-neutral-900"
-      >
-        Orki
+      {/* El logotipo es el título: su texto alternativo, «orqui.apps». */}
+      <h1 ref={headingRef} tabIndex={-1} className="w-full max-w-sm">
+        <Logo className="mx-auto block h-auto w-[320px] max-w-full" />
       </h1>
       <p className="max-w-sm text-lg text-neutral-700">
         Tu colección de orquídeas, siempre a mano.

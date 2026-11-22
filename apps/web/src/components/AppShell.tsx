@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router'
 import { AccountControls } from '../auth/AccountControls.tsx'
 import { useIsCatalogAdmin } from '../auth/roles.ts'
 import { PATHS } from '../routes/paths.ts'
+import { Logo } from './Logo.tsx'
 
 // Estructura común de las páginas de la app (no de las de acceso): enlace para
 // saltar al contenido, cabecera con la marca y la cuenta, navegación principal
@@ -22,7 +23,9 @@ export function AppShell() {
         Saltar al contenido
       </a>
       <header className="flex flex-wrap items-center justify-between gap-space-3 px-space-4 py-space-3">
-        <p className="font-display text-xl font-semibold">Orki</p>
+        <p>
+          <Logo className="block h-[40px] w-auto" />
+        </p>
         <AccountControls />
       </header>
       <nav aria-label="Principal" className="px-space-4 pb-space-3">

@@ -151,7 +151,7 @@ describe('CollectionPage', () => {
     expect(screen.getByText('Cargando tu colección…')).toBeInTheDocument()
 
     await resolveLast()
-    expect(document.title).toBe('Mi colección · Orki')
+    expect(document.title).toBe('Mi colección · orqui.apps')
     expect(screen.getAllByRole('article')).toHaveLength(3)
     expect(screen.getByText('3 orquídeas')).toBeInTheDocument()
     await expectNoAxeViolations()

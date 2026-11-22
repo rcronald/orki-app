@@ -80,7 +80,7 @@ describe('PlantDetailPage', () => {
     expect(location()).toBe(`/coleccion/${AMABILIS.id}`)
     expect(heading()).toHaveTextContent('Phalaenopsis amabilis')
     expect(heading()).toHaveFocus()
-    expect(document.title).toBe('Phalaenopsis amabilis · Orki')
+    expect(document.title).toBe('Phalaenopsis amabilis · orqui.apps')
 
     // La foto grande, solo aquí.
     const photo = await screen.findByRole('img', {

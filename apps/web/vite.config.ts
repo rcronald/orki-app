@@ -95,8 +95,8 @@ export default defineConfig({
         'apple-touch-icon-180x180.png',
       ],
       manifest: {
-        name: 'Orki',
-        short_name: 'Orki',
+        name: 'orqui.apps',
+        short_name: 'orqui.apps',
         description: 'Inventario de tu colección de orquídeas.',
         lang: 'es',
         start_url: '/',

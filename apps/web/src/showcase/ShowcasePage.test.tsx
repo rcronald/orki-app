@@ -32,7 +32,7 @@ vi.setConfig({ testTimeout: 20_000 })
 describe('ShowcasePage', () => {
   it('pone el título de la pestaña', () => {
     renderShowcase()
-    expect(document.title).toBe('Muestra del design system · Orki')
+    expect(document.title).toBe('Muestra del design system · orqui.apps')
   })
 
   it('muestra los tokens leídos de tokens.css con sus contrastes', () => {

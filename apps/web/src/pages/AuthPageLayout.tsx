@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { Logo } from '../components/Logo.tsx'
 import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
 import { PATHS } from '../routes/paths.ts'
 
@@ -22,11 +23,10 @@ export function AuthPageLayout({ title, children }: AuthPageLayoutProps) {
   return (
     <div className="flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
       <header className="px-space-4 py-space-3">
-        <Link
-          to={PATHS.home}
-          className="font-display text-xl font-semibold text-neutral-900"
-        >
-          <span className="sr-only">Volver al inicio de</span> Orki
+        {/* Nombre accesible: «Volver al inicio de orqui.apps» (el logotipo). */}
+        <Link to={PATHS.home} className="inline-block rounded-md">
+          <span className="sr-only">Volver al inicio de</span>{' '}
+          <Logo className="block h-[40px] w-auto" />
         </Link>
       </header>
       <main

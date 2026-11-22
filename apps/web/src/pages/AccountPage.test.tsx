@@ -61,7 +61,7 @@ beforeEach(() => {
   resetFakeClerk()
   setFakeClerk({ signedIn: true })
   document.documentElement.lang = 'es'
-  document.title = 'Orki'
+  document.title = 'orqui.apps'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   order.length = 0
   // Al eliminar la cuenta, Clerk deja de tener sesión.
@@ -98,7 +98,7 @@ describe('AccountPage', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Tu cuenta' }),
     ).toBeInTheDocument()
-    expect(document.title).toBe('Tu cuenta · Orki')
+    expect(document.title).toBe('Tu cuenta · orqui.apps')
     expect(screen.getByText(FAKE_USER_EMAIL)).toBeInTheDocument()
     await expectNoAxeViolations()
   })
@@ -118,7 +118,7 @@ describe('AccountPage', () => {
     const notice = await screen.findByText(/Tu cuenta se eliminó/)
     expect(notice.closest('[role="status"]')).not.toBeNull()
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Orki' }),
+      screen.getByRole('heading', { level: 1, name: 'orqui.apps' }),
     ).toBeInTheDocument()
     expect(order).toEqual([
       `photos:${FAKE_USER_ID}`,
@@ -141,7 +141,7 @@ describe('AccountPage', () => {
     await deleteFromPage(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Orki todavía no permite eliminar la cuenta desde la app.',
+      'Todavía no se puede eliminar la cuenta desde orqui.apps.',
     )
     expect(setActive).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()

@@ -1,68 +1,112 @@
-// Genera los iconos provisionales de la PWA en apps/web/public.
-// Diseño propio: la inicial "O" en blanco sobre el color de marca.
-// Sin dependencias: rasteriza con supermuestreo y codifica PNG con node:zlib.
+// Genera los iconos de la PWA en apps/web/public a partir del símbolo del
+// logotipo para fondo claro (src/assets/marca/orqui-apps-light-icon.svg, #173):
+// la flor sobre su fondo rosa pálido, opaco hasta el borde.
+//
+// Rasteriza el SVG con el Chromium de Playwright (dependencia de desarrollo que
+// ya usan las pruebas de extremo a extremo) y codifica los PNG con node:zlib,
+// en color indexado (paleta de hasta 256 colores) para que pesen poco: el
+// precaché del service worker tiene un presupuesto de tamaño.
+//
 // Uso: npm run icons --workspace=apps/web
-import { mkdirSync, writeFileSync } from 'node:fs'
+// Necesita el navegador de Playwright: npx playwright install chromium
+
+// rasterize() pasa una función al navegador, que sí tiene estos globales.
+/* global Image, OffscreenCanvas */
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { deflateSync } from 'node:zlib'
+import { chromium } from '@playwright/test'
 
-const BRAND = [0xd5, 0x2e, 0x66]
-const WHITE = [0xff, 0xff, 0xff]
-const SAMPLES = 4 // supermuestreo SAMPLES x SAMPLES por píxel
+const webDir = join(dirname(fileURLToPath(import.meta.url)), '..')
+const outDir = join(webDir, 'public')
+const source = readFileSync(
+  join(webDir, 'src/assets/marca/orqui-apps-light-icon.svg'),
+  'utf8',
+)
 
-const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public')
+// El símbolo ocupa el centro del lienzo de 512 (de 103 a 409 en horizontal y
+// de 122 a 387 en vertical). Para el favicon se recorta el lienzo, sin tocar
+// el dibujo, para que la flor llene más y se reconozca a 16 px.
+const FAVICON_VIEWBOX = '66 66 380 380'
 
-// Geometría en coordenadas normalizadas (0..1). La "O" es un anillo elíptico.
-const LETTER = { rx: 0.25, ry: 0.3, stroke: 0.1 }
-
-function insideRoundedSquare(x, y, radius) {
-  const cx = Math.min(Math.max(x, radius), 1 - radius)
-  const cy = Math.min(Math.max(y, radius), 1 - radius)
-  return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2
+function withViewBox(svg, viewBox) {
+  return svg
+    .replace(/viewBox="[^"]*"/, `viewBox="${viewBox}"`)
+    .replace(/ width="\d+" height="\d+"/, '')
 }
 
-function insideEllipse(x, y, rx, ry) {
-  return ((x - 0.5) / rx) ** 2 + ((y - 0.5) / ry) ** 2 <= 1
-}
-
-function insideLetter(x, y, scale) {
-  const rx = LETTER.rx * scale
-  const ry = LETTER.ry * scale
-  const s = LETTER.stroke * scale
-  return insideEllipse(x, y, rx, ry) && !insideEllipse(x, y, rx - s, ry - s)
-}
+const faviconSvg = withViewBox(source, FAVICON_VIEWBOX)
 
 /**
- * @param {number} size lado en píxeles
- * @param {{ cornerRadius: number, letterScale: number }} shape
+ * Rasteriza un SVG en un cuadrado de `size` píxeles y devuelve sus píxeles
+ * RGBA.
  */
-function render(size, { cornerRadius, letterScale }) {
-  const rgba = Buffer.alloc(size * size * 4)
-  const total = SAMPLES * SAMPLES
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
-      let bg = 0
-      let fg = 0
-      for (let sy = 0; sy < SAMPLES; sy++) {
-        for (let sx = 0; sx < SAMPLES; sx++) {
-          const x = (px + (sx + 0.5) / SAMPLES) / size
-          const y = (py + (sy + 0.5) / SAMPLES) / size
-          if (!insideRoundedSquare(x, y, cornerRadius)) continue
-          if (insideLetter(x, y, letterScale)) fg++
-          else bg++
-        }
+async function rasterize(page, svg, size) {
+  const base64 = await page.evaluate(
+    async ({ svg, size }) => {
+      const image = new Image()
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+      await image.decode()
+      const canvas = new OffscreenCanvas(size, size)
+      const context = canvas.getContext('2d')
+      context.drawImage(image, 0, 0, size, size)
+      const { data } = context.getImageData(0, 0, size, size)
+      let binary = ''
+      for (let i = 0; i < data.length; i += 0x8000) {
+        binary += String.fromCharCode(...data.subarray(i, i + 0x8000))
       }
-      const covered = bg + fg
-      const i = (py * size + px) * 4
-      if (covered === 0) continue
-      for (let c = 0; c < 3; c++) {
-        rgba[i + c] = Math.round((BRAND[c] * bg + WHITE[c] * fg) / covered)
-      }
-      rgba[i + 3] = Math.round((255 * covered) / total)
+      return btoa(binary)
+    },
+    { svg, size },
+  )
+  return Buffer.from(base64, 'base64')
+}
+
+// Paleta: los colores más frecuentes (los planos del dibujo y los bordes
+// suavizados más comunes). Si hay más de 256, los que faltan se aproximan al
+// más cercano; solo afecta a algunos píxeles de borde.
+function quantize(rgba) {
+  const counts = new Map()
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] !== 255) {
+      throw new Error('El icono debe ser opaco hasta el borde.')
     }
+    const color = (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2]
+    counts.set(color, (counts.get(color) ?? 0) + 1)
   }
-  return encodePng(size, rgba)
+  const palette = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 256)
+    .map(([color]) => color)
+  const indexOf = new Map(palette.map((color, index) => [color, index]))
+  const nearest = (color) => {
+    let best = 0
+    let bestDistance = Infinity
+    for (const [index, candidate] of palette.entries()) {
+      const dr = ((color >> 16) & 255) - ((candidate >> 16) & 255)
+      const dg = ((color >> 8) & 255) - ((candidate >> 8) & 255)
+      const db = (color & 255) - (candidate & 255)
+      const distance = dr * dr + dg * dg + db * db
+      if (distance < bestDistance) {
+        best = index
+        bestDistance = distance
+      }
+    }
+    return best
+  }
+  const indices = Buffer.alloc(rgba.length / 4)
+  for (let p = 0; p < indices.length; p++) {
+    const i = p * 4
+    const color = (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2]
+    let index = indexOf.get(color)
+    if (index === undefined) {
+      index = nearest(color)
+      indexOf.set(color, index)
+    }
+    indices[p] = index
+  }
+  return { palette, indices }
 }
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
@@ -86,64 +130,105 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc])
 }
 
+// PNG de color indexado, 8 bits por píxel, sin transparencia.
 function encodePng(size, rgba) {
+  const { palette, indices } = quantize(rgba)
   const header = Buffer.alloc(13)
   header.writeUInt32BE(size, 0)
   header.writeUInt32BE(size, 4)
-  header[8] = 8 // bits por canal
-  header[9] = 6 // RGBA
-  const stride = size * 4
-  const raw = Buffer.alloc((stride + 1) * size)
+  header[8] = 8 // bits por índice
+  header[9] = 3 // color indexado
+  const plte = Buffer.alloc(palette.length * 3)
+  palette.forEach((color, index) => {
+    plte[index * 3] = (color >> 16) & 255
+    plte[index * 3 + 1] = (color >> 8) & 255
+    plte[index * 3 + 2] = color & 255
+  })
+  const raw = Buffer.alloc((size + 1) * size)
   for (let y = 0; y < size; y++) {
-    raw[y * (stride + 1)] = 0 // filtro "None"
-    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride)
+    raw[y * (size + 1)] = 0 // filtro "None", el que mejor va con una paleta
+    indices.copy(raw, y * (size + 1) + 1, y * size, (y + 1) * size)
   }
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', header),
+    chunk('PLTE', plte),
     chunk('IDAT', deflateSync(raw, { level: 9 })),
     chunk('IEND', Buffer.alloc(0)),
   ])
 }
 
-// ICO con una única imagen PNG embebida (formato admitido desde Windows Vista).
-function encodeIco(size, png) {
-  const header = Buffer.alloc(22)
+// ICO con imágenes PNG embebidas (formato admitido desde Windows Vista).
+function encodeIco(images) {
+  const header = Buffer.alloc(6 + 16 * images.length)
   header.writeUInt16LE(0, 0)
   header.writeUInt16LE(1, 2) // tipo: icono
-  header.writeUInt16LE(1, 4) // número de imágenes
-  header[6] = size
-  header[7] = size
-  header.writeUInt16LE(1, 10) // planos
-  header.writeUInt16LE(32, 12) // bits por píxel
-  header.writeUInt32LE(png.length, 14)
-  header.writeUInt32LE(22, 18) // desplazamiento de la imagen
-  return Buffer.concat([header, png])
+  header.writeUInt16LE(images.length, 4)
+  let offset = header.length
+  images.forEach(({ size, png }, index) => {
+    const entry = 6 + 16 * index
+    header[entry] = size
+    header[entry + 1] = size
+    header.writeUInt16LE(1, entry + 4) // planos
+    header.writeUInt16LE(32, entry + 6) // bits por píxel
+    header.writeUInt32LE(png.length, entry + 8)
+    header.writeUInt32LE(offset, entry + 12)
+    offset += png.length
+  })
+  return Buffer.concat([header, ...images.map(({ png }) => png)])
 }
 
-// Iconos "any": cuadrado redondeado con transparencia alrededor.
-const ANY = { cornerRadius: 0.22, letterScale: 1 }
-// Enmascarable y Apple: fondo a sangre; la letra cabe holgada en la zona segura
-// (círculo de radio 0.4 del lado), ya que su semieje mayor es 0.3 * 0.9 + margen.
-const FULL_BLEED = { cornerRadius: 0, letterScale: 0.9 }
-
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="22" fill="#D52E66"/>
-  <ellipse cx="50" cy="50" rx="${(LETTER.rx - LETTER.stroke / 2) * 100}" ry="${(LETTER.ry - LETTER.stroke / 2) * 100}" fill="none" stroke="#FFFFFF" stroke-width="${LETTER.stroke * 100}"/>
-</svg>
-`
-
-const files = {
-  'pwa-192x192.png': render(192, ANY),
-  'pwa-512x512.png': render(512, ANY),
-  'maskable-icon-512x512.png': render(512, FULL_BLEED),
-  'apple-touch-icon-180x180.png': render(180, FULL_BLEED),
-  'favicon.ico': encodeIco(48, render(48, ANY)),
-  'favicon.svg': svg,
+// Distancia máxima al centro de lo que no es fondo, como fracción del lado.
+// El icono enmascarable debe dejar el dibujo dentro del círculo central de
+// radio 0,4 (la zona segura de la especificación de manifiestos).
+function drawingRadius(size, rgba) {
+  const background = rgba.readUInt32BE(0)
+  let max = 0
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (rgba.readUInt32BE((y * size + x) * 4) === background) continue
+      const dx = x + 0.5 - size / 2
+      const dy = y + 0.5 - size / 2
+      max = Math.max(max, Math.hypot(dx, dy))
+    }
+  }
+  return max / size
 }
 
-mkdirSync(outDir, { recursive: true })
-for (const [name, content] of Object.entries(files)) {
-  writeFileSync(join(outDir, name), content)
-  console.log(`public/${name}`)
+const browser = await chromium.launch()
+try {
+  const page = await browser.newPage()
+  const png = async (svg, size) => {
+    const rgba = await rasterize(page, svg, size)
+    return { size, rgba, png: encodePng(size, rgba) }
+  }
+
+  const maskable = await png(source, 512)
+  const radius = drawingRadius(512, maskable.rgba)
+  if (radius > 0.4) {
+    throw new Error(
+      `El símbolo sale de la zona segura del icono enmascarable (radio ${radius.toFixed(3)} > 0,4).`,
+    )
+  }
+  console.log(`Zona segura del enmascarable: radio ${radius.toFixed(3)} ≤ 0,4`)
+
+  // Todos llevan el mismo dibujo con fondo opaco a sangre: el enmascarable y
+  // el de Apple lo necesitan, y los "any" se ven igual en todas partes.
+  const files = {
+    'pwa-192x192.png': (await png(source, 192)).png,
+    'pwa-512x512.png': (await png(source, 512)).png,
+    'maskable-icon-512x512.png': maskable.png,
+    'apple-touch-icon-180x180.png': (await png(source, 180)).png,
+    'favicon.ico': encodeIco(
+      await Promise.all([16, 32, 48].map((size) => png(faviconSvg, size))),
+    ),
+    'favicon.svg': faviconSvg,
+  }
+
+  for (const [name, content] of Object.entries(files)) {
+    writeFileSync(join(outDir, name), content)
+    console.log(`public/${name} (${content.length} B)`)
+  }
+} finally {
+  await browser.close()
 }

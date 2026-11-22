@@ -151,7 +151,7 @@ beforeEach(() => {
   )
   // Como en index.html.
   document.documentElement.lang = 'es'
-  document.title = 'Orki'
+  document.title = 'orqui.apps'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 
@@ -168,7 +168,9 @@ describe('AccountView', () => {
     renderView({ effects })
     expect(screen.getByText('persona@example.com')).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'Qué datos guarda Orki (privacidad)' }),
+      screen.getByRole('link', {
+        name: 'Qué datos guarda orqui.apps (privacidad)',
+      }),
     ).toHaveAttribute('href', '/privacidad')
     expect(
       screen.getByText(
@@ -425,7 +427,7 @@ describe('AccountView', () => {
     const button = screen.getByRole('button', { name: 'Eliminar mi cuenta' })
     expect(button).toBeDisabled()
     expect(button).toHaveAccessibleDescription(
-      /todavía no permite eliminar la cuenta desde la app. No se ha borrado nada/,
+      /Todavía no se puede eliminar la cuenta desde orqui\.apps\. No se ha borrado nada/,
     )
     expect(calls).toEqual([])
   })
@@ -440,7 +442,7 @@ describe('AccountView', () => {
     await expectNoAxeViolations()
   })
 
-  it('con una eliminación a medias, ofrece continuarla o seguir usando Orki', async () => {
+  it('con una eliminación a medias, ofrece continuarla o seguir usando orqui.apps', async () => {
     const user = userEvent.setup()
     markAccountDeletionStarted(USER)
     const { effects } = controlledEffects()
@@ -450,7 +452,9 @@ describe('AccountView', () => {
       screen.getByRole('button', { name: 'Continuar la eliminación' }),
     ).toBeEnabled()
     await expectNoAxeViolations()
-    await user.click(screen.getByRole('button', { name: 'Seguir usando Orki' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Seguir usando orqui.apps' }),
+    )
     expect(onKeepUsing).toHaveBeenCalledTimes(1)
     expect(isAccountDeletionPending(USER)).toBe(false)
     expect(
