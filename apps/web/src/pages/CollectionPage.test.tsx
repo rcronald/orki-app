@@ -163,6 +163,28 @@ describe('CollectionPage', () => {
     expect(searchbox()).toHaveFocus()
   })
 
+  it('"¿Ya la tengo?": responde bajo el buscador sobre toda la colección, aunque haya filtros', async () => {
+    const user = userEvent.setup()
+    // Con el filtro de color blanco, la lista solo muestra Cattleya maxima.
+    renderAt('/coleccion?color=white')
+    await resolveLast()
+
+    await user.type(searchbox(), 'phal schilleriana')
+    expect(searchbox()).toHaveFocus()
+    const answer = screen
+      .getAllByRole('status')
+      .find((region) => region.textContent?.includes('la tienes'))
+    expect(answer).toHaveTextContent(
+      'Sí, la tienesTienes 1 ejemplar de Phalaenopsis schilleriana.',
+    )
+    expect(
+      screen.getByText(
+        'La respuesta es sobre toda tu colección, sin los filtros.',
+      ),
+    ).toBeInTheDocument()
+    await expectNoAxeViolations()
+  })
+
   it('al volver del registro conserva la búsqueda y la posición de desplazamiento', async () => {
     const user = userEvent.setup()
     renderAt('/coleccion')

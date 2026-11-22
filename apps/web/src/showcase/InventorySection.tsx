@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react'
-import { DEFAULT_FILTERS, type PlantFilters } from '../collection/filters.ts'
+import {
+  countActiveFilters,
+  DEFAULT_FILTERS,
+  type PlantFilters,
+} from '../collection/filters.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import {
   CollectionLoadError,
@@ -9,6 +13,7 @@ import type { CollectionStatus } from '../collection/store.ts'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { InventoryView } from '../inventory/InventoryView.tsx'
+import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
 import { largeSampleCollection, SAMPLE_COLLECTION } from './inventory-data.ts'
 import { Example, Section } from './layout.tsx'
 
@@ -77,7 +82,7 @@ export function InventorySection() {
     <Section
       id="inventario"
       title="Pantalla de inventario"
-      description="InventoryView, la pantalla de /coleccion, con datos fijos. Por defecto solo cuenta las plantas activas: la regalada y la perdida de la muestra se ven con el filtro de estado. «Filtros» abre el panel de estado, género, color y origen. Reintentar no hace nada aquí."
+      description="InventoryView, la pantalla de /coleccion, con datos fijos. Por defecto solo cuenta las plantas activas: la regalada y la perdida de la muestra se ven con el filtro de estado. «Filtros» abre el panel de estado, género, color y origen. Bajo el buscador, la respuesta de «¿Ya la tengo?» sobre la colección de la muestra. Reintentar no hace nada aquí."
     >
       <ChipGroup aria-label="Estado del inventario">
         {SCENARIOS.map((option) => (
@@ -100,6 +105,15 @@ export function InventorySection() {
           onQueryChange={setQuery}
           filters={filters}
           onFiltersChange={setFilters}
+          searchResult={
+            <OwnershipPanel
+              plants={state.plants}
+              query={query}
+              filtered={countActiveFilters(filters) > 0}
+              // Datos fijos: sin consultar el catálogo.
+              searchSpecies={null}
+            />
+          }
         />
       </Example>
     </Section>

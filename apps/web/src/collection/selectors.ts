@@ -1,5 +1,10 @@
 import type { CollectionGenus, CollectionPlant } from './model.ts'
 import { normalizeSearchText } from './normalize.ts'
+import {
+  allowedTypos,
+  boundedPrefixDistance,
+  MAX_TOTAL_TYPOS,
+} from './similarity.ts'
 
 // Funciones puras sobre la colección en memoria: qué plantas cuentan, filtro por
 // texto, agrupación por género, contadores y orden. No piden nada a la red;
@@ -53,6 +58,55 @@ function searchTextOf(plant: CollectionPlant): string {
   return text
 }
 
+// Las palabras del mismo texto, para la búsqueda con errores de tipeo. Sin el
+// punto final de cada una, como en "¿Ya la tengo?" ("Phal." es "phal").
+const searchWordLists = new WeakMap<CollectionPlant, readonly string[]>()
+
+function searchWordsOf(plant: CollectionPlant): readonly string[] {
+  let words = searchWordLists.get(plant)
+  if (words === undefined) {
+    words = [
+      ...new Set(
+        searchTextOf(plant)
+          .split(/[ \n]/)
+          .map((word) => word.replace(/\.+$/, ''))
+          .filter(Boolean),
+      ),
+    ]
+    searchWordLists.set(plant, words)
+  }
+  return words
+}
+
+/**
+ * Si la planta coincide tolerando errores de tipeo: cada palabra de la búsqueda
+ * aparece tal cual o se parece al comienzo de alguna palabra de la planta,
+ * con la misma tolerancia que "¿Ya la tengo?" (allowedTypos() por palabra y
+ * MAX_TOTAL_TYPOS en toda la búsqueda; ver similarity.ts).
+ */
+function matchesWithTypos(
+  plant: CollectionPlant,
+  words: readonly string[],
+): boolean {
+  const text = searchTextOf(plant)
+  let typos = 0
+  for (const word of words) {
+    if (text.includes(word)) continue
+    const allowed = Math.min(allowedTypos(word.length), MAX_TOTAL_TYPOS - typos)
+    if (allowed <= 0) return false
+    let best = allowed + 1
+    for (const plantWord of searchWordsOf(plant)) {
+      const distance = boundedPrefixDistance(word, plantWord, best - 1)
+      if (distance < best) best = distance
+      // No aparece tal cual, así que menos de un error no puede haber.
+      if (best <= 1) break
+    }
+    if (best > allowed) return false
+    typos += best
+  }
+  return true
+}
+
 /**
  * Filtra por texto sobre el nombre mostrado, el nombre ingresado, el género, el
  * apodo y el origen, sin distinguir mayúsculas, tildes ni el signo de híbrido
@@ -60,6 +114,12 @@ function searchTextOf(plant: CollectionPlant): string {
  * de esos campos, en cualquier posición: "phal amab" encuentra "Phalaenopsis
  * amabilis" y "amabilis vivero" la encuentra si su origen es "Vivero Sol". Una
  * búsqueda vacía (o que se queda vacía al normalizar) no filtra por texto.
+ *
+ * Si ninguna planta coincide así, se toleran los errores de tipeo
+ * ("phalenopsis amabils" encuentra "Phalaenopsis amabilis"), para que la lista
+ * no quede vacía cuando "¿Ya la tengo?" responde que hay una parecida. Como
+ * allí, las coincidencias con errores solo se muestran cuando no hay ninguna
+ * sin ellos.
  */
 export function filterByText(
   plants: readonly CollectionPlant[],
@@ -69,10 +129,16 @@ export function filterByText(
   const candidates = plantsByStatus(plants, options)
   const words = normalizeSearchText(query).split(' ').filter(Boolean)
   if (words.length === 0) return candidates
-  return candidates.filter((plant) => {
+  const matches = candidates.filter((plant) => {
     const text = searchTextOf(plant)
     return words.every((word) => text.includes(word))
   })
+  if (matches.length > 0) return matches
+  const typoWords = words
+    .map((word) => word.replace(/\.+$/, ''))
+    .filter(Boolean)
+  if (typoWords.length === 0) return matches
+  return candidates.filter((plant) => matchesWithTypos(plant, typoWords))
 }
 
 // Orden ------------------------------------------------------------------------

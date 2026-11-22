@@ -61,4 +61,21 @@ describe('OwnershipAnswer', () => {
       'lucide-search',
     )
   })
+
+  it('con announce={false} no es una región de estado propia', () => {
+    render(
+      <div role="status">
+        <OwnershipAnswer
+          owned
+          specimenCount={1}
+          scientificName="Cattleya maxima"
+          announce={false}
+        />
+      </div>,
+    )
+
+    // Solo la región que la contiene.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveTextContent('Sí, la tienes')
+  })
 })

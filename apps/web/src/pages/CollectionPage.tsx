@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
-import type { PlantFilters } from '../collection/filters.ts'
+import { countActiveFilters, type PlantFilters } from '../collection/filters.ts'
 import { useCollection } from '../collection/useCollection.ts'
 import { Page } from '../components/Page.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
@@ -9,6 +9,7 @@ import { clearPlantNotice, peekPlantNotice } from '../detail/notice.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { readFilters, writeFilters } from '../inventory/filter-params.ts'
 import { InventoryView } from '../inventory/InventoryView.tsx'
+import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
 import { readRegisteredPlant } from '../inventory/registered-plant.ts'
 import { RegisteredNotice } from '../inventory/RegisteredNotice.tsx'
 import { useScrollMemory } from '../inventory/scroll-memory.ts'
@@ -33,6 +34,10 @@ const SEARCH_PARAM = 'q'
 // recién registrada: se muestra un aviso de confirmación y se borra ese
 // estado del historial, para que recargar o volver con "atrás" no lo repita.
 // Al volver de eliminar una planta (#16), "Eliminaste…" (detail/notice.ts).
+//
+// Bajo el buscador, la respuesta de "¿Ya la tengo?" (#19, OwnershipPanel),
+// sobre toda la colección y sin esperar a la red. Su prop onMeasure es el
+// punto de enganche del evento de producto de esa búsqueda (#146).
 
 function deletedNotice() {
   const notice = peekPlantNotice()
@@ -131,6 +136,13 @@ export function CollectionPage() {
         onQueryChange={setQuery}
         filters={filters}
         onFiltersChange={setFilters}
+        searchResult={
+          <OwnershipPanel
+            plants={plants}
+            query={query}
+            filtered={countActiveFilters(filters) > 0}
+          />
+        }
       />
     </Page>
   )
