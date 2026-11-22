@@ -84,9 +84,8 @@ export function HomePage() {
             Registra tus plantas con foto, usa sus nombres científicos correctos
             y consulta tu colección aunque no tengas señal.
           </p>
-          {/* Hasta 720 px, una acción debajo de otra y a todo el ancho, como
-              en la maqueta de celular (el sistema las deja en fila). */}
-          <div className="orki-hero__actions publico-estrecho:flex-col">
+          {/* Hasta 720 px el sistema las pone una debajo de otra. */}
+          <div className="orki-hero__actions">
             <Link to={PATHS.signUp} className="orki-btn orki-btn--strong">
               <Icon name="sprout" />
               Crear cuenta gratis

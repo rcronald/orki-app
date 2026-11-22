@@ -19,9 +19,9 @@ describe('PublicHeader', () => {
     expect(
       screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
     ).toHaveAttribute('href', '/')
-    expect(
-      screen.getByRole('link', { name: 'Iniciar sesión' }),
-    ).toHaveAttribute('href', '/iniciar-sesion')
+    const signIn = screen.getByRole('link', { name: 'Iniciar sesión' })
+    expect(signIn).toHaveAttribute('href', '/iniciar-sesion')
+    expect(signIn).toHaveClass('orki-btn', 'orki-btn--secondary')
     const signUp = screen.getByRole('link', { name: 'Crear cuenta gratis' })
     expect(signUp).toHaveAttribute('href', '/registro')
     expect(signUp).toHaveClass('orki-btn', 'orki-btn--strong')
