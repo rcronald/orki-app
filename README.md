@@ -760,7 +760,7 @@ No guardes el estado de la sesión (`--save-storage`) dentro del repositorio: ll
 
 ### En el CI
 
-El job **Pruebas de extremo a extremo (Playwright)** de `.github/workflows/ci.yml` corre en paralelo a los demás: instala los navegadores (en caché por versión de Playwright), construye la app de las pruebas y ejecuta los cuatro perfiles, con un reintento por prueba (una prueba que pasa a la segunda queda marcada como inestable en el informe). No usa secretos. Si falla, sube como artefacto `informe-playwright` el informe HTML y las trazas. Por ahora no es obligatorio para fusionar; la propuesta es exigirlo cuando lleve dos semanas estable.
+Las pruebas de extremo a extremo corren en `.github/workflows/ci.yml` como cuatro jobs en paralelo, uno por perfil (**Pruebas de extremo a extremo (chromium)**, **(firefox)**, **(webkit)** y **(celular)**), a la vez que los demás jobs: cada uno instala solo su navegador (en caché por versión de Playwright y navegador; el perfil de celular usa WebKit), construye la app de las pruebas y ejecuta su perfil, con un reintento por prueba (una prueba que pasa a la segunda queda marcada como inestable en el informe). Que un perfil falle no cancela los demás. No usan secretos. Si uno falla, sube como artefacto `informe-playwright-<perfil>` el informe HTML y las trazas. Por ahora no son obligatorios para fusionar; la propuesta es exigirlos cuando lleven dos semanas estables.
 
 ## Base de datos y migraciones
 
