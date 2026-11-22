@@ -497,6 +497,10 @@ npm run fotos:huerfanas -- --ambiente produccion --borrar --confirmar-produccion
 - **Riesgo:** la clave secreta se salta RLS y puede leer y borrar todo el proyecto. No está en GitHub ni en ningún workflow; tenla en tu máquina solo mientras haces la limpieza, empieza siempre por el modo de prueba y revisa la lista antes de `--borrar`.
 - La comparación es lógica pura en `apps/web/src/photos/orphans.ts`, probada con Vitest (`orphans.test.ts`, que comprueba también que el modo de prueba no borra). Node la carga quitando los tipos de TypeScript (Node 24). El script no se ha ejecutado contra ningún proyecto real.
 
+### Datos sin dueño
+
+`scripts/datos-sin-dueno/` (`npm run datos:sin-dueno`, #112, parte de #26) detecta perfiles, plantas, eventos de producto y fotos de usuarios que ya no existen en Clerk: una cuenta eliminada desde el panel de Clerk o una eliminación desde la app que falló a mitad. Por defecto solo lista; con `--borrar` borra, con la misma protección de ambiente que la limpieza de fotos y además la comprobación de que la clave de Clerk es de la instancia del ambiente. Necesita `SUPABASE_SECRET_KEY` y `CLERK_SECRET_KEY`. Uso, credenciales y riesgos en [su README](../scripts/datos-sin-dueno/README.md).
+
 ## Eventos de producto
 
 Los dos eventos con los que se miden los objetivos de la Fase 1 (#24) viven en `public.product_events`, de la migración `20261121170000_eventos_de_producto.sql` (#145), donde están explicadas las decisiones. Los envía la app (#146).
