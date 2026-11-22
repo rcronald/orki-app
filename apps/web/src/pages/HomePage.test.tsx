@@ -45,7 +45,11 @@ describe('HomePage', () => {
     expect(headings[0]).toHaveClass('orki-hero__title')
     expect(
       screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent),
-    ).toEqual(['Organiza tus plantas', 'Nombres confiables', '¿Ya la tengo?'])
+    ).toEqual([
+      '¿Ya la tengo?',
+      'Registra una orquídea',
+      'Organiza tu colección',
+    ])
     expect(document.title).toBe('orqui.apps')
     await expectNoAxeViolations()
   })
@@ -99,16 +103,44 @@ describe('HomePage', () => {
     }
     expect(source).toHaveAttribute(
       'sizes',
-      '(max-width: 720px) calc(100vw - 32px), 50vw',
+      '(max-width: 720px) calc(100vw - 32px), 56vw',
     )
   })
 
-  it('el dibujo botánico es decorativo', () => {
+  it('Hero dividido, ventajas sin recuadro y sin dibujo botánico', () => {
     const { container } = renderHome()
 
-    const art = container.querySelector('img.orki-hero__art')
-    expect(art).toHaveAttribute('alt', '')
-    expect(art).toHaveAttribute('loading', 'lazy')
+    const hero = screen.getByRole('region', {
+      name: 'Tu colección de orquídeas, en un solo lugar',
+    })
+    expect(hero).toHaveClass('orki-hero', 'orki-hero--split')
+    expect(hero).toHaveTextContent(
+      'Registra las orquídeas que tienes y, antes de comprar otra, comprueba desde el celular si esa especie ya está en tu colección.',
+    )
+    expect(container.querySelector('.orki-hero__art')).toBeNull()
+    // Los botones van sin icono.
+    expect(hero.querySelector('.orki-btn svg')).toBeNull()
+
+    const list = screen.getByRole('list')
+    expect(list).toHaveClass('orki-features--plain')
+    const icons = Array.from(
+      list.querySelectorAll('.orki-feature__icon svg'),
+      (svg) => svg.getAttribute('class'),
+    )
+    expect(icons).toEqual([
+      expect.stringContaining('lucide-search'),
+      expect.stringContaining('lucide-square-plus'),
+      expect.stringContaining('lucide-layers'),
+    ])
+    expect(list).toHaveTextContent(
+      'Comprueba cuántos ejemplares tienes. Si ya cargaste tu colección en este dispositivo, puedes consultarla sin señal.',
+    )
+    expect(list).toHaveTextContent(
+      'Elige un nombre sugerido por el catálogo y añade la fecha de adquisición. La foto es opcional.',
+    )
+    expect(list).toHaveTextContent(
+      'Ve tus plantas en lista o cuadrícula, agrúpalas por género y exporta tu inventario a CSV.',
+    )
   })
 
   it('tras eliminar la cuenta, anuncia el aviso y lo quita del historial', async () => {

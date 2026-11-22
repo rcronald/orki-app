@@ -1,8 +1,9 @@
 # Foto y dibujo de la portada
 
 Imágenes del Hero de la portada (`/`, #179): la foto de la derecha y el dibujo
-botánico decorativo de la izquierda. La app las enlaza en
-`src/pages/HeroPhoto.tsx` y `src/pages/HomePage.tsx`.
+botánico decorativo de la izquierda. La app enlaza la foto en
+`src/pages/HeroPhoto.tsx`; desde el rediseño (#200) el dibujo no se usa en la
+portada (sigue aquí y en el design system).
 
 ## Fuente y licencia
 
@@ -19,8 +20,9 @@ ejemplo CC BY-SA 4.0), se anota aquí con la atribución que pida la licencia.
 - `original.jpg`: versión de trabajo de la foto entregada (JPEG de calidad 90,
   1536 × 1024, 433 KB). El PNG entregado pesa 2,2 MB y no se versiona.
 - `portada-648.avif`, `portada-960.avif`, `portada-1296.avif` y
-  `portada-1536.avif`: recorte 3:2 (el de la foto del Hero en el design
-  system) en cuatro anchos, de 31 a 118 KB. Se sirven con `srcset` y `sizes`:
+  `portada-1536.avif`: recorte 3:2 en cuatro anchos (el Hero dividido la
+  recorta después con `object-fit: cover`: a la altura del bloque en
+  escritorio y a 2:1 en celular), de 31 a 118 KB. Se sirven con `srcset` y `sizes`:
   un celular de 390 px a 3x pide la de 1296 (86 KB); a 2x, la de 960 (55 KB).
 - `portada-960.jpg`: respaldo para los navegadores sin AVIF (131 KB).
 - `foto.json`: lo que lee la app (texto alternativo, nombres y medidas). Va en
@@ -56,6 +58,6 @@ dibujo (SVG, 2 KB) tampoco se precachea: es decorativo y no sale en celular.
 
 3. Actualizar la tabla de arriba con su fuente y su licencia.
 4. Pasar las pruebas (`npx vitest run src/pages/HomePage.test.tsx` desde
-   `apps/web`) y revisar la portada a 390 y a 1440 px.
+   `apps/web`) y revisar la portada a 390 y a 1536 px.
 5. Volver a medir la carga (`npm run medir:carga -- --solo inicio`) y anotarlo
    en `docs/medicion-de-carga.md`.
