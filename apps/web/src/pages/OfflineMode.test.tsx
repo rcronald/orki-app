@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AccountControls } from '../auth/AccountControls.tsx'
+import { AccountMenu } from '../auth/AccountMenu.tsx'
 import {
   getOfflineIdentity,
   LAST_USER_KEY,
@@ -105,7 +105,7 @@ function renderApp(path = '/coleccion') {
       <CollectionProvider source={source} thumbnailSync={null}>
         <PlantImagesContext value={fakeImageSource().source}>
           <header>
-            <AccountControls />
+            <AccountMenu />
           </header>
           <main>
             <Routes>
@@ -223,7 +223,8 @@ describe('sin conexión, abriendo la app desde cero', () => {
     await settle()
     expect(screen.getAllByRole('article')).toHaveLength(2)
 
-    await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
+    await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
     await settle()
 
     expect(screen.getByText('Inicio')).toBeInTheDocument()
@@ -303,7 +304,8 @@ describe('con Clerk de vuelta', () => {
 
     // Cerrar sesión sin conexión: borra igual, y Clerk lo sabrá después.
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
+    await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
     await settle()
     expect(storage.copies.size).toBe(0)
     expect(signOut).not.toHaveBeenCalled()
@@ -320,7 +322,8 @@ describe('con Clerk de vuelta', () => {
     renderApp()
     await settle()
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }))
+    await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
     await settle()
     expect(signOut).toHaveBeenCalledTimes(1)
     expect(storage.copies.size).toBe(0)

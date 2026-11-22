@@ -1,24 +1,26 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router'
-import { AccountControls } from '../auth/AccountControls.tsx'
-import { useIsCatalogAdmin } from '../auth/roles.ts'
+import { Outlet, useLocation } from 'react-router'
+import { AccountMenu } from '../auth/AccountMenu.tsx'
+import { AuthNotice } from '../auth/AuthStatus.tsx'
+import { useAppIdentity } from '../auth/useAppIdentity.ts'
+import { useAuthAvailability } from '../auth/useAuthAvailability.ts'
 import { PATHS } from '../routes/paths.ts'
 import {
   textPageOrigin,
   type TextPageOrigin,
 } from '../routes/text-page-origin.ts'
-import { Logo } from './Logo.tsx'
+import { AppBar } from './AppBar.tsx'
+import { PublicHeader } from './PublicHeader.tsx'
 import { SiteFooter } from './SiteFooter.tsx'
 
 // Estructura común de las páginas de la app (no de las de acceso ni de la
-// portada, que tiene la suya: PublicShell): enlace para
-// saltar al contenido, cabecera con la marca y la cuenta, navegación principal
-// y el contenido de la ruta. Los enlaces son de React Router: no recargan.
+// portada, que tiene la suya: PublicShell): enlace para saltar al contenido,
+// la barra (la de la app con sesión o la pública sin ella, #207), el
+// contenido de la ruta y el pie. Los enlaces son de React Router: no recargan.
 //
 // `isolate` crea un contexto de apilamiento propio: así el fondo por género del
 // registro (GenusBackdrop, con z-index negativo) se pinta encima del fondo de
 // este contenedor y debajo de todo su contenido.
 export function AppShell() {
-  const isCatalogAdmin = useIsCatalogAdmin()
   const location = useLocation()
   const { pathname } = location
   const state: unknown = location.state
@@ -31,30 +33,11 @@ export function AppShell() {
       >
         Saltar al contenido
       </a>
-      <header className="flex flex-wrap items-center justify-between gap-space-3 px-space-4 py-space-3">
-        {/* Nombre accesible: «Inicio de orqui.apps» (el logotipo). Con
-            sesión, el inicio lleva a la colección (#191). */}
-        <Link to={PATHS.home} className="inline-block rounded-md">
-          <span className="sr-only">Inicio de</span>{' '}
-          <Logo className="block h-[40px] w-auto" />
-        </Link>
-        <AccountControls />
-      </header>
-      <nav aria-label="Principal" className="px-space-4 pb-space-3">
-        <ul className="orki-chips">
-          {/* Sin «Inicio» (el logotipo ya lleva a él) ni «Catálogo», que es
-              un marcador hasta la consulta pública (#187); la ruta existe. */}
-          <NavItem to={PATHS.collection}>Mi colección</NavItem>
-          {/* Solo comodidad: la protección real es la de la base de datos (#6). */}
-          {isCatalogAdmin && (
-            <NavItem to={PATHS.catalogAdmin}>Administración</NavItem>
-          )}
-        </ul>
-      </nav>
+      <AppHeader />
       <main
         id="contenido"
         tabIndex={-1}
-        className="flex flex-1 flex-col items-center px-space-4 pt-space-3 pb-space-6"
+        className="flex flex-1 flex-col items-center px-space-4 pt-space-5 pb-space-6"
       >
         <Outlet />
       </main>
@@ -64,11 +47,61 @@ export function AppShell() {
   )
 }
 
+/**
+ * Barra según la sesión (#207; useAppIdentity):
+ * - Con sesión, o con la sesión recordada sin confirmar (sin conexión o sin
+ *   Clerk): la barra de la app (AppBar) con el menú «Tu cuenta».
+ * - Sin sesión: la barra pública de la portada (PublicHeader), con «Iniciar
+ *   sesión» y «Crear cuenta gratis».
+ * - Mientras Clerk carga: la barra pública solo con el logotipo, sin
+ *   adelantar si hay sesión.
+ * - Sin Clerk y sin nadie recordado, o sin sesión y sin poder iniciarla (sin
+ *   conexión o con Clerk caído): la barra pública solo con el logotipo y,
+ *   debajo, el aviso breve (role="status"); la página se sigue viendo.
+ */
+function AppHeader() {
+  const identity = useAppIdentity()
+  const availability = useAuthAvailability()
+
+  switch (identity.kind) {
+    case 'signed-in':
+    case 'unverified':
+      return <AppBar account={<AccountMenu />} />
+    case 'loading':
+      return <PublicHeader actions={false} />
+    case 'unavailable':
+      return <UnavailableHeader reason={identity.reason} />
+    case 'signed-out':
+      // Cerró sesión aquí sin conexión y Clerk aún no lo sabe, o Clerk no
+      // está: iniciar sesión tampoco funcionaría.
+      if (availability === 'offline' || availability === 'failed') {
+        return <UnavailableHeader reason={availability} />
+      }
+      return <PublicHeader />
+  }
+}
+
+function UnavailableHeader({ reason }: { reason: 'offline' | 'failed' }) {
+  return (
+    <>
+      <PublicHeader actions={false} />
+      <div className="border-b border-neutral-200 bg-neutral-50 px-space-4 py-space-2 text-center">
+        <AuthNotice reason={reason} />
+      </div>
+    </>
+  )
+}
+
 // A dónde ofrecen volver la privacidad y los créditos abiertos desde el pie
 // (#202): desde las pantallas con sesión (la colección, la cuenta, la
 // administración), a «Mi colección»; desde las propias páginas de texto, al
 // mismo sitio que ya ofrecían; desde el resto, al inicio.
-const SIGNED_IN_AREAS = [PATHS.collection, PATHS.account, '/administracion']
+const SIGNED_IN_AREAS = [
+  PATHS.collection,
+  PATHS.ownershipCheck,
+  PATHS.account,
+  '/administracion',
+]
 
 function footerOrigin(pathname: string, state: unknown): TextPageOrigin {
   if (pathname === PATHS.privacy || pathname === PATHS.credits) {
@@ -79,21 +112,4 @@ function footerOrigin(pathname: string, state: unknown): TextPageOrigin {
   )
     ? 'coleccion'
     : 'inicio'
-}
-
-// Enlace de la navegación con el aspecto de un chip del sistema. NavLink pone
-// aria-current="page" en el de la página actual (con `end`, solo si la ruta
-// coincide entera) y el estilo seleccionado sale de ese atributo.
-function NavItem({ to, children }: { to: string; children: string }) {
-  return (
-    <li>
-      <NavLink
-        to={to}
-        end
-        className="orki-chip aria-[current=page]:border-primary aria-[current=page]:bg-primary-soft aria-[current=page]:font-semibold"
-      >
-        {children}
-      </NavLink>
-    </li>
-  )
 }

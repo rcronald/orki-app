@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { AppBar } from '../components/AppBar.tsx'
+import { Avatar } from '../components/ui/Avatar.tsx'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
@@ -59,16 +60,29 @@ export function CollectionPiecesSection() {
         <AppBar
           account={
             <MenuButton
+              header={
+                <>
+                  <strong>Ana López</strong>ana@example.com
+                </>
+              }
               items={[
                 { kind: 'link', label: 'Mi cuenta', icon: 'user', to: '#' },
+                {
+                  kind: 'link',
+                  label: 'Administración',
+                  icon: 'settings',
+                  to: '#',
+                },
                 { kind: 'separator' },
                 {
                   kind: 'action',
                   label: 'Cerrar sesión',
+                  icon: 'log-out',
                   onSelect: () => {},
                 },
               ]}
             >
+              <Avatar name="Ana López" />
               <span className="orki-menu__label">Tu cuenta</span>
             </MenuButton>
           }

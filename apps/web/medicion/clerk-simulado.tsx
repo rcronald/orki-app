@@ -18,6 +18,11 @@ import {
 // - usuario null: sin sesión. <SignIn> y <SignUp> pintan un botón que la
 //   inicia como USUARIO_AL_ENTRAR, como si se hubiera completado el acceso.
 // - rol: el claim app_role del token (catalog_admin, el del backoffice).
+// - nombre y foto (opcionales): user.fullName y la foto de la cuenta. Sin la
+//   clave, NOMBRE_POR_DEFECTO y sin foto (iniciales); null, sin nombre.
+//
+// openUserProfile() (el editor de perfil de Clerk, #207) no abre nada: marca
+// <body data-perfil-simulado="abierto"> para que la prueba lo compruebe.
 //
 // El token que devuelve getToken() lleva el usuario y el rol en claro
 // (tokenSimulado), para que el Supabase simulado de las pruebas aplique las
@@ -30,10 +35,13 @@ import {
 export const SESION_SIMULADA = 'orki-sesion-simulada'
 export const USUARIO_POR_DEFECTO = 'user_medicion'
 export const USUARIO_AL_ENTRAR = 'user_e2e'
+export const NOMBRE_POR_DEFECTO = 'Persona de Prueba'
 
 interface Sesion {
   usuario: string | null
   rol: string | null
+  nombre?: string | null
+  foto?: string | null
 }
 
 function leerSesion(): Sesion {
@@ -44,6 +52,11 @@ function leerSesion(): Sesion {
     return {
       usuario: typeof valor.usuario === 'string' ? valor.usuario : null,
       rol: typeof valor.rol === 'string' ? valor.rol : null,
+      nombre:
+        valor.nombre === undefined || typeof valor.nombre === 'string'
+          ? valor.nombre
+          : null,
+      foto: typeof valor.foto === 'string' ? valor.foto : null,
     }
   } catch {
     return { usuario: USUARIO_POR_DEFECTO, rol: null }
@@ -108,7 +121,11 @@ function setActive({ session }: { session: null }) {
   return Promise.resolve()
 }
 
-const CLERK = { status, signOut, setActive }
+function openUserProfile() {
+  document.body.dataset.perfilSimulado = 'abierto'
+}
+
+const CLERK = { status, signOut, setActive, openUserProfile }
 
 // El usuario de useUser(), con lo que usa la pantalla de cuenta
 // (src/pages/AccountPage.tsx). delete() solo cierra la sesión simulada: los
@@ -125,6 +142,10 @@ function usuarioDe(actual: Sesion) {
     isLoaded: true,
     user: {
       id: actual.usuario,
+      fullName:
+        actual.nombre === undefined ? NOMBRE_POR_DEFECTO : actual.nombre,
+      hasImage: typeof actual.foto === 'string',
+      imageUrl: actual.foto ?? '',
       primaryEmailAddress: { emailAddress: 'persona@orki.invalid' },
       deleteSelfEnabled: true,
       delete: () => {
@@ -276,14 +297,6 @@ export function SignIn() {
 export function SignUp() {
   return (
     <AccesoSimulado titulo="Crear cuenta" accion="Crear la cuenta de prueba" />
-  )
-}
-
-export function UserButton() {
-  return (
-    <button type="button" className="orki-chip">
-      Cuenta
-    </button>
   )
 }
 

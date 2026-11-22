@@ -14,7 +14,7 @@
 
 .orki-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; padding: var(--space-2) var(--space-4); border: 1.5px solid transparent; border-radius: var(--radius-pill); background: var(--color-neutral-50); color: var(--color-neutral-900); font: 400 14px/20px var(--font-body); cursor: pointer; box-sizing: border-box; }
 .orki-chip:hover, .orki-chip.is-hover { background: var(--color-secondary-soft); }
-.orki-chip[aria-pressed="true"], .orki-chip--selected { background: var(--color-secondary-strong); border-color: var(--color-secondary-strong); color: var(--color-neutral-0); font-weight: 600; }
+.orki-chip[aria-pressed="true"], .orki-chip.orki-chip--selected { background: var(--color-secondary-strong); border-color: var(--color-secondary-strong); color: var(--color-neutral-0); font-weight: 600; }
 .orki-chip svg { width: 16px; height: 16px; flex: none; }
 .orki-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .orki-chips--scroll { flex-wrap: nowrap; margin: calc(var(--space-1) * -1); padding: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
@@ -261,6 +261,8 @@
   .orki-answer__action { grid-column: 1; grid-row: auto; justify-self: start; margin-top: var(--space-2); }
   .orki-panel { padding: var(--space-4); }
   .orki-profile > .orki-btn { width: 100%; }
+  .orki-profile__text { flex-basis: 8em; }
+  .orki-avatar--lg { width: 72px; height: 72px; font-size: 24px; line-height: 32px; }
   .orki-hero, .orki-hero--bleed { grid-template-columns: minmax(0, 1fr); padding: var(--space-5) var(--space-4); }
   .orki-hero__title, .orki-textpage__title { font-size: 32px; line-height: 40px; }
   .orki-hero__lead, .orki-textpage__lead { font-size: 18px; line-height: 26px; }

@@ -1,4 +1,4 @@
-import { useId, useState, useSyncExternalStore } from 'react'
+import { useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Button } from '../components/ui/Button.tsx'
 import {
@@ -28,6 +28,8 @@ export interface AccountViewProps {
   onKeepUsing?: () => void
   /** Lo que se hace en el dispositivo; por defecto, el de la app. */
   device?: AccountDeletionDevice
+  /** Botón «Editar perfil» (el editor de Clerk, #207), bajo el correo. */
+  profileAction?: ReactNode
 }
 
 /**
@@ -43,6 +45,7 @@ export function AccountView({
   onDeleted,
   onKeepUsing,
   device,
+  profileAction,
 }: AccountViewProps) {
   // Solo lectura (#120): sin conexión, o con la sesión sin confirmar.
   const readOnly = useReadOnly()
@@ -93,6 +96,7 @@ export function AccountView({
           <dd className="break-words">{email ?? ACCOUNT_TEXT.noEmail}</dd>
         </dl>
         <p className="text-sm text-neutral-700">{ACCOUNT_TEXT.manageHint}</p>
+        {profileAction}
         <p className="text-sm">
           <Link
             {...privacyLinkProps('cuenta')}

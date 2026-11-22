@@ -35,6 +35,8 @@ const ORIGEN_SENTRY = 'https://sentry.orki.invalid'
 export interface Sesion {
   usuario: string | null
   rol?: string | null
+  /** user.fullName del Clerk simulado; sin la clave, «Persona de Prueba». */
+  nombre?: string | null
 }
 
 interface Opciones {
@@ -123,7 +125,11 @@ export const test = base.extend<Opciones & Fixtures>({
       },
       [
         CLAVE_SESION,
-        JSON.stringify({ usuario: sesion.usuario, rol: sesion.rol ?? null }),
+        JSON.stringify({
+          usuario: sesion.usuario,
+          rol: sesion.rol ?? null,
+          ...(sesion.nombre !== undefined && { nombre: sesion.nombre }),
+        }),
       ] as const,
     )
 
