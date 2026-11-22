@@ -14,6 +14,10 @@ import {
   LAST_USER_KEY,
   resetOfflineIdentity,
 } from '../auth/offline-identity.ts'
+import {
+  ATRIBUTO_PORTADA_PREVIA,
+  PORTADA_PREVIA_ID,
+} from '../prerender/portada-previa.ts'
 import { AppRouter } from './AppRouter.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
@@ -533,5 +537,40 @@ describe('navegación', () => {
     expect(await screen.findByTestId('clerk-sign-up')).toBeInTheDocument()
     expect(currentLocation()).toBe('/registro')
     expect(screen.getByRole('main', { name: 'Crear cuenta' })).toHaveFocus()
+  })
+})
+
+describe('portada prerrenderada (#204)', () => {
+  /** Lo que deja en el documento el index.html del build en `/` sin nadie recordado. */
+  function prerenderedHome() {
+    const container = document.createElement('div')
+    container.id = PORTADA_PREVIA_ID
+    container.innerHTML = '<h1>Portada prerrenderada</h1>'
+    document.body.prepend(container)
+    document.documentElement.setAttribute(ATRIBUTO_PORTADA_PREVIA, '')
+    return container
+  }
+
+  it('la app la retira al pintar su portada: queda un solo título', async () => {
+    const container = prerenderedHome()
+    renderAt('/')
+
+    expect(
+      await findHeading('Tu colección de orquídeas, en un solo lugar'),
+    ).toBeInTheDocument()
+    expect(container).not.toBeInTheDocument()
+    expect(document.documentElement).not.toHaveAttribute(
+      ATRIBUTO_PORTADA_PREVIA,
+    )
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
+  it('también si Clerk dice que hay sesión y `/` lleva a la colección', async () => {
+    setFakeClerk({ signedIn: true })
+    const container = prerenderedHome()
+    renderAt('/')
+
+    expect(await findHeading('Mi colección')).toBeInTheDocument()
+    expect(container).not.toBeInTheDocument()
   })
 })

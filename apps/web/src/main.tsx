@@ -6,6 +6,7 @@ import { ConfigError } from './components/ConfigError.tsx'
 import { EnvironmentBadge } from './components/EnvironmentBadge.tsx'
 import { parseEnv } from './config/env.ts'
 import { initSupabase } from './lib/supabase.ts'
+import { quitarPortadaPrevia } from './prerender/portada-previa.ts'
 import { ErrorBoundary } from './observability/ErrorBoundary.tsx'
 import { errorReporter, readRelease } from './observability/reporter.ts'
 import { AppRouter } from './routes/AppRouter.tsx'
@@ -42,6 +43,7 @@ if (env.ok) {
     'Configuración inválida:',
     env.issues.map((issue) => issue.variable).join(', '),
   )
+  quitarPortadaPrevia()
   root.render(
     <StrictMode>
       <ConfigError issues={env.issues} />

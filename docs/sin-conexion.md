@@ -118,7 +118,11 @@ y `src/auth/useSignOutHere.ts` (cerrar sesión, desde el menú «Tu cuenta» de 
 (las rutas protegidas se abren con un usuario sin confirmar) y
 `src/pages/HomeRoute.tsx` (#191): con un usuario sin confirmar, `/` lleva a
 la colección; sin nadie recordado, se ve la portada, cuya foto no está en el
-precaché (sin conexión, en su hueco queda el texto alternativo).
+precaché (sin conexión, en su hueco queda el texto alternativo). Esa portada
+llega ya en el `index.html` (prerrenderada en el build, #204) y un script en
+línea solo la muestra si no hay nadie recordado en `orki-ultimo-usuario`; con
+alguien recordado, `/` sigue esperando a la app como antes (ver
+`src/prerender/portada-previa.ts` y `docs/medicion-de-carga.md`).
 
 La copia local y las miniaturas van siempre por id de usuario: aunque falle
 algún borrado, la app nunca lee la copia de un id distinto del activo.
