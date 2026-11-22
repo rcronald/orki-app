@@ -114,6 +114,9 @@ jobs:
         run: npm run build:e2e
 
       - name: Pruebas de extremo a extremo
+        # TEMPORAL (#170): ejecuta también las pruebas marcadas como fallo conocido.
+        env:
+          E2E_PROBAR_FALLOS_CONOCIDOS: '1'
         run: npm run test:e2e:sin-build
 
       - name: Guardar el informe y las trazas

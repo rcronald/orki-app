@@ -142,8 +142,19 @@ export const test = base.extend<Opciones & Fixtures>({
     }
   },
 
-  revisarAccesibilidad: async ({ page }, use, testInfo) => {
+  revisarAccesibilidad: async ({ page, browserName }, use, testInfo) => {
     await use(async (pantalla) => {
+      // En Firefox no se pasa axe (#170): el Firefox de Playwright cierra la
+      // pestaña ("Page crashed") mientras axe recorre la página, de forma
+      // intermitente y en pantallas distintas. Las pautas que comprueba axe
+      // no dependen del motor y se revisan en los otros tres perfiles.
+      if (browserName === 'firefox') {
+        testInfo.annotations.push({
+          type: 'accesibilidad',
+          description: `Sin axe en Firefox (#170): ${pantalla}`,
+        })
+        return
+      }
       await test.step(`Accesibilidad (axe): ${pantalla}`, async () => {
         // @axe-core/playwright declara playwright-core como dependencia de
         // pares y npm instala para él la última (otra copia con los mismos
