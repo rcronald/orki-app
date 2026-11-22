@@ -1,21 +1,34 @@
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from './Icon.tsx'
 
-// FeatureItem del design system (#190): ventaja de la app con un icono en un
-// recuadro color-secondary-soft, un título y una frase. FeatureList
-// (orki-features) las pone de a tres en fila, con sus líneas divisorias; bajo
-// 720 px se apilan.
+// FeatureItem del design system (#190, #199): ventaja de la app con un icono,
+// un título y una frase. FeatureList (orki-features) las pone de a tres en
+// fila; hasta 720 px se apilan, sin líneas separadoras.
+//
+// Dos variantes, de toda la fila:
+// - por defecto: icono en un recuadro color-secondary-soft y líneas
+//   verticales entre ventajas;
+// - plain (orki-features--plain, la de la portada): icono de trazo, sin
+//   recuadro ni líneas, con el margen de la página ya incluido.
 //
 // Va como lista (ul/li) en lugar de los div del ejemplo del sistema: son tres
 // elementos del mismo tipo y el lector de pantalla anuncia cuántos hay. Las
 // listas no llevan viñetas ni sangría por el reinicio de estilos de Tailwind.
-//
-// Apiladas, el sistema las separa solo con espacio; la maqueta de celular
-// pone una línea color-neutral-200 entre una y otra, y se añade aquí con
-// utilidades (propuesta para el sistema).
 
-export function FeatureList({ children }: { children: ReactNode }) {
-  return <ul className="orki-features">{children}</ul>
+interface FeatureListProps {
+  /** Icono de trazo sin recuadro ni líneas entre ventajas. */
+  plain?: boolean
+  children: ReactNode
+}
+
+export function FeatureList({ plain = false, children }: FeatureListProps) {
+  return (
+    <ul
+      className={plain ? 'orki-features orki-features--plain' : 'orki-features'}
+    >
+      {children}
+    </ul>
+  )
 }
 
 interface FeatureProps {
@@ -34,7 +47,7 @@ export function Feature({
 }: FeatureProps) {
   const Heading = headingLevel === 2 ? 'h2' : 'h3'
   return (
-    <li className="orki-feature publico-estrecho:not-first:border-t publico-estrecho:not-first:border-neutral-200 publico-estrecho:not-first:pt-space-5">
+    <li className="orki-feature">
       <span className="orki-feature__icon">
         <Icon name={icon} />
       </span>

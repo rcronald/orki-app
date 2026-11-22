@@ -1,26 +1,29 @@
 # Foto y dibujo de la portada
 
 Imágenes del Hero de la portada (`/`, #179): la foto de la derecha y el dibujo
-botánico decorativo de la izquierda. La app las enlaza en
-`src/pages/HeroPhoto.tsx` y `src/pages/HomePage.tsx`.
+botánico decorativo de la izquierda. La app enlaza la foto en
+`src/pages/HeroPhoto.tsx`; desde el rediseño (#200) el dibujo no se usa en la
+portada (sigue aquí y en el design system).
 
-## Fuente y licencia
+## Origen
 
-| Archivo                                            | Fuente                                                                                                                | Licencia                                                  |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `original.jpg` y `portada-*.avif`, `portada-*.jpg` | Entregada por el responsable del proyecto en el design system (`assets/Photos/portada.png`, 1536 × 1024), 22 nov 2026 | **Pendiente de confirmar** el origen exacto y la licencia |
-| `dibujo-botanico.svg`                              | Design system de orqui.apps (`assets/Illustrations/DibujoBotanico.svg`), copiado tal cual                             | Del proyecto                                              |
+| Archivo                                            | Origen                                                                                                                                                   | Notas                                    |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `original.jpg` y `portada-*.avif`, `portada-*.jpg` | Imagen generada con IA (OpenAI) a petición del autor del proyecto; entregada en el design system (`assets/Photos/portada.png`, 1536 × 1024), 22 nov 2026 | No es una fotografía de un ejemplar real |
+| `dibujo-botanico.svg`                              | Imagen generada con IA (OpenAI) a petición del autor del proyecto; del design system (`assets/Illustrations/DibujoBotanico.svg`), copiado tal cual       | Sin uso en la portada desde #200         |
 
-Cuando se confirme el origen de la foto (autor, página y licencia exacta, por
-ejemplo CC BY-SA 4.0), se anota aquí con la atribución que pida la licencia.
+El origen lo confirmó el responsable del proyecto (#194). La página
+«Créditos y fuentes» (`/creditos`) lo dice así. Una foto nueva con licencia
+que pida atribución se anota aquí y allí.
 
 ## Archivos
 
 - `original.jpg`: versión de trabajo de la foto entregada (JPEG de calidad 90,
   1536 × 1024, 433 KB). El PNG entregado pesa 2,2 MB y no se versiona.
 - `portada-648.avif`, `portada-960.avif`, `portada-1296.avif` y
-  `portada-1536.avif`: recorte 3:2 (el de la foto del Hero en el design
-  system) en cuatro anchos, de 31 a 118 KB. Se sirven con `srcset` y `sizes`:
+  `portada-1536.avif`: recorte 3:2 en cuatro anchos (el Hero dividido la
+  recorta después con `object-fit: cover`: a la altura del bloque en
+  escritorio y a 2:1 en celular), de 31 a 118 KB. Se sirven con `srcset` y `sizes`:
   un celular de 390 px a 3x pide la de 1296 (86 KB); a 2x, la de 960 (55 KB).
 - `portada-960.jpg`: respaldo para los navegadores sin AVIF (131 KB).
 - `foto.json`: lo que lee la app (texto alternativo, nombres y medidas). Va en
@@ -56,6 +59,6 @@ dibujo (SVG, 2 KB) tampoco se precachea: es decorativo y no sale en celular.
 
 3. Actualizar la tabla de arriba con su fuente y su licencia.
 4. Pasar las pruebas (`npx vitest run src/pages/HomePage.test.tsx` desde
-   `apps/web`) y revisar la portada a 390 y a 1440 px.
+   `apps/web`) y revisar la portada a 390 y a 1536 px.
 5. Volver a medir la carga (`npm run medir:carga -- --solo inicio`) y anotarlo
    en `docs/medicion-de-carga.md`.

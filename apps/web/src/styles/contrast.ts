@@ -82,6 +82,16 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text('color-secondary-strong', 'color-secondary-soft'),
   text('color-secondary', 'color-secondary-soft'),
   ui('color-secondary-strong', 'color-secondary-soft'),
+  // Portada y páginas de texto (#199): lema del pie (color-neutral-900) y sus
+  // enlaces (color-secondary-strong, y color-secondary al pasar por encima)
+  // sobre la banda color-secondary-soft, con el anillo de foco
+  // color-secondary; el mismo fondo en la caja «En esta página». Iconos de
+  // trazo de las ventajas sin recuadro, en color-secondary-strong sobre el
+  // fondo de la página. La línea superior del pie (color-secondary) y los
+  // separadores de sus enlaces (color-neutral-200) son decorativos: sin par.
+  text('color-neutral-900', 'color-secondary-soft'),
+  ui('color-secondary', 'color-secondary-soft'),
+  ui('color-secondary-strong', 'color-neutral-0'),
 ]
 
 function relativeLuminance(hex: string): number {

@@ -19,6 +19,8 @@ export const PATHS = {
   account: '/cuenta',
   /** Página pública de privacidad (#111). */
   privacy: '/privacidad',
+  /** Página pública de créditos y fuentes (#203). */
+  credits: '/creditos',
   signIn: '/iniciar-sesion',
   signUp: '/registro',
   /** Página interna del design system; solo existe fuera de producción. */

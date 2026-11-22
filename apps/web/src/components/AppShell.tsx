@@ -1,8 +1,13 @@
-import { Link, NavLink, Outlet } from 'react-router'
+import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import { AccountControls } from '../auth/AccountControls.tsx'
 import { useIsCatalogAdmin } from '../auth/roles.ts'
 import { PATHS } from '../routes/paths.ts'
+import {
+  textPageOrigin,
+  type TextPageOrigin,
+} from '../routes/text-page-origin.ts'
 import { Logo } from './Logo.tsx'
+import { SiteFooter } from './SiteFooter.tsx'
 
 // Estructura común de las páginas de la app (no de las de acceso ni de la
 // portada, que tiene la suya: PublicShell): enlace para
@@ -14,6 +19,9 @@ import { Logo } from './Logo.tsx'
 // este contenedor y debajo de todo su contenido.
 export function AppShell() {
   const isCatalogAdmin = useIsCatalogAdmin()
+  const location = useLocation()
+  const { pathname } = location
+  const state: unknown = location.state
 
   return (
     <div className="isolate flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
@@ -50,14 +58,27 @@ export function AppShell() {
       >
         <Outlet />
       </main>
-      {/* Pie discreto con la página de privacidad (#111), pública. */}
-      <footer className="px-space-4 pb-space-4 text-center text-sm">
-        <Link to={PATHS.privacy} className="text-neutral-700 underline">
-          Privacidad
-        </Link>
-      </footer>
+      {/* Pie del sistema (#202), con la privacidad y los créditos. */}
+      <SiteFooter origin={footerOrigin(pathname, state)} />
     </div>
   )
+}
+
+// A dónde ofrecen volver la privacidad y los créditos abiertos desde el pie
+// (#202): desde las pantallas con sesión (la colección, la cuenta, la
+// administración), a «Mi colección»; desde las propias páginas de texto, al
+// mismo sitio que ya ofrecían; desde el resto, al inicio.
+const SIGNED_IN_AREAS = [PATHS.collection, PATHS.account, '/administracion']
+
+function footerOrigin(pathname: string, state: unknown): TextPageOrigin {
+  if (pathname === PATHS.privacy || pathname === PATHS.credits) {
+    return textPageOrigin(state) ?? 'inicio'
+  }
+  return SIGNED_IN_AREAS.some(
+    (area) => pathname === area || pathname.startsWith(`${area}/`),
+  )
+    ? 'coleccion'
+    : 'inicio'
 }
 
 // Enlace de la navegación con el aspecto de un chip del sistema. NavLink pone

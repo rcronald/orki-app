@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { Button } from '../components/ui/Button.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
-import { PATHS } from '../routes/paths.ts'
+import { privacyLinkProps } from '../routes/text-page-origin.ts'
 import { DELETION_STEPS, type DeletionStep } from './deletion.ts'
 import {
   DIALOG_TEXT,
@@ -131,7 +131,7 @@ export function DeleteAccountDialog({
         {failed && state.reason === 'not-allowed' && (
           <p className="text-md">
             <Link
-              to={PATHS.privacy}
+              {...privacyLinkProps('cuenta')}
               className="font-semibold text-secondary underline"
             >
               Ver la página de privacidad

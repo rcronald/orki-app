@@ -35,6 +35,25 @@ describe('Feature', () => {
     expect(icon).toHaveAttribute('aria-hidden', 'true')
   })
 
+  it('la variante plain quita el recuadro del icono (orki-features--plain)', () => {
+    render(
+      <FeatureList plain>
+        <Feature icon="square-plus" title="Registra una orquídea">
+          Elige un nombre sugerido y añade la fecha de adquisición.
+        </Feature>
+      </FeatureList>,
+    )
+    expect(screen.getByRole('list')).toHaveClass(
+      'orki-features',
+      'orki-features--plain',
+    )
+    // Sin utilidades de la app alrededor: las separaciones son del sistema.
+    expect(screen.getByRole('listitem')).toHaveAttribute(
+      'class',
+      'orki-feature',
+    )
+  })
+
   it('el título puede ser h3', () => {
     render(
       <FeatureList>

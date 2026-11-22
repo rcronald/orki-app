@@ -159,7 +159,7 @@ Los tokens viven en `apps/web/src/styles/tokens.css`, que es la única fuente de
 
 `apps/web/src/index.css` importa Tailwind, las fuentes (`styles/fonts.css`, servidas desde la app para que funcionen sin conexión), los tokens y una sola hoja de estilos de componentes, `styles/bundle.css`, en la capa `components` de Tailwind.
 
-`styles/bundle.css` es una copia literal de `components/bundle.css` del design system, con las clases `orki-`. No se edita ni se formatea, para poder compararla con el original. Un cambio de estilo de un componente se hace primero en el design system y después se vuelve a copiar aquí.
+`styles/bundle.css` es una copia literal de `components/bundle.css` del design system, con las clases `orki-`. No se reformatea, para poder compararla con el original. Un cambio de estilo de un componente se hace primero en el design system y después se vuelve a copiar aquí. Excepción: las piezas del #199 (portada nueva y páginas de texto) se escribieron primero aquí y el responsable las publica después en el design system con este mismo archivo.
 
 ### Utilidades de Tailwind
 
@@ -190,10 +190,10 @@ Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo 
 | `Modal`           | Base de todos los diálogos modales (#151): `role="dialog"` o `"alertdialog"` con `aria-modal`, resto de la página `inert`, foco inicial, foco atrapado, Escape y foco devuelto al cerrar. La usan `ConfirmDialog`, el `ModalDialog` del backoffice y el diálogo de eliminar la cuenta. |
 | `ConfirmDialog`   | Confirmación modal con "Cancelar" y la acción (`danger` para lo que no se deshace), sobre `Modal`.                                                                                                                                                                                     |
 | `Collapsible`     | Sección plegable.                                                                                                                                                                                                                                                                      |
-| `Feature`         | FeatureItem del sistema (#190): ventaja con icono en un recuadro `color-secondary-soft`, título (`h2` por defecto) y una frase, dentro de `FeatureList` (`orki-features`). De a tres en fila; apiladas hasta 720 px.                                                                   |
+| `Feature`         | FeatureItem del sistema (#190, #199): ventaja con icono, título (`h2` por defecto) y una frase, dentro de `FeatureList` (`orki-features`); con `plain` (`orki-features--plain`), icono de trazo sin recuadro ni líneas. De a tres en fila; apiladas hasta 720 px, sin separadores.     |
 | `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`.                                                                                                                                                                  |
 
-Las páginas públicas (la portada, #179) usan además `components/PublicHeader.tsx`, la NavBar del sistema (`orki-nav`), y el marcado del Hero (`orki-hero`, `--bleed`, `--art`, `__title`, `__lead`, `__actions`, `__photo`, `__art`) y del enlace de texto (`orki-link`, `--nav`) tal como lo documenta el sistema. Su media query corta en 720 px; para ajustar algo alrededor de esas piezas al mismo ancho, `src/index.css` define la variante `publico-estrecho:` (`max-width: 720px`), porque `max-[720px]:` de Tailwind sería «menos de 720 px».
+Las páginas públicas usan además piezas del sistema fuera de `components/ui/`: la NavBar (`components/PublicHeader.tsx`, `orki-nav`), el Hero (`orki-hero` con la variante `--split` de la portada, `__panel`, `__title`, `__lead`, `__actions`, `__action--narrow` y `__photo`; `--bleed`, `--art` y `__art` siguen en el sistema sin uso), el pie (`components/SiteFooter.tsx`, `orki-footer`, también en `AppShell`), la página de texto (`components/TextPage.tsx`, `orki-textpage` con su índice `orki-toc`, para la privacidad y los créditos) y el enlace de texto (`orki-link`, `--nav`). Su media query corta en 720 px; para ajustar algo alrededor de esas piezas al mismo ancho, `src/index.css` define la variante `publico-estrecho:` (`max-width: 720px`), porque `max-[720px]:` de Tailwind sería «menos de 720 px».
 
 ### Página de muestra
 
@@ -342,6 +342,7 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 | Ruta                       | Pantalla                                                                                                                                                      | Acceso                     |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
 | `/`                        | Portada (ver [Portada](#portada)); con sesión lleva a «Mi colección»                                                                                          | Pública                    |
+| `/creditos`                | Créditos y fuentes (ver [Créditos y fuentes](#créditos-y-fuentes))                                                                                            | Pública                    |
 | `/catalogo`                | Catálogo (provisional, sin enlace en la navegación hasta #187)                                                                                                | Pública                    |
 | `/coleccion`               | Mi colección (provisional)                                                                                                                                    | Con sesión                 |
 | `/coleccion/nueva`         | Registrar una planta (provisional)                                                                                                                            | Con sesión                 |
@@ -359,7 +360,7 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 
 ### Portada
 
-`/` es la portada pública (#179), según las maquetas de escritorio y de celular y con las piezas de las páginas públicas del design system (ver [Design system en la app](#design-system-en-la-app)): la NavBar (`src/components/PublicHeader.tsx`, dentro de `src/components/PublicShell.tsx`, que conserva «Saltar al contenido» y el pie), el Hero con la foto y el dibujo botánico y tres ventajas (`src/pages/HomePage.tsx`). Los textos son los del #179: nada que la app no haga hoy y sin enlaces al catálogo hasta #187. «Crear cuenta gratis» lleva a `/registro` e «Iniciar sesión» a `/iniciar-sesion`. Hasta 720 px va en una columna y la cabecera queda solo con el logotipo: las dos acciones están en el Hero, una debajo de otra.
+`/` es la portada (#179, rediseñada en #200), según las maquetas de escritorio y de celular y con las piezas de las páginas públicas del design system (ver [Design system en la app](#design-system-en-la-app)): la NavBar (`src/components/PublicHeader.tsx`, dentro de `src/components/PublicShell.tsx`, que conserva «Saltar al contenido» y pone el pie `SiteFooter`), el Hero dividido con la foto a toda la altura y tres ventajas sin recuadro («¿Ya la tengo?», «Registra una orquídea» y «Organiza tu colección», en `src/pages/HomePage.tsx`). Los textos describen funciones que existen hoy y no hay enlaces al catálogo hasta #187; ya no lleva el dibujo botánico. «Crear cuenta gratis» lleva a `/registro` e «Iniciar sesión» a `/iniciar-sesion`. Hasta 720 px va en una columna y la cabecera queda solo con el logotipo, centrado: las acciones están en el Hero, una debajo de otra, y la foto va debajo, apaisada (2:1).
 
 Qué se ve en `/` lo decide `src/pages/HomeRoute.tsx` con `useAppIdentity()`:
 
@@ -371,7 +372,7 @@ Qué se ve en `/` lo decide `src/pages/HomeRoute.tsx` con `useAppIdentity()`:
 | Clerk aún no responde y el dispositivo recuerda a alguien                      | La cabecera con solo el logotipo y «Cargando el acceso…»: lo más probable es que tenga sesión, y así no aparece la portada para quitarla un momento después |
 | Clerk aún no responde y no se recuerda a nadie                                 | La portada al momento, sin esperar a Clerk (lo normal en una visita nueva)                                                                                  |
 
-Un único `h1` (el título); las ventajas son `h2`. La foto y el dibujo están en `src/assets/portada/` con su origen y cómo sustituirlos (`LEEME.md`): la foto se prepara con `npm run portada --workspace=apps/web -- preparar <foto> "<texto alternativo>"` y no entra en el precaché del service worker. La medición de la carga está en [`docs/medicion-de-carga.md`](docs/medicion-de-carga.md).
+Un único `h1` (el título); las ventajas son `h2`. La foto está en `src/assets/portada/` con su origen y cómo sustituirla (`LEEME.md`): la foto se prepara con `npm run portada --workspace=apps/web -- preparar <foto> "<texto alternativo>"` y no entra en el precaché del service worker. La medición de la carga está en [`docs/medicion-de-carga.md`](docs/medicion-de-carga.md).
 
 ### Rutas protegidas y vuelta tras iniciar sesión
 
@@ -695,7 +696,12 @@ Sin huérfanos:
 
 ## Página de privacidad
 
-`/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie de la app, desde las pantallas de acceso, desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`); de la atribución del catálogo importa solo `src/backoffice/attribution.ts`, sin la pantalla del backoffice.
+`/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie (`SiteFooter`, en la portada y en el resto de la app), desde las pantallas de acceso (junto al formulario), desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`), sin Clerk.
+
+Con el #202 usa la página de texto del design system (`src/components/TextPage.tsx`): enlace de volver, título, frase de apoyo, fecha, índice «En esta página» y secciones con una frase de resumen. Siguiendo el #194, el índice lleva cuatro secciones y el texto aprobado va dentro, íntegro: «Qué datos guardamos» (con las subsecciones «Mediciones de uso y errores» y «Dónde se guardan y quién los procesa»), «Quién puede verlos» (su resumen dice, junto a la regla general, que el equipo del catálogo puede revisar el nombre y las fotos de una planta por validar), «Qué se guarda en tu dispositivo» y «Cómo eliminar tu cuenta» (con un enlace a «Tu cuenta» y la subsección «Descargar tu inventario»); «Contacto» cierra la página, fuera del índice. La atribución del catálogo pasó a [Créditos y fuentes](#créditos-y-fuentes), enlazada desde «Dónde se guardan…».
+
+- **Volver:** según el estado de navegación del enlace que trajo a la página (`src/routes/text-page-origin.ts`, no `document.referrer`): «Volver al inicio» (por defecto, también al abrir la dirección directamente), «Volver al registro» (desde «Crear cuenta»), «Volver a Mi colección» (desde el pie de las pantallas con sesión) o «Volver a Tu cuenta» (desde `/cuenta`). Para enlazar desde otra pantalla: `privacyLinkProps(origen)` o `textPageState(origen)`.
+- **Índice:** cada enlace apunta al id del título de su sección; al activarlo, el foco pasa a ese título (que lleva `scroll-margin-top`), sin desplazamiento animado, y el `#id` se escribe en la dirección sin perder el estado de volver.
 
 **Texto revisado y aprobado por el responsable del proyecto el 22 de noviembre de 2026.** Lo redactó un agente comprobándolo contra el código el 21 de noviembre de 2026. No es asesoría legal y no lo ha revisado nadie con criterio legal (ley peruana de protección de datos personales); sigue siendo conveniente. La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
 
@@ -712,16 +718,27 @@ Afirmaciones que debe verificar una persona (revisadas contra el código el 21 d
 7. Lo que se guarda en el dispositivo y cuándo se borra (`docs/sin-conexion.md` y `src/account/device-cleanup.ts`): copia del inventario, miniaturas, cola de eventos (29 días como mucho) y id del último usuario se borran al cerrar sesión, también sin conexión; el id se guarda hasta avisar a Clerk si se cerró sin conexión; el borrador (texto y foto) caduca a las 24 horas y no se borra al cerrar sesión; las preferencias tampoco.
 8. Exportación (`src/collection/export-csv.ts`, `src/inventory/ExportAction.tsx`): al final de «Mi colección», todas las plantas con todas sus columnas, sin fotos.
 9. Eliminación (sección «Eliminación de la cuenta»): lo que borra, y que no se borran los informes ya enviados a Sentry ni la auditoría del catálogo.
-10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «En orqui.apps se filtró a las orquídeas y se normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
-11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
+10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «En orqui.apps se filtró a las orquídeas y se normalizó», hoy en [Créditos y fuentes](#créditos-y-fuentes). `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el texto.
+11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto. Pasó al 22 de noviembre de 2026 con el #202 (atribución trasladada, secciones reagrupadas y frases de resumen).
 
-Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, fecha, las secciones de eventos, Sentry, propuestas, dispositivo y exportación, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
+Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, índice y foco, cada enlace de volver, que no falta ninguna frase del texto aprobado, reparto en secciones, contacto, enlaces desde el pie y desde el acceso, axe) y `e2e/paginas-de-texto.spec.ts` (a 360 px y en escritorio, con axe).
+
+## Créditos y fuentes
+
+`/creditos` (#203) es pública, con el mismo diseño que la privacidad (`TextPage`), en su propio chunk (`src/credits/CreditsPage.tsx`) y sin Clerk. Se enlaza desde el pie y desde la privacidad, y su enlace de volver sigue la misma regla. Cada dato está comprobado en el repositorio:
+
+- **Catálogo:** el Catalogue of Life con su versión, DOI y licencia (CC BY 4.0), leídos de `scripts/catalog-import/fuente.json` por `src/backoffice/attribution.ts`, y la indicación de que se filtró a las orquídeas y se normalizó; los híbridos de vivero, de la lista curada (`scripts/catalog-import/data/hibridos.csv`).
+- **Imágenes:** la foto de la portada y los fondos por género del registro, generadas con IA (OpenAI) a petición del autor del proyecto (`LEEME.md` de `src/assets/portada/` y `src/assets/fondos-genero/`). Solo su origen, nada sobre sus derechos.
+- **Tipografías:** Playfair Display e Inter, SIL Open Font License 1.1 (el `LICENSE` de cada paquete `@fontsource`).
+- **Iconos:** Lucide, licencia ISC; los derivados de Feather, MIT (el `LICENSE` de `lucide-react`).
+
+Los créditos de las fotos de iNaturalist (#180) irán aquí cuando existan. Pruebas: `src/credits/CreditsPage.test.tsx` y `e2e/paginas-de-texto.spec.ts`.
 
 ## Pruebas de extremo a extremo
 
 Los flujos principales de la Fase 1 (#148) se prueban con [Playwright](https://playwright.dev) en un navegador real: acceso, registro (con y sin foto, y con un nombre por validar), inventario (lista, cuadrícula, búsqueda y filtros), «¿Ya la tengo?», edición y baja, backoffice del catálogo y la PWA (manifiesto, service worker y arranque sin conexión). Cada pantalla recorrida pasa además por [axe](https://github.com/dequelabs/axe-core) con las reglas de nivel A y AA de WCAG 2.0, 2.1 y 2.2; la app no tiene tema oscuro, así que se revisa solo el claro. Lo que axe no ve se prueba aparte: `e2e/foco-no-tapado.spec.ts` comprueba, con el tabulador en una pantalla de celular, que las barras fijas (el buscador del inventario, registrar desde el inventario y las acciones del formulario) no tapan el control con el foco (WCAG 2.4.11, #151); cada barra se marca con `data-barra-superior` o `data-barra-inferior` y `src/index.css` deja ese margen con `scroll-padding`.
 
-`e2e/portada.spec.ts` revisa la portada a 360 px (una columna, sin desplazamiento horizontal, acciones de al menos 44 px) y en escritorio a 1440 px (dos columnas, foto hasta el borde y ventajas en fila), las dos con axe, y que con sesión `/` lleve a la colección.
+`e2e/portada.spec.ts` revisa la portada a 360 px (una columna, logotipo centrado, sin desplazamiento horizontal, acciones y enlaces del pie de al menos 44 px, foto 2:1) y en escritorio a 1536 px (dos columnas, foto a toda la altura hasta el borde, ventajas en fila y enlaces del pie a la derecha), las dos con axe.
 
 Corren en cuatro perfiles: Chromium, Firefox y WebKit de escritorio, y `celular`, un iPhone 15 (WebKit, pantalla pequeña y táctil). Las pruebas están en `apps/web/e2e/` y la configuración en `apps/web/playwright.config.ts`.
 

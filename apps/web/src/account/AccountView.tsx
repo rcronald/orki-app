@@ -8,6 +8,7 @@ import {
 } from '../lib/account-deletion-marker.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
 import { PATHS } from '../routes/paths.ts'
+import { privacyLinkProps } from '../routes/text-page-origin.ts'
 import { DeleteAccountDialog } from './DeleteAccountDialog.tsx'
 import type { AccountDeletionEffects } from './deletion.ts'
 import type { AccountDeletionDevice } from './device-cleanup.ts'
@@ -94,7 +95,7 @@ export function AccountView({
         <p className="text-sm text-neutral-700">{ACCOUNT_TEXT.manageHint}</p>
         <p className="text-sm">
           <Link
-            to={PATHS.privacy}
+            {...privacyLinkProps('cuenta')}
             className="font-semibold text-secondary underline"
           >
             {ACCOUNT_TEXT.privacyLink}

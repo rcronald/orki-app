@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ArrowRight,
   BookOpen,
   Calendar,
@@ -11,12 +12,14 @@ import {
   Flower,
   Flower2,
   Image,
+  Layers,
   MapPin,
   Nfc,
   Pencil,
   Plus,
   Search,
   Sprout,
+  SquarePlus,
   Store,
   Tag,
   Trash2,
@@ -30,6 +33,7 @@ import {
 // existen en la app; para uno nuevo, primero se añade al sistema. Vive aparte
 // de Icon.tsx para poder exportar la lista sin romper el refresco en caliente.
 export const ICONS = {
+  'arrow-left': ArrowLeft,
   'arrow-right': ArrowRight,
   'book-open': BookOpen,
   calendar: Calendar,
@@ -42,12 +46,14 @@ export const ICONS = {
   flower: Flower,
   'flower-2': Flower2,
   image: Image,
+  layers: Layers,
   'map-pin': MapPin,
   nfc: Nfc,
   pencil: Pencil,
   plus: Plus,
   search: Search,
   sprout: Sprout,
+  'square-plus': SquarePlus,
   store: Store,
   tag: Tag,
   'trash-2': Trash2,

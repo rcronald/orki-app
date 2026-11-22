@@ -1,7 +1,5 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router'
-import { CATALOGUE_OF_LIFE_ATTRIBUTION } from '../backoffice/attribution.ts'
-import { Page } from '../components/Page.tsx'
+import { Link, useLocation } from 'react-router'
+import { TextPage, type TextPageSection } from '../components/TextPage.tsx'
 import { PATHS } from '../routes/paths.ts'
 import {
   isPrivacyContactPending,
@@ -9,7 +7,13 @@ import {
   privacyContactHref,
 } from './contact.ts'
 
-// Página pública de privacidad (/privacidad, #111, parte de #26).
+// Página pública de privacidad (/privacidad, #111, parte de #26), con el
+// diseño de página de texto del design system (#202, #194): índice «En esta
+// página» con cuatro secciones («Qué datos guardamos», «Quién puede verlos»,
+// «Qué se guarda en tu dispositivo» y «Cómo eliminar tu cuenta»), cada una
+// con una frase de resumen; las secciones anteriores del texto aprobado van
+// dentro, íntegras, como subsecciones (h3). El contacto cierra la página,
+// fuera del índice.
 //
 // Texto revisado y aprobado por el responsable del proyecto el 22 de
 // noviembre de 2026. Lo redactó un agente a partir del código (modo sin
@@ -19,62 +23,30 @@ import {
 // Al cambiar lo que guarda o envía la app (eventos, Sentry,
 // lo que se guarda en el dispositivo...), este texto cambia con ella.
 //
-// Va en su propio chunk (carga diferida desde App.tsx). De la atribución solo
-// importa backoffice/attribution.ts, un módulo sin React que lee
-// scripts/catalog-import/fuente.json al compilar; no arrastra la pantalla del
-// backoffice.
+// Con el #202 el texto aprobado se conserva entero salvo la atribución del
+// catálogo, que pasó a «Créditos y fuentes» (con un enlace desde aquí); se
+// reagrupó en cuatro secciones y se añadieron las frases de resumen: de ahí
+// la fecha nueva.
+// PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
+// aprobado.
+//
+// Va en su propio chunk (carga diferida desde App.tsx), sin importar Clerk.
+// El enlace de volver lo pone TextPage según de dónde se vino.
 
 /** Fecha de la última actualización del texto, en el formato que se muestra. */
-const PRIVACY_LAST_UPDATED = '21 de noviembre de 2026'
-const PRIVACY_LAST_UPDATED_ISO = '2026-11-21'
+const PRIVACY_LAST_UPDATED = '22 de noviembre de 2026'
+const PRIVACY_LAST_UPDATED_ISO = '2026-11-22'
 
-function Section({
-  id,
-  title,
-  children,
-}: {
-  id: string
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <section aria-labelledby={id} className="flex flex-col gap-space-2">
-      <h2 id={id} className="text-lg font-semibold">
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-const LINK = 'font-semibold text-secondary underline'
-
-function External({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a className={LINK} href={href} rel="noopener noreferrer" target="_blank">
-      {children} <span className="sr-only">(se abre en otra pestaña)</span>
-    </a>
-  )
-}
-
-export default function PrivacyPage() {
-  const { version, doiUrl, license, licenseUrl } = CATALOGUE_OF_LIFE_ATTRIBUTION
-  const contactPending = isPrivacyContactPending()
-
-  return (
-    <Page title="Privacidad">
-      <div className="flex flex-col gap-space-4 text-md">
-        <p>
-          Qué datos guarda orqui.apps, dónde, quién puede verlos y cómo
-          borrarlos. Última actualización:{' '}
-          <time dateTime={PRIVACY_LAST_UPDATED_ISO}>
-            {PRIVACY_LAST_UPDATED}
-          </time>
-          .
-        </p>
-
-        <Section id="privacidad-datos" title="Qué datos guarda orqui.apps">
-          <ul className="list-disc space-y-space-1 pl-space-4">
+function sections(state: unknown): TextPageSection[] {
+  return [
+    {
+      id: 'privacidad-datos',
+      title: 'Qué datos guardamos',
+      summary:
+        'Los datos de tu cuenta, las plantas que registras y las fotos que decides añadir, además de algunas mediciones de uso y errores.',
+      children: (
+        <>
+          <ul>
             <li>
               <strong>Tu cuenta:</strong> tu correo y, si entras con Google, los
               datos de tu perfil de Google que recibe el servicio de acceso
@@ -103,11 +75,11 @@ export default function PrivacyPage() {
             y gestiones tu colección. Las mediciones y los errores, además, para
             mejorarla.
           </p>
-        </Section>
-
-        <Section id="privacidad-mediciones" title="Mediciones de uso y errores">
+          <h3 className="orki-textpage__subheading">
+            Mediciones de uso y errores
+          </h3>
           <p>La app registra dos tipos de evento de uso:</p>
-          <ul className="list-disc space-y-space-1 pl-space-4">
+          <ul>
             <li>
               <strong>Cuando registras una planta:</strong> cuánto tardaste, si
               llevaba foto y si el nombre quedó «por validar».
@@ -150,13 +122,10 @@ export default function PrivacyPage() {
             En orqui.apps no hay publicidad ni otros servicios de analítica o de
             publicidad.
           </p>
-        </Section>
-
-        <Section
-          id="privacidad-proveedores"
-          title="Dónde se guardan y quién los procesa"
-        >
-          <ul className="list-disc space-y-space-1 pl-space-4">
+          <h3 className="orki-textpage__subheading">
+            Dónde se guardan y quién los procesa
+          </h3>
+          <ul>
             <li>
               <strong>Clerk</strong> gestiona el acceso: tu cuenta, tu correo,
               el acceso con Google y tu sesión.
@@ -175,11 +144,22 @@ export default function PrivacyPage() {
           </ul>
           <p>
             El catálogo de especies que usa el buscador es común para todos y no
-            contiene datos personales.
+            contiene datos personales. Su fuente y su licencia están en{' '}
+            <Link to={PATHS.credits} state={state}>
+              Créditos y fuentes
+            </Link>
+            .
           </p>
-        </Section>
-
-        <Section id="privacidad-acceso" title="Quién puede ver tus datos">
+        </>
+      ),
+    },
+    {
+      id: 'privacidad-acceso',
+      title: 'Quién puede verlos',
+      summary:
+        'Tu colección es privada. Si el nombre de una planta queda por validar, el equipo del catálogo puede revisar el nombre y las fotos asociadas.',
+      children: (
+        <>
           <p>
             Tus plantas y sus fotos solo las ves tú. La base de datos solo
             entrega a cada cuenta sus propias plantas.
@@ -188,7 +168,7 @@ export default function PrivacyPage() {
             Las personas que administran el catálogo de especies tienen dos
             excepciones:
           </p>
-          <ul className="list-disc space-y-space-1 pl-space-4">
+          <ul>
             <li>
               Pueden ver cuántas plantas de todos los usuarios están enlazadas a
               cada especie: solo el número, sin saber de quién son.
@@ -214,13 +194,17 @@ export default function PrivacyPage() {
             tuyos: solo se consultan en la base de datos para calcular las
             mediciones.
           </p>
-        </Section>
-
-        <Section
-          id="privacidad-dispositivo"
-          title="Qué se guarda en tu dispositivo"
-        >
-          <ul className="list-disc space-y-space-1 pl-space-4">
+        </>
+      ),
+    },
+    {
+      id: 'privacidad-dispositivo',
+      title: 'Qué se guarda en tu dispositivo',
+      summary:
+        'Una copia de tu inventario y lo que la app necesita para funcionar sin conexión; casi todo se borra al cerrar sesión.',
+      children: (
+        <>
+          <ul>
             <li>
               Una copia de tu inventario, para que puedas verlo y buscar en él
               sin conexión. Se borra al cerrar sesión.
@@ -257,19 +241,25 @@ export default function PrivacyPage() {
             quien tenga tu dispositivo desbloqueado puede ver la copia de tu
             inventario.
           </p>
-        </Section>
-
-        <Section
-          id="privacidad-eliminar"
-          title="Cómo eliminar tu cuenta y tus datos"
-        >
+        </>
+      ),
+    },
+    {
+      id: 'privacidad-eliminar',
+      title: 'Cómo eliminar tu cuenta',
+      summary: (
+        <>
+          Desde <Link to={PATHS.account}>Tu cuenta</Link>, con conexión. No se
+          puede deshacer; antes puedes descargar tu inventario.
+        </>
+      ),
+      children: (
+        <>
           <p>
             Desde la app, con la sesión iniciada:{' '}
-            <Link className={LINK} to={PATHS.account}>
-              Tu cuenta, Eliminar mi cuenta
-            </Link>
-            . Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil,
-            tus eventos de uso y tu cuenta de acceso. También lo que orqui.apps
+            <Link to={PATHS.account}>Tu cuenta, Eliminar mi cuenta</Link>.
+            Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil, tus
+            eventos de uso y tu cuenta de acceso. También lo que orqui.apps
             guarda en ese dispositivo: la copia de tu inventario, las
             miniaturas, los eventos pendientes de enviar, tu identificador, el
             borrador y tus preferencias. No se puede deshacer.
@@ -280,45 +270,55 @@ export default function PrivacyPage() {
             cambios del catálogo: si ya se resolvió un nombre que escribiste,
             ese nombre sigue ahí, sin decir de quién era.
           </p>
+          <h3 className="orki-textpage__subheading">Descargar tu inventario</h3>
           <p>
             Antes, o cuando quieras, puedes descargar tu inventario en un
             archivo CSV con «Exportar a CSV», al final de{' '}
-            <Link className={LINK} to={PATHS.collection}>
-              Mi colección
-            </Link>
-            . Incluye todas tus plantas, también las perdidas y regaladas, con
-            todos sus datos y la fecha en que las registraste. No incluye las
-            fotos.
+            <Link to={PATHS.collection}>Mi colección</Link>. Incluye todas tus
+            plantas, también las perdidas y regaladas, con todos sus datos y la
+            fecha en que las registraste. No incluye las fotos.
           </p>
-        </Section>
+        </>
+      ),
+    },
+  ]
+}
 
-        <Section id="privacidad-catalogo" title="Fuente del catálogo">
-          <p>
-            El catálogo de especies se basa en el{' '}
-            <span lang="en">Catalogue of Life</span> ({version}),{' '}
-            <External href={doiUrl}>{doiUrl}</External>, con licencia{' '}
-            <External href={licenseUrl}>{license}</External>. En orqui.apps se
-            filtró a las orquídeas y se normalizó.
-          </p>
-        </Section>
+function Contact() {
+  const contactPending = isPrivacyContactPending()
+  return (
+    <section
+      aria-labelledby="privacidad-contacto"
+      className="orki-textpage__section"
+    >
+      <h2 id="privacidad-contacto" className="orki-textpage__heading">
+        Contacto
+      </h2>
+      {contactPending ? (
+        <p>
+          Todavía no hay un medio de contacto publicado para consultas de
+          privacidad.
+        </p>
+      ) : (
+        <p>
+          Para cualquier consulta sobre tus datos, escribe a{' '}
+          <a href={privacyContactHref()}>{PRIVACY_CONTACT}</a>.
+        </p>
+      )}
+    </section>
+  )
+}
 
-        <Section id="privacidad-contacto" title="Contacto">
-          {contactPending ? (
-            <p>
-              Todavía no hay un medio de contacto publicado para consultas de
-              privacidad.
-            </p>
-          ) : (
-            <p>
-              Para cualquier consulta sobre tus datos, escribe a{' '}
-              <a className={LINK} href={privacyContactHref()}>
-                {PRIVACY_CONTACT}
-              </a>
-              .
-            </p>
-          )}
-        </Section>
-      </div>
-    </Page>
+export default function PrivacyPage() {
+  const state: unknown = useLocation().state
+  return (
+    <TextPage
+      title="Privacidad"
+      lead="Qué datos guarda orqui.apps, dónde, quién puede verlos y cómo borrarlos."
+      updated={{ label: PRIVACY_LAST_UPDATED, iso: PRIVACY_LAST_UPDATED_ISO }}
+      sections={sections(state)}
+    >
+      <Contact />
+    </TextPage>
   )
 }

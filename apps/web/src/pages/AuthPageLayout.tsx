@@ -3,10 +3,16 @@ import { Link } from 'react-router'
 import { Logo } from '../components/Logo.tsx'
 import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
 import { PATHS } from '../routes/paths.ts'
+import {
+  textPageState,
+  type TextPageOrigin,
+} from '../routes/text-page-origin.ts'
 
 interface AuthPageLayoutProps {
   /** Título de la pestaña, sin el nombre de la app. */
   title: string
+  /** A dónde ofrecerá volver la privacidad (#202): en el registro, a él. */
+  privacyOrigin?: TextPageOrigin
   children: ReactNode
 }
 
@@ -15,7 +21,11 @@ interface AuthPageLayoutProps {
 // el componente de Clerk; aquí se cambia el de la pestaña y, al llegar
 // navegando, el foco va al contenido principal (con su nombre accesible) para
 // que el lector de pantalla anuncie la pantalla nueva.
-export function AuthPageLayout({ title, children }: AuthPageLayoutProps) {
+export function AuthPageLayout({
+  title,
+  privacyOrigin = 'inicio',
+  children,
+}: AuthPageLayoutProps) {
   const mainRef = useRef<HTMLElement>(null)
   usePageTitle(title)
   useFocusOnNavigation(mainRef)
@@ -37,14 +47,19 @@ export function AuthPageLayout({ title, children }: AuthPageLayoutProps) {
       >
         <div className="flex w-full max-w-md flex-col items-center gap-space-4">
           {children}
+          {/* Antes de crear la cuenta, qué datos se guardan (#111), junto al
+              formulario (#202). */}
+          <p className="text-sm">
+            <Link
+              to={PATHS.privacy}
+              state={textPageState(privacyOrigin)}
+              className="text-neutral-700 underline"
+            >
+              Privacidad
+            </Link>
+          </p>
         </div>
       </main>
-      {/* Antes de crear la cuenta, qué datos se guardan (#111). */}
-      <footer className="px-space-4 pb-space-4 text-center text-sm">
-        <Link to={PATHS.privacy} className="text-neutral-700 underline">
-          Privacidad
-        </Link>
-      </footer>
     </div>
   )
 }

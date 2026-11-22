@@ -7,8 +7,9 @@ import { anchos, respaldo, textoAlternativo } from '../assets/portada/foto.json'
 //
 // - AVIF en varios anchos con srcset y sizes; un JPEG de respaldo para los
 //   navegadores sin AVIF.
-// - width y height del archivo más grande: el navegador reserva el hueco
-//   (3:2, como el recorte de orki-hero__photo) y nada se mueve al llegar.
+// - width y height del archivo más grande: el navegador reserva el hueco y
+//   nada se mueve al llegar. El Hero dividido la recorta con object-fit:
+//   cover a la altura del bloque en escritorio y a 2:1 en celular.
 // - Prioridad alta y sin carga diferida: en celular es el elemento más grande
 //   de la primera pantalla (el LCP). Una precarga desde index.html se probó
 //   y solo bajó el LCP de 3,95 a 3,80 s: lo que lo retrasa es esperar al
@@ -43,8 +44,9 @@ const FALLBACK = url(JPEG, respaldo.archivo)
 const LARGEST = anchos.reduce((a, b) => (b.ancho > a.ancho ? b : a))
 
 // Ancho con el que se pinta: hasta 720 px, el de la pantalla menos el margen
-// del Hero (16 px por lado); más ancho, la mitad de la pantalla como máximo.
-const SIZES = '(max-width: 720px) calc(100vw - 32px), 50vw'
+// del Hero (16 px por lado); más ancho, la columna de la foto del Hero
+// dividido (5/9 de la pantalla, unos 56vw).
+const SIZES = '(max-width: 720px) calc(100vw - 32px), 56vw'
 
 export function HeroPhoto() {
   return (

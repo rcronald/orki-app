@@ -103,7 +103,7 @@ test.describe('sin sesión', () => {
       page.getByRole('heading', { name: TITULO_PORTADA, level: 1 }),
     ).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: 'Organiza tus plantas', level: 2 }),
+      page.getByRole('heading', { name: 'Registra una orquídea', level: 2 }),
     ).toBeVisible()
     // Las demás rutas también se abren desde la caché (navigateFallback).
     await page.goto('/catalogo')
