@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import tokensCss from '../styles/tokens.css?raw'
 import { parseTokens } from '../styles/tokens.ts'
 import { AccountSection } from './AccountSection.tsx'
+import { BrandSection } from './BrandSection.tsx'
 import { CatalogAdminSection } from './CatalogAdminSection.tsx'
 import { ComponentSections } from './ComponentSections.tsx'
 import { DetailSection } from './DetailSection.tsx'
@@ -20,6 +21,7 @@ const PAGE_TITLE = 'Muestra del design system · orqui.apps'
 const tokens = parseTokens(tokensCss)
 
 const SECTIONS = [
+  { id: 'marca', label: 'Marca' },
   { id: 'colores', label: 'Color' },
   { id: 'tipografia', label: 'Tipografía' },
   { id: 'espaciado', label: 'Espaciado, radios y sombra' },
@@ -86,6 +88,7 @@ export default function ShowcasePage() {
           </nav>
         </header>
         <main className="flex flex-col gap-space-5">
+          <BrandSection />
           <TokenSections tokens={tokens} />
           <ComponentSections />
           <InventorySection />
