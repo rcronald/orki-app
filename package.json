@@ -29,7 +29,10 @@
     "db:types:check": "node scripts/db-types.mjs --comprobar",
     "fotos:huerfanas": "node scripts/fotos-huerfanas.mjs",
     "datos:sin-dueno": "node scripts/datos-sin-dueno/index.mjs",
-    "test:scripts": "node --test 'scripts/**/*.test.mjs'"
+    "build:medicion": "node scripts/construir-medicion.mjs",
+    "presupuesto": "node scripts/presupuesto-tamano.mjs",
+    "medir:carga": "node scripts/medir-carga.mjs",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

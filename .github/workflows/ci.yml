@@ -52,6 +52,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Presupuesto de tamaño (#149): vuelve a construir la app como producción, con
+      # valores ficticios que no apuntan a ningún servicio (scripts/medicion/entorno.mjs),
+      # y falla si el JavaScript inicial, el CSS o el total precacheado por el service
+      # worker superan apps/web/presupuesto-tamano.json. Ver docs/medicion-de-carga.md.
+      - name: Presupuesto de tamaño
+        run: |
+          npm run build:medicion
+          npm run presupuesto
+
   importacion-catalogo:
     name: Importación del catálogo (Python)
     runs-on: ubuntu-latest

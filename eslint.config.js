@@ -9,7 +9,12 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  globalIgnores(['**/dist', '**/coverage', '**/node_modules']),
+  globalIgnores([
+    '**/dist',
+    '**/dist-medicion',
+    '**/coverage',
+    '**/node_modules',
+  ]),
   // Generado por `npm run db:types` (supabase gen types): no se edita a mano, así que no se
   // le aplican las reglas del proyecto. Sí pasa por Prettier, porque el generador lo formatea.
   globalIgnores(['apps/web/src/lib/database.types.ts']),
