@@ -277,6 +277,46 @@ describe('filterByText', () => {
     ).toEqual([gifted])
   })
 
+  describe('con errores de tipeo', () => {
+    it.each([
+      ['una letra de menos', 'amabils', [amabilis]],
+      ['dos letras vecinas cambiadas', 'amabiils', [amabilis]],
+      [
+        'dos errores en una palabra larga',
+        'phalenopsis intermdia',
+        [intermedia],
+      ],
+      ['la palabra a medio escribir', 'amabli', [amabilis]],
+      ['en el apodo o el origen', 'blamca', [amabilis]],
+      ['abreviatura con punto', 'Rlc. Memoria Hellen', [rlc]],
+      ['más errores de los tolerados', 'phalenopsis amabls intermdia', []],
+      ['palabras cortas, sin tolerancia', 'fal', []],
+      ['otra especie parecida no cuenta', 'lobata', []],
+    ])('%s: "%s"', (_case, query, expected) => {
+      expect(filterByText(collection, query)).toEqual(expected)
+    })
+
+    it('solo se toleran si ninguna planta coincide sin errores', () => {
+      const nobilis = {
+        ...amabilis,
+        id: 'nobilis',
+        displayName: 'Laelia nobilis',
+      }
+      const nobile = { ...gifted, id: 'nobile', status: 'active' as const }
+      // "nobile" está tal cual en una; "nobilis" se le parece, pero no sale.
+      expect(filterByText([nobilis, nobile], 'nobile')).toEqual([nobile])
+      expect(filterByText([nobilis, nobile], 'nobili')).toEqual([nobilis])
+      expect(filterByText([nobilis, nobile], 'nobole')).toEqual([nobile])
+    })
+
+    it('respeta el filtro de estado', () => {
+      expect(filterByText(collection, 'labiatta')).toEqual([])
+      expect(
+        filterByText(collection, 'labiatta', { includeInactive: true }),
+      ).toEqual([lost])
+    })
+  })
+
   it('una planta editada (otro objeto) se busca con sus datos nuevos', () => {
     expect(filterByText([amabilis], 'rosita')).toEqual([])
     const edited = { ...amabilis, nickname: 'Rosita' }
