@@ -27,7 +27,7 @@ describe('StatusBadge', () => {
     render(<StatusBadge status="unidentifiable" />)
 
     const badge = screen.getByText('No identificable')
-    expect(badge).toHaveClass('orki-badge', 'border-neutral-700')
+    expect(badge).toHaveClass('orki-badge', 'orki-badge--unidentifiable')
     expect(badge).not.toHaveClass('orki-badge--pending')
     const icon = badge.querySelector('svg')
     expect(icon).toHaveClass('lucide-tag')

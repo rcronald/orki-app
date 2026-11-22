@@ -17,11 +17,10 @@ const BADGES: Record<
     icon: 'triangle-alert',
     label: 'Nombre por validar',
   },
-  // El design system solo trae las dos insignias de arriba (bundle.css no se
-  // edita): "no identificable" (#141) se arma con sus tokens, neutra y con
-  // borde para que no se confunda con "por validar", que pide atención.
+  // Neutra y con borde, para que no se confunda con "por validar", que pide
+  // atención (#141).
   unidentifiable: {
-    className: 'border border-neutral-700 bg-neutral-0 text-neutral-900',
+    className: 'orki-badge--unidentifiable',
     icon: 'tag',
     label: 'No identificable',
   },
