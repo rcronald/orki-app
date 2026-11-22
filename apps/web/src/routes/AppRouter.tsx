@@ -8,7 +8,10 @@ import {
 } from 'react'
 import { Route, Routes } from 'react-router'
 import type { AppEnv } from '../config/env.ts'
-import { quitarPortadaPrevia } from '../prerender/portada-previa.ts'
+import {
+  esperarFotoDePortadaPrevia,
+  quitarPortadaPrevia,
+} from '../prerender/portada-previa.ts'
 import { NavigationFocusProvider } from './NavigationFocusProvider.tsx'
 import { PATHS } from './paths.ts'
 
@@ -45,11 +48,15 @@ type AppComponent = ComponentType<AppRouterProps>
 let loadedApp: AppComponent | null = null
 let appPromise: Promise<AppComponent> | null = null
 
+// Con la portada prerrenderada a la vista (#204), el chunk se pide cuando su
+// foto ya se pintó (como mucho, 2 s después): ver esperarFotoDePortadaPrevia.
 function loadApp(): Promise<AppComponent> {
-  appPromise ??= import('../App.tsx').then((module) => {
-    loadedApp = module.default
-    return module.default
-  })
+  appPromise ??= esperarFotoDePortadaPrevia()
+    .then(() => import('../App.tsx'))
+    .then((module) => {
+      loadedApp = module.default
+      return module.default
+    })
   return appPromise
 }
 
