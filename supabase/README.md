@@ -522,7 +522,7 @@ Limitación de las pruebas: la base desechable no tiene Supabase Storage. `scrip
 
 ### Limpieza de fotos huérfanas
 
-`scripts/fotos-huerfanas.mjs` (`npm run fotos:huerfanas`, #83) compara los objetos del bucket `plant-photos` con `photo_path` y `thumbnail_path` de todas las plantas. La app borra los archivos al reemplazar, quitar o eliminar (ver el README principal), pero un fallo de red a mitad puede dejar restos.
+`scripts/fotos-huerfanas.mjs` (`npm run fotos:huerfanas`, #83) compara los objetos del bucket `plant-photos` con `photo_path` y `thumbnail_path` de todas las plantas y de todas las filas de `plant_photos` (#219): un archivo está en uso si lo cita cualquiera de las dos. La app borra los archivos al reemplazar, quitar o eliminar (ver el README principal), pero un fallo de red a mitad puede dejar restos.
 
 ```sh
 npm run fotos:huerfanas -- --ambiente desarrollo                    # solo lista
@@ -530,12 +530,12 @@ npm run fotos:huerfanas -- --ambiente desarrollo --borrar           # borra
 npm run fotos:huerfanas -- --ambiente produccion --borrar --confirmar-produccion
 ```
 
-- Recorre el bucket (`<usuario>/<planta>/`) y lee las plantas de 1 000 en 1 000.
-- Informa de los objetos que no son la foto ni la miniatura de ninguna planta (`sin-planta`, o `fuera-de-convencion` si la ruta no sigue la convención), de los recientes que no toca y de las plantas que apuntan a un archivo que no existe. Esto último solo se informa: el script nunca cambia una planta.
+- Recorre el bucket (`<usuario>/<planta>/`) y lee las plantas y las filas de `plant_photos` de 1 000 en 1 000. Si el proyecto aún no tiene `plant_photos` (la migración sin aplicar: PostgREST responde `PGRST205`), lo avisa y compara solo con `plants`, que entonces es todo lo que hay.
+- Informa de los objetos que no cita ninguna planta ni ninguna foto (`sin-planta`, o `fuera-de-convencion` si la ruta no sigue la convención), de los recientes que no toca y de las plantas o fotos que apuntan a un archivo que no existe (una vez por ruta, con el id de la foto si sale de `plant_photos`). Esto último solo se informa: el script nunca cambia una fila.
 - Por defecto es un modo de prueba: lista y no borra nada. Con `--borrar`, borra en lotes de 100 solo los huérfanos con la antigüedad mínima (`--antiguedad-minima-horas`, 24 por defecto), para no llevarse una subida en curso cuya planta aún no apunta a ella. Un objeto sin fecha nunca se borra.
 - Protección de ambiente: `--ambiente desarrollo|produccion` es obligatorio y `SUPABASE_PROJECT_REF` tiene que ser el ref de ese ambiente (los mismos que `scripts/supabase-db.mjs`); si no coincide, no se ejecuta nada. Para borrar en producción hace falta además `--confirmar-produccion`.
 - Credencial: `SUPABASE_SECRET_KEY`, la clave secreta del proyecto (`sb_secret_...`, en Project Settings > API Keys; o la `service_role` heredada), y `SUPABASE_PROJECT_REF`. Se leen del entorno o de `supabase/.env` y nunca se imprimen. Hace falta esa clave porque el script tiene que ver los objetos y las plantas de todos los usuarios y las políticas solo dejan a cada uno ver lo suyo. Leer `storage.objects` con una conexión directa a Postgres serviría para listar, pero no para borrar: Supabase no deja borrar objetos con SQL, solo con la API de Storage.
-- **Varias fotos por planta (#182):** el script solo compara con las columnas de `plants`, que tienen la foto principal. Las demás fotos de `plant_photos` las clasificaría como huérfanas: hasta que se adapte, no lo ejecutes con `--borrar` si alguna planta tiene más de una foto.
+- **Varias fotos por planta (#182, #219):** las fotos secundarias solo están en `plant_photos` y el script las cuenta como en uso, así que `--borrar` ya no se las lleva. Una subida de la galería sube los archivos antes de crear su fila; mientras tanto son huérfanos recientes, y la antigüedad mínima los protege.
 - **Riesgo:** la clave secreta se salta RLS y puede leer y borrar todo el proyecto. No está en GitHub ni en ningún workflow; tenla en tu máquina solo mientras haces la limpieza, empieza siempre por el modo de prueba y revisa la lista antes de `--borrar`.
 - La comparación es lógica pura en `apps/web/src/photos/orphans.ts`, probada con Vitest (`orphans.test.ts`, que comprueba también que el modo de prueba no borra). Node la carga quitando los tipos de TypeScript (Node 24). El script no se ha ejecutado contra ningún proyecto real.
 
@@ -545,7 +545,7 @@ npm run fotos:huerfanas -- --ambiente produccion --borrar --confirmar-produccion
 
 ## Varias fotos por planta
 
-Desde el #182 (parte del #181) cada planta tiene de 0 a 6 fotos en `public.plant_photos`, de la migración `20261122090000_varias_fotos_por_planta.sql`, donde están explicadas las decisiones. La app se adapta en sub-issues posteriores.
+Desde el #182 (parte del #181) cada planta tiene de 0 a 6 fotos en `public.plant_photos`, de la migración `20261122090000_varias_fotos_por_planta.sql`, donde están explicadas las decisiones. La capa de datos de la app (subir, leer y quitar varias fotos, el borrador con varias fotos y los scripts de limpieza) llegó con el #219; ver «Varias fotos por planta: API de datos» en el README principal. El formulario con galería es el #221.
 
 | Columna                        | Qué es                                                                                                                                             |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -565,7 +565,7 @@ Desde el #182 (parte del #181) cada planta tiene de 0 a 6 fotos en `public.plant
 
 ### Foto principal y sincronización con `plants`
 
-`plants.photo_path`, `plants.thumbnail_path` y `plants.photo_in_bloom` son una copia de la foto principal. Existen porque las versiones de la app ya instaladas (PWA con service worker) solo leen y escriben esas columnas, y porque `list_proposal_groups()`, `is_pending_plant_photo()` y el script de fotos huérfanas todavía las leen. La base las mantiene sincronizadas en los dos sentidos con disparadores:
+`plants.photo_path`, `plants.thumbnail_path` y `plants.photo_in_bloom` son una copia de la foto principal. Existen porque las versiones de la app ya instaladas (PWA con service worker) solo leen y escriben esas columnas, porque la tarjeta del inventario las lee y porque `list_proposal_groups()` e `is_pending_plant_photo()` todavía las leen. El script de fotos huérfanas lee las dos tablas (#219). La base las mantiene sincronizadas en los dos sentidos con disparadores:
 
 - **De `plant_photos` a `plants`:** al insertar, borrar o cambiar la posición, las rutas o `in_bloom` de una foto, se copia la principal (o `null`, `null`, `false` si no queda ninguna). Si no cambia nada, `plants` no se escribe y su `updated_at` no se mueve.
 - **De `plants` a `plant_photos`** (la app antigua):
@@ -579,7 +579,7 @@ Desde el #182 (parte del #181) cada planta tiene de 0 a 6 fotos en `public.plant
 - **Otros disparadores de `plants`:** `set_updated_at` sigue actuando igual (si la sincronización cambia la foto de la planta, `updated_at` avanza) y `sync_with_species` no mira estas columnas. Una planta con fotos no puede cambiar de dueño (`check_photos_owner`).
 - **Datos existentes:** la migración copió cada planta con foto y miniatura a la posición 0, con `in_bloom` de `photo_in_bloom` y `created_at` de la planta (`private.copy_legacy_plant_photos()`, idempotente). Las que tuvieran una sola ruta o rutas fuera de la convención se quedan sin fila, con un aviso en la salida de la migración.
 
-Retirada (#186): cuando ninguna versión instalada de la app lea ni escriba las columnas de foto de `plants`, y `list_proposal_groups()`, `is_pending_plant_photo()` y el script de fotos huérfanas lean `plant_photos`, una migración quitará los disparadores de sincronización y las tres columnas.
+Retirada (#186): cuando ninguna versión instalada de la app lea ni escriba las columnas de foto de `plants`, y la tarjeta del inventario, `list_proposal_groups()` e `is_pending_plant_photo()` lean `plant_photos`, una migración quitará los disparadores de sincronización y las tres columnas.
 
 ## Eventos de producto
 

@@ -35,7 +35,7 @@ Ejemplo de salida en modo de prueba:
 Proyecto de desarrollo (xaitolsnmjlpyptntfwi) e instancia de desarrollo de Clerk. Modo de prueba: no se borra nada.
 Usuarios en Supabase: 11. Consultados en Clerk: 10 (la instancia tiene 8). Existen: 8. Sin dueño: 2.
   user_solofotos: sin perfil, 0 plantas, 0 eventos, 1 fotos
-  user_viejo: perfil, 2 plantas, 1 eventos, 3 fotos
+  user_viejo: perfil, 2 plantas, 1 eventos, 3 filas de plant_photos, 3 fotos
 Ids con formato desconocido (no se consultan ni se borran): 1.
   "raro con espacios": perfil, 1 plantas, 0 eventos
 Modo de prueba: no se ha borrado nada (usa --borrar para borrar).
@@ -44,11 +44,11 @@ Modo de prueba: no se ha borrado nada (usa --borrar para borrar).
 ## Qué hace
 
 1. **Protección de ambiente**, antes de conectarse a nada: `SUPABASE_PROJECT_REF` tiene que ser el ref del ambiente indicado (los de `scripts/supabase-db.mjs`) y `CLERK_SECRET_KEY` una clave de la instancia de Clerk de ese ambiente (`sk_test_` en desarrollo, `sk_live_` en producción). Si no coincide, no se ejecuta nada.
-2. **Reúne los usuarios** que aparecen en `profiles.id`, `plants.user_id`, `product_events.user_id` y en las carpetas del primer nivel del bucket `plant-photos` (`<usuario>/<planta>/...`). Las tablas se leen de 1 000 en 1 000.
+2. **Reúne los usuarios** que aparecen en `profiles.id`, `plants.user_id`, `plant_photos.user_id`, `product_events.user_id` y en las carpetas del primer nivel del bucket `plant-photos` (`<usuario>/<planta>/...`). Las tablas se leen de 1 000 en 1 000. Si el proyecto aún no tiene `plant_photos` (la migración de varias fotos sin aplicar; PostgREST responde `PGRST205`), sigue sin ella.
 3. **Comprueba la clave de Clerk** pidiendo el total de usuarios (`GET /v1/users/count`).
 4. **Pregunta a Clerk por cada usuario**, de uno en uno y con una pausa de 120 ms (unas 8 peticiones por segundo, bajo el límite de las instancias de desarrollo): `GET /v1/users/<id>`. Los ids que no tienen el formato de Clerk (`user_` y letras o números) no se consultan ni se borran: solo se informa de ellos.
-5. **Lista** los usuarios sin dueño con lo que tienen (perfil, plantas, eventos y fotos, recorriendo su carpeta del bucket).
-6. **Solo con `--borrar`**, y si pasa el tope de seguridad, borra usuario por usuario en el orden de la app: fotos (en lotes de 100), plantas, eventos de producto y, al final, el perfil. Borra solo las filas y los archivos detectados: cada borrado de filas filtra por los ids listados y además por el usuario, y las fotos tienen que estar dentro de la carpeta del usuario. Si algo falla se detiene y lo dice; lo ya borrado no se vuelve a detectar, así que basta con volver a ejecutarlo.
+5. **Lista** los usuarios sin dueño con lo que tienen (perfil, plantas, eventos, filas de `plant_photos` y archivos de fotos, recorriendo su carpeta del bucket).
+6. **Solo con `--borrar`**, y si pasa el tope de seguridad, borra usuario por usuario en el orden de la app: archivos de fotos (en lotes de 100), filas de `plant_photos`, plantas, eventos de producto y, al final, el perfil. Borra solo las filas y los archivos detectados: cada borrado de filas filtra por los ids listados y además por el usuario, y las fotos tienen que estar dentro de la carpeta del usuario. Si algo falla se detiene y lo dice; lo ya borrado no se vuelve a detectar, así que basta con volver a ejecutarlo.
 
 ### Cuándo un usuario no existe
 
@@ -59,6 +59,10 @@ Un usuario bloqueado o baneado en Clerk existe: sus datos no se tocan.
 ### Tope de seguridad
 
 Si más del 25 % de los usuarios consultados estarían sin dueño, `--borrar` se niega y no borra nada, salvo con `--permitir-proporcion-alta`. Una proporción así suele indicar una clave de otra instancia de Clerk (con la instancia equivocada, todos los usuarios parecerían inexistentes) más que bajas reales. En desarrollo, con pocos usuarios de prueba, puede hacer falta la opción: revisa antes la lista del modo de prueba.
+
+### Varias fotos por planta
+
+Desde el #182 una planta tiene de 0 a 6 fotos en `plant_photos`. Todos sus archivos están en la carpeta `<usuario>/<planta>/`, así que el recorrido de la carpeta del usuario ya los incluye. Cada fila tiene el `user_id` del dueño de su planta (lo exige la base) y se borra con la planta (`on delete cascade`), así que solo puede haber filas sin dueño si hay plantas sin dueño. El script las detecta igualmente y las borra antes que las plantas; si ese paso fallara, la cascada se las llevaría al borrar las plantas (lo comprueba una prueba con el doble, y en la base `supabase/tests/fotos_de_plantas.sql`).
 
 ### Eventos de producto
 
@@ -88,7 +92,7 @@ Para producción, defínelas solo en la terminal en la que vas a ejecutarlo, sin
 
 ## Pruebas
 
-`datos-sin-dueno.test.mjs`, con `node:test` y sin red: Clerk es un `fetch` simulado y Supabase un doble en memoria de la parte de `supabase-js` que usa el script. Cubren que el modo de prueba no borra nada; que se niega con el proyecto o la instancia de Clerk de otro ambiente y sin `--confirmar-produccion` correcto (sin crear el cliente ni hacer peticiones); que cada tipo de error de Clerk detiene el script sin borrar; que el borrado afecta solo a lo detectado y sigue el orden de la app; el tope de seguridad; y que las credenciales no aparecen en la salida.
+`datos-sin-dueno.test.mjs`, con `node:test` y sin red: Clerk es un `fetch` simulado y Supabase un doble en memoria de la parte de `supabase-js` que usa el script. Cubren que el modo de prueba no borra nada; que se niega con el proyecto o la instancia de Clerk de otro ambiente y sin `--confirmar-produccion` correcto (sin crear el cliente ni hacer peticiones); que cada tipo de error de Clerk detiene el script sin borrar; que el borrado afecta solo a lo detectado y sigue el orden de la app (también con las filas de `plant_photos`, la cascada desde `plants` y un proyecto sin esa tabla); el tope de seguridad; y que las credenciales no aparecen en la salida.
 
 ```sh
 npm run test:scripts
