@@ -45,7 +45,8 @@ const SEARCH_PARAM = 'q'
 // Bajo el buscador, la respuesta de "¿Ya la tengo?" (#19, OwnershipPanel),
 // sobre toda la colección y sin esperar a la red. Con los sinónimos, nombres
 // comunes y abreviaturas de la copia local (#18, useOwnershipExtras), también
-// sin conexión. Su prop onMeasure envía el evento de producto de esa búsqueda
+// sin conexión; la lista recibe los mismos extras para encontrar también las
+// plantas por esos nombres (InventoryView, extras). Su prop onMeasure envía el evento de producto de esa búsqueda
 // (#146, useHaveItSearchEvents: uno por búsqueda, nunca el texto).
 //
 // Sin conexión (#18, #120): arriba, el indicador con la fecha de la última
@@ -183,6 +184,7 @@ export function CollectionPage() {
             onMeasure={onOwnershipMeasure}
           />
         }
+        extras={extras}
         writeDisabledBy={writeDisabledBy}
       />
     </Page>

@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import {
   answerOwnership,
-  buildOwnershipIndex,
+  ownershipIndexFor,
   type Ownership,
   type OwnershipExtras,
   type OwnershipMatch,
@@ -90,7 +90,7 @@ export function OwnershipPanel({
 }: OwnershipPanelProps) {
   const deferredQuery = useDeferredValue(query)
   const index = useMemo(
-    () => (plants === null ? null : buildOwnershipIndex(plants, extras)),
+    () => (plants === null ? null : ownershipIndexFor(plants, extras)),
     [plants, extras],
   )
   const local = useMemo(

@@ -358,6 +358,37 @@ export function buildOwnershipIndex(
   return { names, genera: [...genera.values()], bySpecies }
 }
 
+const NO_EXTRAS: OwnershipExtras = {}
+
+// Índices ya creados, por lista de plantas y extras: el panel y la lista del
+// inventario usan el mismo sin crearlo dos veces. Las listas de plantas y los
+// extras no se modifican (cada cambio crea otros), así que basta su identidad.
+const indexCache = new WeakMap<
+  readonly CollectionPlant[],
+  WeakMap<OwnershipExtras, OwnershipIndex>
+>()
+
+/**
+ * El índice de estas plantas con estos extras (buildOwnershipIndex), creado
+ * una sola vez por cada par de objetos.
+ */
+export function ownershipIndexFor(
+  plants: readonly CollectionPlant[],
+  extras: OwnershipExtras = NO_EXTRAS,
+): OwnershipIndex {
+  let byExtras = indexCache.get(plants)
+  if (byExtras === undefined) {
+    byExtras = new WeakMap()
+    indexCache.set(plants, byExtras)
+  }
+  let index = byExtras.get(extras)
+  if (index === undefined) {
+    index = buildOwnershipIndex(plants, extras)
+    byExtras.set(extras, index)
+  }
+  return index
+}
+
 // Respuesta ----------------------------------------------------------------
 
 function isActive(plant: CollectionPlant): boolean {
@@ -497,6 +528,20 @@ export function answerOwnership(
     )
   }
 
+  return decideOwnership(key, matchNames(index, forms, anywhere).values())
+}
+
+/**
+ * La mejor coincidencia por nombre de cada planta del índice (también las
+ * dadas de baja), por id de planta: con las formas de la búsqueda (ver
+ * queryForms) contra cada nombre (científico, ingresado, sinónimos y nombres
+ * comunes).
+ */
+function matchNames(
+  index: OwnershipIndex,
+  forms: readonly (readonly string[])[],
+  anywhere: boolean,
+): Map<string, OwnershipMatch> {
   const best = new Map<string, OwnershipMatch>()
   for (const entry of index.names.values()) {
     let quality: OwnershipMatchQuality | null = null
@@ -516,7 +561,27 @@ export function answerOwnership(
       })
     }
   }
-  return decideOwnership(key, best.values())
+  return best
+}
+
+/**
+ * Las plantas que "¿Ya la tengo?" encuentra por sus nombres, para que la lista
+ * del inventario muestre las mismas (filterByText, opción nameMatches): la
+ * mejor coincidencia de cada una, por id de planta, con las reglas de
+ * answerOwnership (prefijo por palabras, abreviaturas de género, errores de
+ * tipeo) y sus nombres, también los sinónimos y nombres comunes de la copia
+ * local. Sin la respuesta por género: el género ya lo busca la lista. Todas
+ * las plantas del índice, activas o no: la lista aplica sus filtros. Null si
+ * la búsqueda no basta para responder (ver prepareOwnershipQuery).
+ */
+export function matchPlantNames(
+  index: OwnershipIndex,
+  query: string,
+): ReadonlyMap<string, OwnershipMatch> | null {
+  const words = prepareOwnershipQuery(query)
+  if (words === null) return null
+  const anywhere = [...words.join(' ')].length >= ANYWHERE_MIN_LENGTH
+  return matchNames(index, queryForms(words, index), anywhere)
 }
 
 // Con el catálogo (#124) ------------------------------------------------------

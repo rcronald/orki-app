@@ -11,6 +11,7 @@ import {
   PHALAENOPSIS,
   plant,
   RHYNCHOLAELIOCATTLEYA,
+  speciesNamed,
 } from '../test/collection.ts'
 import { InventoryView } from './InventoryView.tsx'
 import { VISIBLE_OPTIONS } from './InventoryFilters.tsx'
@@ -71,9 +72,15 @@ function renderInventory(
   )
 }
 
+// Con el nombre ingresado y el de su especie iguales al mostrado.
 const specimen = (
   overrides: Partial<CollectionPlant> & { displayName: string },
-) => plant({ enteredName: overrides.displayName, ...overrides })
+) =>
+  plant({
+    enteredName: overrides.displayName,
+    species: speciesNamed(overrides.displayName),
+    ...overrides,
+  })
 
 const amabilis = specimen({
   displayName: 'Phalaenopsis amabilis',

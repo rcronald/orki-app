@@ -32,6 +32,7 @@ import {
   PHALAENOPSIS,
   plant,
   RHYNCHOLAELIOCATTLEYA,
+  speciesNamed,
 } from '../test/collection.ts'
 import {
   fakeCollectionSource,
@@ -71,10 +72,12 @@ const PLANTS: CollectionPlant[] = [
   plant({
     displayName: 'Phalaenopsis schilleriana',
     enteredName: 'Phalaenopsis schilleriana',
+    species: speciesNamed('Phalaenopsis schilleriana'),
   }),
   plant({
     displayName: 'Cattleya maxima',
     enteredName: 'Cattleya maxima',
+    species: speciesNamed('Cattleya maxima'),
     genus: CATTLEYA,
     flowerColor: 'white',
   }),
