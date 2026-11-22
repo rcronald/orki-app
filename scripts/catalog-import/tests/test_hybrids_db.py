@@ -405,22 +405,25 @@ def test_invalid_list_writes_nothing(
     assert catalog_state(db) == before
 
 
-def test_versioned_draft_loads_nothing_while_not_reviewed(
+def test_versioned_list_loads_only_reviewed_rows(
     db: Target, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """El borrador versionado no tiene filas revisadas: la carga no escribe nada."""
+    """La lista versionada se carga: cada fila revisada da su resultado y las demás se omiten."""
     monkeypatch.setenv('ORKI_CATALOG_DB_URL', url_of(db))
     lista = Path(__file__).resolve().parents[1] / 'data' / 'hibridos.csv'
-    report = tmp_path / 'borrador.csv'
-    before = catalog_state(db)
+    with lista.open(encoding='utf-8-sig', newline='') as handle:
+        entries = list(csv.DictReader(handle))
+    reviewed = len([e for e in entries if e['revisado'] == 'sí'])
+    report = tmp_path / 'lista.csv'
     assert main(['cargar-hibridos', str(lista), '--ambiente', 'local', '--escribir',
                  '--reporte', str(report)]) == 0  # fmt: skip
-    assert catalog_state(db) == before
     with report.open(encoding='utf-8-sig', newline='') as handle:
         loaded = list(csv.DictReader(handle))
-    assert total(loaded, 'especie', 'nuevo') == 0
-    assert (
-        total(loaded, 'especie', 'omitido')
-        == len([r for r in loaded if r['resultado'] == 'omitido'])
-        > 0
-    )
+    hybrids = [r for r in loaded if r['entidad'] == 'especie']
+    omitted = [r for r in hybrids if r['resultado'] == 'omitido']
+    assert reviewed > 0
+    assert len(omitted) == len(entries) - reviewed
+    assert {r['codigo'] for r in omitted} <= {'NO_REVISADA'}
+    assert len(hybrids) - len(omitted) == reviewed
+    assert total(loaded, 'especie', 'nuevo') > 0
+    assert not [r for r in loaded if r['resultado'] == 'rechazado' and r['entidad'] == 'especie']
