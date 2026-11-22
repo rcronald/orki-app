@@ -62,7 +62,7 @@ test('a 360 px: una columna, sin desplazamiento horizontal y acciones de 44 px',
   // La cabecera queda solo con el logotipo, centrado: las acciones están en
   // el Hero.
   const cabecera = page.getByRole('banner')
-  const logotipo = cabecera.getByRole('link', { name: 'Inicio de orqui.apps' })
+  const logotipo = cabecera.getByRole('link', { name: 'Inicio de orqui.app' })
   await expect(logotipo).toBeVisible()
   const cajaLogotipo = await logotipo.boundingBox()
   expect(

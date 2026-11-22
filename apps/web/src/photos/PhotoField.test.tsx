@@ -29,7 +29,7 @@ const revokeObjectURL = vi.fn()
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Foto · orqui.apps'
+  document.title = 'Foto · orqui.app'
   URL.createObjectURL = createObjectURL
   URL.revokeObjectURL = revokeObjectURL
 })

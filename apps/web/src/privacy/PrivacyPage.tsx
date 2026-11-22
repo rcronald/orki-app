@@ -50,8 +50,8 @@ function sections(state: unknown): TextPageSection[] {
             <li>
               <strong>Tu cuenta:</strong> tu correo y, si entras con Google, los
               datos de tu perfil de Google que recibe el servicio de acceso
-              (como tu nombre y tu foto). Además, orqui.apps guarda un perfil
-              con tu identificador de usuario y el idioma de la app.
+              (como tu nombre y tu foto). Además, orqui.app guarda un perfil con
+              tu identificador de usuario y el idioma de la app.
             </li>
             <li>
               <strong>Tus plantas:</strong> lo que registras de cada una: el
@@ -119,7 +119,7 @@ function sections(state: unknown): TextPageSection[] {
             cuántas veces termina con un fallo.
           </p>
           <p>
-            En orqui.apps no hay publicidad ni otros servicios de analítica o de
+            En orqui.app no hay publicidad ni otros servicios de analítica o de
             publicidad.
           </p>
           <h3 className="orki-textpage__subheading">
@@ -259,7 +259,7 @@ function sections(state: unknown): TextPageSection[] {
             Desde la app, con la sesión iniciada:{' '}
             <Link to={PATHS.account}>Tu cuenta, Eliminar mi cuenta</Link>.
             Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil, tus
-            eventos de uso y tu cuenta de acceso. También lo que orqui.apps
+            eventos de uso y tu cuenta de acceso. También lo que orqui.app
             guarda en ese dispositivo: la copia de tu inventario, las
             miniaturas, los eventos pendientes de enviar, tu identificador, el
             borrador y tus preferencias. No se puede deshacer.
@@ -314,7 +314,7 @@ export default function PrivacyPage() {
   return (
     <TextPage
       title="Privacidad"
-      lead="Qué datos guarda orqui.apps, dónde, quién puede verlos y cómo borrarlos."
+      lead="Qué datos guarda orqui.app, dónde, quién puede verlos y cómo borrarlos."
       updated={{ label: PRIVACY_LAST_UPDATED, iso: PRIVACY_LAST_UPDATED_ISO }}
       sections={sections(state)}
     >

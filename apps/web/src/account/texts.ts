@@ -47,23 +47,23 @@ export const ACCOUNT_TEXT = {
   unverified:
     'No se pudo confirmar tu sesión: el servicio de acceso no responde. Para eliminar la cuenta hace falta conexión y la sesión confirmada. Vuelve cuando la tengas.',
   notAllowed:
-    'Todavía no se puede eliminar la cuenta desde orqui.apps. No se ha borrado nada. Para eliminarla, escribe al contacto de la página de privacidad.',
+    'Todavía no se puede eliminar la cuenta desde orqui.app. No se ha borrado nada. Para eliminarla, escribe al contacto de la página de privacidad.',
   pendingHeading: 'La eliminación de tu cuenta quedó a medias',
   pendingText:
-    'Empezaste a eliminar tu cuenta y no terminó. Puede que parte de tus datos ya se haya borrado. Continúa para terminar, o sigue usando orqui.apps con lo que quede.',
+    'Empezaste a eliminar tu cuenta y no terminó. Puede que parte de tus datos ya se haya borrado. Continúa para terminar, o sigue usando orqui.app con lo que quede.',
   pendingContinue: 'Continuar la eliminación',
-  pendingKeep: 'Seguir usando orqui.apps',
+  pendingKeep: 'Seguir usando orqui.app',
 } as const
 
 export const DIALOG_TEXT = {
   title: '¿Eliminar tu cuenta?',
-  intro: 'Se borrará todo lo tuyo en orqui.apps:',
+  intro: 'Se borrará todo lo tuyo en orqui.app:',
   items: [
     'Tus plantas, con todos sus detalles (nombre, género, tipo, fecha de adquisición, origen, ubicación, apodo, color de la flor y estado).',
     'Las fotos de tus plantas y sus miniaturas.',
     'Tu perfil y tus eventos de uso (cuándo registraste una planta y cuándo buscaste si ya la tenías).',
     'Tu cuenta de acceso: no podrás volver a entrar con ella.',
-    'Lo que orqui.apps guarda en este dispositivo: la copia de tu inventario para usarlo sin conexión, las miniaturas, los eventos de uso pendientes de enviar, el borrador del registro y tus preferencias del inventario.',
+    'Lo que orqui.app guarda en este dispositivo: la copia de tu inventario para usarlo sin conexión, las miniaturas, los eventos de uso pendientes de enviar, el borrador del registro y tus preferencias del inventario.',
   ],
   irreversible: 'No se puede deshacer. Nadie podrá recuperar tus datos.',
   confirmLabel: `Para confirmar, escribe ${CONFIRMATION_WORD}`,
@@ -117,7 +117,7 @@ const REASON_TEXT: Record<DeletionFailureReason, string> = {
   offline: 'No hay conexión.',
   'session-ended':
     'Tu sesión terminó. Vuelve a iniciar sesión y entra en «Tu cuenta» para terminar.',
-  'not-allowed': 'Todavía no se puede eliminar la cuenta desde orqui.apps.',
+  'not-allowed': 'Todavía no se puede eliminar la cuenta desde orqui.app.',
   'reverification-cancelled':
     'Para eliminar la cuenta hay que confirmar que eres tú, y esa confirmación se cerró sin terminar.',
   failed: 'Hubo un fallo al comunicarse con el servidor.',

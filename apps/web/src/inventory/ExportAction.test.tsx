@@ -19,7 +19,7 @@ let revokeObjectURL = vi.fn<(url: string) => void>()
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Mi colección · orqui.apps'
+  document.title = 'Mi colección · orqui.app'
   window.localStorage.clear()
   created = []
   clicked = []
@@ -102,12 +102,12 @@ describe('InventoryView: exportar a CSV', () => {
     expect(clicked).toHaveLength(1)
     expect(clicked[0]?.href).toBe(BLOB_URL)
     expect(clicked[0]?.download).toMatch(
-      /^orqui-apps-inventario-\d{4}-\d{2}-\d{2}\.csv$/,
+      /^orqui-app-inventario-\d{4}-\d{2}-\d{2}\.csv$/,
     )
     // El enlace temporal no se queda en la página.
     expect(document.querySelector(`a[href="${BLOB_URL}"]`)).toBeNull()
     expect(within(section()).getByRole('status')).toHaveTextContent(
-      /^Listo: orqui-apps-inventario-.*\.csv, con 3 plantas\.$/,
+      /^Listo: orqui-app-inventario-.*\.csv, con 3 plantas\.$/,
     )
     await expectNoAxeViolations()
   })

@@ -158,7 +158,7 @@ export function Attribution() {
         <a className={link} href={licenseUrl} rel="license">
           {license}
         </a>
-        ; filtrado a la familia Orchidaceae y normalizado por orqui.apps.
+        ; filtrado a la familia Orchidaceae y normalizado por orqui.app.
       </p>
     </footer>
   )
