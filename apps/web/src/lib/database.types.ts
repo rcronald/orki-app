@@ -445,6 +445,10 @@ export type Database = {
           validated_count: number
         }[]
       }
+      count_proposal_groups: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       count_species_plants: {
         Args: { target_species_id: string }
         Returns: number
@@ -491,6 +495,20 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_species_from_proposal: {
+        Args: {
+          group_genus_id: string
+          group_name_key: string
+          new_genus_id: string
+          new_scientific_name: string
+          new_type: Database['public']['Enums']['species_type']
+        }
+        Returns: {
+          action_id: string
+          plant_count: number
+          species_id: string
+        }[]
+      }
       delete_catalog_genus: {
         Args: { target_genus_id: string }
         Returns: undefined
@@ -511,6 +529,17 @@ export type Database = {
       is_pending_plant_photo: {
         Args: { object_name: string }
         Returns: boolean
+      }
+      link_proposal_group: {
+        Args: {
+          group_genus_id: string
+          group_name_key: string
+          target_species_id: string
+        }
+        Returns: {
+          action_id: string
+          plant_count: number
+        }[]
       }
       list_catalog_genera: {
         Args: {
@@ -556,6 +585,26 @@ export type Database = {
           total_count: number
           type: Database['public']['Enums']['species_type']
           updated_at: string
+        }[]
+      }
+      list_proposal_groups: {
+        Args: { page_offset?: number; page_size?: number }
+        Returns: {
+          genus_id: string
+          genus_name: string
+          name_key: string
+          photos: Json
+          plant_count: number
+          proposed_name: string
+          total_count: number
+          type: Database['public']['Enums']['plant_type']
+        }[]
+      }
+      mark_proposal_unidentifiable: {
+        Args: { group_genus_id: string; group_name_key: string }
+        Returns: {
+          action_id: string
+          plant_count: number
         }[]
       }
       merge_species: {
