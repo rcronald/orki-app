@@ -92,7 +92,7 @@ describe('HomePage', () => {
     const source = container.querySelector('picture source')
     expect(source).toHaveAttribute('type', 'image/avif')
     const srcset = source?.getAttribute('srcset') ?? ''
-    for (const width of [640, 960, 1280, 1536]) {
+    for (const width of [648, 960, 1296, 1536]) {
       expect(srcset).toMatch(
         new RegExp(`portada-${width}\\.avif\\S* ${width}w`),
       )

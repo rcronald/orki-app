@@ -18,10 +18,10 @@ ejemplo CC BY-SA 4.0), se anota aquí con la atribución que pida la licencia.
 
 - `original.jpg`: versión de trabajo de la foto entregada (JPEG de calidad 90,
   1536 × 1024, 433 KB). El PNG entregado pesa 2,2 MB y no se versiona.
-- `portada-640.avif`, `portada-960.avif`, `portada-1280.avif` y
+- `portada-648.avif`, `portada-960.avif`, `portada-1296.avif` y
   `portada-1536.avif`: recorte 3:2 (el de la foto del Hero en el design
   system) en cuatro anchos, de 31 a 118 KB. Se sirven con `srcset` y `sizes`:
-  un celular de 390 px a 3x pide la de 1280 (86 KB); a 2x, la de 960 (55 KB).
+  un celular de 390 px a 3x pide la de 1296 (86 KB); a 2x, la de 960 (55 KB).
 - `portada-960.jpg`: respaldo para los navegadores sin AVIF (131 KB).
 - `foto.json`: lo que lee la app (texto alternativo, nombres y medidas). Va en
   el JavaScript, así que solo lleva eso.

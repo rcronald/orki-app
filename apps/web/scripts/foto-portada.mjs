@@ -39,7 +39,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ANCHOS = [640, 960, 1280, 1536]
+// Anchos múltiplos de 6 cuyo alto 3:2 es PAR. Con un alto impar (640×427,
+// 1280×853), sips escribe un AVIF que Firefox y el WebKit de Linux no
+// decodifican (la foto queda rota, sin pasar al JPEG de respaldo): lo
+// detectaron las pruebas de extremo a extremo en el CI (#196).
+const ANCHOS = [648, 960, 1296, 1536]
 const CALIDADES = [60, 55, 50, 45, 40, 35, 30]
 /** Límite de cada AVIF; el criterio del #193 es menos de 150 KB en celular. */
 const MAX_BYTES = 150 * 1024
