@@ -82,7 +82,10 @@ export interface InventoryViewProps {
   filters: PlantFilters
   /** Se llama con los filtros nuevos. */
   onFiltersChange: (filters: PlantFilters) => void
-  /** Bloque bajo el buscador; lo usará "¿Ya la tengo?" (#19). */
+  /**
+   * Bloque bajo el buscador: la respuesta de "¿Ya la tengo?" (#19). No queda
+   * fijo arriba con el campo: se desplaza con la lista.
+   */
   searchResult?: ReactNode
   /**
    * Solo lectura (sin conexión, #18): id del texto que explica por qué. Con
@@ -113,7 +116,7 @@ const TOUCH_CHIP = 'py-space-3'
  * reduzcan la lista, el total con el estado elegido ("12 orquídeas", "2
  * orquídeas perdidas"); con ellos, "N de M" ("3 de 12 orquídeas"). Los
  * géneros son siempre los de las plantas que se ven. Bajo el buscador (fijo
- * arriba) se anuncia lo mismo al buscar o filtrar, en una región de estado que
+ * arriba, solo el campo y el contador) se anuncia lo mismo al buscar o filtrar, en una región de estado que
  * el lector de pantalla lee sin mover el foco.
  */
 export function InventoryView({
@@ -219,6 +222,13 @@ export function InventoryView({
 
   const announce = plants !== null && (searching || activeCount > 0)
 
+  // Solo el campo y su contador quedan fijos arriba al desplazar la página.
+  // La respuesta de "¿Ya la tengo?" va debajo y se desplaza con la lista: con
+  // sus ejemplares y el acceso a registrar, fija ocupaba media pantalla del
+  // celular y, con el mismo fondo que la página, su parte de abajo parecía
+  // montada sobre la primera tarjeta, tapándola a medias (#19). El margen
+  // negativo anula el hueco de la columna: sin respuesta no queda espacio, y
+  // con ella queda a la misma distancia del campo que antes.
   const controls = (
     <>
       <div className="sticky top-[0] z-10 -mx-space-1 bg-neutral-0 px-space-1 py-space-2">
@@ -236,10 +246,11 @@ export function InventoryView({
                 )
               : null
           }
-        >
-          {searchResult}
-        </InventorySearch>
+        />
       </div>
+      {searchResult !== undefined && (
+        <div className="-mt-space-4">{searchResult}</div>
+      )}
       <div className="flex flex-wrap items-center gap-space-2">
         <ChipGroup aria-label="Vista">
           <Chip
