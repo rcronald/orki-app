@@ -35,7 +35,11 @@ interface PostgrestErrorLike {
   message?: unknown
 }
 
-function recordError(error: unknown, status: number): PhotoStorageError {
+/**
+ * Error de PostgREST (con su estado HTTP) como PhotoStorageError. Estado 0:
+ * la petición salió y no hubo respuesta (`uncertain`).
+ */
+export function recordError(error: unknown, status: number): PhotoStorageError {
   const token = sessionTokenFailure(error)
   // Sin token la petición no salió: seguro que no se aplicó.
   if (token !== null) return new PhotoStorageError(token, { cause: error })

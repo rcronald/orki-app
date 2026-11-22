@@ -587,6 +587,7 @@ La fuente por defecto es la de la copia local del #18 (`cached-source.ts`, ver [
 - **Si la subida falla** (o se cancela): la planta ya está registrada y en la colección. Un aviso `role="alert"` dice "Tu orquídea quedó registrada, pero no se pudo subir la foto." con el motivo, y el foco pasa a "Reintentar subida", que repite la misma tarea con la foto ya preparada (sin volver a elegirla ni prepararla, y a las mismas rutas), o a "Continuar sin foto", que vuelve al inventario con la planta sin foto. Con la sesión terminada o la planta borrada no se ofrece reintentar. Salir a mitad (otra pestaña de la app) deja la planta sin foto; los archivos que lleguen a subirse sin planta que los apunte los encuentra el script de limpieza.
 - **Dos entradas:** "Registrar orquídea" (nombre primero) y "Con foto" ("Registrar con foto" para el lector de pantalla), las dos en el inventario. "Con foto" lleva a la misma pantalla con `?foto=1` (`src/registration/photo-first.ts`), donde el campo de foto va arriba del todo, con la ayuda "Empieza por la foto; después completa los datos."; al elegir la primera foto el foco pasa al nombre. No se abre la cámara al cargar la página porque los navegadores solo abren el selector o la cámara como respuesta directa a un toque: el primer toque es el de "Tomar foto" (con `capture="environment"`, que en iOS y Android abre la cámara trasera) o "Elegir de la galería". Así funciona igual en iOS y en Android, y si iOS recarga la app al abrir la cámara se vuelve al formulario con lo escrito y con `?foto=1`. Cuesta un toque más que abrir la cámara desde el inventario, a cambio de no tener que pasar el archivo de una pantalla a otra.
 - **Borrador con foto** (`draft-photo.ts`): la foto ya preparada (dos `Blob`) no cabe en `localStorage`, así que va en IndexedDB (base `orki-registro`, almacén `foto-pendiente`), una por usuario, con el `id` de planta del borrador de texto. Al volver al formulario se recupera solo si ese `id` coincide; sin borrador o con otro `id`, se borra, y al leer se borran también las de otros usuarios. Con una foto elegida el borrador de texto se guarda aunque no haya nada escrito, para conservar ese `id`. Caduca a las 24 horas y se borra al guardar la planta, al quitar la foto, al descartar el borrador y al salir con "Cancelar" (que ahora pregunta también si solo hay una foto). Límite: cubre una recarga después de elegir la foto (por ejemplo, si iOS descarga la app al salir a buscar el nombre); si iOS recarga la app mientras la cámara está abierta, la foto todavía no llegó a la página y hay que volver a tomarla, pero lo escrito se conserva. Si IndexedDB no existe o falla, todo va en `try/catch` y el formulario funciona igual, sin conservar la foto.
+- **Borrador con varias fotos** (#219, para el formulario con galería del #221): `writeDraftPhotos(backend, usuario, { plantId, savedAt, photos: [{ fileName, photo }] })` guarda hasta 6 fotos preparadas en su orden (con más de 6 no guarda nada y devuelve `false`; sin fotos, borra), `readDraftPhotos(backend, usuario, { plantId, now })` las devuelve en orden con las mismas reglas (mismo `id` de planta, 24 horas, por usuario, se borran las de otros usuarios) y `clearDraftPhotos` las borra. Van en la misma base, el mismo almacén y la misma clave de IndexedDB, con el formato en la versión 2; no hay migración de esquema, así que el arreglo de WebKit efímero (la petición falla y la transacción abortada no deja promesas sin atender) vale igual. Un borrador guardado con el formato anterior (versión 1, una foto) se lee como uno de una foto; uno roto o desconocido se borra sin error. El formulario actual sigue con `readDraftPhoto`, `writeDraftPhoto` y `clearDraftPhoto` (la primera foto), sin cambios.
 - **Sin conexión** (`useOnlineStatus`): el formulario se desactiva con el motivo y vuelve solo al recuperarla. El campo de foto se desactiva con él y la foto elegida se conserva. Si se pierde la conexión con la subida fallida, "Reintentar subida" queda con `aria-disabled` y "Continuar sin foto" sigue disponible.
 - **Después de guardar** vuelve al inventario (sustituyendo la entrada del historial) con un aviso de confirmación (`role="status"`) con la etiqueta de validación y "Registrar otra". "Cancelar" pregunta antes de salir solo si hay cambios.
 - **Pruebas:** `src/pages/NewPlantPage.test.tsx` (con `fetch` simulado, también Storage y la actualización de las rutas de la foto, y la zona horaria `America/Lima`; la recarga se simula desmontando y volviendo a montar la app con el mismo `localStorage`; la preparación de la foto es un doble y la foto pendiente va en un almacén en memoria, porque jsdom no tiene canvas ni IndexedDB), `src/registration/*.test.ts` y `src/lib/localDate.test.ts`. La parte de IndexedDB de `draft-photo.ts` solo se prueba sin IndexedDB disponible; falta comprobarla en un iPhone y un Android reales (#89). `src/test/setup.ts` vacía `localStorage` después de cada prueba.
@@ -694,7 +695,93 @@ Sin huérfanos:
 
 - **Reemplazar y quitar** borran los archivos anteriores (ver la tabla de arriba).
 - **Eliminar una planta** (lo llamará el #16): `deletePlantWithPhotos({ userId, plantId, onPlantRemoved: removePlant })` (`src/photos/delete.ts`) borra primero la fila, la quita de la colección y después toda la carpeta `<usuario>/<planta>/` (`deletePlantPhotoFolder`, que también se lleva restos de subidas anteriores). Si falla el borrado de la planta no se toca nada; si fallan los archivos, la planta ya no existe y devuelve `photosDeleted: false`.
-- **Script de limpieza:** un fallo de red a mitad puede dejar archivos sin planta. `npm run fotos:huerfanas -- --ambiente desarrollo` los lista (modo de prueba, por defecto) y con `--borrar` los borra; ver [su sección](supabase/README.md#limpieza-de-fotos-huérfanas) en el README de Supabase.
+- **Script de limpieza:** un fallo de red a mitad puede dejar archivos sin planta. `npm run fotos:huerfanas -- --ambiente desarrollo` los lista (modo de prueba, por defecto) y con `--borrar` los borra; da por usado todo archivo que citen `plants` o `plant_photos`, así que no se lleva las fotos secundarias. Ver [su sección](supabase/README.md#limpieza-de-fotos-huérfanas) en el README de Supabase.
+- **Varias fotos:** eliminar una planta o la cuenta borra también las fotos secundarias: están en la misma carpeta `<usuario>/<planta>/` y sus filas de `plant_photos` se van con la planta (`on delete cascade`). Lo prueban `src/photos/delete.test.ts`, `src/account/supabase-effects.test.ts` y `e2e/fotos-de-plantas.spec.ts`.
+
+### Varias fotos por planta: API de datos
+
+Desde el #182 una planta tiene de 0 a 6 fotos en `public.plant_photos` (ver [Varias fotos por planta](supabase/README.md#varias-fotos-por-planta) en el README de Supabase). El #219 deja la capa de datos para el formulario con galería (#221); ninguna pantalla la usa todavía. Las columnas `photo_path`, `thumbnail_path` y `photo_in_bloom` de `plants` siguen siendo la copia de la principal (la de `position` más baja), que la base mantiene en los dos sentidos: la tarjeta del inventario no cambia, y `replacePlantPhoto` y `removePlantPhoto` (el formulario de una foto) siguen funcionando igual, porque lo que escriben en `plants` la base lo refleja en la principal.
+
+Módulos (`src/photos/`), con la misma separación que la subida de una foto:
+
+- `gallery.ts`: las operaciones (`uploadPlantPhotos`, `listPlantPhotos`, `removeStoredPlantPhoto`).
+- `photo-rows.ts`: `PlantPhotoRows`, el acceso a `plant_photos` con PostgREST (`appPlantPhotoRows()`), `StoredPlantPhoto` (la fila con nombres de la app) y la traducción de errores (`photoRowError`). Tipos y alias de la tabla en `src/lib/database.ts` (`PlantPhoto`, `PlantPhotoInsert`, `PlantPhotoUpdate`).
+- `memory-photo-rows.ts`: el doble en memoria con las reglas de la base (dueño, carpeta de las rutas, posiciones de 0 a 5 sin repetir, copia de la principal a la planta) y fallos a voluntad, también «después de aplicar». Lo usan las pruebas; sirve para la página de muestra.
+- `MAX_PLANT_PHOTOS` (6) está en `paths.ts`.
+
+| Función                                                                                            | Qué hace                                                                                                                                                                                                                                                                                                      | Errores                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uploadPlantPhotos(fotos, { userId, plantId, signal, onProgress, onPlantUpdated, storage, rows })` | Sube las fotos ya preparadas (`{ files, inBloom?, takenAt?, note? }`, con `files` = `ProcessedPhoto`) a una planta que ya existe, una detrás de otra y en el orden dado, y crea su fila con su `position`. Sirve para registrar y para añadir en la edición. Devuelve `{ results, photos, complete, plant }`. | Rechaza sin subir nada si no puede leer las fotos de la planta, si la señal ya está cancelada o si no caben (`too-many-photos`, contando las guardadas). Después resuelve siempre, con un resultado por foto: `uploaded` (`reused` si ya estaba), `failed` (con su `PhotoStorageError`) o `skipped` (cancelada antes de empezarla). |
+| `listPlantPhotos({ userId, plantId, rows })`                                                       | Las fotos de la planta en orden (`StoredPlantPhoto[]`, la principal primero).                                                                                                                                                                                                                                 | `PhotoStorageError` (`offline`, `session-ended`...).                                                                                                                                                                                                                                                                                |
+| `removeStoredPlantPhoto({ userId, plantId, photo, onPlantUpdated, storage, rows })`                | Quita una foto guardada: borra la fila (si era la principal, la base promueve la siguiente), relee la planta para la colección y borra sus dos archivos. Devuelve `{ photosDeleted, leftovers, plant }`.                                                                                                      | Si falla el borrado de la fila, rechaza y no toca los archivos. Si fallan los archivos, la foto ya no está y devuelve `photosDeleted: false` con las rutas en `leftovers` (para el script de limpieza).                                                                                                                             |
+
+- **Orden de cada foto: primero los dos archivos y después la fila.** Una fila sin archivo sería una foto rota (si es la principal, la base la copiaría a `plants` y la tarjeta no podría mostrarla); un archivo sin fila no lo ve nadie y lo recoge el script de limpieza pasadas 24 horas. Si falla un archivo, se borran los dos y no se crea la fila. Si la base rechaza la fila, se borran los dos archivos; si ese borrado también falla, quedan para el script. Si no se sabe si la fila llegó (`uncertain`, la red cayó sin respuesta), los archivos se quedan, porque quizá ya los cita: el reintento lo resuelve.
+- **Reintento sin duplicados:** cada foto preparada tiene su versión fija (`photoVersionFor`), así que sus rutas son las mismas en cada intento. Antes de subir se leen las filas de la planta y una foto cuya ruta ya está en una fila se da por guardada (`reused: true`): no se sube ni se crea otra fila. Los archivos que ya estaban en el bucket los da por subidos el 409 de Storage. Se puede volver a llamar con todas las fotos o solo con las que fallaron.
+- **Posiciones:** la de cada foto se decide en el primer intento y se recuerda (por la foto preparada, como la versión): reintentar la vuelve a usar si sigue libre, así una foto que falló a mitad del registro conserva su lugar. Una foto nueva va a la primera posición libre detrás de la última ocupada y, si al final ya no queda sitio, a la primera libre. Si otra foto (otro dispositivo) ocupa la posición entre la lectura y la escritura, la base responde `23505` (`position-taken`) y se prueba una vez con otra libre; si no queda ninguna, la foto falla con `too-many-photos` y sus archivos se borran.
+- **Máximo de 6:** se comprueba antes de subir, contando las ya guardadas; lo garantiza además la base (`position` de 0 a 5 y única por planta).
+- **Progreso** (`onProgress`): `{ index, completed, total, step }`, con `step` `uploading` (y `files`, el `UploadProgress` de sus dos archivos), `saving` (creando la fila) o `done` (y `result`).
+- **Cancelar** (`signal`): la foto en curso deja de esperarse (lo que llegue a subirse se borra al terminar, como en `uploadPhotoFiles`) y queda `failed` con `aborted`; las siguientes, `skipped`. Una fila que ya salió hacia la base se espera. El reintento usa otra versión para la cancelada y la misma posición.
+- **La planta de la colección:** la base copia la principal a `plants`, pero la planta en memoria no se entera. Si la principal cambia (al subir la primera foto o al quitar la principal), se relee la planta y se pasa a `onPlantUpdated` (conéctalo con `useCollection().upsertPlant`). Si esa lectura falla no es un error: la base ya está bien y la colección lo verá en la próxima lectura.
+- **Leer las imágenes:** con las rutas de cada `StoredPlantPhoto`, con los mismos hooks y la misma caché que el resto (`usePlantImage(foto.thumbnailPath, 'thumbnail')` para la cuadrícula y `usePlantImage(foto.photoPath, 'photo')` para verla en grande).
+- **Errores nuevos de `PhotoStorageError`:** `too-many-photos` («Una planta puede tener como mucho 6 fotos…», sin «Reintentar»: `canRetryUpload` lo excluye) y `position-taken`, que la galería resuelve sola o traduce a `too-many-photos`.
+
+Registrar una planta con N fotos (#221), con la planta ya insertada como hoy:
+
+```ts
+import { uploadPlantPhotos } from '../photos/gallery.ts'
+
+// fotos: las de la galería en su orden, ya preparadas (ProcessedPhoto)
+const fotos = galeria.map(({ photo, inBloom }) => ({ files: photo, inBloom }))
+const tarea = ({ signal, onProgress }) =>
+  uploadPlantPhotos(fotos, {
+    userId,
+    plantId,
+    signal,
+    onProgress,
+    onPlantUpdated: upsertPlant,
+  })
+
+const { results, complete } = await tarea({ signal, onProgress })
+if (!complete) {
+  // La planta y las fotos guardadas se conservan. Mostrar cuáles fallaron
+  // (results[i].status === 'failed', con results[i].error.message) y ofrecer
+  // "Reintentar", que vuelve a llamar con las mismas fotos: no duplica nada.
+  const faltan = fotos.filter((_, i) => results[i].status !== 'uploaded')
+  await uploadPlantPhotos(faltan, {
+    userId,
+    plantId,
+    onPlantUpdated: upsertPlant,
+  })
+}
+```
+
+Editar la galería de una planta ya guardada:
+
+```ts
+import {
+  listPlantPhotos,
+  removeStoredPlantPhoto,
+  uploadPlantPhotos,
+} from '../photos/gallery.ts'
+
+const guardadas = await listPlantPhotos({ userId, plantId }) // en orden; la primera es la principal
+
+// Quitar una (si es la principal, pasa a serlo la siguiente)
+const { photosDeleted } = await removeStoredPlantPhoto({
+  userId,
+  plantId,
+  photo: guardadas[0],
+  onPlantUpdated: upsertPlant,
+})
+
+// Añadir: van detrás de las que ya tiene; 'too-many-photos' si no caben
+await uploadPlantPhotos(
+  nuevas.map((photo) => ({ files: photo })),
+  { userId, plantId, onPlantUpdated: upsertPlant },
+)
+```
+
+Pruebas: `src/photos/gallery.test.ts` (0, 1 y 6 fotos, la séptima, fallo de un archivo, rechazo de la fila, limpieza que también falla, reintento con la fila perdida o llegada, cancelación, posición ocupada, añadir, leer en orden, quitar la principal y los fallos al quitar) y `src/photos/photo-rows.test.ts` (consultas y errores de PostgREST). Sin comprobar contra Supabase y Storage reales: lo que la base hace con las filas lo prueban `supabase/tests/fotos_de_plantas.sql` y el Supabase simulado de las pruebas de extremo a extremo.
 
 ## Eliminación de la cuenta
 
@@ -797,7 +884,7 @@ En Linux, la primera vez hace falta `npx playwright install --with-deps` (instal
 ### Qué se prueba y qué se simula
 
 - **La app es la de producción.** `npm run build:e2e` construye `apps/web` con los valores ficticios de `scripts/medicion/entorno.mjs` (los mismos que el presupuesto de tamaño) y con un solo módulo cambiado al construir: `@clerk/react`, por `apps/web/medicion/clerk-simulado.tsx` (ver `apps/web/medicion/vite.config.e2e.ts` y `apps/web/medicion/sustitutos.ts`, compartido con la medición de la carga). Clerk descarga su script de su CDN y habla con su API, así que no se puede simular en la red; el sustituto da la sesión que elige cada prueba (sin sesión, la persona de prueba o una con el rol `catalog_admin`) y sus pantallas de acceso son un botón que inicia la sesión. Nada de esto llega a `apps/web/dist`. Se sirve con el servidor de la medición (`scripts/servir-e2e.mjs`), como Vercel: cualquier ruta responde con `index.html`.
-- **Supabase se simula en la red**, no en el código: el cliente de supabase-js de la app hace sus peticiones de verdad hacia `https://supabase.orki.invalid` y Playwright las responde desde la memoria de cada prueba (`apps/web/e2e/soporte/supabase-simulado.ts`), con la forma de PostgREST y de Storage, las reglas de las políticas (cada persona ve y escribe sus plantas; el backoffice, solo `catalog_admin`) y lo que hacen los disparadores de `plants`. Así se ejercita el código de la app que arma las consultas, interpreta las respuestas, sube y descarga las fotos y traduce los errores. Los datos de partida están en `apps/web/e2e/soporte/datos.ts`.
+- **Supabase se simula en la red**, no en el código: el cliente de supabase-js de la app hace sus peticiones de verdad hacia `https://supabase.orki.invalid` y Playwright las responde desde la memoria de cada prueba (`apps/web/e2e/soporte/supabase-simulado.ts`), con la forma de PostgREST y de Storage, las reglas de las políticas (cada persona ve y escribe sus plantas; el backoffice, solo `catalog_admin`) y lo que hacen los disparadores de `plants`. Simula también `plant_photos` (#219), para probar el formulario con galería: cada persona solo sus fotos, el dueño de la foto es el de la planta, rutas en `<usuario>/<planta>/`, `position` de 0 a 5 y única por planta (`23505`), solo las columnas que la API deja cambiar, la cascada al borrar la planta y la sincronización en los dos sentidos con las columnas de foto de `plants` (también lo que escribe en `plants` el formulario de una foto). Una prueba que pone la foto directamente en `datos.plantas` la ve como principal en `plant_photos`, como tras la copia de la migración; `supabase.fotosDe(planta)` devuelve sus fotos en orden. Lo prueba `e2e/fotos-de-plantas.spec.ts`, que incluye eliminar desde la app una planta con varias fotos. Así se ejercita el código de la app que arma las consultas, interpreta las respuestas, sube y descarga las fotos y traduce los errores. Los datos de partida están en `apps/web/e2e/soporte/datos.ts`.
 - **La red está cerrada.** Solo pasa el origen de la app. Una petición a Supabase que el simulado no conoce, cualquier salida a otro dominio o un error que la app envíe a Sentry (el DSN ficticio, que se responde sin salir) hacen fallar la prueba.
 - **Cada prueba es independiente:** contexto de navegador nuevo (almacenamiento vacío) y su propio Supabase simulado. El service worker está bloqueado salvo en las pruebas de la PWA (`apps/web/e2e/pwa.spec.ts`), que lo registran de verdad.
 

@@ -1,0 +1,598 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { CollectionPlant } from '../collection/model.ts'
+import { plant } from '../test/collection.ts'
+import { PLANT_ID, processedPhoto, USER_ID } from '../test/photos.ts'
+import {
+  listPlantPhotos,
+  removeStoredPlantPhoto,
+  uploadPlantPhotos,
+  type NewPlantPhoto,
+  type PlantPhotosProgress,
+} from './gallery.ts'
+import { createMemoryPlantPhotoRows } from './memory-photo-rows.ts'
+import { createMemoryPhotoStorage } from './memory-storage.ts'
+import { PhotoStorageError } from './storage.ts'
+import { photoVersionFor } from './upload.ts'
+
+const OTHER_USER = 'user_otra'
+
+/** Bucket y filas en memoria, con la planta ya creada y sin fotos. */
+function setup() {
+  const storage = createMemoryPhotoStorage()
+  const rows = createMemoryPlantPhotoRows()
+  rows.plants.set(PLANT_ID, {
+    ...plant({ id: PLANT_ID, photoPath: null, thumbnailPath: null }),
+    photoInBloom: false,
+    userId: USER_ID,
+  })
+  return { storage, rows }
+}
+
+function newPhotos(count: number): NewPlantPhoto[] {
+  return Array.from({ length: count }, () => ({ files: processedPhoto() }))
+}
+
+function options(context: ReturnType<typeof setup>) {
+  return { userId: USER_ID, plantId: PLANT_ID, ...context }
+}
+
+/** Las dos rutas de cada foto, ordenadas. */
+function filesOf(photos: { photoPath: string; thumbnailPath: string }[]) {
+  return photos
+    .flatMap((photo) => [photo.photoPath, photo.thumbnailPath])
+    .sort()
+}
+
+function bucketPaths(storage: ReturnType<typeof createMemoryPhotoStorage>) {
+  return [...storage.objects.keys()].sort()
+}
+
+describe('uploadPlantPhotos', () => {
+  it('sin fotos no sube ni escribe nada', async () => {
+    const context = setup()
+    const upload = vi.spyOn(context.storage, 'upload')
+    const insert = vi.spyOn(context.rows, 'insert')
+    const onPlantUpdated = vi.fn()
+
+    const result = await uploadPlantPhotos([], {
+      ...options(context),
+      onPlantUpdated,
+    })
+
+    expect(result).toEqual({
+      results: [],
+      photos: [],
+      complete: true,
+      plant: null,
+    })
+    expect(upload).not.toHaveBeenCalled()
+    expect(insert).not.toHaveBeenCalled()
+    expect(onPlantUpdated).not.toHaveBeenCalled()
+  })
+
+  it('una foto: sube los dos archivos, crea la principal y relee la planta', async () => {
+    const context = setup()
+    const order: string[] = []
+    const upload = context.storage.upload.bind(context.storage)
+    vi.spyOn(context.storage, 'upload').mockImplementation((path, ...rest) => {
+      order.push(path.includes('/thumb-') ? 'subir miniatura' : 'subir foto')
+      return upload(path, ...rest)
+    })
+    const insert = context.rows.insert.bind(context.rows)
+    vi.spyOn(context.rows, 'insert').mockImplementation((row) => {
+      order.push('crear fila')
+      // La fila nunca cita un archivo que no existe.
+      expect(context.storage.objects.has(row.photoPath)).toBe(true)
+      expect(context.storage.objects.has(row.thumbnailPath)).toBe(true)
+      return insert(row)
+    })
+    const updated: CollectionPlant[] = []
+    const [photo] = newPhotos(1)
+
+    const result = await uploadPlantPhotos(
+      [
+        {
+          ...photo,
+          inBloom: true,
+          takenAt: '2026-11-20',
+          note: 'Primera flor',
+        },
+      ],
+      { ...options(context), onPlantUpdated: (p) => updated.push(p) },
+    )
+
+    expect(order).toEqual(['subir foto', 'subir miniatura', 'crear fila'])
+    expect(result.complete).toBe(true)
+    const [only] = result.results
+    expect(only).toMatchObject({ status: 'uploaded', reused: false })
+    const saved = context.rows.photosOf(PLANT_ID)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({
+      position: 0,
+      inBloom: true,
+      takenAt: '2026-11-20',
+      note: 'Primera flor',
+    })
+    const version = photoVersionFor(photo.files)
+    expect(saved[0].photoPath).toBe(
+      `${USER_ID}/${PLANT_ID}/photo-${version}.webp`,
+    )
+    expect(bucketPaths(context.storage)).toEqual(filesOf(saved))
+    // La base copió la principal a la planta y la colección la recibe.
+    expect(updated).toHaveLength(1)
+    expect(updated[0].thumbnailPath).toBe(saved[0].thumbnailPath)
+    expect(result.plant?.photoPath).toBe(saved[0].photoPath)
+  })
+
+  it('seis fotos: en orden, posiciones 0 a 5, con progreso por foto', async () => {
+    const context = setup()
+    const photos = newPhotos(6)
+    const progress: PlantPhotosProgress[] = []
+
+    const result = await uploadPlantPhotos(photos, {
+      ...options(context),
+      onProgress: (value) => progress.push(value),
+    })
+
+    expect(result.complete).toBe(true)
+    const saved = context.rows.photosOf(PLANT_ID)
+    expect(saved.map((photo) => photo.position)).toEqual([0, 1, 2, 3, 4, 5])
+    expect(saved.map((photo) => photo.photoPath)).toEqual(
+      photos.map(
+        ({ files }) =>
+          `${USER_ID}/${PLANT_ID}/photo-${photoVersionFor(files)}.webp`,
+      ),
+    )
+    expect(result.photos).toEqual(saved)
+    expect(bucketPaths(context.storage)).toEqual(filesOf(saved))
+
+    const done = progress.filter((value) => value.step === 'done')
+    expect(done.map((value) => [value.index, value.completed])).toEqual([
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [5, 6],
+    ])
+    expect(progress.every((value) => value.total === 6)).toBe(true)
+    // Cada foto pasa por subir (con el progreso de sus archivos) y guardar.
+    expect(
+      progress.filter((value) => value.index === 2).map((value) => value.step),
+    ).toEqual(['uploading', 'uploading', 'uploading', 'saving', 'done'])
+  })
+
+  it('la séptima no cabe: rechaza sin subir nada', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(6), options(context))
+    const upload = vi.spyOn(context.storage, 'upload')
+
+    await expect(
+      uploadPlantPhotos(newPhotos(1), options(context)),
+    ).rejects.toMatchObject({ reason: 'too-many-photos' })
+    expect(upload).not.toHaveBeenCalled()
+    expect(context.rows.photosOf(PLANT_ID)).toHaveLength(6)
+
+    // También siete de golpe en una planta vacía.
+    const empty = setup()
+    await expect(
+      uploadPlantPhotos(newPhotos(7), options(empty)),
+    ).rejects.toMatchObject({ reason: 'too-many-photos' })
+    expect(empty.storage.objects.size).toBe(0)
+  })
+
+  it('si falla un archivo, esa foto no deja nada y las demás se guardan', async () => {
+    const context = setup()
+    const photos = newPhotos(3)
+    const broken = photoVersionFor(photos[1].files)
+    context.storage.failUploads = (path) =>
+      path.includes(`thumb-${broken}`)
+        ? new PhotoStorageError('too-large')
+        : null
+
+    const result = await uploadPlantPhotos(photos, options(context))
+
+    expect(result.complete).toBe(false)
+    expect(result.results.map((value) => value.status)).toEqual([
+      'uploaded',
+      'failed',
+      'uploaded',
+    ])
+    expect(result.results[1]).toMatchObject({
+      error: { reason: 'too-large' },
+    })
+    const saved = context.rows.photosOf(PLANT_ID)
+    expect(saved.map((photo) => photo.position)).toEqual([0, 2])
+    // Ni la foto de la que falló la miniatura.
+    expect(bucketPaths(context.storage)).toEqual(filesOf(saved))
+  })
+
+  it('si la base rechaza la fila, borra sus archivos', async () => {
+    const context = setup()
+    context.rows.failInsert = () => ({
+      error: new PhotoStorageError('session-ended'),
+    })
+
+    const result = await uploadPlantPhotos(newPhotos(1), options(context))
+
+    expect(result.results[0]).toMatchObject({
+      status: 'failed',
+      error: { reason: 'session-ended' },
+    })
+    expect(context.storage.objects.size).toBe(0)
+    expect(context.rows.rows.size).toBe(0)
+  })
+
+  it('si el borrado de los archivos también falla, quedan para el script de limpieza', async () => {
+    const context = setup()
+    context.rows.failInsert = () => ({ error: new PhotoStorageError('failed') })
+    vi.spyOn(context.storage, 'remove').mockRejectedValue(
+      new PhotoStorageError('offline', { uncertain: true }),
+    )
+
+    const result = await uploadPlantPhotos(newPhotos(1), options(context))
+
+    expect(result.results[0]).toMatchObject({ status: 'failed' })
+    // Dos archivos sin fila: los encuentra findOrphans (orphans.test.ts).
+    expect(context.storage.objects.size).toBe(2)
+    expect(context.rows.rows.size).toBe(0)
+  })
+
+  it('reintentar con las que faltan: no duplica y respeta su posición', async () => {
+    const context = setup()
+    const photos = newPhotos(3)
+    context.rows.failInsert = (row) =>
+      row.position === 1
+        ? { error: new PhotoStorageError('offline', { uncertain: true }) }
+        : null
+    const first = await uploadPlantPhotos(photos, options(context))
+    expect(first.results.map((value) => value.status)).toEqual([
+      'uploaded',
+      'failed',
+      'uploaded',
+    ])
+    // Sin respuesta de la base: sus archivos se quedan (la fila quizá existe).
+    expect(context.storage.objects.size).toBe(6)
+
+    context.rows.failInsert = undefined
+    const retry = await uploadPlantPhotos([photos[1]], options(context))
+
+    expect(retry.complete).toBe(true)
+    const saved = context.rows.photosOf(PLANT_ID)
+    expect(saved.map((photo) => photo.position)).toEqual([0, 1, 2])
+    expect(saved[1].photoPath).toContain(photoVersionFor(photos[1].files))
+    expect(bucketPaths(context.storage)).toEqual(filesOf(saved))
+  })
+
+  it('reintentar cuando la fila sí llegó (respuesta perdida) no crea otra', async () => {
+    const context = setup()
+    const photos = newPhotos(2)
+    context.rows.failInsert = (row) =>
+      row.position === 0
+        ? {
+            error: new PhotoStorageError('offline', { uncertain: true }),
+            applied: true,
+          }
+        : null
+    const first = await uploadPlantPhotos(photos, options(context))
+    expect(first.results[0].status).toBe('failed')
+
+    context.rows.failInsert = undefined
+    const upload = vi.spyOn(context.storage, 'upload')
+    const insert = vi.spyOn(context.rows, 'insert')
+    // Se reintenta con todas: la primera ya está y la segunda también.
+    const retry = await uploadPlantPhotos(photos, options(context))
+
+    expect(retry.results).toMatchObject([
+      { status: 'uploaded', reused: true },
+      { status: 'uploaded', reused: true },
+    ])
+    expect(upload).not.toHaveBeenCalled()
+    expect(insert).not.toHaveBeenCalled()
+    expect(context.rows.photosOf(PLANT_ID)).toHaveLength(2)
+    expect(context.storage.objects.size).toBe(4)
+  })
+
+  it('cancelar: deja de esperar, borra lo subido y no intenta las siguientes', async () => {
+    const context = setup()
+    context.storage.delayMs = 20
+    const photos = newPhotos(3)
+    const controller = new AbortController()
+    const pending = uploadPlantPhotos(photos, {
+      ...options(context),
+      signal: controller.signal,
+      onProgress: (value) => {
+        // Cancelar mientras sube la segunda.
+        if (value.index === 1 && value.step === 'uploading') controller.abort()
+      },
+    })
+
+    const result = await pending
+    expect(result.results.map((value) => value.status)).toEqual([
+      'uploaded',
+      'failed',
+      'skipped',
+    ])
+    expect(result.results[1]).toMatchObject({ error: { reason: 'aborted' } })
+    // Lo que llegue a subirse de la segunda se borra al terminar.
+    await vi.waitFor(() => {
+      expect(bucketPaths(context.storage)).toEqual(
+        filesOf(context.rows.photosOf(PLANT_ID)),
+      )
+    })
+    expect(context.rows.photosOf(PLANT_ID)).toHaveLength(1)
+
+    // El reintento termina el trabajo en sus posiciones.
+    context.storage.delayMs = 0
+    const retry = await uploadPlantPhotos(photos.slice(1), options(context))
+    expect(retry.complete).toBe(true)
+    expect(
+      context.rows.photosOf(PLANT_ID).map((photo) => photo.position),
+    ).toEqual([0, 1, 2])
+    expect(bucketPaths(context.storage)).toEqual(
+      filesOf(context.rows.photosOf(PLANT_ID)),
+    )
+  })
+
+  it('con la señal ya cancelada no lee ni sube nada', async () => {
+    const context = setup()
+    const list = vi.spyOn(context.rows, 'list')
+    await expect(
+      uploadPlantPhotos(newPhotos(1), {
+        ...options(context),
+        signal: AbortSignal.abort(),
+      }),
+    ).rejects.toMatchObject({ reason: 'aborted' })
+    expect(list).not.toHaveBeenCalled()
+  })
+
+  it('si no puede leer las fotos de la planta, rechaza sin subir', async () => {
+    const context = setup()
+    context.rows.failList = () =>
+      new PhotoStorageError('offline', { uncertain: true })
+    await expect(
+      uploadPlantPhotos(newPhotos(1), options(context)),
+    ).rejects.toMatchObject({ reason: 'offline' })
+    expect(context.storage.objects.size).toBe(0)
+  })
+
+  it('añadir a una planta con fotos: van detrás de la última', async () => {
+    const context = setup()
+    const initial = newPhotos(3)
+    await uploadPlantPhotos(initial, options(context))
+    // Se quita la segunda: queda un hueco en la posición 1.
+    const [, second] = context.rows.photosOf(PLANT_ID)
+    await removeStoredPlantPhoto({ ...options(context), photo: second })
+    const onPlantUpdated = vi.fn()
+
+    const result = await uploadPlantPhotos(newPhotos(2), {
+      ...options(context),
+      onPlantUpdated,
+    })
+
+    expect(result.photos.map((photo) => photo.position)).toEqual([0, 2, 3, 4])
+    // La principal no cambió: no hace falta releer la planta.
+    expect(onPlantUpdated).not.toHaveBeenCalled()
+
+    // Cuando ya no hay sitio al final, ocupa el hueco.
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    const last = await uploadPlantPhotos(newPhotos(1), options(context))
+    expect(last.photos.map((photo) => photo.position)).toEqual([
+      0, 1, 2, 3, 4, 5,
+    ])
+  })
+
+  it('si otra foto ocupa la posición (23505), usa la siguiente libre', async () => {
+    const context = setup()
+    const [photo] = newPhotos(1)
+    let first = true
+    context.rows.failInsert = (row) => {
+      if (!first) return null
+      first = false
+      // Otro dispositivo guarda una foto en esa posición justo antes.
+      context.rows.rows.set('ajena', {
+        id: 'ajena',
+        plantId: PLANT_ID,
+        userId: USER_ID,
+        photoPath: `${USER_ID}/${PLANT_ID}/photo-ajena.webp`,
+        thumbnailPath: `${USER_ID}/${PLANT_ID}/thumb-ajena.webp`,
+        inBloom: false,
+        takenAt: null,
+        note: null,
+        position: row.position,
+        createdAt: '2026-11-22T12:00:00.000Z',
+      })
+      return { error: new PhotoStorageError('position-taken') }
+    }
+
+    const result = await uploadPlantPhotos([photo], options(context))
+
+    expect(result.results[0]).toMatchObject({ status: 'uploaded' })
+    expect(
+      context.rows.photosOf(PLANT_ID).map((saved) => saved.position),
+    ).toEqual([0, 1])
+  })
+
+  it('si la base rechaza por posición y ya no queda sitio, es "too-many-photos" y no deja archivos', async () => {
+    const context = setup()
+    const [photo] = newPhotos(1)
+    await uploadPlantPhotos(newPhotos(5), options(context))
+    context.rows.failInsert = (row) => {
+      context.rows.rows.set('ajena', {
+        id: 'ajena',
+        plantId: PLANT_ID,
+        userId: USER_ID,
+        photoPath: `${USER_ID}/${PLANT_ID}/photo-ajena.webp`,
+        thumbnailPath: `${USER_ID}/${PLANT_ID}/thumb-ajena.webp`,
+        inBloom: false,
+        takenAt: null,
+        note: null,
+        position: row.position,
+        createdAt: '2026-11-22T12:00:00.000Z',
+      })
+      context.rows.failInsert = undefined
+      return { error: new PhotoStorageError('position-taken') }
+    }
+    const before = bucketPaths(context.storage)
+
+    const result = await uploadPlantPhotos([photo], options(context))
+
+    expect(result.results[0]).toMatchObject({
+      status: 'failed',
+      error: { reason: 'too-many-photos' },
+    })
+    expect(bucketPaths(context.storage)).toEqual(before)
+  })
+
+  it('la misma foto dos veces en una llamada es un error de quien llama', async () => {
+    const context = setup()
+    const [photo] = newPhotos(1)
+    await expect(
+      uploadPlantPhotos([photo, photo], options(context)),
+    ).rejects.toThrow('dos veces')
+  })
+})
+
+describe('listPlantPhotos', () => {
+  it('devuelve las fotos de la planta en orden, la principal primero', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(3), options(context))
+    // Se reordenan a mano (lo hará la galería del detalle, #183).
+    const ids = context.rows.photosOf(PLANT_ID).map((photo) => photo.id)
+    const positions = [4, 0, 2]
+    ids.forEach((id, index) => {
+      const row = context.rows.rows.get(id)
+      if (row) row.position = positions[index]
+    })
+
+    const photos = await listPlantPhotos({
+      userId: USER_ID,
+      plantId: PLANT_ID.toUpperCase(),
+      rows: context.rows,
+    })
+
+    expect(photos.map((photo) => photo.id)).toEqual([ids[1], ids[2], ids[0]])
+    expect(photos.map((photo) => photo.position)).toEqual([0, 2, 4])
+  })
+
+  it('sin fotos devuelve una lista vacía, y no ve las de otra cuenta', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    expect(
+      await listPlantPhotos({
+        userId: OTHER_USER,
+        plantId: PLANT_ID,
+        rows: context.rows,
+      }),
+    ).toEqual([])
+  })
+})
+
+describe('removeStoredPlantPhoto', () => {
+  it('quitar la principal: borra la fila, promueve la siguiente y después borra sus archivos', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(3), options(context))
+    const [main, next] = context.rows.photosOf(PLANT_ID)
+    const order: string[] = []
+    const remove = context.rows.remove.bind(context.rows)
+    vi.spyOn(context.rows, 'remove').mockImplementation((...args) => {
+      order.push('borrar fila')
+      expect(context.storage.objects.has(main.photoPath)).toBe(true)
+      return remove(...args)
+    })
+    const removeFiles = context.storage.remove.bind(context.storage)
+    vi.spyOn(context.storage, 'remove').mockImplementation((paths) => {
+      order.push('borrar archivos')
+      return removeFiles(paths)
+    })
+    const updated: CollectionPlant[] = []
+
+    const result = await removeStoredPlantPhoto({
+      ...options(context),
+      photo: main,
+      onPlantUpdated: (value) => {
+        order.push('reflejar')
+        updated.push(value)
+      },
+    })
+
+    expect(order).toEqual(['borrar fila', 'reflejar', 'borrar archivos'])
+    expect(result).toMatchObject({ photosDeleted: true, leftovers: [] })
+    const left = context.rows.photosOf(PLANT_ID)
+    expect(left.map((photo) => photo.id)).not.toContain(main.id)
+    expect(left[0].id).toBe(next.id)
+    // La tarjeta del inventario pasa a mostrar la siguiente.
+    expect(updated[0].photoPath).toBe(next.photoPath)
+    expect(context.storage.objects.has(main.photoPath)).toBe(false)
+    expect(context.storage.objects.has(main.thumbnailPath)).toBe(false)
+    expect(bucketPaths(context.storage)).toEqual(filesOf(left))
+  })
+
+  it('quitar la única foto deja la planta sin foto', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    const [only] = context.rows.photosOf(PLANT_ID)
+    const updated = vi.fn()
+    await removeStoredPlantPhoto({
+      ...options(context),
+      photo: only,
+      onPlantUpdated: updated,
+    })
+    expect(updated).toHaveBeenCalledWith(
+      expect.objectContaining({ photoPath: null, thumbnailPath: null }),
+    )
+    expect(context.storage.objects.size).toBe(0)
+  })
+
+  it('si falla el borrado de la fila, no toca los archivos', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    const [only] = context.rows.photosOf(PLANT_ID)
+    context.rows.failRemove = () => ({
+      error: new PhotoStorageError('offline'),
+    })
+    await expect(
+      removeStoredPlantPhoto({ ...options(context), photo: only }),
+    ).rejects.toMatchObject({ reason: 'offline' })
+    expect(context.storage.objects.size).toBe(2)
+    expect(context.rows.photosOf(PLANT_ID)).toHaveLength(1)
+  })
+
+  it('si fallan los archivos, la fila ya no existe y lo dice', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const [, second] = context.rows.photosOf(PLANT_ID)
+    vi.spyOn(context.storage, 'remove').mockRejectedValue(
+      new PhotoStorageError('offline', { uncertain: true }),
+    )
+    const result = await removeStoredPlantPhoto({
+      ...options(context),
+      photo: second,
+    })
+    expect(result.photosDeleted).toBe(false)
+    expect(result.leftovers.sort()).toEqual(filesOf([second]))
+    expect(context.rows.photosOf(PLANT_ID)).toHaveLength(1)
+  })
+
+  it('reintentar cuando la fila ya se borró (respuesta perdida) termina con los archivos', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    const [only] = context.rows.photosOf(PLANT_ID)
+    context.rows.failRemove = () => ({
+      error: new PhotoStorageError('offline', { uncertain: true }),
+      applied: true,
+    })
+    await expect(
+      removeStoredPlantPhoto({ ...options(context), photo: only }),
+    ).rejects.toMatchObject({ reason: 'offline' })
+    expect(context.storage.objects.size).toBe(2)
+
+    context.rows.failRemove = undefined
+    const result = await removeStoredPlantPhoto({
+      ...options(context),
+      photo: only,
+    })
+    expect(result.photosDeleted).toBe(true)
+    expect(context.storage.objects.size).toBe(0)
+  })
+})

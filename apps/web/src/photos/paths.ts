@@ -20,6 +20,13 @@
 /** Nombre del bucket de las fotos de plantas. */
 export const PLANT_PHOTOS_BUCKET = 'plant-photos'
 
+/**
+ * Máximo de fotos por planta (#182, #219). La base lo garantiza con
+ * plant_photos.position de 0 a 5 y única por planta; la app lo comprueba antes
+ * de subir y el borrador del registro no guarda más.
+ */
+export const MAX_PLANT_PHOTOS = 6
+
 /** Tipos que admite el bucket (allowed_mime_types). */
 export type PlantPhotoType = 'image/webp' | 'image/jpeg'
 

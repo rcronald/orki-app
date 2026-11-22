@@ -9,14 +9,18 @@
 //
 // Qué hace:
 //   1. Lista todos los objetos del bucket (recorriendo <usuario>/<planta>/).
-//   2. Lee photo_path y thumbnail_path de todas las plantas.
+//   2. Lee photo_path y thumbnail_path de todas las plantas y de todas las
+//      filas de plant_photos (varias fotos por planta, #182 y #219). Si el
+//      proyecto aún no tiene esa tabla (la migración sin aplicar), sigue solo
+//      con plants y lo dice: sin la tabla no hay fotos secundarias.
 //   3. Informa de:
-//      - los objetos que no son la foto ni la miniatura de ninguna planta
-//        (huérfanos: restos de subidas canceladas, reemplazos o borrados que
-//        fallaron a mitad por la red), separando los que tienen la antigüedad
-//        mínima de los recientes, que pueden ser una subida en curso;
-//      - las plantas que apuntan a un archivo que no existe (solo se
-//        informa: no se cambia ninguna planta).
+//      - los objetos que no cita ninguna planta ni ninguna fila de
+//        plant_photos (huérfanos: restos de subidas canceladas, reemplazos o
+//        borrados que fallaron a mitad por la red), separando los que tienen
+//        la antigüedad mínima de los recientes, que pueden ser una subida en
+//        curso cuya fila aún no existe;
+//      - las plantas y las fotos que apuntan a un archivo que no existe (solo
+//        se informa: no se cambia ninguna fila).
 //   4. Solo con --borrar, borra los huérfanos con la antigüedad mínima
 //      (24 horas por defecto). Sin --borrar es un modo de prueba: no borra
 //      nada.
@@ -117,23 +121,46 @@ async function listarObjetos(bucket, carpeta = '') {
   }
 }
 
-/** Lee todas las plantas, de 1000 en 1000 por id. */
-async function leerPlantas(supabase) {
-  const plantas = []
+/** Lee todas las filas de una tabla, de 1000 en 1000 por id. */
+async function leerTabla(supabase, tabla, columnas) {
+  const filas = []
   let ultimo = null
   for (;;) {
-    let consulta = supabase
-      .from('plants')
-      .select('id, user_id, photo_path, thumbnail_path')
+    let consulta = supabase.from(tabla).select(columnas)
     if (ultimo !== null) consulta = consulta.gt('id', ultimo)
     const { data, error } = await consulta
       .order('id', { ascending: true })
       .limit(pagina)
-    if (error)
-      throw new Error(`no se pudieron leer las plantas: ${error.message}`)
-    plantas.push(...data)
-    if (data.length < pagina) return plantas
+    if (error) {
+      const fallo = new Error(`no se pudo leer ${tabla}: ${error.message}`)
+      fallo.codigo = error.code
+      throw fallo
+    }
+    filas.push(...data)
+    if (data.length < pagina) return filas
     ultimo = data.at(-1).id
+  }
+}
+
+/** ¿Es el error de PostgREST de una tabla que no existe? */
+function esTablaInexistente(error) {
+  return error?.codigo === 'PGRST205' || error?.codigo === '42P01'
+}
+
+/** Las fotos de plant_photos; sin la tabla (migración sin aplicar), ninguna. */
+async function leerFotos(supabase) {
+  try {
+    return await leerTabla(
+      supabase,
+      'plant_photos',
+      'id, plant_id, photo_path, thumbnail_path',
+    )
+  } catch (error) {
+    if (!esTablaInexistente(error)) throw error
+    console.log(
+      'Aviso: el proyecto no tiene la tabla plant_photos; se comparan solo las columnas de plants.',
+    )
+    return []
   }
 }
 
@@ -166,7 +193,9 @@ async function main() {
   )
   await runOrphanCleanup(argumentos, {
     listObjects: () => listarObjetos(bucket),
-    listPlants: () => leerPlantas(supabase),
+    listPlants: () =>
+      leerTabla(supabase, 'plants', 'id, user_id, photo_path, thumbnail_path'),
+    listPlantPhotos: () => leerFotos(supabase),
     removeObjects: async (rutas) => {
       const { error } = await bucket.remove(rutas)
       if (error) throw new Error(error.message)

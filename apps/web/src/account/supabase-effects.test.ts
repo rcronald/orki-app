@@ -94,6 +94,32 @@ describe('createSupabaseAccountDataEffects', () => {
     expect(fake.removed.flat().sort()).toEqual([...paths].sort())
   })
 
+  it('borra también las fotos secundarias de la galería (varias por planta)', async () => {
+    // Seis fotos en una planta y dos en otra, cada una con su versión.
+    const gallery = [
+      ...Array.from({ length: 6 }, (_, index) => [
+        `${USER}/${PLANT_A}/photo-v${index}.webp`,
+        `${USER}/${PLANT_A}/thumb-v${index}.webp`,
+      ]),
+      ...Array.from({ length: 2 }, (_, index) => [
+        `${USER}/${PLANT_B}/photo-w${index}.jpg`,
+        `${USER}/${PLANT_B}/thumb-w${index}.jpg`,
+      ]),
+    ].flat()
+    const fake = fakeClient({ objects: gallery })
+    const effects = createSupabaseAccountDataEffects({
+      getClient: () => Promise.resolve(fake.client),
+    })
+
+    await effects.deletePhotos(USER)
+    // Las filas de plant_photos se van con las plantas (on delete cascade).
+    await effects.deletePlants(USER)
+
+    expect(fake.objects.size).toBe(0)
+    expect(fake.removed.flat()).toHaveLength(16)
+    expect(fake.deletes).toEqual([`plants.user_id=${USER}`])
+  })
+
   it('pagina el listado y borra de 100 en 100', async () => {
     const paths = Array.from(
       { length: 250 },

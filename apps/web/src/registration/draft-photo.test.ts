@@ -4,12 +4,16 @@ import { processedPhoto } from '../test/photos.ts'
 import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 import {
   clearDraftPhoto,
+  clearDraftPhotos,
   createIndexedDbDraftPhotoBackend,
   createMemoryDraftPhotoBackend,
   readDraftPhoto,
+  readDraftPhotos,
   writeDraftPhoto,
+  writeDraftPhotos,
   type DraftPhoto,
   type DraftPhotoBackend,
+  type DraftPhotos,
 } from './draft-photo.ts'
 
 const USER = 'user_prueba'
@@ -83,7 +87,7 @@ describe('foto pendiente del borrador', () => {
 
   it('lo que no se entiende (otra versión o sin Blob) se borra', async () => {
     const backend = createMemoryDraftPhotoBackend()
-    await backend.put(USER, { ...draft(), version: 99 } as never)
+    await backend.put(USER, { ...draft(), version: 99 })
     expect(
       await readDraftPhoto(backend, USER, { plantId: PLANT, now: NOW }),
     ).toBeNull()
@@ -94,7 +98,7 @@ describe('foto pendiente del borrador', () => {
       version: 1,
       ...broken,
       photo: { ...broken.photo, thumbnail: { type: 'image/webp' } },
-    } as never)
+    })
     expect(
       await readDraftPhoto(backend, USER, { plantId: PLANT, now: NOW }),
     ).toBeNull()
@@ -152,5 +156,178 @@ describe('foto pendiente del borrador', () => {
       await readDraftPhoto(backend, USER, { plantId: PLANT, now: NOW }),
     ).toBeNull()
     await expect(clearDraftPhoto(backend, USER)).resolves.toBeUndefined()
+  })
+})
+
+function photos(count: number): DraftPhotos {
+  return {
+    plantId: PLANT,
+    savedAt: NOW.getTime(),
+    photos: Array.from({ length: count }, (_, index) => ({
+      fileName: `IMG_000${index + 1}.jpg`,
+      photo: processedPhoto(index % 2 === 0 ? 'image/webp' : 'image/jpeg'),
+    })),
+  }
+}
+
+describe('varias fotos pendientes del borrador (#219)', () => {
+  it('guarda hasta 6 fotos y las recupera en su orden', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    expect(await writeDraftPhotos(backend, USER, photos(6))).toBe(true)
+    expect(backend.entries.get(USER)?.version).toBe(2)
+    expect(backend.entries.get(USER)?.plantId).toBe(PLANT)
+
+    const found = await readDraftPhotos(backend, USER, {
+      plantId: PLANT,
+      now: NOW,
+    })
+    expect(found?.photos.map((item) => item.fileName)).toEqual([
+      'IMG_0001.jpg',
+      'IMG_0002.jpg',
+      'IMG_0003.jpg',
+      'IMG_0004.jpg',
+      'IMG_0005.jpg',
+      'IMG_0006.jpg',
+    ])
+    expect(found?.photos[1].photo.photo.type).toBe('image/jpeg')
+    // El formulario de una foto ve la primera.
+    const single = await readDraftPhoto(backend, USER, {
+      plantId: PLANT,
+      now: NOW,
+    })
+    expect(single?.fileName).toBe('IMG_0001.jpg')
+  })
+
+  it('más de 6 no se guarda y no cambia lo que había', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    await writeDraftPhotos(backend, USER, photos(2))
+    expect(await writeDraftPhotos(backend, USER, photos(7))).toBe(false)
+    const found = await readDraftPhotos(backend, USER, {
+      plantId: PLANT,
+      now: NOW,
+    })
+    expect(found?.photos).toHaveLength(2)
+
+    // Un borrador guardado con 7 (por otra versión de la app) se descarta.
+    await backend.put(USER, { version: 2, ...photos(7) })
+    expect(
+      await readDraftPhotos(backend, USER, { plantId: PLANT, now: NOW }),
+    ).toBeNull()
+    expect(backend.entries.size).toBe(0)
+  })
+
+  it('sin fotos borra las pendientes', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    await writeDraftPhotos(backend, USER, photos(3))
+    expect(await writeDraftPhotos(backend, USER, photos(0))).toBe(true)
+    expect(backend.entries.size).toBe(0)
+  })
+
+  it('caducan a las 24 horas, todas juntas', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    await writeDraftPhotos(backend, USER, photos(4))
+    const limit = new Date(NOW.getTime() + PLANT_DRAFT_MAX_AGE_MS)
+    expect(
+      (await readDraftPhotos(backend, USER, { plantId: PLANT, now: limit }))
+        ?.photos,
+    ).toHaveLength(4)
+    const late = new Date(limit.getTime() + 1)
+    expect(
+      await readDraftPhotos(backend, USER, { plantId: PLANT, now: late }),
+    ).toBeNull()
+    expect(backend.entries.size).toBe(0)
+  })
+
+  it('no aparecen con otra cuenta: al leer se borran las de otros usuarios', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    await writeDraftPhotos(backend, 'user_otro', photos(3))
+    expect(
+      await readDraftPhotos(backend, USER, { plantId: PLANT, now: NOW }),
+    ).toBeNull()
+    expect(backend.entries.size).toBe(0)
+  })
+
+  it('van con el id de planta del borrador: con otro, se borran', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    await writeDraftPhotos(backend, USER, photos(2))
+    expect(
+      await readDraftPhotos(backend, USER, { plantId: 'otra', now: NOW }),
+    ).toBeNull()
+    expect(backend.entries.size).toBe(0)
+  })
+
+  it('un borrador con el formato anterior (versión 1, una foto) se recupera', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    // Tal como lo guardaba la app antes del #219.
+    await backend.put(USER, { version: 1, ...draft() })
+
+    const found = await readDraftPhotos(backend, USER, {
+      plantId: PLANT,
+      now: NOW,
+    })
+    expect(found?.photos).toHaveLength(1)
+    expect(found?.photos[0].fileName).toBe('IMG_0001.jpg')
+    expect(found?.photos[0].photo.thumbnail.blob).toBeInstanceOf(Blob)
+    const single = await readDraftPhoto(backend, USER, {
+      plantId: PLANT,
+      now: NOW,
+    })
+    expect(single?.fileName).toBe('IMG_0001.jpg')
+
+    // Añadir otra lo guarda ya con el formato nuevo.
+    if (!found) throw new Error('sin borrador')
+    await writeDraftPhotos(backend, USER, {
+      ...found,
+      photos: [...found.photos, ...photos(1).photos],
+    })
+    expect(backend.entries.get(USER)?.version).toBe(2)
+  })
+
+  it('un formato anterior roto, o una foto rota entre varias, se descarta sin error', async () => {
+    const backend = createMemoryDraftPhotoBackend()
+    await backend.put(USER, { version: 1, plantId: PLANT, savedAt: 0 })
+    await expect(
+      readDraftPhotos(backend, USER, { plantId: PLANT, now: NOW }),
+    ).resolves.toBeNull()
+    expect(backend.entries.size).toBe(0)
+
+    const broken = photos(3)
+    await backend.put(USER, {
+      version: 2,
+      ...broken,
+      photos: [broken.photos[0], { fileName: 'x.jpg', photo: {} }],
+    })
+    await expect(
+      readDraftPhotos(backend, USER, { plantId: PLANT, now: NOW }),
+    ).resolves.toBeNull()
+    expect(backend.entries.size).toBe(0)
+  })
+
+  it('en IndexedDB: una sola entrada por usuario con las seis fotos en orden', async () => {
+    // fake-indexeddb clona con structuredClone de Node, que no conserva el
+    // Blob de jsdom: aquí se mira lo guardado, no la lectura completa (que
+    // comprueba los Blob). Falta probarlo en iPhone y Android reales (#89).
+    const factory = new IDBFactory()
+    const first = createIndexedDbDraftPhotoBackend(() => factory)
+    const draft = photos(6)
+    expect(await writeDraftPhotos(first, USER, draft)).toBe(true)
+
+    // Como al recargar: otro almacén sobre la misma base y el mismo almacén
+    // de objetos de la versión 1 (no hay migración de esquema).
+    const second = createIndexedDbDraftPhotoBackend(() => factory)
+    expect(await second.keys()).toEqual([USER])
+    const stored = (await second.get(USER)) as {
+      version: number
+      plantId: string
+      photos: { fileName: string }[]
+    }
+    expect(stored.version).toBe(2)
+    expect(stored.plantId).toBe(PLANT)
+    expect(stored.photos.map((item) => item.fileName)).toEqual(
+      draft.photos.map((item) => item.fileName),
+    )
+
+    await clearDraftPhotos(second, USER)
+    expect(await second.keys()).toEqual([])
   })
 })

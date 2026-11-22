@@ -5,6 +5,7 @@ import {
   parseCleanupArguments,
   runOrphanCleanup,
   type BucketObject,
+  type GalleryPhotoRow,
   type PlantPhotoRow,
 } from './orphans.ts'
 
@@ -81,6 +82,123 @@ describe('findOrphans', () => {
   })
 })
 
+// Varias fotos por planta (#219): la principal está en plants y en
+// plant_photos; las secundarias, solo en plant_photos.
+const P3 = '33333333-3333-4333-8333-333333333333'
+const galleryObjects: BucketObject[] = [
+  { name: `${USER}/${P3}/photo-a.webp`, createdAt: old },
+  { name: `${USER}/${P3}/thumb-a.webp`, createdAt: old },
+  { name: `${USER}/${P3}/photo-b.webp`, createdAt: old },
+  { name: `${USER}/${P3}/thumb-b.webp`, createdAt: old },
+  { name: `${USER}/${P3}/photo-c.webp`, createdAt: old },
+  { name: `${USER}/${P3}/thumb-c.webp`, createdAt: old },
+  // Resto de una subida cuya fila no se llegó a crear.
+  { name: `${USER}/${P3}/photo-z.webp`, createdAt: old },
+  { name: `${USER}/${P3}/thumb-z.webp`, createdAt: old },
+]
+const galleryPlant: PlantPhotoRow = {
+  id: P3,
+  user_id: USER,
+  photo_path: `${USER}/${P3}/photo-a.webp`,
+  thumbnail_path: `${USER}/${P3}/thumb-a.webp`,
+}
+const galleryPhotos: GalleryPhotoRow[] = ['a', 'b', 'c', 'd'].map(
+  (version) => ({
+    id: `foto-${version}`,
+    plant_id: P3,
+    photo_path: `${USER}/${P3}/photo-${version}.webp`,
+    thumbnail_path: `${USER}/${P3}/thumb-${version}.webp`,
+  }),
+)
+
+describe('findOrphans con plant_photos', () => {
+  it('las fotos secundarias están en uso; solo es huérfano lo que no cita nadie', () => {
+    const report = findOrphans({
+      objects: galleryObjects,
+      plants: [galleryPlant],
+      photos: galleryPhotos,
+      now: NOW,
+      minAgeMs: 24 * HOUR,
+    })
+    expect(report.referenced).toBe(6)
+    expect(report.orphans.map((orphan) => orphan.name)).toEqual([
+      `${USER}/${P3}/photo-z.webp`,
+      `${USER}/${P3}/thumb-z.webp`,
+    ])
+    // La foto "d" tiene fila y no tiene archivos: se informa con su id.
+    expect(report.missing).toEqual([
+      {
+        plantId: P3,
+        column: 'photo_path',
+        path: `${USER}/${P3}/photo-d.webp`,
+        photoId: 'foto-d',
+      },
+      {
+        plantId: P3,
+        column: 'thumbnail_path',
+        path: `${USER}/${P3}/thumb-d.webp`,
+        photoId: 'foto-d',
+      },
+    ])
+  })
+
+  it('una ruta que falta en plants y en su principal se informa una sola vez', () => {
+    const report = findOrphans({
+      objects: [],
+      plants: [galleryPlant],
+      photos: galleryPhotos.slice(0, 1),
+      now: NOW,
+      minAgeMs: 24 * HOUR,
+    })
+    expect(report.missing.map((missing) => missing.path)).toEqual([
+      `${USER}/${P3}/photo-a.webp`,
+      `${USER}/${P3}/thumb-a.webp`,
+    ])
+    expect(report.missing.every((missing) => !missing.photoId)).toBe(true)
+  })
+
+  it('sin leer plant_photos, las secundarias parecerían huérfanas (lo que evita el script)', () => {
+    const report = findOrphans({
+      objects: galleryObjects,
+      plants: [galleryPlant],
+      now: NOW,
+      minAgeMs: 24 * HOUR,
+    })
+    expect(report.orphans).toHaveLength(6)
+  })
+
+  it('--borrar con plantas de varias fotos no se lleva ninguna foto en uso', async () => {
+    const removeObjects = vi.fn((paths: string[]) => {
+      void paths
+      return Promise.resolve()
+    })
+    const log = vi.fn()
+    const result = await runOrphanCleanup(
+      { borrar: true, antiguedadMinimaHoras: 24 },
+      {
+        listObjects: () => Promise.resolve(galleryObjects),
+        listPlants: () => Promise.resolve([galleryPlant]),
+        listPlantPhotos: () => Promise.resolve(galleryPhotos),
+        removeObjects,
+        log,
+        now: NOW,
+      },
+    )
+    expect(removeObjects).toHaveBeenCalledTimes(1)
+    expect(removeObjects).toHaveBeenCalledWith([
+      `${USER}/${P3}/photo-z.webp`,
+      `${USER}/${P3}/thumb-z.webp`,
+    ])
+    expect(result.deleted).toBe(2)
+    expect(log).toHaveBeenCalledWith(
+      'Objetos: 8. Plantas: 1. Fotos (plant_photos): 4. En uso: 6.',
+    )
+    expect(log).toHaveBeenCalledWith(
+      `  planta ${P3}, foto foto-d, photo_path: ${USER}/${P3}/photo-d.webp`,
+    )
+  })
+})
+
 describe('parseCleanupArguments', () => {
   it('por defecto solo lista, con 24 horas de antigüedad mínima', () => {
     expect(parseCleanupArguments(['--ambiente', 'desarrollo'])).toEqual({
@@ -126,6 +244,7 @@ describe('runOrphanCleanup', () => {
     return {
       listObjects: () => Promise.resolve(objects),
       listPlants: () => Promise.resolve(plants),
+      listPlantPhotos: () => Promise.resolve([] as GalleryPhotoRow[]),
       removeObjects: vi.fn(() => Promise.resolve()),
       log: vi.fn(),
       now: NOW,

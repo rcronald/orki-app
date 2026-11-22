@@ -22,10 +22,7 @@ import { AccountPage } from '../pages/AccountPage.tsx'
 import { HomeRoute } from '../pages/HomeRoute.tsx'
 import { THUMBNAIL_CACHE_PREFIX } from '../photos/read.ts'
 import { plantDraftKey } from '../registration/draft.ts'
-import {
-  createIndexedDbDraftPhotoBackend,
-  type DraftPhoto,
-} from '../registration/draft-photo.ts'
+import { createIndexedDbDraftPhotoBackend } from '../registration/draft-photo.ts'
 import {
   deleteUser,
   fakeClerk,
@@ -190,7 +187,7 @@ describe('eliminar la cuenta no deja nada del usuario en el dispositivo', () => 
       plantId: 'planta-borrador',
       savedAt: NOW.getTime(),
       fileName: 'foto.jpg',
-    } as unknown as DraftPhoto)
+    })
     localStorage.setItem(plantDraftKey(USER), '{}')
     localStorage.setItem(PREFERENCES_KEY, '{"view":"grid"}')
     const thumbnails = fakeCaches([
