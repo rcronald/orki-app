@@ -63,7 +63,7 @@ function ButtonSection() {
     <Section
       id="botones"
       title="Botones"
-      description="Button. Una sola acción primaria por pantalla; el texto es un verbo en infinitivo."
+      description="Button. Una sola acción primaria por pantalla, en verde (color-secondary-strong) en toda la app desde el #206; strong es su alias en las páginas públicas. El rosa queda para la marca. El texto es un verbo en infinitivo."
     >
       <div className="grid grid-cols-1 gap-space-4 md:grid-cols-2">
         <Example title="Variantes">
@@ -136,7 +136,7 @@ function ChipSection() {
       <div className="grid grid-cols-1 gap-space-4 md:grid-cols-2">
         <Example
           title="Filtro de varios"
-          description="Seleccionado con fondo color-primary-soft, borde color-primary e icono check."
+          description="Seleccionado relleno en color-secondary-strong con el texto claro e icono check; al pasar por encima, color-secondary-soft."
         >
           <ChipGroup aria-label="Género">
             {GENERA.map((genus) => (

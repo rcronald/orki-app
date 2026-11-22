@@ -353,7 +353,7 @@ export function ActiveFilters({
           key={chip.id}
           type="button"
           data-filtro=""
-          className={`orki-chip ${TOUCH_CHIP} border-primary bg-primary-soft font-semibold [overflow-wrap:anywhere]`}
+          className={`orki-chip orki-chip--selected ${TOUCH_CHIP} [overflow-wrap:anywhere]`}
           aria-label={FILTERS_TEXT.remove(chip.group, chip.label)}
           onClick={() => remove(chip, index)}
         >

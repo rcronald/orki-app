@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import { expectNoAxeViolations } from '../../test/axe.ts'
 import { Chip } from './Chip.tsx'
 import { ChipGroup } from './ChipGroup.tsx'
 
@@ -43,5 +44,27 @@ describe('ChipGroup', () => {
     expect(screen.getByRole('button', { name: 'Phalaenopsis' })).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Cattleya' })).toHaveFocus()
+  })
+
+  it('con scroll, una sola fila desplazable que se recorre con Tab', async () => {
+    const user = userEvent.setup()
+    document.documentElement.lang = 'es'
+    document.title = 'Prueba'
+    render(
+      <main>
+        <ChipGroup aria-label="Género" scroll>
+          <Chip selected>Todos</Chip>
+          <Chip selected={false}>Cattleya</Chip>
+        </ChipGroup>
+      </main>,
+    )
+
+    const group = screen.getByRole('group', { name: 'Género' })
+    expect(group).toHaveClass('orki-chips', 'orki-chips--scroll')
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Todos' })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Cattleya' })).toHaveFocus()
+    await expectNoAxeViolations()
   })
 })

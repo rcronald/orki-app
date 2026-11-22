@@ -646,7 +646,7 @@ function SpeciesTable({
                 return (
                   <tr
                     key={row.id}
-                    className={selected ? 'bg-primary-soft' : undefined}
+                    className={selected ? 'bg-secondary-soft' : undefined}
                   >
                     <td className={td}>
                       <input

@@ -315,7 +315,7 @@ export function GeneraTab({
                             key={genus.id}
                             className={
                               genus.id === openId
-                                ? 'bg-primary-soft'
+                                ? 'bg-secondary-soft'
                                 : undefined
                             }
                           >
