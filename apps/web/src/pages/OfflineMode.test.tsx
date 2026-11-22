@@ -18,7 +18,6 @@ import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { createMemoryCopyStorage } from '../collection/local-copy.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
-import { OWNERSHIP_TEXT } from '../inventory/texts.ts'
 import { THUMBNAIL_CACHE_PREFIX } from '../photos/read.ts'
 import { PlantImagesContext } from '../photos/usePlantImage.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -167,26 +166,20 @@ describe('sin conexión, abriendo la app desde cero', () => {
     await expectNoAxeViolations()
   })
 
-  it('el buscador y "¿Ya la tengo?" funcionan; registrar lo buscado está desactivado', async () => {
+  it('el buscador funciona y «¿Ya la tengo?» sigue disponible', async () => {
     const user = userEvent.setup()
     renderApp()
     await settle()
 
     const search = screen.getByRole('searchbox', {
-      name: 'Buscar en tu colección',
+      name: 'Buscar en mi colección',
     })
     await user.type(search, 'cattleya max')
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    const answer = screen
-      .getAllByRole('status')
-      .find((region) => region.textContent?.includes('la tienes'))
-    expect(answer).toHaveTextContent('Sí, la tienes')
-
-    await user.clear(search)
-    await user.type(search, 'dracula vampira')
-    expect(
-      screen.getByRole('button', { name: OWNERSHIP_TEXT.register }),
-    ).toHaveAttribute('aria-disabled', 'true')
+    // La consulta tiene su propia pantalla (#209): el acceso no se desactiva.
+    const check = screen.getByRole('link', { name: '¿Ya la tengo?' })
+    expect(check).toHaveAttribute('href', '/ya-la-tengo')
+    expect(check).not.toHaveAttribute('aria-disabled')
   })
 
   it('el detalle se ve, con editar, dar de baja y eliminar desactivados', async () => {

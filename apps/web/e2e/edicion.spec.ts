@@ -76,9 +76,9 @@ test('dar de baja y reactivar', async ({
 
   // Ya no cuenta en la colección activa.
   await page.getByRole('link', { name: 'Volver a mi colección' }).click()
-  await expect(
-    page.getByRole('list', { name: 'Resumen de tu colección' }),
-  ).toContainText('4 orquídeas')
+  await expect(page.locator('.orki-pagehead__meta')).toContainText(
+    '4 ejemplares',
+  )
 
   await page.goto(detalle(PLANTAS.nobile))
   await page.getByRole('button', { name: 'Reactivar' }).click()

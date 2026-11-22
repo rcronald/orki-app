@@ -25,20 +25,17 @@ export function genusCountText(count: number): string {
   return count === 1 ? '1 género' : `${count} géneros`
 }
 
+export function specimenCountText(count: number): string {
+  return count === 1 ? '1 ejemplar' : `${count} ejemplares`
+}
+
 /**
- * Contador de cabecera: cuántas se ven. Con búsqueda o filtros que reducen la
- * lista, "N de M", donde M es el total de la colección con el estado elegido
- * (las activas, por defecto).
+ * Contador de la cabecera de «Mi colección» (#208): ejemplares activos y sus
+ * géneros, «18 ejemplares · 5 géneros». No cambia al buscar ni al filtrar:
+ * cuántas coinciden lo dice la línea bajo el buscador.
  */
-export function shownCountText(
-  shown: number,
-  total: number,
-  status: PlantStatus,
-  narrowed: boolean,
-): string {
-  return narrowed
-    ? `${shown} de ${plantCountText(total, status)}`
-    : plantCountText(total, status)
+export function collectionSummaryText(plants: number, genera: number): string {
+  return `${specimenCountText(plants)} · ${genusCountText(genera)}`
 }
 
 /**
@@ -73,6 +70,20 @@ export const VALIDATION_FILTER_LABEL: Record<PlantValidation, string> = {
   unidentifiable: 'No identificables',
 }
 
+/** Acciones de la cabecera de «Mi colección» (#208). */
+export const COLLECTION_ACTIONS_TEXT = {
+  register: 'Registrar orquídea',
+  ownershipCheck: '¿Ya la tengo?',
+} as const
+
+/** Buscador único de «Mi colección» (#208). */
+export const SEARCH_TEXT = {
+  label: 'Buscar en mi colección',
+  placeholder: 'Nombre, género, apodo u origen',
+  /** El mismo texto que el botón de «sin coincidencias». */
+  clear: 'Limpiar la búsqueda',
+} as const
+
 export const FILTERS_TEXT = {
   toggle: 'Filtros',
   activeCount: (count: number) =>
@@ -83,6 +94,9 @@ export const FILTERS_TEXT = {
   color: 'Color de la flor',
   origin: 'Origen',
   validation: 'Nombre',
+  arrange: 'Organizar',
+  grouped: 'Agrupar por género',
+  allGenera: 'Todos',
   showMore: (count: number) => `Ver ${count} más`,
   showLess: 'Ver menos',
   done: 'Listo',

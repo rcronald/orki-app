@@ -79,8 +79,12 @@ async function openDetail(plants: readonly CollectionPlant[]) {
 
 const location = () => screen.getByTestId('location').textContent
 const dialog = () => screen.getByRole('dialog')
-const summary = () =>
-  screen.getByRole('list', { name: 'Resumen de tu colección' })
+// Contador de la cabecera de «Mi colección» (#208).
+const summary = () => {
+  const meta = document.querySelector('.orki-pagehead__meta')
+  if (!(meta instanceof HTMLElement)) throw new Error('Sin contador.')
+  return meta
+}
 
 function datum(label: string): HTMLElement {
   const term = screen.getByText(label, { selector: 'dt' })
@@ -140,7 +144,7 @@ describe('dar de baja y reactivar', () => {
     await expectNoAxeViolations()
 
     await user.click(screen.getByRole('link', { name: DETAIL_TEXT.back }))
-    expect(summary()).toHaveTextContent('1 orquídea')
+    expect(summary()).toHaveTextContent('1 ejemplar · 1 género')
     expect(
       screen.queryByRole('article', { name: 'Phalaenopsis amabilis' }),
     ).toBeNull()
@@ -253,7 +257,7 @@ describe('eliminación definitiva', () => {
     expect(
       screen.queryByRole('article', { name: 'Phalaenopsis amabilis' }),
     ).toBeNull()
-    expect(summary()).toHaveTextContent('1 orquídea')
+    expect(summary()).toHaveTextContent('1 ejemplar · 1 género')
     await expectNoAxeViolations()
   })
 

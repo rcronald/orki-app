@@ -138,11 +138,16 @@ test('el inventario se abre sin conexión con la copia local', async ({
   await expect(page.getByText('Sin conexión', { exact: true })).toBeVisible()
   await expect(page.getByRole('main').getByRole('article')).toHaveCount(5)
   await page
-    .getByRole('searchbox', { name: 'Buscar en tu colección' })
+    .getByRole('searchbox', { name: 'Buscar en mi colección' })
     .fill('nobile')
   await expect(page.getByRole('main').getByRole('article')).toHaveCount(1)
+  // Registrar, desactivado con su motivo; «¿Ya la tengo?» sigue disponible.
   await expect(
     page.getByRole('link', { name: 'Registrar orquídea' }),
   ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'Registrar orquídea' }),
+  ).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByRole('link', { name: '¿Ya la tengo?' })).toBeVisible()
   await revisarAccesibilidad('inventario sin conexión')
 })

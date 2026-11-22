@@ -148,27 +148,26 @@ const cardNames = () =>
     .map((card) => card.getAttribute('aria-labelledby'))
     .map((id) => document.getElementById(id ?? '')?.textContent)
 
-describe('InventoryView', () => {
-  it('cuenta solo las orquídeas activas y sus géneros, en singular y en plural', () => {
-    const { unmount } = renderInventory(COLLECTION)
-    const summary = screen.getByRole('list', {
-      name: 'Resumen de tu colección',
-    })
-    expect(
-      within(summary)
-        .getAllByRole('listitem')
-        .map((item) => item.textContent),
-    ).toEqual(['5 orquídeas', '3 géneros'])
-    expect(screen.getAllByRole('article')).toHaveLength(5)
-    unmount()
+const searchbox = () =>
+  screen.getByRole('searchbox', { name: 'Buscar en mi colección' })
 
-    renderInventory([amabilis])
+/** Abre el panel «Filtros» (ahí está «Agrupar por género»). */
+async function openFilters(user: ReturnType<typeof userEvent.setup>) {
+  const toggle = screen.getByRole('button', { name: /^Filtros/ })
+  if (toggle.getAttribute('aria-expanded') !== 'true') await user.click(toggle)
+  return screen.getByRole('region', { name: 'Filtros de la colección' })
+}
+
+const isRow = (card: HTMLElement | undefined) =>
+  card?.classList.contains('orki-card--row') ?? false
+
+describe('InventoryView', () => {
+  it('cuenta solo las orquídeas activas: la perdida no se ve', () => {
+    renderInventory(COLLECTION)
+    expect(screen.getAllByRole('article')).toHaveLength(5)
     expect(
-      within(
-        screen.getByRole('list', { name: 'Resumen de tu colección' }),
-      ).getAllByRole('listitem')[0],
-    ).toHaveTextContent('1 orquídea')
-    expect(screen.getByText('1 género')).toBeInTheDocument()
+      screen.queryByRole('article', { name: 'Phalaenopsis aphrodite' }),
+    ).toBeNull()
   })
 
   it('sin agrupar, las más recientes primero', () => {
@@ -186,7 +185,10 @@ describe('InventoryView', () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
-    const toggle = screen.getByRole('button', { name: 'Agrupar por género' })
+    const panel = await openFilters(user)
+    const toggle = within(panel).getByRole('button', {
+      name: 'Agrupar por género',
+    })
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
     await user.click(toggle)
     expect(toggle).toHaveAttribute('aria-pressed', 'true')
@@ -218,7 +220,7 @@ describe('InventoryView', () => {
     ])
   })
 
-  it('una planta por validar o no identificable se ve con su nombre ingresado, sin cursiva, y su propia etiqueta', () => {
+  it('una planta por validar o no identificable se ve con su nombre ingresado, sin cursiva, y su propia insignia; la validada, sin insignia', () => {
     const unidentifiable = specimen({
       displayName: 'regalo de la abuela',
       displayNameIsScientific: false,
@@ -245,8 +247,10 @@ describe('InventoryView', () => {
         screen.getByRole('article', { name: 'regalo de la abuela' }),
       ).queryByText('Nombre por validar'),
     ).toBeNull()
+    // La validada no lleva insignia (#208): es lo normal.
     const validated = screen.getByRole('article', { name: 'Cattleya maxima' })
-    expect(within(validated).getByText('Validada')).toBeInTheDocument()
+    expect(within(validated).queryByText('Validada')).toBeNull()
+    expect(validated.querySelector('.orki-badge')).toBeNull()
     expect(within(validated).getByText('Cattleya maxima')).toHaveClass('italic')
   })
 
@@ -285,20 +289,17 @@ describe('InventoryView', () => {
     rerenderWith([linked])
 
     const after = screen.getByRole('article', { name: 'Cattleya maxima' })
-    expect(within(after).getByText('Validada')).toBeInTheDocument()
     expect(within(after).getByText('Cattleya maxima')).toHaveClass('italic')
     expect(within(after).queryByText('Nombre por validar')).toBeNull()
+    expect(after.querySelector('.orki-badge')).toBeNull()
     // Se sigue encontrando por el nombre que ingresó.
-    await user.type(
-      screen.getByRole('searchbox', { name: 'Buscar en tu colección' }),
-      'naranja',
-    )
+    await user.type(searchbox(), 'naranja')
     expect(
       await screen.findByRole('article', { name: 'Cattleya maxima' }),
     ).toBeInTheDocument()
   })
 
-  it('un híbrido conserva el "×" en redonda y muestra género y apodo', () => {
+  it('un híbrido conserva el "×" en redonda', () => {
     renderInventory([memoria, amabilis])
 
     const hybrid = screen.getByRole('article', {
@@ -308,63 +309,115 @@ describe('InventoryView', () => {
     expect(within(hybrid).getByText('Memoria Anna Balmores')).toHaveClass(
       'not-italic',
     )
-    expect(
-      within(hybrid).getByText('× Rhyncholaeliocattleya', {
-        selector: '.orki-card__meta',
-      }),
-    ).toBeInTheDocument()
+  })
+
+  it('la tarjeta lleva el apodo y la ubicación solo si los hay, y enlaza al detalle', () => {
+    const located = specimen({
+      displayName: 'Cattleya trianae',
+      genus: CATTLEYA,
+      location: 'Invernadero Este',
+    })
+    renderInventory([amabilis, located, maxima])
 
     const withNickname = screen.getByRole('article', {
       name: 'Phalaenopsis amabilis',
     })
-    expect(within(withNickname).getByText('La blanca')).toBeInTheDocument()
-    expect(
-      within(withNickname).getByText(PHALAENOPSIS.name, {
-        selector: '.orki-card__meta',
-      }),
-    ).toBeInTheDocument()
+    expect(within(withNickname).getByText('La blanca')).toHaveClass(
+      'orki-card__common',
+    )
+    expect(withNickname.querySelector('.orki-card__place')).toBeNull()
     // Sin foto todavía (#10): el marcador neutro, con carga diferida.
     expect(
       within(withNickname).getByRole('img', { name: 'Sin foto' }),
     ).toHaveAttribute('loading', 'lazy')
+
+    const withLocation = screen.getByRole('article', {
+      name: 'Cattleya trianae',
+    })
+    const place = withLocation.querySelector('.orki-card__place')
+    expect(place).toHaveTextContent('Ubicación: Invernadero Este')
+    expect(place?.querySelector('svg')).not.toBeNull()
+    expect(withLocation.querySelector('.orki-card__common')).toBeNull()
+
+    // Sin apodo ni ubicación: solo el nombre. Ya no se repite el género.
+    const plain = screen.getByRole('article', { name: 'Cattleya maxima' })
+    expect(plain.querySelector('.orki-card__common')).toBeNull()
+    expect(plain.querySelector('.orki-card__place')).toBeNull()
+    expect(plain.querySelector('.orki-card__meta')).toBeNull()
+
+    // El nombre es el enlace al detalle y cubre la tarjeta.
+    const link = within(plain).getByRole('link', { name: 'Cattleya maxima' })
+    expect(link).toHaveAttribute('href', `/coleccion/${maxima.id}`)
+    expect(link).toHaveClass('orki-card__link')
+    expect(plain).toHaveClass('orki-card', 'orki-card--outline')
   })
 
-  it('cambia entre lista y cuadrícula y lo recuerda al volver', async () => {
+  it('sin preferencia guardada, cuadrícula: dos por fila en el celular y tres en escritorio', () => {
+    renderInventory(COLLECTION)
+    const view = screen.getByRole('group', { name: 'Vista' })
+    expect(
+      within(view).getByRole('button', { name: 'Cuadrícula' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(within(view).getByRole('button', { name: 'Lista' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(isRow(screen.getAllByRole('article')[0])).toBe(false)
+    const grid = screen.getAllByRole('article')[0]?.closest('ul')
+    expect(grid).toHaveClass('grid-cols-2', 'md:grid-cols-3')
+  })
+
+  it('cambia entre cuadrícula y lista y lo recuerda al volver', async () => {
     const user = userEvent.setup()
     const { unmount } = renderInventory(COLLECTION)
 
     const view = screen.getByRole('group', { name: 'Vista' })
     const list = within(view).getByRole('button', { name: 'Lista' })
     const grid = within(view).getByRole('button', { name: 'Cuadrícula' })
-    expect(list).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getAllByRole('article')[0]).toHaveClass('flex-row')
 
-    await user.click(grid)
-    expect(grid).toHaveAttribute('aria-pressed', 'true')
-    expect(list).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getAllByRole('article')[0]).not.toHaveClass('flex-row')
-    await user.click(screen.getByRole('button', { name: 'Agrupar por género' }))
+    await user.click(list)
+    expect(list).toHaveAttribute('aria-pressed', 'true')
+    expect(grid).toHaveAttribute('aria-pressed', 'false')
+    // La lista: la variante de fila de la tarjeta.
+    expect(isRow(screen.getAllByRole('article')[0])).toBe(true)
+    const panel = await openFilters(user)
+    await user.click(
+      within(panel).getByRole('button', { name: 'Agrupar por género' }),
+    )
     expect(
       JSON.parse(window.localStorage.getItem(PREFERENCES_KEY) ?? ''),
-    ).toEqual({ view: 'grid', grouped: true })
+    ).toEqual({ view: 'list', grouped: true })
 
     // Como al recargar: la pantalla se vuelve a montar y lee la preferencia.
     unmount()
     renderInventory(COLLECTION)
-    expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
+    const again = await openFilters(user)
     expect(
-      screen.getByRole('button', { name: 'Agrupar por género' }),
+      within(again).getByRole('button', { name: 'Agrupar por género' }),
     ).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getAllByRole('article')[0]).not.toHaveClass('flex-row')
+    expect(isRow(screen.getAllByRole('article')[0])).toBe(true)
+  })
+
+  it('respeta la lista guardada antes del rediseño', () => {
+    window.localStorage.setItem(
+      PREFERENCES_KEY,
+      JSON.stringify({ view: 'list', grouped: false }),
+    )
+    renderInventory(COLLECTION)
+    expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 
   it('una preferencia guardada que no se entiende se ignora', () => {
     window.localStorage.setItem(PREFERENCES_KEY, '{"view":"mosaico"')
     renderInventory(COLLECTION)
-    expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -377,10 +430,10 @@ describe('InventoryView', () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
-    const grid = screen.getByRole('button', { name: 'Cuadrícula' })
-    await user.click(grid)
-    expect(grid).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getAllByRole('article')[0]).not.toHaveClass('flex-row')
+    const list = screen.getByRole('button', { name: 'Lista' })
+    await user.click(list)
+    expect(list).toHaveAttribute('aria-pressed', 'true')
+    expect(isRow(screen.getAllByRole('article')[0])).toBe(true)
   })
 
   it('funciona si el almacenamiento local falla al leer o escribir', async () => {
@@ -393,61 +446,59 @@ describe('InventoryView', () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
-    const toggle = screen.getByRole('button', { name: 'Agrupar por género' })
+    const panel = await openFilters(user)
+    const toggle = within(panel).getByRole('button', {
+      name: 'Agrupar por género',
+    })
     await user.click(toggle)
     expect(toggle).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
   })
 
-  it('ofrece registrar una planta, escribiendo el nombre o empezando por la foto', () => {
+  it('no lleva accesos a registrar: están en la cabecera de la página', () => {
     renderInventory(COLLECTION)
-    expect(
-      screen.getByRole('link', { name: 'Registrar orquídea' }),
-    ).toHaveAttribute('href', '/coleccion/nueva')
-    // El nombre accesible contiene el texto visible ("Con foto").
-    const withPhoto = screen.getByRole('link', { name: 'Registrar con foto' })
-    expect(withPhoto).toHaveAttribute('href', '/coleccion/nueva?foto=1')
-    expect(withPhoto).toHaveTextContent('Con foto')
+    expect(screen.queryByRole('link', { name: /Registrar/ })).toBeNull()
   })
 
-  it('el orden del tabulador va del registro al buscador y a los controles de vista', async () => {
+  it('el orden del tabulador va del buscador a «Filtros», la vista y los géneros', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
     await user.tab()
-    expect(
-      screen.getByRole('link', { name: 'Registrar orquídea' }),
-    ).toHaveFocus()
+    expect(searchbox()).toHaveFocus()
     await user.tab()
-    expect(
-      screen.getByRole('link', { name: 'Registrar con foto' }),
-    ).toHaveFocus()
-    await user.tab()
-    expect(
-      screen.getByRole('searchbox', { name: 'Buscar en tu colección' }),
-    ).toHaveFocus()
-    await user.tab()
-    expect(screen.getByRole('button', { name: 'Lista' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Filtros' })).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveFocus()
     await user.tab()
-    expect(
-      screen.getByRole('button', { name: 'Agrupar por género' }),
-    ).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Lista' })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Todos' })).toHaveFocus()
   })
 
-  it('no tiene fallos A ni AA en lista, en cuadrícula y agrupada', async () => {
+  it('ninguna barra queda fija al desplazar la página', () => {
+    const { container } = renderInventory(COLLECTION)
+    expect(searchbox().closest('.sticky, .fixed')).toBeNull()
+    expect(
+      container.querySelector('[data-barra-superior], [data-barra-inferior]'),
+    ).toBeNull()
+  })
+
+  it('no tiene fallos A ni AA en cuadrícula, en lista y agrupada', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
     await expectNoAxeViolations()
 
-    await user.click(screen.getByRole('button', { name: 'Cuadrícula' }))
-    await expectNoAxeViolations()
-
-    await user.click(screen.getByRole('button', { name: 'Agrupar por género' }))
-    await expectNoAxeViolations()
-
     await user.click(screen.getByRole('button', { name: 'Lista' }))
+    await expectNoAxeViolations()
+
+    const panel = await openFilters(user)
+    await user.click(
+      within(panel).getByRole('button', { name: 'Agrupar por género' }),
+    )
+    await expectNoAxeViolations()
+
+    await user.click(screen.getByRole('button', { name: 'Cuadrícula' }))
     await expectNoAxeViolations()
   })
 
@@ -466,14 +517,16 @@ describe('InventoryView', () => {
     renderInventory(many)
 
     expect(screen.getAllByRole('article')).toHaveLength(300)
-    expect(screen.getByText('300 orquídeas')).toBeInTheDocument()
     expect(cardNames()[0]).toBe('× Rhyncholaeliocattleya ejemplar 299')
 
-    await user.click(screen.getByRole('button', { name: 'Cuadrícula' }))
+    await user.click(screen.getByRole('button', { name: 'Lista' }))
     expect(screen.getAllByRole('article')).toHaveLength(300)
-    expect(screen.getAllByRole('article')[299]).not.toHaveClass('flex-row')
+    expect(isRow(screen.getAllByRole('article')[299])).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: 'Agrupar por género' }))
+    const panel = await openFilters(user)
+    await user.click(
+      within(panel).getByRole('button', { name: 'Agrupar por género' }),
+    )
     expect(
       screen.getByRole('region', { name: 'Cattleya, 100 orquídeas' }),
     ).toBeInTheDocument()
@@ -482,8 +535,6 @@ describe('InventoryView', () => {
 })
 
 describe('InventoryView: buscador', () => {
-  const searchbox = () =>
-    screen.getByRole('searchbox', { name: 'Buscar en tu colección' })
   const status = () => within(screen.getByRole('search')).getByRole('status')
 
   // Con origen y apodo, para buscar por ellos.
@@ -510,9 +561,7 @@ describe('InventoryView: buscador', () => {
 
     await user.type(searchbox(), text)
     expect(cardNames()).toEqual([expected])
-    // La cabecera dice cuántas se ven de las activas.
-    expect(screen.getByText('1 de 6 orquídeas')).toBeInTheDocument()
-    expect(screen.getByText('1 género')).toBeInTheDocument()
+    // Bajo el buscador, cuántas coinciden de las activas.
     expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
   })
 
@@ -532,7 +581,10 @@ describe('InventoryView: buscador', () => {
   it('agrupada, los géneros sin coincidencias desaparecen', async () => {
     const user = userEvent.setup()
     renderInventory(PLANTS)
-    await user.click(screen.getByRole('button', { name: 'Agrupar por género' }))
+    const panel = await openFilters(user)
+    await user.click(
+      within(panel).getByRole('button', { name: 'Agrupar por género' }),
+    )
 
     await user.type(searchbox(), 'cattleya')
     expect(
@@ -559,47 +611,16 @@ describe('InventoryView: buscador', () => {
     expect(status()).toBeEmptyDOMElement()
   })
 
-  it('solo el campo queda fijo arriba: la respuesta de "¿Ya la tengo?" se desplaza con la lista (#19)', () => {
-    render(
-      <MemoryRouter>
-        <main>
-          <InventoryView
-            status="ready"
-            plants={PLANTS}
-            error={null}
-            onRetry={() => {}}
-            query="phal"
-            onQueryChange={() => {}}
-            filters={DEFAULT_FILTERS}
-            onFiltersChange={() => {}}
-            searchResult={
-              <a href="/coleccion/planta" data-testid="respuesta">
-                Phalaenopsis amabilis
-              </a>
-            }
-          />
-        </main>
-      </MemoryRouter>,
+  it('es el único campo de búsqueda, con su etiqueta y el contador enlazado', () => {
+    renderInventory(PLANTS, { initialQuery: 'phal' })
+    expect(screen.getAllByRole('searchbox')).toHaveLength(1)
+    expect(searchbox()).toHaveAttribute('placeholder')
+    // El contador de coincidencias describe el campo.
+    expect(searchbox()).toHaveAccessibleDescription(
+      '2 de 6 orquídeas coinciden.',
     )
-    // El bloque fijo, con su fondo opaco, lleva el campo y el contador.
-    const pinned = searchbox().closest('.sticky')
-    expect(pinned).not.toBeNull()
-    expect(pinned).toHaveClass('bg-neutral-0')
-    expect(pinned).toContainElement(status())
-    // La respuesta no va dentro: no puede quedar montada sobre las tarjetas.
-    const answer = screen.getByTestId('respuesta')
-    expect(pinned).not.toContainElement(answer)
-    expect(answer.closest('.sticky')).toBeNull()
-    // Y va entre el buscador y la lista, en el orden del tabulador.
-    const firstCard = screen.getAllByRole('article')[0]
-    expect(
-      searchbox().compareDocumentPosition(answer) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    expect(
-      answer.compareDocumentPosition(firstCard as Node) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+    // Sin el panel «¿Ya la tengo?» integrado: esa consulta tiene su pantalla.
+    expect(screen.queryByText(/Sí, la tienes|Aún no la tienes/)).toBeNull()
   })
 
   it('Escape limpia la búsqueda', async () => {
