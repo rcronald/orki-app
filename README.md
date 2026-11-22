@@ -713,7 +713,7 @@ En Linux, la primera vez hace falta `npx playwright install --with-deps` (instal
 
 Límites: no se prueba la interfaz real de Clerk (inicio de sesión con Google o correo), ni Supabase o Storage reales, ni Sentry. En Firefox, el modo sin conexión de Playwright no deja responder al service worker, así que la prueba del arranque sin conexión corta el servidor de la app en su lugar; y la del inventario sin conexión solo corre en Chromium, porque en los demás motores Playwright no intercepta la red de una página que controla un service worker.
 
-Fallo conocido: en Firefox, tres pruebas (filtros del inventario, detalle de una especie y cola de propuestas del backoffice) están marcadas con `test.fixme` porque el Firefox de Playwright cierra la pestaña con un fallo de segmentación en esas pantallas (ver `FIREFOX_SE_CAE` en `apps/web/e2e/soporte/fixtures.ts`). Para comprobar si sigue pasando: `E2E_PROBAR_FALLOS_CONOCIDOS=1 npm run test:e2e:sin-build -- --project=firefox`.
+En Firefox no se pasa axe (#170): el Firefox de Playwright cerraba la pestaña («Page crashed») de forma intermitente mientras axe recorría la página. Las pautas que comprueba axe no dependen del motor y se revisan en los otros tres perfiles; el resto de cada prueba sí corre en Firefox.
 
 ### A mano, contra el ambiente de desarrollo
 

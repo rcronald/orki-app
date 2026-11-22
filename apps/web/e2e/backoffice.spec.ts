@@ -1,5 +1,5 @@
 import { ADMIN, ESPECIES, PLANTAS } from './soporte/datos.ts'
-import { expect, firefoxSeCae, test } from './soporte/fixtures.ts'
+import { expect, test } from './soporte/fixtures.ts'
 
 // Backoffice del catálogo (#99, #139, #140), con el rol catalog_admin en el
 // token: el resumen, la búsqueda con el detalle de una especie y la cola de
@@ -9,11 +9,8 @@ test.use({ sesion: { usuario: ADMIN, rol: 'catalog_admin' } })
 
 test('resumen, búsqueda y detalle de una especie', async ({
   page,
-  browserName,
   revisarAccesibilidad,
 }) => {
-  // Se cae al abrir el detalle de la especie, sin axe de por medio.
-  firefoxSeCae(browserName)
   await page.goto('/')
   await page
     .getByRole('navigation', { name: 'Principal' })
@@ -55,12 +52,9 @@ test('resumen, búsqueda y detalle de una especie', async ({
 
 test('cola de propuestas: crear la especie y marcar como no identificable', async ({
   page,
-  browserName,
   supabase,
   revisarAccesibilidad,
 }) => {
-  // Se cae al revisar con axe la cola de propuestas.
-  firefoxSeCae(browserName)
   await page.goto('/administracion/catalogo')
   await page.getByRole('tab', { name: /^Por validar/ }).click()
   const cola = page.getByRole('region', { name: 'Propuestas por validar' })

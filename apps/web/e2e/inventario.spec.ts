@@ -1,4 +1,4 @@
-import { expect, firefoxSeCae, test } from './soporte/fixtures.ts'
+import { expect, test } from './soporte/fixtures.ts'
 
 // Inventario (#93, #94, #95, #15) y "¿Ya la tengo?" (#19): la colección leída
 // de Supabase (simulado) por la fuente real de la app, en lista y en
@@ -84,9 +84,7 @@ test('búsqueda en la colección', async ({ page }) => {
   await expect(tarjetas(page)).toHaveCount(5)
 })
 
-test('filtros', async ({ page, browserName, revisarAccesibilidad }) => {
-  // Se cae al revisar con axe la pantalla con los filtros abiertos.
-  firefoxSeCae(browserName)
+test('filtros', async ({ page, revisarAccesibilidad }) => {
   await page.goto('/coleccion')
   await expect(tarjetas(page)).toHaveCount(5)
 
