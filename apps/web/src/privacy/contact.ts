@@ -1,15 +1,13 @@
 // Medio de contacto de la página de privacidad (#111).
 //
-// PENDIENTE: una persona debe sustituir el marcador por un medio de contacto
-// real (por ejemplo un correo que alguien lea) antes de publicar la página.
-// No se inventa ninguno. Mientras sea el marcador, la página no lo muestra:
-// dice que el contacto aún no está publicado.
+// El correo lo indicó el responsable del proyecto. Si se deja el marcador (o
+// vacío), la página no lo muestra: dice que el contacto aún no está publicado.
 
-/** Marcador único; buscar CONTACTO_PENDIENTE en el repositorio para completarlo. */
+/** Marcador de «sin contacto todavía». */
 export const PRIVACY_CONTACT_PLACEHOLDER = 'CONTACTO_PENDIENTE'
 
-/** Medio de contacto. Sustituir el valor por el real (correo o URL). */
-export const PRIVACY_CONTACT: string = PRIVACY_CONTACT_PLACEHOLDER
+/** Medio de contacto: un correo o una URL. */
+export const PRIVACY_CONTACT: string = 'rcronald@gmail.com'
 
 /** ¿Falta aún el contacto real? */
 export function isPrivacyContactPending(

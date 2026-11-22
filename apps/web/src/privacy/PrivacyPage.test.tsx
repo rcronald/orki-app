@@ -85,13 +85,14 @@ describe('PrivacyPage', () => {
     ).toHaveAttribute('href', 'https://creativecommons.org/licenses/by/4.0/')
   })
 
-  it('no muestra el marcador del contacto como si fuera real', async () => {
+  it('muestra el contacto como enlace de correo, nunca el marcador', async () => {
     renderAt('/privacidad')
     await screen.findByRole('heading', { level: 1, name: 'Privacidad' })
     expect(document.body).not.toHaveTextContent(PRIVACY_CONTACT_PLACEHOLDER)
-    expect(
-      screen.getByText(/Todavía no hay un medio de contacto publicado/),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: PRIVACY_CONTACT })).toHaveAttribute(
+      'href',
+      `mailto:${PRIVACY_CONTACT}`,
+    )
   })
 
   it('se llega desde el pie de la app y desde la pantalla de acceso', async () => {
@@ -112,9 +113,10 @@ describe('PrivacyPage', () => {
 })
 
 describe('contacto de privacidad', () => {
-  it('el valor actual es el marcador pendiente', () => {
-    expect(PRIVACY_CONTACT).toBe(PRIVACY_CONTACT_PLACEHOLDER)
-    expect(isPrivacyContactPending()).toBe(true)
+  it('hay un contacto real publicado', () => {
+    expect(isPrivacyContactPending()).toBe(false)
+    expect(isPrivacyContactPending(PRIVACY_CONTACT_PLACEHOLDER)).toBe(true)
+    expect(isPrivacyContactPending('  ')).toBe(true)
   })
 
   it('con un contacto real deja de estar pendiente y se enlaza', () => {
