@@ -6,8 +6,8 @@ import type {
 import { haveItSearchEvent, type ProductEvent } from './events.ts'
 import { recordProductEvent } from './product-events.ts'
 
-// Cuándo cuenta una búsqueda de "¿Ya la tengo?" (#146). OwnershipPanel mide
-// cada respuesta que pinta (inventory/ownership-measure.ts), y mientras se
+// Cuándo cuenta una búsqueda de "¿Ya la tengo?" (#146). La pantalla
+// «¿Ya la tengo?» (#209, useOwnershipAnswer) mide cada respuesta que pinta (inventory/ownership-measure.ts), y mientras se
 // escribe pinta varias. Para no enviar un evento por pulsación, se envía uno
 // por búsqueda, con la primera respuesta que el usuario tuvo delante:
 //
@@ -55,7 +55,7 @@ export interface HaveItSearchEventsOptions {
 
 const deviceNow = () => new Date()
 
-/** El onMeasure de OwnershipPanel que envía el evento de cada búsqueda. */
+/** El onMeasure de useOwnershipAnswer que envía el evento de cada búsqueda. */
 export function useHaveItSearchEvents({
   searching,
   offline,
