@@ -17,6 +17,9 @@ export default defineConfig([
     '**/blob-report',
     '**/coverage',
     '**/node_modules',
+    // Copias de trabajo de los agentes (git worktrees): son el repositorio
+    // entero otra vez y recorrerlas agota la memoria.
+    '.claude/',
   ]),
   // Generado por `npm run db:types` (supabase gen types): no se edita a mano, así que no se
   // le aplican las reglas del proyecto. Sí pasa por Prettier, porque el generador lo formatea.
