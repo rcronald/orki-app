@@ -23,6 +23,42 @@
     background-color: var(--color-neutral-0);
   }
 
+  /*
+   * El foco no queda tapado por las barras que se quedan fijas al desplazar
+   * la página (WCAG 2.4.11, #151): al llegar con el tabulador a un control,
+   * el navegador deja libre este margen arriba o abajo. Cada barra lo pide
+   * con un atributo:
+   * - data-barra-superior: el buscador del inventario (sticky arriba; mide
+   *   unos 118 px con el contador de coincidencias).
+   * - data-barra-inferior="siempre": las acciones del formulario de registro
+   *   y edición (sticky abajo; unos 76 px).
+   * - data-barra-inferior="celular": registrar desde el inventario, fija abajo
+   *   solo por debajo de 640 px (unos 90 px con su separación del borde).
+   *   Como es fija, el final de la página (el pie) quedaría siempre debajo:
+   *   se deja ese hueco al final.
+   */
+  html:has([data-barra-superior]) {
+    scroll-padding-top: calc(var(--space-6) * 4);
+  }
+
+  html:has([data-barra-inferior='siempre']) {
+    scroll-padding-bottom: calc(
+      var(--space-6) * 3 + env(safe-area-inset-bottom)
+    );
+  }
+
+  @media (width < 40rem) {
+    html:has([data-barra-inferior='celular']) {
+      scroll-padding-bottom: calc(
+        var(--space-6) * 3 + env(safe-area-inset-bottom)
+      );
+    }
+
+    html:has([data-barra-inferior='celular']) body {
+      padding-bottom: calc(var(--space-6) * 3 + env(safe-area-inset-bottom));
+    }
+  }
+
   /* Anillo de foco del sistema: 2 px en color-secondary, separado 2 px. */
   :focus-visible {
     outline: 2px solid var(--color-secondary);

@@ -447,7 +447,7 @@ describe('Fusión de especies', () => {
     )
   })
 
-  it('el diálogo retiene el foco; Escape limpia el buscador, después cierra y devuelve el foco', async () => {
+  it('el diálogo retiene el foco y deja inerte lo de detrás; Escape limpia el buscador, después cierra y devuelve el foco', async () => {
     const source = createSampleCatalogSource('ejemplo', 0)
     const user = userEvent.setup()
     render(<View source={source} />)
@@ -458,6 +458,8 @@ describe('Fusión de especies', () => {
     })
     const dialog = await openMerge(user, panel, 'Phalaenopsis equestris')
     const field = within(dialog).getByRole('combobox', { name: 'Otra especie' })
+    // Lo de detrás, inerte mientras está abierto (la base común, #151).
+    expect(opener.closest('[inert]')).not.toBeNull()
 
     // Mayús+Tab desde el primero va al último, y Tab desde el último vuelve.
     await user.tab({ shift: true })
@@ -473,6 +475,7 @@ describe('Fusión de especies', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.querySelector('[inert]')).toBeNull()
     expect(opener).toHaveFocus()
   })
 })
