@@ -665,20 +665,23 @@ Sin huérfanos:
 
 **Es un borrador pendiente de revisión por una persona.** Lo redactó un agente comprobándolo contra el código de esta rama el 21 de noviembre de 2026. No es asesoría legal: conviene que lo revise alguien con criterio legal (ley peruana de protección de datos personales). La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
 
-Contacto: `src/privacy/contact.ts` tiene la constante `PRIVACY_CONTACT` con el marcador `CONTACTO_PENDIENTE`. Mientras sea el marcador, la página dice que aún no hay un medio de contacto publicado; al poner un correo o una URL real, lo muestra enlazado. Hay que completarlo antes de publicar.
+Contacto: `src/privacy/contact.ts`, constante `PRIVACY_CONTACT` (el correo que indicó el responsable). Si se deja vacía o con el marcador `CONTACTO_PENDIENTE`, la página dice que aún no hay un medio de contacto publicado.
 
-Afirmaciones que debe verificar una persona:
+Afirmaciones que debe verificar una persona (revisadas contra el código el 21 de noviembre de 2026, tras el modo sin conexión, los eventos de uso, Sentry, la cola de propuestas y la exportación):
 
 1. Clerk recibe, si se entra con Google, datos del perfil de Google «como tu nombre y tu foto» (depende de los permisos que pida la instancia de Clerk).
-2. Los proveedores son solo Clerk (acceso), Supabase (base de datos y fotos) y Vercel (alojamiento). No dice en qué países guardan los datos ni qué registros técnicos (por ejemplo, direcciones IP) guardan por su cuenta: conviene revisarlo en sus condiciones y decidir si se menciona.
-3. «Orki no usa analítica ni publicidad»: cierto en el código de hoy (no hay Sentry ni eventos de producto). La especificación prevé Sentry y dos eventos de producto: al añadirlos, hay que cambiar el texto.
-4. Quién ve qué: las políticas solo entregan a cada usuario sus plantas; un administrador del catálogo ve, con `count_species_plants`, cuántas plantas hay enlazadas a una especie (solo el número) y, por la política del bucket, puede abrir la foto actual de las plantas «por validar». La cola de propuestas (#22) aún no existe; el texto dice en futuro que entonces verá también el nombre ingresado.
-5. Lo que se guarda en el dispositivo (borrador con caducidad de 24 horas, miniaturas que se borran al cerrar sesión, preferencias del inventario, archivos de la app y la sesión de Clerk) y que las fotos se reducen y pierden sus metadatos, incluida la ubicación, antes de subirlas.
-6. Que no hay exportación de datos (#17 aún no está en esta rama): al añadirla, cambiar el texto.
-7. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «Orki lo filtró a las orquídeas y lo normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
-8. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
+2. Proveedores: Clerk (acceso), Supabase (base de datos, fotos y eventos de uso), Sentry (errores) y Vercel (alojamiento). No dice en qué países guardan los datos, cuánto tiempo los conservan ni qué registros técnicos (por ejemplo, direcciones IP) guardan por su cuenta: conviene revisarlo en sus condiciones y decidir si se menciona.
+3. Eventos de uso (`src/telemetry/events.ts`, migración `20261121170000_eventos_de_producto.sql`): registro completado (duración, con foto, nombre por validar) y búsqueda «¿Ya la tengo?» (duración y resultado); los dos con el id de Clerk (lo pone la base), la hora y si se generó sin conexión. Sin textos. Nadie los lee por la API: solo el dueño de la base y la clave de servicio. Objetivos citados: registrar en menos de 1 minuto y responder en menos de 5 segundos (`docs/specification.md`).
+4. Sentry (`src/observability/`): solo errores (no hay trazas de rendimiento ni grabación de sesión). Lo que se quita y lo que queda está en `privacy.ts` y `sentry-options.ts`. La página menciona además las sesiones de «release health» que manda la integración por defecto `BrowserSession` (no se quita en `sentry-options.ts`): un aviso al abrir la app con la versión, el navegador y el id del usuario. Si no se quieren, hay que quitar esa integración y cambiar el texto.
+5. «Orki no muestra publicidad ni usa otros servicios de analítica o de publicidad»: en las dependencias y en `index.html` no hay nada más que Clerk, Supabase y Sentry. Que no se venden datos es una decisión del responsable, no algo que se pueda comprobar en el código: la página no lo dice.
+6. Quién ve qué: cada usuario solo sus plantas; un administrador del catálogo ve cuántas plantas hay por especie (`count_species_plants`) y la cola de propuestas (`list_proposal_groups`, migración `20261121180000_cola_de_propuestas.sql`): por grupo de nombre normalizado y género, la forma más frecuente del nombre tal como se escribió, el género, el tipo más frecuente, el número de plantas y hasta cuatro fotos (las rutas llevan el id del usuario; la pantalla no lo muestra). La auditoría de una resolución guarda el nombre propuesto, el género y el número de plantas, sin ids de usuario ni rutas, y no se borra.
+7. Lo que se guarda en el dispositivo y cuándo se borra (`docs/sin-conexion.md` y `src/account/device-cleanup.ts`): copia del inventario, miniaturas, cola de eventos (29 días como mucho) y id del último usuario se borran al cerrar sesión, también sin conexión; el id se guarda hasta avisar a Clerk si se cerró sin conexión; el borrador (texto y foto) caduca a las 24 horas y no se borra al cerrar sesión; las preferencias tampoco.
+8. Exportación (`src/collection/export-csv.ts`, `src/inventory/ExportAction.tsx`): al final de «Mi colección», todas las plantas con todas sus columnas, sin fotos.
+9. Eliminación (sección «Eliminación de la cuenta»): lo que borra, y que no se borran los informes ya enviados a Sentry ni la auditoría del catálogo.
+10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «Orki lo filtró a las orquídeas y lo normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
+11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
 
-Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
+Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, fecha, las secciones de eventos, Sentry, propuestas, dispositivo y exportación, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
 
 ## Base de datos y migraciones
 
