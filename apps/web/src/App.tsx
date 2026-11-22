@@ -38,6 +38,11 @@ const PlantDetailPage = lazy(() => import('./pages/PlantDetailPage.tsx'))
 // Vite deja en un chunk común a los dos.
 const EditPlantPage = lazy(() => import('./pages/EditPlantPage.tsx'))
 
+// «¿Ya la tengo?» en su pantalla (/ya-la-tengo, #209), en su propio chunk
+// como el detalle: la lógica de la respuesta (collection/ownership.ts) ya está
+// en este chunk, con el inventario; aquí solo va la pantalla.
+const OwnershipCheckPage = lazy(() => import('./pages/OwnershipCheckPage.tsx'))
+
 // Backoffice del catálogo (/administracion/catalogo, #99): solo para
 // administradores, así que va en su propio chunk y no lo descarga nadie más.
 const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
@@ -119,6 +124,14 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
           </Route>
           <Route element={<RequireAuth />}>
             <Route path={PATHS.collection} element={<CollectionPage />} />
+            <Route
+              path={PATHS.ownershipCheck}
+              element={
+                <Suspense fallback={null}>
+                  <OwnershipCheckPage />
+                </Suspense>
+              }
+            />
             <Route
               path={PATHS.newPlant}
               element={

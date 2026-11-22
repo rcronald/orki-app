@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { PATHS } from '../routes/paths.ts'
 import { cameFromInventory } from './navigation.ts'
@@ -9,8 +9,15 @@ import { DETAIL_TEXT } from './texts.ts'
  * es "atrás" en el historial: el inventario vuelve con su búsqueda, sus
  * filtros y su posición. Si no, va al inventario como un enlace normal. Es un
  * enlace de verdad en los dos casos (se puede abrir en otra pestaña).
+ * También lo usa «¿Ya la tengo?» (#209), con su texto y su clase.
  */
-export function BackToCollection() {
+export function BackToCollection({
+  className = 'self-start text-md font-semibold text-secondary underline underline-offset-4',
+  children = DETAIL_TEXT.back,
+}: {
+  className?: string
+  children?: ReactNode
+} = {}) {
   const location = useLocation()
   const navigate = useNavigate()
   const back = cameFromInventory(location.state)
@@ -23,12 +30,8 @@ export function BackToCollection() {
   }
 
   return (
-    <Link
-      to={PATHS.collection}
-      onClick={onClick}
-      className="self-start text-md font-semibold text-secondary underline underline-offset-4"
-    >
-      {DETAIL_TEXT.back}
+    <Link to={PATHS.collection} onClick={onClick} className={className}>
+      {children}
     </Link>
   )
 }
