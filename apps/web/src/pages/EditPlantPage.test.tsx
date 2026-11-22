@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { LAST_USER_KEY } from '../auth/offline-identity.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
@@ -192,8 +193,11 @@ describe('EditPlantPage', () => {
     expect(
       screen.getByRole('button', { name: PLANT_FORM_TEXT.photoInBloom }),
     ).toHaveAttribute('aria-pressed', 'true')
-    // Sin borrador: la edición no escribe el del registro.
-    expect(window.localStorage.length).toBe(0)
+    // Sin borrador: la edición no escribe el del registro. (Solo está el
+    // último usuario con sesión, para verlo sin conexión, #18.)
+    expect(
+      Object.keys(window.localStorage).filter((key) => key !== LAST_USER_KEY),
+    ).toEqual([])
     expect(submitButton()).toHaveTextContent('Guardar cambios')
     await expectNoAxeViolations()
   })

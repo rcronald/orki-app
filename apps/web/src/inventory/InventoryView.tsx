@@ -84,6 +84,11 @@ export interface InventoryViewProps {
   onFiltersChange: (filters: PlantFilters) => void
   /** Bloque bajo el buscador; lo usará "¿Ya la tengo?" (#19). */
   searchResult?: ReactNode
+  /**
+   * Solo lectura (sin conexión, #18): id del texto que explica por qué. Con
+   * él, los accesos a registrar se ven desactivados y lo citan.
+   */
+  writeDisabledBy?: string
 }
 
 // En el celular, el acceso a registrar queda fijo abajo: se deja sitio para
@@ -121,6 +126,7 @@ export function InventoryView({
   filters,
   onFiltersChange,
   searchResult,
+  writeDisabledBy,
 }: InventoryViewProps) {
   const [preferences, setPreferences] = useInventoryPreferences()
   const { view, grouped } = preferences
@@ -195,7 +201,7 @@ export function InventoryView({
     onFiltersChange(DEFAULT_FILTERS)
     focusToggle()
   }
-  const registerLink = <RegisterLink />
+  const registerLink = <RegisterLink disabledBy={writeDisabledBy} />
 
   if (plants !== null && plants.length === 0) {
     return (
@@ -203,7 +209,10 @@ export function InventoryView({
         {status === 'error' && error && (
           <ReloadErrorBanner error={error} onRetry={onRetry} />
         )}
-        <EmptyCollection hasInactive={false} />
+        <EmptyCollection
+          hasInactive={false}
+          registerDisabledBy={writeDisabledBy}
+        />
       </div>
     )
   }
@@ -415,9 +424,40 @@ function GenusSection({ group, view }: { group: GenusGroup; view: View }) {
 // del todo. Los navegadores solo abren la cámara como respuesta directa a un
 // toque, y así ese toque es el del propio botón de la cámara, ya en el
 // formulario que conserva lo escrito si iOS recarga la app.
-function RegisterLink() {
+//
+// Sin conexión (#18), los dos se ven desactivados (aria-disabled, siguen en el
+// orden del tabulador) y citan el motivo (disabledBy).
+const REGISTER_CLASSES =
+  'flex gap-space-2 max-sm:fixed max-sm:inset-x-space-4 max-sm:bottom-[calc(var(--space-4)_+_env(safe-area-inset-bottom))] max-sm:z-10'
+
+function RegisterLink({ disabledBy }: { disabledBy?: string }) {
+  if (disabledBy !== undefined) {
+    return (
+      <div className={REGISTER_CLASSES}>
+        <button
+          type="button"
+          aria-disabled="true"
+          aria-describedby={disabledBy}
+          className="orki-btn orki-btn--primary min-w-[0] max-sm:flex-1 max-sm:shadow-card"
+        >
+          <Icon name="plus" />
+          Registrar orquídea
+        </button>
+        <button
+          type="button"
+          aria-disabled="true"
+          aria-describedby={disabledBy}
+          aria-label="Registrar con foto"
+          className="orki-btn orki-btn--secondary flex-none max-sm:shadow-card"
+        >
+          <Icon name="camera" />
+          Con foto
+        </button>
+      </div>
+    )
+  }
   return (
-    <div className="flex gap-space-2 max-sm:fixed max-sm:inset-x-space-4 max-sm:bottom-[calc(var(--space-4)_+_env(safe-area-inset-bottom))] max-sm:z-10">
+    <div className={REGISTER_CLASSES}>
       <Link
         to={PATHS.newPlant}
         className="orki-btn orki-btn--primary min-w-[0] max-sm:flex-1 max-sm:shadow-card"

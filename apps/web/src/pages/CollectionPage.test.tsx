@@ -16,13 +16,23 @@ import {
   vi,
   type MockInstance,
 } from 'vitest'
+import { createCachedCollectionSource } from '../collection/cached-source.ts'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
+import { createMemoryCopyStorage } from '../collection/local-copy.ts'
 import type { CollectionPlant } from '../collection/model.ts'
-import { CollectionLoadError } from '../collection/source.ts'
+import {
+  CollectionLoadError,
+  type CollectionSource,
+} from '../collection/source.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
-import { CATTLEYA, PHALAENOPSIS, plant } from '../test/collection.ts'
+import {
+  CATTLEYA,
+  PHALAENOPSIS,
+  plant,
+  RHYNCHOLAELIOCATTLEYA,
+} from '../test/collection.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -97,11 +107,15 @@ function BackButton() {
   )
 }
 
-function renderAt(path: string, previous: string[] = []) {
+function renderAt(
+  path: string,
+  previous: string[] = [],
+  collectionSource: CollectionSource = source,
+) {
   return render(
     <MemoryRouter initialEntries={[...previous, path]}>
       <NavigationFocusProvider>
-        <CollectionProvider source={source}>
+        <CollectionProvider source={collectionSource}>
           <main>
             <Routes>
               <Route path="/coleccion" element={<CollectionPage />} />
@@ -282,5 +296,63 @@ describe('CollectionPage', () => {
         name: 'Quitar el filtro Género: Phalaenopsis',
       }),
     ).toBeInTheDocument()
+  })
+
+  it('sin conexión, "¿Ya la tengo?" reconoce abreviaturas y sinónimos de la copia local', async () => {
+    const user = userEvent.setup()
+    const storage = createMemoryCopyStorage()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [
+        plant({
+          displayName: 'Rhyncholaeliocattleya George King',
+          enteredName: 'Rhyncholaeliocattleya George King',
+          species: {
+            id: 'species-george-king',
+            scientificName: 'Rhyncholaeliocattleya George King',
+            type: 'hybrid',
+            status: 'validated',
+          },
+          genus: RHYNCHOLAELIOCATTLEYA,
+        }),
+      ],
+      extras: {
+        speciesNames: new Map([
+          [
+            'species-george-king',
+            [{ name: 'Brassolaeliocattleya George King', type: 'synonym' }],
+          ],
+        ]),
+        genusAbbreviations: new Map([[RHYNCHOLAELIOCATTLEYA.id, ['Rlc.']]]),
+      },
+    })
+    const cached = createCachedCollectionSource({
+      network: source,
+      storage,
+      fetchExtras: () => Promise.resolve({}),
+      onSaved: () => {},
+    })
+    renderAt('/coleccion', [], cached)
+    await act(async () => {
+      for (let index = 0; index < 5; index += 1) await Promise.resolve()
+    })
+    await act(async () => {
+      source.last().reject(new CollectionLoadError('offline'))
+      await Promise.resolve()
+    })
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+
+    const answerFor = async (text: string) => {
+      await user.clear(searchbox())
+      await user.type(searchbox(), text)
+      return screen
+        .getAllByRole('status')
+        .find((region) => /la tienes/.test(region.textContent ?? ''))
+    }
+    expect(await answerFor('Rlc. George')).toHaveTextContent('Sí, la tienes')
+    expect(await answerFor('Brassolaeliocattleya George')).toHaveTextContent(
+      'Sí, la tienes',
+    )
   })
 })

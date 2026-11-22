@@ -1,9 +1,9 @@
 import { useNavigate, useSearchParams } from 'react-router'
 import { useCollection } from '../collection/useCollection.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { registeredPlantState } from '../inventory/registered-plant.ts'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
-import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import { replacePlantPhoto } from '../photos/upload.ts'
 import {
   PlantForm,
@@ -45,7 +45,9 @@ export default function NewPlantPage() {
   // formulario se vuelve a montar con él antes de que se vea (key).
   const { upsertPlant, plants, status, userId } = useCollection()
   const knownPlants = status === 'loading' ? null : plants
-  const online = useOnlineStatus()
+  // Solo con conexión y la sesión confirmada (#18): si no, el formulario se
+  // desactiva con su aviso de sin conexión.
+  const online = useReadOnly() === null
   const [search] = useSearchParams()
 
   return (

@@ -433,11 +433,11 @@ Cómo arranca la app, en consecuencia (`src/auth/useAuthAvailability.ts`):
 - Si Clerk falla (`status: error`) o tarda más de 10 s (`AUTH_LOAD_TIMEOUT_MS`), se da el acceso por no disponible. Las pantallas de acceso y las rutas que exigen sesión muestran una alerta (`role="alert"`) con "Volver a intentar", que recarga la página, en lugar de redirigir; las páginas públicas muestran un aviso breve en la cabecera (`role="status"`) y se siguen viendo enteras.
 - Si Clerk termina cargando más tarde, todo pasa al estado normal sin recargar.
 
-Qué haría falta para el modo de solo lectura del issue #18 (colección visible sin conexión con la sesión iniciada):
+Modo de solo lectura sin conexión (#18): el detalle, con lo confirmado y lo que falta comprobar en un celular, está en [`docs/sin-conexion.md`](docs/sin-conexion.md). En resumen:
 
-- Que la app sepa sin red quién era el usuario: guardar en el dispositivo, al tener sesión, el id de usuario de Clerk y los datos necesarios, y borrarlos al cerrar sesión. No hay una opción documentada de Clerk para web que lo haga; `experimental.persistClient` habría que probarlo con una instancia real y aceptar que puede cambiar en cualquier versión.
-- Guardar en el dispositivo una copia de la colección (por ejemplo en IndexedDB) al consultarla con conexión, porque sin red no hay token de Clerk para Supabase (`getToken()` lanza `ClerkOfflineError`) ni Supabase al que preguntar.
-- Opcionalmente, empaquetar la interfaz de Clerk (`ui`) para que el precache la incluya; no basta por sí solo, porque `Clerk.load()` sigue necesitando la red.
+- La app recuerda el id de Clerk del último usuario con sesión (`src/auth/offline-identity.ts`, `orki-ultimo-usuario` en `localStorage`). Sin Clerk (sin red o sin cargar), `useAppIdentity()` (`src/auth/useAppIdentity.ts`) da ese usuario como `unverified`: las rutas protegidas se abren con su copia local y todo es de solo lectura (`useReadOnly()`, `src/collection/useReadOnly.ts`).
+- La colección se guarda en IndexedDB por usuario (`src/collection/local-copy.ts` y `cached-source.ts`) con los sinónimos, nombres comunes y abreviaturas que usa "¿Ya la tengo?", y las miniaturas se bajan en segundo plano a Cache Storage (`src/photos/thumbnail-sync.ts`).
+- "Cerrar sesión" funciona sin red: borra la copia, las miniaturas y el usuario recordado al momento, y `PendingSignOut` (`src/auth/PendingSignOut.tsx`) se lo pide a Clerk cuando vuelve a estar disponible.
 
 ### Service worker y autenticación
 
@@ -471,7 +471,7 @@ const visibles = plants ? filterByText(plants, query) : []
 - **Funciones puras** (`selectors.ts`): `filterByText`, `groupByGenus`, `countPlants`, `countGenera`, `sortByName`, `sortByNewest` y `plantsByStatus`. Por defecto solo cuentan las plantas activas; `{ includeInactive: true }` incluye las perdidas y regaladas. La búsqueda usa `normalizeSearchText()` (`normalize.ts`), la misma regla que el catálogo: minúsculas, sin tildes, espacios unificados y sin el signo de híbrido (`×` o una `x` suelta).
 - **Lectura en Supabase** (`supabase-source.ts`): una consulta a `plants` con la especie y el género embebidos, filtrada por el usuario activo y paginada por id de 1 000 en 1 000 (el tope de filas de la API).
 
-Cómo sustituir la fuente (por ejemplo, la caché local del #18): implementa `CollectionSource` (`source.ts`), cuyo `load({ userId, signal, provide })` devuelve todas las plantas del usuario o rechaza con un `CollectionLoadError` con su motivo. `provide(plantas)` entrega un resultado provisional (la copia del dispositivo) antes del definitivo. Pásala a `<CollectionProvider source={miFuente}>`; puede envolver a `supabaseCollectionSource`. En las pruebas, `src/test/collection-source.ts` tiene una fuente controlada a mano.
+La fuente por defecto es la de la copia local del #18 (`cached-source.ts`, ver [Sin conexión](#sin-conexión)), que envuelve a `supabaseCollectionSource`. Cómo sustituir la fuente: implementa `CollectionSource` (`source.ts`), cuyo `load({ userId, signal, provide })` devuelve todas las plantas del usuario o rechaza con un `CollectionLoadError` con su motivo. `provide(plantas)` entrega un resultado provisional (la copia del dispositivo) antes del definitivo. Pásala a `<CollectionProvider source={miFuente}>`; puede envolver a `supabaseCollectionSource`. En las pruebas, `src/test/collection-source.ts` tiene una fuente controlada a mano.
 
 ### Pantalla de inventario
 

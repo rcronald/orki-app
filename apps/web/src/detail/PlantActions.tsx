@@ -27,7 +27,10 @@ export interface PlantActionServices {
 
 interface PlantActionsProps {
   plant: CollectionPlant
+  /** Si se puede escribir: con conexión y la sesión confirmada (#18). */
   online: boolean
+  /** Motivo cuando no se puede; por defecto, el de sin conexión. */
+  offlineText?: string
   services: PlantActionServices
   /** El estado cambió en la base (baja o reactivación). */
   onStatusChanged: (plant: CollectionPlant) => void
@@ -63,6 +66,7 @@ function deleteErrorText(error: unknown): string {
 export function PlantActions({
   plant,
   online,
+  offlineText = DETAIL_TEXT.offline,
   services,
   onStatusChanged,
   onDeleted,
@@ -150,7 +154,7 @@ export function PlantActions({
       <div role="status">
         {!online && (
           <p id={offlineId} className="text-sm text-neutral-700">
-            {DETAIL_TEXT.offline}
+            {offlineText}
           </p>
         )}
       </div>
