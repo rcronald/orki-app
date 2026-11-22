@@ -26,7 +26,10 @@ let session: ProductEventsSession | null = null
 // Si ya se dijo quién usa la app (aunque sea nadie): antes, nada que borrar.
 let known = false
 
-function withRuntime(use: (runtime: ProductEventsRuntime) => void): void {
+function withRuntime(
+  use: (runtime: ProductEventsRuntime) => void,
+  onUnavailable: () => void = () => {},
+): void {
   if (runtime === null) {
     // Uno nuevo (también tras un fallo de carga) empieza con la sesión de
     // ahora.
@@ -41,7 +44,7 @@ function withRuntime(use: (runtime: ProductEventsRuntime) => void): void {
       if (runtime === pending) runtime = null
     })
   }
-  runtime.then(use, () => {})
+  runtime.then(use, onUnavailable)
 }
 
 /**
@@ -63,6 +66,27 @@ export function setProductEventsSession(
   session = next === null ? null : { ...next }
   const value = session
   withRuntime((current) => current.setSession(value))
+}
+
+/**
+ * Deja de registrar y enviar eventos y borra todas las colas del
+ * dispositivo, como al cerrar sesión, y se resuelve cuando el borrado y el
+ * envío que estuviera en curso terminaron. Nunca falla.
+ *
+ * La usa la eliminación de la cuenta (#110) antes del primer paso: los
+ * eventos de la base se borran con el perfil (disparador de la migración
+ * 20261121170000_eventos_de_producto.sql), y uno enviado después quedaría sin
+ * dueño. ProductEventsSync, mientras dura la eliminación, no vuelve a dar
+ * ninguna sesión (ver lib/account-deletion-marker.ts).
+ */
+export function discardProductEvents(): Promise<void> {
+  setProductEventsSession(null)
+  return new Promise((resolve) => {
+    const done = () => resolve()
+    withRuntime((current) => {
+      void current.settle().then(done, done)
+    }, done)
+  })
 }
 
 /** Guarda un evento del usuario activo y lo envía en cuanto se pueda. */

@@ -1,8 +1,13 @@
+import 'fake-indexeddb/auto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PREFERENCES_KEY } from '../inventory/preferences.ts'
 import { accountDeletionMarkerKey } from '../lib/account-deletion-marker.ts'
 import { THUMBNAIL_CACHE_PREFIX } from '../photos/read.ts'
 import { plantDraftKey } from '../registration/draft.ts'
+import {
+  createIndexedDbDraftPhotoBackend,
+  type DraftPhoto,
+} from '../registration/draft-photo.ts'
 import { clearDeviceDataFor } from './device-cleanup.ts'
 
 const USER = 'user_prueba'
@@ -49,6 +54,22 @@ describe('clearDeviceDataFor', () => {
     await vi.waitFor(() =>
       expect([...stores]).toEqual(['workbox-precache-v2-https://orki.test/']),
     )
+  })
+
+  it('borra la foto del borrador del registro (IndexedDB), solo la de la cuenta', async () => {
+    const photos = createIndexedDbDraftPhotoBackend()
+    const draft = {
+      plantId: 'planta',
+      savedAt: 0,
+      fileName: 'foto.jpg',
+    } as unknown as DraftPhoto
+    await photos.put(USER, draft)
+    await photos.put(OTHER, draft)
+    fakeCaches([])
+
+    await clearDeviceDataFor(USER)
+
+    expect(await photos.keys()).toEqual([OTHER])
   })
 
   it('con keepMarker conserva la marca de eliminación', async () => {

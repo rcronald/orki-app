@@ -1,5 +1,9 @@
-import { useEffect, useRef } from 'react'
-import { useAppIdentity } from '../auth/useAppIdentity.ts'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { identityUserId, useAppIdentity } from '../auth/useAppIdentity.ts'
+import {
+  isAccountDeletionPending,
+  subscribeToAccountDeletionMarker,
+} from '../lib/account-deletion-marker.ts'
 import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import { setProductEventsSession } from './product-events.ts'
 
@@ -14,6 +18,11 @@ import { setProductEventsSession } from './product-events.ts'
  * - signed-out: nadie, y se borran todas las colas (también al cerrar sesión
  *   sin conexión: el botón de la app lo marca al momento).
  * - loading o unavailable: el usuario de antes, sin enviar mientras tanto.
+ * - Con la eliminación de su cuenta en curso (#110,
+ *   lib/account-deletion-marker.ts): nadie, como al cerrar sesión. Sus
+ *   eventos de la base se borran con el perfil; uno que llegara después
+ *   quedaría sin dueño. Si la persona sigue usando Orki (quita la marca), se
+ *   vuelve a registrar.
  *
  * No pinta nada. Va dentro de <ClerkProvider>, antes que las pantallas: su
  * efecto corre antes que los de ellas.
@@ -22,8 +31,19 @@ export function ProductEventsSync() {
   const identity = useAppIdentity()
   const online = useOnlineStatus()
   const previous = useRef<string | null>(null)
+  const shownUserId = identityUserId(identity)
+  const deleting = useSyncExternalStore(
+    subscribeToAccountDeletionMarker,
+    () => shownUserId !== null && isAccountDeletionPending(shownUserId),
+    () => false,
+  )
 
   useEffect(() => {
+    if (deleting) {
+      previous.current = null
+      setProductEventsSession(null)
+      return
+    }
     switch (identity.kind) {
       case 'signed-in':
       case 'unverified':
@@ -49,7 +69,7 @@ export function ProductEventsSync() {
         }
         return
     }
-  }, [identity, online])
+  }, [identity, online, deleting])
 
   return null
 }

@@ -39,6 +39,13 @@ export interface ProductEventsRuntime {
   record(userId: string, event: ProductEvent): void
   /** Envía lo pendiente si se puede. Se resuelve al terminar (nunca falla). */
   flush(): Promise<void>
+  /**
+   * Se resuelve cuando terminan las operaciones de la cola ya pedidas (por
+   * ejemplo, el borrado de setSession(null)) y el envío en curso, si lo hay.
+   * Nunca falla. Lo usa la eliminación de la cuenta (#110) antes de borrar el
+   * perfil.
+   */
+  settle(): Promise<void>
 }
 
 /** Esperas entre reintentos tras un fallo: 30 s, 1 min, 2 min… hasta 15 min. */
@@ -169,5 +176,16 @@ export function createProductEventsRuntime({
     },
 
     flush,
+
+    async settle() {
+      // Lo que se pida mientras se espera también cuenta.
+      for (;;) {
+        const pendingChain = chain
+        const pendingFlush = flushing
+        await pendingChain.catch(() => {})
+        await pendingFlush?.catch(() => {})
+        if (pendingChain === chain && pendingFlush === flushing) return
+      }
+    },
   }
 }

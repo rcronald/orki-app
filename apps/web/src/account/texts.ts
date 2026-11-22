@@ -24,10 +24,15 @@ export const ACCOUNT_TEXT = {
     'Para cambiar tu correo, tu nombre o tu foto, usa el menú de la cuenta (el botón con tu avatar, arriba).',
   deleteHeading: 'Eliminar tu cuenta',
   deleteIntro:
-    'Al eliminar tu cuenta se borran tus plantas con todos sus detalles, sus fotos, tu perfil y tu cuenta de acceso. No se puede deshacer.',
+    'Al eliminar tu cuenta se borran tus plantas con todos sus detalles, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso, y lo que Orki guarda de ti en este dispositivo. No se puede deshacer.',
+  exportHint:
+    'Si quieres conservar una copia de tu inventario, antes expórtalo a CSV (sin las fotos) al final de',
+  exportLink: 'Mi colección',
   deleteButton: 'Eliminar mi cuenta',
   offline:
     'Sin conexión: para eliminar la cuenta hace falta conexión. Vuelve cuando la tengas.',
+  unverified:
+    'No se pudo confirmar tu sesión: el servicio de acceso no responde. Para eliminar la cuenta hace falta conexión y la sesión confirmada. Vuelve cuando la tengas.',
   notAllowed:
     'Orki todavía no permite eliminar la cuenta desde la app. No se ha borrado nada. Para eliminarla, escribe al contacto de la página de privacidad.',
   pendingHeading: 'La eliminación de tu cuenta quedó a medias',
@@ -44,9 +49,9 @@ export const DIALOG_TEXT = {
   items: [
     'Tus plantas, con todos sus detalles (nombre, género, tipo, fecha de adquisición, origen, ubicación, apodo, color de la flor y estado).',
     'Las fotos de tus plantas y sus miniaturas.',
-    'Tu perfil.',
+    'Tu perfil y tus eventos de uso (cuándo registraste una planta y cuándo buscaste si ya la tenías).',
     'Tu cuenta de acceso: no podrás volver a entrar con ella.',
-    'Lo que Orki guarda en este dispositivo: el borrador del registro, las miniaturas y tus preferencias del inventario.',
+    'Lo que Orki guarda en este dispositivo: la copia de tu inventario para usarlo sin conexión, las miniaturas, los eventos de uso pendientes de enviar, el borrador del registro y tus preferencias del inventario.',
   ],
   irreversible: 'No se puede deshacer. Nadie podrá recuperar tus datos.',
   confirmLabel: `Para confirmar, escribe ${CONFIRMATION_WORD}`,
@@ -135,4 +140,4 @@ export function failureText(
 }
 
 export const DELETED_NOTICE =
-  'Tu cuenta se eliminó. Se borraron tus plantas, sus fotos y tu perfil, y se cerró la sesión.'
+  'Tu cuenta se eliminó. Se borraron tus plantas, sus fotos, tu perfil y tus eventos de uso, y se cerró la sesión.'

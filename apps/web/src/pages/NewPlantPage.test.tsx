@@ -1934,6 +1934,7 @@ describe('NewPlantPage: foto (#87)', () => {
             recorded.push(event)
           },
           flush: () => Promise.resolve(),
+          settle: () => Promise.resolve(),
         }),
       )
       setProductEventsSession({

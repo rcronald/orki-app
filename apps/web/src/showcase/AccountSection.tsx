@@ -6,14 +6,16 @@ import {
   type DeletionFailureReason,
   type DeletionStep,
 } from '../account/deletion.ts'
+import { noAccountDeletionDevice } from '../account/device-cleanup.ts'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Example, Section } from './layout.tsx'
 
 // La pantalla de cuenta (/cuenta, #110) sin Clerk ni Supabase: los pasos de la
 // eliminación son simulados (esperan un momento) y se puede elegir cuál falla
-// la primera vez. No borra nada real; sí usa el localStorage del navegador
-// para la marca de "eliminación a medias" del usuario "muestra".
+// la primera vez. No borra nada real (ni del dispositivo: noAccountDeletionDevice);
+// sí usa el localStorage del navegador para la marca de "eliminación a medias"
+// del usuario "muestra".
 
 type Scenario = 'ok' | DeletionStep | 'not-allowed-before' | 'not-allowed-after'
 
@@ -98,6 +100,7 @@ export function AccountSection() {
             canDeleteAccount={scenario !== 'not-allowed-before'}
             effects={effects}
             onDeleted={() => setDeleted(true)}
+            device={noAccountDeletionDevice}
           />
         )}
       </Example>

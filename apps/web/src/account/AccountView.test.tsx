@@ -8,7 +8,13 @@ import {
   markAccountDeletionStarted,
   resetAccountDeletionMarkers,
 } from '../lib/account-deletion-marker.ts'
+import { SessionUnverifiedContext } from '../collection/useReadOnly.ts'
 import { plantDraftKey } from '../registration/draft.ts'
+import {
+  setProductEventsRuntimeLoader,
+  setProductEventsSession,
+} from '../telemetry/product-events.ts'
+import type { ProductEventsRuntime } from '../telemetry/runtime.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { AccountView } from './AccountView.tsx'
 import {
@@ -57,6 +63,11 @@ function controlledEffects({ auto = false } = {}) {
     calls,
     failOnce,
     async next() {
+      // El primer paso empieza tras vaciar la cola de eventos (asíncrono).
+      await vi.waitFor(() => {
+        if (pending.length === 0)
+          throw new Error('No hay ningún paso pendiente.')
+      })
       const deferred = pending.shift()
       if (!deferred) throw new Error('No hay ningún paso pendiente.')
       await act(async () => {
@@ -71,25 +82,45 @@ function renderView(
   props: Partial<Parameters<typeof AccountView>[0]> & {
     effects: AccountDeletionEffects
   },
+  { unverified = false } = {},
 ) {
   const onDeleted = vi.fn()
   const onKeepUsing = vi.fn()
   render(
     <MemoryRouter>
-      <main>
-        <button type="button">Antes</button>
-        <AccountView
-          userId={USER}
-          email="persona@example.com"
-          canDeleteAccount
-          onDeleted={onDeleted}
-          onKeepUsing={onKeepUsing}
-          {...props}
-        />
-      </main>
+      <SessionUnverifiedContext value={unverified}>
+        <main>
+          <button type="button">Antes</button>
+          <AccountView
+            userId={USER}
+            email="persona@example.com"
+            canDeleteAccount
+            onDeleted={onDeleted}
+            onKeepUsing={onKeepUsing}
+            {...props}
+          />
+        </main>
+      </SessionUnverifiedContext>
     </MemoryRouter>,
   )
   return { onDeleted, onKeepUsing }
+}
+
+/** Cola de eventos simulada: lo que se le pide, en orden, junto a los pasos. */
+function fakeEventsRuntime(log: string[]): ProductEventsRuntime {
+  return {
+    setSession: (session) => {
+      log.push(session === null ? 'eventos:sin-sesion' : 'eventos:sesion')
+    },
+    record: () => {
+      log.push('eventos:registrado')
+    },
+    flush: () => Promise.resolve(),
+    settle: () => {
+      log.push('eventos:vaciada')
+      return Promise.resolve()
+    },
+  }
 }
 
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
@@ -111,7 +142,13 @@ async function confirm(user: ReturnType<typeof userEvent.setup>) {
   return dialog
 }
 
+let eventsLog: string[] = []
+
 beforeEach(() => {
+  eventsLog = []
+  setProductEventsRuntimeLoader(() =>
+    Promise.resolve(fakeEventsRuntime(eventsLog)),
+  )
   // Como en index.html.
   document.documentElement.lang = 'es'
   document.title = 'Orki'
@@ -119,6 +156,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setProductEventsRuntimeLoader(null)
   vi.restoreAllMocks()
   resetAccountDeletionMarkers()
   setAccountDeletionPhase('idle')
@@ -233,8 +271,11 @@ describe('AccountView', () => {
     await control.next()
     expect(status).toHaveTextContent('Paso 3 de 4: borrando tu perfil…')
     await control.next()
-    expect(status).toHaveTextContent(
-      'Paso 4 de 4: eliminando tu cuenta de acceso…',
+    // Tras el perfil se limpia el dispositivo (asíncrono) antes del paso 4.
+    await vi.waitFor(() =>
+      expect(status).toHaveTextContent(
+        'Paso 4 de 4: eliminando tu cuenta de acceso…',
+      ),
     )
     // Con los datos borrados ya se limpió el dispositivo, salvo la marca.
     expect(localStorage.getItem(plantDraftKey(USER))).toBeNull()
@@ -243,8 +284,60 @@ describe('AccountView', () => {
 
     await control.next()
     expect(control.calls).toEqual([...DELETION_STEPS])
-    expect(onDeleted).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1))
     expect(isAccountDeletionPending(USER)).toBe(false)
+  })
+
+  it('antes de borrar nada vacía la cola de eventos y no registra ninguno más (#110)', async () => {
+    const user = userEvent.setup()
+    const control = controlledEffects()
+    setProductEventsSession({ userId: USER, confirmed: true, online: true })
+    renderView({ effects: control.effects })
+    await vi.waitFor(() => expect(eventsLog).toContain('eventos:sesion'))
+    eventsLog.length = 0
+
+    await confirm(user)
+    await vi.waitFor(() => expect(control.calls).toEqual(['photos']))
+    // La cola se quedó sin sesión (se borran las colas) y se esperó a que
+    // terminara antes de borrar las fotos.
+    expect(eventsLog).toEqual(['eventos:sin-sesion', 'eventos:vaciada'])
+  })
+
+  it('un fallo inesperado fuera de los pasos no sale como error sin capturar', async () => {
+    const user = userEvent.setup()
+    const control = controlledEffects({ auto: true })
+    const onDeleted = vi.fn(() =>
+      Promise.reject(new Error('persona@example.com')),
+    )
+    renderView({
+      effects: control.effects,
+      onDeleted,
+      device: {
+        beforeDeletion: () => Promise.resolve(),
+        afterDataDeleted: () => Promise.resolve(),
+        afterAccountDeleted: () =>
+          Promise.reject(new Error('persona@example.com')),
+      },
+    })
+    const unhandled = vi.fn()
+    window.addEventListener('unhandledrejection', unhandled)
+    try {
+      await confirm(user)
+      await vi.waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('unhandledrejection', unhandled)
+    }
+  })
+
+  it('con la sesión sin confirmar, la acción se deshabilita con el motivo', async () => {
+    const { effects } = controlledEffects()
+    renderView({ effects }, { unverified: true })
+    const button = screen.getByRole('button', { name: 'Eliminar mi cuenta' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(/No se pudo confirmar tu sesión/)
+    await expectNoAxeViolations()
   })
 
   it.each(DELETION_STEPS)(

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk, signOut } from '../test/clerk-mock.tsx'
 import { AccountControls } from './AccountControls.tsx'
+import { rememberUser } from './offline-identity.ts'
 import { PendingSignOut } from './PendingSignOut.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
@@ -82,5 +83,18 @@ describe('AccountControls', () => {
     )
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     await expectNoAxeViolations()
+  })
+
+  it('con la sesión sin confirmar: sale, pero no ofrece la pantalla de cuenta (#110)', () => {
+    setFakeClerk({ status: 'error' })
+    rememberUser('user_prueba')
+    renderInRouter(<AccountControls />)
+
+    expect(
+      screen.getByRole('button', { name: 'Cerrar sesión' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Tu cuenta' }),
+    ).not.toBeInTheDocument()
   })
 })

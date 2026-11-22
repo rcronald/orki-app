@@ -6,10 +6,11 @@ import {
   isAccountDeletionPending,
   subscribeToAccountDeletionMarker,
 } from '../lib/account-deletion-marker.ts'
-import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
 import { PATHS } from '../routes/paths.ts'
 import { DeleteAccountDialog } from './DeleteAccountDialog.tsx'
 import type { AccountDeletionEffects } from './deletion.ts'
+import type { AccountDeletionDevice } from './device-cleanup.ts'
 import { ACCOUNT_TEXT } from './texts.ts'
 import { useAccountDeletion } from './useAccountDeletion.ts'
 
@@ -24,6 +25,8 @@ export interface AccountViewProps {
   onDeleted: () => Promise<void> | void
   /** La persona abandona una eliminación a medias y sigue usando Orki. */
   onKeepUsing?: () => void
+  /** Lo que se hace en el dispositivo; por defecto, el de la app. */
+  device?: AccountDeletionDevice
 }
 
 /**
@@ -38,14 +41,18 @@ export function AccountView({
   effects,
   onDeleted,
   onKeepUsing,
+  device,
 }: AccountViewProps) {
-  const online = useOnlineStatus()
+  // Solo lectura (#120): sin conexión, o con la sesión sin confirmar.
+  const readOnly = useReadOnly()
+  const online = readOnly === null
   const [open, setOpen] = useState(false)
   const deletion = useAccountDeletion({
     userId,
     effects,
     canDeleteAccount,
     onDeleted,
+    device,
   })
   const pending = useSyncExternalStore(
     subscribeToAccountDeletionMarker,
@@ -57,11 +64,14 @@ export function AccountView({
   const reasonId = useId()
   const pendingHeadingId = useId()
 
-  const reason = !online
-    ? ACCOUNT_TEXT.offline
-    : !canDeleteAccount
-      ? ACCOUNT_TEXT.notAllowed
-      : null
+  const reason =
+    readOnly === 'offline'
+      ? ACCOUNT_TEXT.offline
+      : readOnly === 'unverified'
+        ? ACCOUNT_TEXT.unverified
+        : !canDeleteAccount
+          ? ACCOUNT_TEXT.notAllowed
+          : null
 
   function close() {
     deletion.reset()
@@ -101,6 +111,16 @@ export function AccountView({
         </h2>
 
         <p className="text-md">{ACCOUNT_TEXT.deleteIntro}</p>
+        <p className="text-sm text-neutral-700">
+          {ACCOUNT_TEXT.exportHint}{' '}
+          <Link
+            to={PATHS.collection}
+            className="font-semibold text-secondary underline"
+          >
+            {ACCOUNT_TEXT.exportLink}
+          </Link>
+          .
+        </p>
 
         {/* Mientras el diálogo está abierto, la marca ya está puesta: se
             sigue mostrando el mismo botón (con otro texto) para que el foco

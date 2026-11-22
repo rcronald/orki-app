@@ -6,6 +6,7 @@ import type { AccountDeletionEffects } from '../account/deletion.ts'
 import { setAccountDeletionPhase } from '../account/deletion-status.ts'
 import { appAccountDataEffects } from '../account/supabase-effects.ts'
 import { ACCOUNT_TEXT } from '../account/texts.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { ensureProfile, forgetEnsuredProfile } from '../lib/profile.ts'
 
@@ -24,10 +25,16 @@ interface AccountPageProps {
  * La eliminación de la cuenta de Clerk va envuelta en useReverification():
  * Clerk pide por defecto volver a verificar la identidad para eliminar la
  * cuenta y abre su propia ventana (ver account/clerk-deletion.ts).
+ *
+ * Con la sesión sin confirmar (#120: sin Clerk, con el último usuario
+ * recordado), RequireAuth deja entrar, pero Clerk no tiene usuario: la
+ * pantalla explica que eliminar la cuenta necesita la sesión confirmada, en
+ * lugar de quedarse cargando.
  */
 export function AccountPage({ dataEffects }: AccountPageProps) {
   const { user } = useUser()
   const { setActive } = useClerk()
+  const readOnly = useReadOnly()
   const deleteUser = useReverification(async () => {
     if (!user) throw new Error('No hay usuario con sesión.')
     await user.delete()
@@ -42,8 +49,9 @@ export function AccountPage({ dataEffects }: AccountPageProps) {
   )
 
   // Como el <UserProfile> de Clerk: tras eliminar, se cierra la sesión del
-  // cliente. Si ya no existía, no pasa nada. Después, AccountDeletionGate
-  // lleva al inicio con el aviso.
+  // cliente. Si ya no existía, no pasa nada. Antes, la eliminación ya cerró la
+  // sesión de la app (account/device-cleanup.ts, markSignedOut). Después,
+  // AccountDeletionGate lleva al inicio con el aviso.
   const onDeleted = useCallback(async () => {
     try {
       await setActive({ session: null })
@@ -52,6 +60,16 @@ export function AccountPage({ dataEffects }: AccountPageProps) {
     }
     setAccountDeletionPhase('done')
   }, [setActive])
+
+  if (!user && readOnly === 'unverified') {
+    return (
+      <Page title={ACCOUNT_TEXT.title}>
+        <p role="status" className="text-md">
+          {ACCOUNT_TEXT.unverified}
+        </p>
+      </Page>
+    )
+  }
 
   if (!user) {
     return (

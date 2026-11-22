@@ -6,6 +6,11 @@ import { AccountControls } from '../auth/AccountControls.tsx'
 import { rememberUser, resetOfflineIdentity } from '../auth/offline-identity.ts'
 import { RequireAuth } from '../auth/RouteGuards.tsx'
 import { createCachedCollectionSource } from '../collection/cached-source.ts'
+import {
+  clearAccountDeletionMarker,
+  markAccountDeletionStarted,
+  resetAccountDeletionMarkers,
+} from '../lib/account-deletion-marker.ts'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { createMemoryCopyStorage } from '../collection/local-copy.ts'
 import { CollectionPage } from '../pages/CollectionPage.tsx'
@@ -75,6 +80,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  resetAccountDeletionMarkers()
   setProductEventsRuntimeLoader(null)
   vi.restoreAllMocks()
 })
@@ -222,5 +228,34 @@ describe('eventos de producto en la app', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('con la eliminación de la cuenta en curso no registra ni envía; si la persona sigue, vuelve (#110)', async () => {
+    setFakeClerk({ status: 'ready', signedIn: true, userId: 'user_a' })
+    await copies.write({
+      userId: 'user_a',
+      savedAt: SAVED_AT,
+      plants: [MAXIMA],
+      extras: {},
+    })
+    render(app())
+    await settle()
+
+    act(() => markAccountDeletionStarted('user_a'))
+    await settle()
+    await searchAndHide('cattleya')
+    expect(send).not.toHaveBeenCalled()
+    expect(queue.queues.size).toBe(0)
+
+    // «Seguir usando Orki»: la marca se quita y los eventos vuelven.
+    act(() => clearAccountDeletionMarker('user_a'))
+    await settle()
+    // Otra búsqueda (la anterior ya no cuenta).
+    await userEvent
+      .setup()
+      .clear(screen.getByRole('searchbox', { name: 'Buscar en tu colección' }))
+    await settle()
+    await searchAndHide('maxima')
+    expect(send).toHaveBeenCalledTimes(1)
   })
 })

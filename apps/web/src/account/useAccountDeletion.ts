@@ -12,7 +12,10 @@ import {
   type DeletionStep,
 } from './deletion.ts'
 import { setAccountDeletionPhase } from './deletion-status.ts'
-import { clearDeviceDataFor } from './device-cleanup.ts'
+import {
+  appAccountDeletionDevice,
+  type AccountDeletionDevice,
+} from './device-cleanup.ts'
 
 export type AccountDeletionState =
   | { status: 'idle' }
@@ -34,6 +37,8 @@ export interface UseAccountDeletionOptions {
    * sesión y lleva al inicio (AccountPage) o lo que toque en la muestra.
    */
   onDeleted: () => Promise<void> | void
+  /** Lo que se hace en el dispositivo; por defecto, el de la app. */
+  device?: AccountDeletionDevice
 }
 
 export interface AccountDeletionController {
@@ -50,19 +55,27 @@ export interface AccountDeletionController {
  * limpieza del dispositivo.
  *
  * - Antes del primer paso pone la marca de eliminación en curso
- *   (lib/account-deletion-marker.ts): ensureProfile() deja de crear el perfil.
+ *   (lib/account-deletion-marker.ts): ensureProfile() deja de crear el perfil
+ *   y ProductEventsSync deja de registrar eventos. Después vacía la cola de
+ *   eventos y espera a que termine un envío en curso (device.beforeDeletion):
+ *   los eventos de la base se borran con el perfil, y uno que llegara después
+ *   quedaría sin dueño.
  * - Con los datos ya borrados (tras el perfil), limpia el dispositivo salvo la
  *   marca, y relee la colección si estaba cargada, para que no se vean plantas
  *   que ya no existen si la cuenta de Clerk no se puede eliminar.
  * - Antes del paso de Clerk, fase finishing (deletion-status.ts).
- * - Al terminar: quita la marca, vacía la colección en memoria y llama a
- *   onDeleted.
+ * - Al terminar: limpia el dispositivo y cierra la sesión de la app
+ *   (device.afterAccountDeleted), quita la marca y llama a onDeleted.
+ *
+ * start() nunca rechaza: un fallo inesperado no debe acabar como un error sin
+ * capturar (lo recogería Sentry) ni dejar la pantalla a medias.
  */
 export function useAccountDeletion({
   userId,
   effects,
   canDeleteAccount,
   onDeleted,
+  device = appAccountDeletionDevice,
 }: UseAccountDeletionOptions): AccountDeletionController {
   const [state, setState] = useState<AccountDeletionState>({ status: 'idle' })
   const collection = useContext(CollectionContext)
@@ -76,14 +89,12 @@ export function useAccountDeletion({
     const from = lastFailure.current ?? 'photos'
     // Los pasos que ya terminaron en un intento anterior cuentan como hechos.
     const done: DeletionStep[] = stepsBefore(from)
-    if (canDeleteAccount) markAccountDeletionStarted(userId)
-
     const wrapped: AccountDeletionEffects = {
       deletePhotos: (id) => effects.deletePhotos(id),
       deletePlants: (id) => effects.deletePlants(id),
       deleteProfile: async (id) => {
         await effects.deleteProfile(id)
-        await clearDeviceDataFor(id, { keepMarker: true })
+        await device.afterDataDeleted(id)
         const snapshot = collection?.getSnapshot()
         if (snapshot?.userId === id && snapshot.status !== 'idle') {
           collection?.reload()
@@ -96,6 +107,12 @@ export function useAccountDeletion({
     }
 
     try {
+      if (canDeleteAccount) {
+        // El progreso se ve enseguida, mientras se vacía la cola de eventos.
+        setState({ status: 'running', current: from, done: [...done] })
+        markAccountDeletionStarted(userId)
+        await device.beforeDeletion(userId)
+      }
       const result = await deleteAccountAndData({
         userId,
         effects: wrapped,
@@ -121,15 +138,40 @@ export function useAccountDeletion({
         return
       }
       lastFailure.current = null
-      await clearDeviceDataFor(userId)
+      // La cuenta ya no existe: lo que falle de aquí en adelante no cambia
+      // el resultado.
+      try {
+        await device.afterAccountDeleted(userId)
+      } catch {
+        // La limpieza no lanza; por si acaso, se sigue.
+      }
       clearAccountDeletionMarker(userId)
-      collection?.setUser(null)
       setState({ status: 'done' })
-      await onDeleted()
+      try {
+        await onDeleted()
+      } catch {
+        // onDeleted cierra la sesión y navega: si falla, la sesión de la app
+        // ya está cerrada (afterAccountDeleted) y PendingSignOut termina la
+        // de Clerk.
+      }
+    } catch {
+      // Un fallo inesperado fuera de los pasos (los pasos ya devuelven su
+      // fallo en result): se muestra como un fallo del paso en curso.
+      setAccountDeletionPhase('idle')
+      setState((previous) =>
+        previous.status === 'running'
+          ? {
+              status: 'failed',
+              step: previous.current,
+              reason: 'failed',
+              done: previous.done,
+            }
+          : previous,
+      )
     } finally {
       running.current = false
     }
-  }, [canDeleteAccount, collection, effects, onDeleted, userId])
+  }, [canDeleteAccount, collection, device, effects, onDeleted, userId])
 
   const reset = useCallback(() => {
     if (running.current) return
