@@ -1,6 +1,8 @@
 import { USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 
+const TITULO_PORTADA = 'Tu colección de orquídeas, en un solo lugar'
+
 // Acceso (#148): lo que hace la app alrededor de Clerk. Las pantallas de Clerk
 // están sustituidas por un botón (apps/web/medicion/clerk-simulado.tsx), así
 // que aquí se prueban las rutas protegidas, la vuelta a la página pedida, el
@@ -10,19 +12,25 @@ import { expect, test } from './soporte/fixtures.ts'
 test.describe('sin sesión', () => {
   test.use({ sesion: { usuario: null } })
 
-  test('el inicio ofrece entrar o crear la cuenta', async ({
+  test('el inicio es la portada: ofrece crear la cuenta o entrar, sin chips', async ({
     page,
     revisarAccesibilidad,
   }) => {
     await page.goto('/')
+    const portada = page.getByRole('region', { name: TITULO_PORTADA })
     await expect(
-      page.getByRole('heading', { name: 'orqui.apps', level: 1 }),
+      page.getByRole('heading', { name: TITULO_PORTADA, level: 1 }),
     ).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Iniciar sesión' }),
-    ).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Crear cuenta' })).toBeVisible()
+      page.getByRole('navigation', { name: 'Principal' }),
+    ).toHaveCount(0)
     await revisarAccesibilidad('inicio sin sesión')
+
+    await portada.getByRole('link', { name: 'Crear cuenta gratis' }).click()
+    await expect(page).toHaveURL(/\/registro$/)
+    await page.goBack()
+    await portada.getByRole('link', { name: 'Iniciar sesión' }).click()
+    await expect(page).toHaveURL(/\/iniciar-sesion$/)
   })
 
   test('una ruta protegida lleva a iniciar sesión y vuelve a ella al entrar', async ({
@@ -64,14 +72,11 @@ test.describe('sin sesión', () => {
       .getByRole('button', { name: 'Crear la cuenta de prueba' })
       .click()
 
-    await expect(page).toHaveURL(/\/$/)
+    // Clerk vuelve al inicio, que con sesión lleva a la colección.
+    await expect(page).toHaveURL(/\/coleccion$/)
     await expect(
       page.getByRole('button', { name: 'Cerrar sesión' }),
     ).toBeVisible()
-    await page
-      .getByRole('navigation', { name: 'Principal' })
-      .getByRole('link', { name: 'Mi colección' })
-      .click()
     await expect(
       page.getByRole('heading', { name: 'Mi colección', level: 1 }),
     ).toBeVisible()
@@ -89,7 +94,9 @@ test('cerrar sesión vuelve al inicio y protege de nuevo la colección', async (
   await page.getByRole('button', { name: 'Cerrar sesión' }).click()
 
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole('link', { name: 'Iniciar sesión' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: TITULO_PORTADA, level: 1 }),
+  ).toBeVisible()
   // La app deja de mostrar la sesión al momento y pide a Clerk que la cierre
   // (PendingSignOut); hasta que Clerk confirma, guarda el cierre pendiente.
   await expect
@@ -105,8 +112,11 @@ test('sin el rol de administrador no hay backoffice', async ({
   page,
   revisarAccesibilidad,
 }) => {
+  // Con sesión, el inicio lleva a la colección; sin «Inicio» ni «Catálogo».
   await page.goto('/')
+  await expect(page).toHaveURL(/\/coleccion$/)
   const navegacion = page.getByRole('navigation', { name: 'Principal' })
+  await expect(navegacion.getByRole('link')).toHaveText(['Mi colección'])
   await expect(
     navegacion.getByRole('link', { name: 'Mi colección' }),
   ).toBeVisible()

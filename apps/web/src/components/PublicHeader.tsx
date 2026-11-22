@@ -18,7 +18,9 @@ import { Logo } from './Logo.tsx'
 // (mientras se comprueba una sesión recordada, ver HomeRoute).
 export function PublicHeader({ actions = true }: { actions?: boolean }) {
   return (
-    <header className="orki-nav">
+    // Hasta 720 px, el margen lateral del Hero (16 px) para que el logotipo
+    // quede alineado con el título (el sistema deja 32 px).
+    <header className="orki-nav publico-estrecho:px-space-4">
       {/* Nombre accesible: «Inicio de orqui.apps» (el logotipo). */}
       <Link
         to={PATHS.home}

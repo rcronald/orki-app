@@ -19,7 +19,7 @@ import {
   resetAccountDeletionMarkers,
 } from '../lib/account-deletion-marker.ts'
 import { AccountPage } from '../pages/AccountPage.tsx'
-import { HomePage } from '../pages/HomePage.tsx'
+import { HomeRoute } from '../pages/HomeRoute.tsx'
 import { THUMBNAIL_CACHE_PREFIX } from '../photos/read.ts'
 import { plantDraftKey } from '../registration/draft.ts'
 import {
@@ -158,7 +158,7 @@ function renderApp() {
       <ProductEventsSync />
       <CollectionProvider source={source} thumbnailSync={null}>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<HomeRoute />} />
           <Route path="/iniciar-sesion" element={<p>Pantalla de acceso</p>} />
           <Route element={<AccountDeletionGate />}>
             <Route element={<RequireAuth />}>

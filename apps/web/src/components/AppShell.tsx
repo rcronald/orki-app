@@ -4,7 +4,8 @@ import { useIsCatalogAdmin } from '../auth/roles.ts'
 import { PATHS } from '../routes/paths.ts'
 import { Logo } from './Logo.tsx'
 
-// Estructura común de las páginas de la app (no de las de acceso): enlace para
+// Estructura común de las páginas de la app (no de las de acceso ni de la
+// portada, que tiene la suya: PublicShell): enlace para
 // saltar al contenido, cabecera con la marca y la cuenta, navegación principal
 // y el contenido de la ruta. Los enlaces son de React Router: no recargan.
 //
@@ -23,15 +24,18 @@ export function AppShell() {
         Saltar al contenido
       </a>
       <header className="flex flex-wrap items-center justify-between gap-space-3 px-space-4 py-space-3">
-        <p>
+        {/* Nombre accesible: «Inicio de orqui.apps» (el logotipo). Con
+            sesión, el inicio lleva a la colección (#191). */}
+        <Link to={PATHS.home} className="inline-block rounded-md">
+          <span className="sr-only">Inicio de</span>{' '}
           <Logo className="block h-[40px] w-auto" />
-        </p>
+        </Link>
         <AccountControls />
       </header>
       <nav aria-label="Principal" className="px-space-4 pb-space-3">
         <ul className="orki-chips">
-          <NavItem to={PATHS.home}>Inicio</NavItem>
-          <NavItem to={PATHS.catalog}>Catálogo</NavItem>
+          {/* Sin «Inicio» (el logotipo ya lleva a él) ni «Catálogo», que es
+              un marcador hasta la consulta pública (#187); la ruta existe. */}
           <NavItem to={PATHS.collection}>Mi colección</NavItem>
           {/* Solo comodidad: la protección real es la de la base de datos (#6). */}
           {isCatalogAdmin && (
