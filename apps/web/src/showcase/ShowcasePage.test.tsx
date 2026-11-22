@@ -163,7 +163,10 @@ describe('ShowcasePage', () => {
     const user = userEvent.setup()
     renderShowcase()
 
-    const genus = screen.getByRole('group', { name: 'Género' })
+    // La sección de chips va antes que la pantalla de inventario, que tiene
+    // su propia fila «Género».
+    const [genus] = screen.getAllByRole('group', { name: 'Género' })
+    if (!genus) throw new Error('Sin chips de género.')
     const cattleya = within(genus).getByRole('button', { name: 'Cattleya' })
     expect(cattleya).toHaveAttribute('aria-pressed', 'false')
     await user.click(cattleya)
@@ -218,8 +221,9 @@ describe('ShowcasePage', () => {
       name: 'Pantalla de inventario',
     })
     // 10 activas; la regalada no se cuenta.
-    expect(within(inventory).getByText('10 orquídeas')).toBeInTheDocument()
-    expect(within(inventory).getByText('6 géneros')).toBeInTheDocument()
+    expect(
+      within(inventory).getByText('10 ejemplares · 6 géneros'),
+    ).toBeInTheDocument()
     expect(within(inventory).getAllByRole('article')).toHaveLength(10)
     expect(
       within(inventory).getByRole('article', {
@@ -231,7 +235,9 @@ describe('ShowcasePage', () => {
       within(inventory).getByRole('button', { name: '300 plantas' }),
     )
     expect(within(inventory).getAllByRole('article')).toHaveLength(300)
-    expect(within(inventory).getByText('300 orquídeas')).toBeInTheDocument()
+    expect(
+      within(inventory).getByText(/^300 ejemplares · \d+ géneros$/),
+    ).toBeInTheDocument()
 
     await user.click(within(inventory).getByRole('button', { name: 'Vacía' }))
     expect(

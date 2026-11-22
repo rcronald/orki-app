@@ -1,6 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
+  Link,
   MemoryRouter,
   Route,
   Routes,
@@ -100,6 +101,13 @@ function RegisterStub() {
   )
 }
 
+// Pantalla «¿Ya la tengo?» provisional (la hace el #209): muestra el estado
+// de la navegación con el que se llegó.
+function OwnershipCheckStub() {
+  const state: unknown = useLocation().state
+  return <p data-testid="consulta">{JSON.stringify(state)}</p>
+}
+
 // "Atrás" del navegador, fuera de las rutas.
 function BackButton() {
   const navigate = useNavigate()
@@ -123,11 +131,14 @@ function renderAt(
             <Routes>
               <Route path="/coleccion" element={<CollectionPage />} />
               <Route path="/coleccion/nueva" element={<RegisterStub />} />
+              <Route path="/ya-la-tengo" element={<OwnershipCheckStub />} />
               <Route path="/inicio" element={<p>Inicio</p>} />
             </Routes>
           </main>
           <LocationProbe />
           <BackButton />
+          {/* Como «Ver en mi colección» de otra pantalla, estando aquí. */}
+          <Link to="/coleccion?q=maxima">Enlace externo</Link>
         </CollectionProvider>
       </NavigationFocusProvider>
     </MemoryRouter>,
@@ -142,7 +153,12 @@ async function resolveLast(plants: readonly CollectionPlant[] = PLANTS) {
 }
 
 const searchbox = () =>
-  screen.getByRole('searchbox', { name: 'Buscar en tu colección' })
+  screen.getByRole('searchbox', { name: 'Buscar en mi colección' })
+const genusChip = (name: string) =>
+  within(screen.getByRole('group', { name: 'Género' })).getByRole('button', {
+    name,
+  })
+const meta = () => document.querySelector('.orki-pagehead__meta')
 const location = () => screen.getByTestId('location').textContent
 
 describe('CollectionPage', () => {
@@ -153,8 +169,78 @@ describe('CollectionPage', () => {
     await resolveLast()
     expect(document.title).toBe('Mi colección · orqui.apps')
     expect(screen.getAllByRole('article')).toHaveLength(3)
-    expect(screen.getByText('3 orquídeas')).toBeInTheDocument()
     await expectNoAxeViolations()
+  })
+
+  describe('cabecera', () => {
+    it('título, contador de ejemplares y géneros, ilustración y las dos acciones', async () => {
+      renderAt('/coleccion')
+      // Mientras carga, sin contador; las acciones ya están.
+      expect(meta()).toBeNull()
+      expect(
+        screen.getByRole('link', { name: 'Registrar orquídea' }),
+      ).toBeInTheDocument()
+      await resolveLast()
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Mi colección' }),
+      ).toHaveClass('orki-pagehead__title')
+      expect(meta()).toHaveTextContent('3 ejemplares · 2 géneros')
+      expect(document.querySelector('.orki-pagehead__art')).toHaveAttribute(
+        'alt',
+        '',
+      )
+      const actions = document.querySelector('.orki-pagehead__actions')
+      if (!(actions instanceof HTMLElement)) throw new Error('Sin acciones.')
+      // La principal primero (en el celular se apilan en este orden).
+      const [register, check] = within(actions).getAllByRole('link')
+      expect(register).toHaveAccessibleName('Registrar orquídea')
+      expect(register).toHaveAttribute('href', '/coleccion/nueva')
+      expect(register).toHaveClass('orki-btn--primary')
+      expect(check).toHaveAccessibleName('¿Ya la tengo?')
+      expect(check).toHaveAttribute('href', '/ya-la-tengo')
+      expect(check).toHaveClass('orki-btn--secondary')
+      // Sin «Con foto» ni la barra fija de abajo.
+      expect(
+        screen.queryByRole('link', { name: 'Registrar con foto' }),
+      ).toBeNull()
+      expect(document.querySelector('[data-barra-inferior]')).toBeNull()
+    })
+
+    it('en singular y sin contar las dadas de baja', async () => {
+      renderAt('/coleccion')
+      const [first] = PLANTS
+      if (!first) throw new Error('Sin plantas.')
+      await resolveLast([
+        first,
+        plant({ id: 'planta-perdida', status: 'lost', genus: CATTLEYA }),
+      ])
+      expect(meta()).toHaveTextContent('1 ejemplar · 1 género')
+    })
+
+    it('el contador es el de la colección: no cambia al buscar', async () => {
+      const user = userEvent.setup()
+      renderAt('/coleccion')
+      await resolveLast()
+      await user.type(searchbox(), 'cattleya')
+      expect(screen.getAllByRole('article')).toHaveLength(1)
+      expect(meta()).toHaveTextContent('3 ejemplares · 2 géneros')
+      expect(searchbox()).toHaveAccessibleDescription(
+        '1 de 3 orquídeas coincide.',
+      )
+    })
+
+    it('con la colección vacía, sin contador ni acciones arriba: la llamada a registrar va en el cuerpo', async () => {
+      renderAt('/coleccion')
+      await resolveLast([])
+      expect(meta()).toBeNull()
+      expect(document.querySelector('.orki-pagehead__actions')).toBeNull()
+      expect(
+        screen.getByRole('link', { name: 'Registrar mi primera orquídea' }),
+      ).toHaveAttribute('href', '/coleccion/nueva')
+      expect(screen.queryByRole('searchbox')).toBeNull()
+      await expectNoAxeViolations()
+    })
   })
 
   it('lee la búsqueda de la URL, como al recargar o abrir un enlace', async () => {
@@ -162,6 +248,19 @@ describe('CollectionPage', () => {
     await resolveLast()
 
     expect(searchbox()).toHaveValue('amabilis')
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+  })
+
+  it('un enlace a /coleccion?q= estando aquí cambia el texto del buscador', async () => {
+    const user = userEvent.setup()
+    renderAt('/coleccion')
+    await resolveLast()
+    await user.type(searchbox(), 'phal')
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+
+    await user.click(screen.getByRole('link', { name: 'Enlace externo' }))
+    expect(location()).toBe('/coleccion?q=maxima')
+    expect(searchbox()).toHaveValue('maxima')
     expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
@@ -180,26 +279,61 @@ describe('CollectionPage', () => {
     expect(searchbox()).toHaveFocus()
   })
 
-  it('"¿Ya la tengo?": responde bajo el buscador sobre toda la colección, aunque haya filtros', async () => {
+  it('un único buscador, sin el panel «¿Ya la tengo?» integrado', async () => {
     const user = userEvent.setup()
     // Con el filtro de color blanco, la lista solo muestra Cattleya maxima.
     renderAt('/coleccion?color=white')
     await resolveLast()
 
     await user.type(searchbox(), 'phal schilleriana')
-    expect(searchbox()).toHaveFocus()
-    const answer = screen
-      .getAllByRole('status')
-      .find((region) => region.textContent?.includes('la tienes'))
-    expect(answer).toHaveTextContent(
-      'Sí, la tienesTienes 1 ejemplar de Phalaenopsis schilleriana.',
-    )
+    expect(screen.getAllByRole('searchbox')).toHaveLength(1)
+    // La búsqueda solo filtra las tarjetas: con el filtro, ninguna coincide.
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
+    expect(screen.queryByText(/la tienes/)).toBeNull()
     expect(
-      screen.getByText(
+      screen.queryByText(
         'La respuesta es sobre toda tu colección, sin los filtros.',
       ),
-    ).toBeInTheDocument()
+    ).toBeNull()
     await expectNoAxeViolations()
+  })
+
+  it('«¿Ya la tengo?» abre su pantalla y "atrás" recupera la búsqueda, los filtros, los géneros y la vista', async () => {
+    const user = userEvent.setup()
+    renderAt('/coleccion')
+    await resolveLast()
+
+    await user.type(searchbox(), 'a')
+    await user.click(genusChip('Phalaenopsis'))
+    await user.click(screen.getByRole('button', { name: 'Lista' }))
+    await user.click(screen.getByRole('button', { name: /^Filtros/ }))
+    await user.click(screen.getByRole('button', { name: 'Blanco' }))
+    const before = location()
+    expect(before).toBe(`/coleccion?q=a&genero=${PHALAENOPSIS.id}&color=white`)
+    setScrollY(320)
+    window.dispatchEvent(new Event('scroll'))
+
+    await user.click(screen.getByRole('link', { name: '¿Ya la tengo?' }))
+    expect(location()).toBe('/ya-la-tengo')
+    // Lleva que se llegó desde el inventario: su «Volver» puede ser "atrás".
+    expect(screen.getByTestId('consulta')).toHaveTextContent(
+      '{"fromInventory":true}',
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: 'Atrás del navegador' }),
+    )
+    expect(location()).toBe(before)
+    expect(searchbox()).toHaveValue('a')
+    expect(genusChip('Phalaenopsis')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Filtros, 1 activo' }),
+    ).toBeInTheDocument()
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 320)
   })
 
   it('al volver del registro conserva la búsqueda y la posición de desplazamiento', async () => {
@@ -252,13 +386,13 @@ describe('CollectionPage', () => {
     await resolveLast()
 
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    expect(screen.getByText('1 de 3 orquídeas')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Filtros, 1 activo' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Quitar el filtro Género: Cattleya' }),
-    ).toBeInTheDocument()
+    expect(searchbox()).toHaveAccessibleDescription(
+      '1 de 3 orquídeas coincide.',
+    )
+    // El género se ve elegido en su fila; no cuenta en «Filtros».
+    expect(genusChip('Cattleya')).toHaveAttribute('aria-pressed', 'true')
+    expect(genusChip('Todos')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Filtros' })).toBeInTheDocument()
   })
 
   it('escribe los filtros en la URL junto a la búsqueda, sin añadir entradas al historial', async () => {
@@ -269,10 +403,13 @@ describe('CollectionPage', () => {
     await user.click(screen.getByRole('button', { name: /^Filtros/ }))
     await user.click(screen.getByRole('button', { name: 'Perdidas' }))
     await user.click(screen.getByRole('button', { name: 'Activas' }))
-    await user.click(screen.getByRole('button', { name: 'Cattleya' }))
+    await user.click(genusChip('Cattleya'))
     await user.click(screen.getByRole('button', { name: 'Blanco' }))
     expect(location()).toBe(`/coleccion?q=a&genero=${CATTLEYA.id}&color=white`)
+    // «Quitar filtros» quita los del panel; el género, «Todos».
     await user.click(screen.getByRole('button', { name: 'Quitar filtros' }))
+    expect(location()).toBe(`/coleccion?q=a&genero=${CATTLEYA.id}`)
+    await user.click(genusChip('Todos'))
     expect(location()).toBe('/coleccion?q=a')
 
     // Cada toque sustituyó la entrada: "atrás" sale del inventario.
@@ -287,21 +424,16 @@ describe('CollectionPage', () => {
     renderAt('/coleccion')
     await resolveLast()
 
-    await user.click(screen.getByRole('button', { name: /^Filtros/ }))
-    await user.click(screen.getByRole('button', { name: 'Phalaenopsis' }))
+    await user.click(genusChip('Phalaenopsis'))
     await user.click(screen.getByRole('link', { name: 'Registrar orquídea' }))
     await user.click(screen.getByRole('button', { name: 'Atrás' }))
 
     expect(location()).toBe(`/coleccion?genero=${PHALAENOPSIS.id}`)
     expect(screen.getAllByRole('article')).toHaveLength(2)
-    expect(
-      screen.getByRole('button', {
-        name: 'Quitar el filtro Género: Phalaenopsis',
-      }),
-    ).toBeInTheDocument()
+    expect(genusChip('Phalaenopsis')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('sin conexión, "¿Ya la tengo?" reconoce abreviaturas y sinónimos de la copia local', async () => {
+  it('sin conexión: el indicador con la fecha, registrar desactivado con su motivo, y el buscador reconoce abreviaturas y sinónimos de la copia local', async () => {
     const user = userEvent.setup()
     const storage = createMemoryCopyStorage()
     await storage.write({
@@ -346,16 +478,54 @@ describe('CollectionPage', () => {
     })
     expect(screen.getAllByRole('article')).toHaveLength(1)
 
-    const answerFor = async (text: string) => {
+    const resultsFor = async (text: string) => {
       await user.clear(searchbox())
       await user.type(searchbox(), text)
-      return screen
-        .getAllByRole('status')
-        .find((region) => /la tienes/.test(region.textContent ?? ''))
+      return screen.queryAllByRole('article').length
     }
-    expect(await answerFor('Rlc. George')).toHaveTextContent('Sí, la tienes')
-    expect(await answerFor('Brassolaeliocattleya George')).toHaveTextContent(
-      'Sí, la tienes',
+    expect(await resultsFor('Rlc. George')).toBe(1)
+    expect(await resultsFor('Brassolaeliocattleya George')).toBe(1)
+    expect(await resultsFor('Vanda coerulea')).toBe(0)
+  })
+
+  it('en solo lectura, registrar se ve desactivado y cita el indicador; «¿Ya la tengo?» sigue disponible', async () => {
+    const storage = createMemoryCopyStorage()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: PLANTS,
+      extras: {},
+    })
+    const cached = createCachedCollectionSource({
+      network: source,
+      storage,
+      fetchExtras: () => Promise.resolve({}),
+      onSaved: () => {},
+    })
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    renderAt('/coleccion', [], cached)
+    await act(async () => {
+      for (let index = 0; index < 5; index += 1) await Promise.resolve()
+    })
+    await act(async () => {
+      source.last().reject(new CollectionLoadError('offline'))
+      await Promise.resolve()
+    })
+
+    const notice = screen.getByText('Sin conexión', { exact: true })
+    expect(notice.parentElement).toHaveTextContent(/Última actualización/)
+    expect(
+      screen.queryByRole('link', { name: 'Registrar orquídea' }),
+    ).toBeNull()
+    const register = screen.getByRole('button', { name: 'Registrar orquídea' })
+    expect(register).toHaveAttribute('aria-disabled', 'true')
+    expect(register).toHaveAccessibleDescription(/Sin conexión/)
+    expect(screen.getByRole('link', { name: '¿Ya la tengo?' })).toHaveAttribute(
+      'href',
+      '/ya-la-tengo',
     )
+    expect(screen.getAllByRole('article')).toHaveLength(3)
+    await expectNoAxeViolations()
+    onLine.mockRestore()
   })
 })

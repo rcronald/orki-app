@@ -112,6 +112,24 @@ describe('InventoryView: exportar a CSV', () => {
     await expectNoAxeViolations()
   })
 
+  it('es una acción discreta bajo la lista: aspecto de enlace, icono de descarga y la nota enlazada', () => {
+    renderInventory(PLANTS)
+    const action = within(section()).getByRole('button', {
+      name: 'Exportar a CSV',
+    })
+    expect(action).toHaveClass('orki-link')
+    expect(action.querySelector('svg')).not.toBeNull()
+    expect(action).toHaveAccessibleDescription(
+      /todas tus plantas, también las perdidas y regaladas/,
+    )
+    // Después de la lista, al final de la pantalla.
+    const lastCard = screen.getAllByRole('article').at(-1)
+    expect(
+      (lastCard as Node).compareDocumentPosition(action) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('revoca la URL de objeto después de la descarga', async () => {
     vi.useFakeTimers()
     await saveFile('a,b\r\n', 'x.csv', 'text/csv')

@@ -3,10 +3,12 @@ import { PLANTAS } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 
 // El foco no queda tapado por las barras que se quedan fijas al desplazar la
-// página (WCAG 2.4.11, #151): el buscador del inventario arriba, registrar
-// desde el inventario abajo (en el celular) y las acciones del formulario de
-// registro y edición abajo. axe no lo comprueba: hace falta llegar con el
-// tabulador, que es cuando el navegador desplaza la página.
+// página (WCAG 2.4.11, #151): las acciones del formulario de registro y
+// edición, fijas abajo. El inventario ya no tiene barras fijas (#208): el
+// buscador va en su sitio y registrar, en la cabecera; aquí se comprueba que
+// siga sin tenerlas y que el foco se vea al recorrerlo. axe no lo comprueba:
+// hace falta llegar con el tabulador, que es cuando el navegador desplaza la
+// página.
 //
 // Pantalla de celular en todos los perfiles. Safari y el WebKit de Playwright
 // solo llevan el tabulador a los campos de formulario (no a enlaces ni a
@@ -60,7 +62,16 @@ test('edición: los chips del tipo no quedan bajo las acciones', async ({
   await noLoTapa(page, page.locator('[data-barra-inferior]'))
 })
 
-test('inventario: ni el pie ni las tarjetas quedan bajo las barras', async ({
+/** El elemento con el foco está entero dentro de la ventana. */
+async function focoALaVista(page: Page) {
+  const dentro = await page.evaluate(() => {
+    const r = document.activeElement?.getBoundingClientRect()
+    return r ? r.top >= 0 && r.bottom <= window.innerHeight : false
+  })
+  expect(dentro, 'el control con el foco queda fuera de la vista').toBe(true)
+}
+
+test('inventario: sin barras fijas, el foco se ve en el pie y en las tarjetas', async ({
   page,
   browserName,
 }) => {
@@ -69,13 +80,24 @@ test('inventario: ni el pie ni las tarjetas quedan bajo las barras', async ({
   const tarjetas = page.getByRole('main').getByRole('article')
   await expect(tarjetas).toHaveCount(5)
 
-  // Hacia abajo, hasta el pie: la barra de registrar está fija abajo.
+  // Nada en la página queda fijo al desplazarla.
+  const fijos = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('body *')].filter((el) =>
+        ['fixed', 'sticky'].includes(getComputedStyle(el).position),
+      ).length,
+  )
+  expect(fijos).toBe(0)
+  await expect(
+    page.locator('[data-barra-superior], [data-barra-inferior]'),
+  ).toHaveCount(0)
+
+  // Hacia abajo, hasta el pie.
   const pie = page.getByRole('link', { name: 'Privacidad' })
   await tabularHasta(page, pie)
-  await noLoTapa(page, page.locator('[data-barra-inferior]').first())
+  await focoALaVista(page)
 
-  // Hacia arriba, por las tarjetas: el buscador está fijo arriba.
-  const buscador = page.locator('[data-barra-superior]')
+  // Hacia arriba, por las tarjetas.
   for (const nombre of [
     'Phalaenopsis amabilis',
     'Cattleya maxima',
@@ -88,6 +110,6 @@ test('inventario: ni el pie ni las tarjetas quedan bajo las barras', async ({
       page.getByRole('link', { name: nombre, exact: true }),
       'Shift+Tab',
     )
-    await noLoTapa(page, buscador)
+    await focoALaVista(page)
   }
 })

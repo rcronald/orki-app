@@ -1,10 +1,7 @@
 import { useId, useMemo, useState } from 'react'
-import {
-  countActiveFilters,
-  DEFAULT_FILTERS,
-  type PlantFilters,
-} from '../collection/filters.ts'
+import { DEFAULT_FILTERS, type PlantFilters } from '../collection/filters.ts'
 import type { CollectionPlant } from '../collection/model.ts'
+import { countGenera, countPlants } from '../collection/selectors.ts'
 import {
   CollectionLoadError,
   type CollectionErrorReason,
@@ -12,9 +9,11 @@ import {
 import type { CollectionStatus } from '../collection/store.ts'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
+import { PageHeader } from '../components/ui/PageHeader.tsx'
+import { CollectionActions } from '../inventory/CollectionActions.tsx'
 import { InventoryView } from '../inventory/InventoryView.tsx'
 import { OfflineNotice } from '../inventory/OfflineNotice.tsx'
-import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
+import { collectionSummaryText } from '../inventory/texts.ts'
 import { largeSampleCollection, SAMPLE_COLLECTION } from './inventory-data.ts'
 import { Example, Section } from './layout.tsx'
 
@@ -94,7 +93,7 @@ export function InventorySection() {
     <Section
       id="inventario"
       title="Pantalla de inventario"
-      description="InventoryView, la pantalla de /coleccion, con datos fijos. Por defecto solo cuenta las plantas activas: la regalada y la perdida de la muestra se ven con el filtro de estado. «Filtros» abre el panel de estado, género, color y origen. Bajo el buscador, la respuesta de «¿Ya la tengo?» sobre la colección de la muestra. «Copia sin conexión» es la colección guardada en el dispositivo, en solo lectura: el indicador con la fecha de la última actualización (OfflineNotice) y los accesos a registrar desactivados. Reintentar no hace nada aquí."
+      description="La pantalla de /coleccion con datos fijos: la cabecera (PageHeader con CollectionActions) e InventoryView. Por defecto solo cuenta las plantas activas: la regalada y la perdida de la muestra se ven con el filtro de estado. Un único buscador; «Filtros» abre el panel de estado, color, origen, validación y agrupar por género; los géneros, en la fila de chips. «Copia sin conexión» es la colección guardada en el dispositivo, en solo lectura: el indicador con la fecha de la última actualización (OfflineNotice) y el acceso a registrar desactivado. Reintentar no hace nada aquí."
     >
       <ChipGroup aria-label="Estado del inventario">
         {SCENARIOS.map((option) => (
@@ -108,6 +107,25 @@ export function InventorySection() {
         ))}
       </ChipGroup>
       <Example title="Mi colección">
+        <PageHeader
+          title="Mi colección"
+          headingLevel={2}
+          meta={
+            state.plants !== null && countPlants(state.plants) > 0
+              ? collectionSummaryText(
+                  countPlants(state.plants),
+                  countGenera(state.plants),
+                )
+              : undefined
+          }
+          actions={
+            state.plants?.length === 0 ? undefined : (
+              <CollectionActions
+                disabledBy={readOnly ? offlineNoticeId : undefined}
+              />
+            )
+          }
+        />
         {readOnly && (
           <OfflineNotice
             id={offlineNoticeId}
@@ -124,16 +142,6 @@ export function InventorySection() {
           onQueryChange={setQuery}
           filters={filters}
           onFiltersChange={setFilters}
-          searchResult={
-            <OwnershipPanel
-              plants={state.plants}
-              query={query}
-              filtered={countActiveFilters(filters) > 0}
-              // Datos fijos: sin consultar el catálogo.
-              searchSpecies={null}
-              registerDisabledBy={readOnly ? offlineNoticeId : undefined}
-            />
-          }
           writeDisabledBy={readOnly ? offlineNoticeId : undefined}
         />
       </Example>

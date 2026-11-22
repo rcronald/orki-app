@@ -5,9 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
-import { Link } from 'react-router'
 import {
   applyFilters,
   countActiveFilters,
@@ -16,6 +14,8 @@ import {
   narrowsStatus,
   plantsWithStatus,
   resolveFilters,
+  toggleValue,
+  type FilterOptions,
   type PlantFilters,
 } from '../collection/filters.ts'
 import type { CollectionPlant } from '../collection/model.ts'
@@ -25,7 +25,6 @@ import {
   type OwnershipExtras,
 } from '../collection/ownership.ts'
 import {
-  countGenera,
   filterByText,
   groupByGenus,
   sortByNewest,
@@ -35,25 +34,22 @@ import type { CollectionLoadError } from '../collection/source.ts'
 import type { CollectionStatus } from '../collection/store.ts'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
-import { Icon } from '../components/ui/Icon.tsx'
-import { PHOTO_FIRST_PATH } from '../registration/photo-first.ts'
-import { PATHS } from '../routes/paths.ts'
-import { ExportAction } from './ExportAction.tsx'
-import { activeFilterChips } from './filter-chips.ts'
+import { FiltersButton } from '../components/ui/FiltersButton.tsx'
+import { SearchField } from '../components/ui/SearchField.tsx'
 import {
-  ActiveFilters,
-  FiltersPanel,
-  FiltersToggle,
-} from './InventoryFilters.tsx'
+  SegmentedControl,
+  type SegmentedOption,
+} from '../components/ui/SegmentedControl.tsx'
+import { ExportAction } from './ExportAction.tsx'
+import { activeFilterChips, countPanelFilters } from './filter-chips.ts'
+import { ActiveFilters, FiltersPanel } from './InventoryFilters.tsx'
 import {
   EmptyCollection,
   LoadErrorPanel,
   LoadingList,
-  LoadingSummary,
   NoResults,
   ReloadErrorBanner,
 } from './InventoryStates.tsx'
-import { InventorySearch } from './InventorySearch.tsx'
 import { PlantCard } from './PlantCard.tsx'
 import {
   useInventoryPreferences,
@@ -61,10 +57,10 @@ import {
 } from './preferences.ts'
 import { VIEW_CLASSES } from './view-classes.ts'
 import {
-  genusCountText,
+  FILTERS_TEXT,
   matchCountText,
   plantCountText,
-  shownCountText,
+  SEARCH_TEXT,
 } from './texts.ts'
 
 export interface InventoryViewProps {
@@ -88,11 +84,6 @@ export interface InventoryViewProps {
   /** Se llama con los filtros nuevos. */
   onFiltersChange: (filters: PlantFilters) => void
   /**
-   * Bloque bajo el buscador: la respuesta de "¿Ya la tengo?" (#19). No queda
-   * fijo arriba con el campo: se desplaza con la lista.
-   */
-  searchResult?: ReactNode
-  /**
    * Sinónimos, nombres comunes y abreviaturas de la copia local (#18), los
    * mismos que usa "¿Ya la tengo?": con ellos, la lista encuentra también las
    * plantas por esos nombres. Sin ellos, solo por los campos de cada planta.
@@ -100,36 +91,37 @@ export interface InventoryViewProps {
   extras?: OwnershipExtras
   /**
    * Solo lectura (sin conexión, #18): id del texto que explica por qué. Con
-   * él, los accesos a registrar se ven desactivados y lo citan.
+   * él, el acceso a registrar de la colección vacía se ve desactivado y lo
+   * cita. (Los de la cabecera los pinta CollectionActions.)
    */
   writeDisabledBy?: string
 }
 
-// En el celular, el acceso a registrar queda fijo abajo: se deja sitio para
-// que no tape la última tarjeta (48 px del botón y su margen).
-// En el celular, el hueco al final de la página para la barra fija de
-// registrar lo deja index.css (data-barra-inferior), por debajo del pie.
 const ROOT_CLASSES = 'flex flex-col gap-space-4'
+
+const VIEW_OPTIONS: readonly SegmentedOption<View>[] = [
+  { value: 'grid', label: 'Cuadrícula', icon: 'layout-grid' },
+  { value: 'list', label: 'Lista', icon: 'list' },
+]
 
 // Chips de 44 px de alto o más (zona táctil): el chip del sistema mide 36.
 const TOUCH_CHIP = 'py-space-3'
 
 /**
- * Pantalla de inventario sin la carga de datos: recibe la colección y pinta
- * los contadores, el acceso a registrar, el buscador, los controles de vista,
- * los filtros y la lista o cuadrícula, agrupada por género o no, con sus
- * estados de carga, error, colección vacía y sin resultados. La usa
- * CollectionPage con useCollection() y la página de muestra con datos fijos.
+ * Pantalla de inventario sin la carga de datos ni la cabecera: recibe la
+ * colección y pinta el buscador único con «Filtros» y la vista (cuadrícula o
+ * lista), los accesos por género, la lista o cuadrícula, agrupada por género o
+ * no, con sus estados de carga, error, colección vacía y sin resultados, y
+ * «Exportar a CSV». La usa CollectionPage con useCollection() (que pone la
+ * cabecera con el contador y las acciones, #208) y la página de muestra con
+ * datos fijos.
  *
  * Por defecto solo muestra y cuenta las plantas activas (decisión del #14);
  * las dadas de baja se ven con el filtro de estado (#15).
  *
- * Contadores: la cabecera dice cuántas se ven. Sin búsqueda ni filtros que
- * reduzcan la lista, el total con el estado elegido ("12 orquídeas", "2
- * orquídeas perdidas"); con ellos, "N de M" ("3 de 12 orquídeas"). Los
- * géneros son siempre los de las plantas que se ven. Bajo el buscador (fijo
- * arriba, solo el campo y el contador) se anuncia lo mismo al buscar o filtrar, en una región de estado que
- * el lector de pantalla lee sin mover el foco.
+ * Al buscar o filtrar, bajo el buscador se dice cuántas coinciden ("3 de 12
+ * orquídeas coinciden.", "2 orquídeas perdidas."), en una región de estado
+ * que el lector de pantalla lee sin mover el foco.
  */
 export function InventoryView({
   status,
@@ -140,7 +132,6 @@ export function InventoryView({
   onQueryChange,
   filters,
   onFiltersChange,
-  searchResult,
   extras,
   writeDisabledBy,
 }: InventoryViewProps) {
@@ -148,6 +139,7 @@ export function InventoryView({
   const { view, grouped } = preferences
   const [filtersOpen, setFiltersOpen] = useState(false)
   const panelId = useId()
+  const statusId = useId()
   const toggleRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -162,6 +154,7 @@ export function InventoryView({
     [filters, options],
   )
   const activeCount = countActiveFilters(resolved)
+  const panelCount = countPanelFilters(resolved)
   const chips = useMemo(
     () => (options === null ? [] : activeFilterChips(resolved, options)),
     [resolved, options],
@@ -187,8 +180,8 @@ export function InventoryView({
     [withStatus, deferredFilters],
   )
   // Las coincidencias por nombre de "¿Ya la tengo?" (también sinónimos y
-  // nombres comunes), sobre toda la colección y con el mismo índice que el
-  // panel (ownershipIndexFor lo crea una vez por plantas y extras). Solo
+  // nombres comunes), sobre toda la colección y con el mismo índice que esa
+  // consulta (ownershipIndexFor lo crea una vez por plantas y extras). Solo
   // dependen de la búsqueda: cambiar los filtros no las recalcula.
   const index = useMemo(
     () => (plants === null ? null : ownershipIndexFor(plants, extras)),
@@ -205,10 +198,6 @@ export function InventoryView({
         nameMatches,
       }),
     [filtered, deferredQuery, nameMatches],
-  )
-  const genusCount = useMemo(
-    () => countGenera(matches, { includeInactive: true }),
-    [matches],
   )
   // Agrupada, los géneros sin coincidencias desaparecen solos.
   const groups = useMemo(
@@ -233,8 +222,6 @@ export function InventoryView({
     onFiltersChange(DEFAULT_FILTERS)
     focusToggle()
   }
-  const registerLink = <RegisterLink disabledBy={writeDisabledBy} />
-
   if (plants !== null && plants.length === 0) {
     return (
       <div className={ROOT_CLASSES}>
@@ -250,72 +237,63 @@ export function InventoryView({
   }
 
   const announce = plants !== null && (searching || activeCount > 0)
+  const loading = plants === null && !(status === 'error' && error)
+  // Sin activas pero con plantas dadas de baja, sin buscar ni filtrar.
+  const onlyInactive =
+    withStatus.length === 0 && shownStatus === 'active' && !narrowed
 
-  // Solo el campo y su contador quedan fijos arriba al desplazar la página.
-  // La respuesta de "¿Ya la tengo?" va debajo y se desplaza con la lista: con
-  // sus ejemplares y el acceso a registrar, fija ocupaba media pantalla del
-  // celular y, con el mismo fondo que la página, su parte de abajo parecía
-  // montada sobre la primera tarjeta, tapándola a medias (#19). El margen
-  // negativo anula el hueco de la columna: sin respuesta no queda espacio, y
-  // con ella queda a la misma distancia del campo que antes.
+  // Barra del buscador (#208): el campo, «Filtros» y la vista, en una fila
+  // que se parte en el celular (el campo arriba, a todo el ancho). Ya no queda
+  // fija arriba: sin barras fijas, el foco no puede quedar tapado. Debajo, el
+  // contador de coincidencias (role="status", siempre montado: el lector lo
+  // anuncia sin mover el foco; vacío, sin el hueco de la columna).
   const controls = (
     <>
-      <div
-        data-barra-superior
-        className="sticky top-[0] z-10 -mx-space-1 bg-neutral-0 px-space-1 py-space-2"
-      >
-        <InventorySearch
-          value={query}
-          onValueChange={onQueryChange}
-          inputRef={searchRef}
-          status={
-            announce
-              ? matchCountText(
-                  matches.length,
-                  withStatus.length,
-                  shownStatus,
-                  narrowed,
-                )
-              : null
-          }
-        />
-      </div>
-      {searchResult !== undefined && (
-        <div className="-mt-space-4">{searchResult}</div>
-      )}
-      <div className="flex flex-wrap items-center gap-space-2">
-        <ChipGroup aria-label="Vista">
-          <Chip
-            className={TOUCH_CHIP}
-            selected={view === 'list'}
-            onClick={() => setPreferences({ view: 'list' })}
-          >
-            Lista
-          </Chip>
-          <Chip
-            className={TOUCH_CHIP}
-            selected={view === 'grid'}
-            onClick={() => setPreferences({ view: 'grid' })}
-          >
-            Cuadrícula
-          </Chip>
-        </ChipGroup>
-        <Chip
-          className={TOUCH_CHIP}
-          selected={grouped}
-          onClick={() => setPreferences({ grouped: !grouped })}
-        >
-          Agrupar por género
-        </Chip>
-        {options !== null && (
-          <FiltersToggle
-            ref={toggleRef}
-            open={filtersOpen}
-            count={activeCount}
-            panelId={panelId}
-            onToggle={() => setFiltersOpen(!filtersOpen)}
+      <div role="search" className="flex flex-col gap-space-2">
+        <div className="orki-toolbar">
+          <SearchField
+            label={SEARCH_TEXT.label}
+            // Etiqueta visible en el celular, como en la maqueta; en
+            // escritorio, solo para el lector (el campo es evidente).
+            className="min-[721px]:[&>label]:sr-only"
+            placeholder={SEARCH_TEXT.placeholder}
+            value={query}
+            onValueChange={onQueryChange}
+            clearLabel={SEARCH_TEXT.clear}
+            inputRef={searchRef}
+            aria-describedby={statusId}
           />
-        )}
+          {options !== null && (
+            <FiltersButton
+              ref={toggleRef}
+              activeCount={panelCount}
+              aria-expanded={filtersOpen}
+              aria-controls={panelId}
+              onClick={() => setFiltersOpen(!filtersOpen)}
+            />
+          )}
+          <SegmentedControl
+            label="Vista"
+            iconOnly
+            value={view}
+            onValueChange={(next) => setPreferences({ view: next })}
+            options={VIEW_OPTIONS}
+          />
+        </div>
+        <p
+          id={statusId}
+          role="status"
+          className="text-sm text-neutral-700 empty:mt-[calc(var(--space-2)*-1)]"
+        >
+          {announce
+            ? matchCountText(
+                matches.length,
+                withStatus.length,
+                shownStatus,
+                narrowed,
+              )
+            : null}
+        </p>
       </div>
       {options !== null && (
         <>
@@ -325,51 +303,33 @@ export function InventoryView({
             options={options}
             filters={resolved}
             onChange={onFiltersChange}
+            grouped={grouped}
+            onGroupedChange={(next) => setPreferences({ grouped: next })}
             onClose={closeFilters}
           />
           {!filtersOpen && (
             <ActiveFilters
               chips={chips}
+              filters={resolved}
               onChange={onFiltersChange}
               onEmpty={focusToggle}
             />
           )}
+          <GenusChips
+            options={options}
+            filters={resolved}
+            onChange={onFiltersChange}
+          />
         </>
       )}
     </>
   )
-
-  const loading = plants === null && !(status === 'error' && error)
-  // Sin activas pero con plantas dadas de baja, sin buscar ni filtrar.
-  const onlyInactive =
-    withStatus.length === 0 && shownStatus === 'active' && !narrowed
 
   // Un solo árbol para todos los estados, con cada parte siempre en el mismo
   // sitio: al llegar los datos, el buscador no se vuelve a montar y conserva
   // el foco y lo escrito mientras cargaba.
   return (
     <div className={ROOT_CLASSES}>
-      <div className="flex flex-wrap items-center justify-between gap-space-3">
-        {plants === null ? (
-          loading && <LoadingSummary />
-        ) : (
-          <ul
-            aria-label="Resumen de tu colección"
-            className="flex flex-wrap gap-x-space-4 gap-y-space-1 text-md text-neutral-700"
-          >
-            <li>
-              {shownCountText(
-                matches.length,
-                withStatus.length,
-                shownStatus,
-                narrowed,
-              )}
-            </li>
-            <li>{genusCountText(genusCount)}</li>
-          </ul>
-        )}
-        {registerLink}
-      </div>
       {status === 'error' && error && plants !== null && (
         <ReloadErrorBanner error={error} onRetry={onRetry} />
       )}
@@ -407,6 +367,55 @@ export function InventoryView({
       </div>
       {plants !== null && <ExportAction plants={plants} />}
     </div>
+  )
+}
+
+/**
+ * Accesos por género (#208): «Todos» y los géneros de la colección, de más a
+ * menos plantas (a igualdad, alfabético sin el «×»: las opciones ya vienen en
+ * ese orden y el orden es estable), en una fila con desplazamiento
+ * horizontal. Selección múltiple, como el filtro de género de siempre: cada
+ * chip suma o quita su género, y «Todos» los quita todos.
+ */
+function GenusChips({
+  options,
+  filters,
+  onChange,
+}: {
+  options: FilterOptions
+  filters: PlantFilters
+  onChange: (filters: PlantFilters) => void
+}) {
+  const genera = useMemo(
+    () => options.genera.toSorted((a, b) => b.count - a.count),
+    [options],
+  )
+  if (genera.length === 0) return null
+  return (
+    <ChipGroup aria-label={FILTERS_TEXT.genus} scroll>
+      <Chip
+        className={TOUCH_CHIP}
+        selected={filters.genera.length === 0}
+        onClick={() => onChange({ ...filters, genera: [] })}
+      >
+        {FILTERS_TEXT.allGenera}
+      </Chip>
+      {genera.map(({ genus }) => (
+        <Chip
+          key={genus.id}
+          className={TOUCH_CHIP}
+          selected={filters.genera.includes(genus.id)}
+          onClick={() =>
+            onChange({
+              ...filters,
+              genera: toggleValue(filters.genera, genus.id),
+            })
+          }
+        >
+          {genus.name}
+        </Chip>
+      ))}
+    </ChipGroup>
   )
 }
 
@@ -454,68 +463,5 @@ function GenusSection({ group, view }: { group: GenusGroup; view: View }) {
       </h2>
       <PlantList plants={group.plants} view={view} headingLevel={3} />
     </section>
-  )
-}
-
-// Acceso a registrar una planta, con dos entradas: escribir el nombre primero
-// o empezar por la foto (#87, la misma pantalla con ?foto=1). En el celular
-// quedan fijas abajo, al alcance del pulgar; desde 640 px van en su sitio,
-// junto a los contadores. En el orden del tabulador van siempre aquí, antes
-// del buscador y de la lista.
-//
-// "Con foto" no abre la cámara: lleva al formulario con "Tomar foto" arriba
-// del todo. Los navegadores solo abren la cámara como respuesta directa a un
-// toque, y así ese toque es el del propio botón de la cámara, ya en el
-// formulario que conserva lo escrito si iOS recarga la app.
-//
-// Sin conexión (#18), los dos se ven desactivados (aria-disabled, siguen en el
-// orden del tabulador) y citan el motivo (disabledBy).
-const REGISTER_CLASSES =
-  'flex gap-space-2 max-sm:fixed max-sm:inset-x-space-4 max-sm:bottom-[calc(var(--space-4)_+_env(safe-area-inset-bottom))] max-sm:z-10'
-
-function RegisterLink({ disabledBy }: { disabledBy?: string }) {
-  if (disabledBy !== undefined) {
-    return (
-      <div data-barra-inferior="celular" className={REGISTER_CLASSES}>
-        <button
-          type="button"
-          aria-disabled="true"
-          aria-describedby={disabledBy}
-          className="orki-btn orki-btn--primary min-w-[0] max-sm:flex-1 max-sm:shadow-card"
-        >
-          <Icon name="plus" />
-          Registrar orquídea
-        </button>
-        <button
-          type="button"
-          aria-disabled="true"
-          aria-describedby={disabledBy}
-          aria-label="Registrar con foto"
-          className="orki-btn orki-btn--secondary flex-none max-sm:shadow-card"
-        >
-          <Icon name="camera" />
-          Con foto
-        </button>
-      </div>
-    )
-  }
-  return (
-    <div data-barra-inferior="celular" className={REGISTER_CLASSES}>
-      <Link
-        to={PATHS.newPlant}
-        className="orki-btn orki-btn--primary min-w-[0] max-sm:flex-1 max-sm:shadow-card"
-      >
-        <Icon name="plus" />
-        Registrar orquídea
-      </Link>
-      <Link
-        to={PHOTO_FIRST_PATH}
-        aria-label="Registrar con foto"
-        className="orki-btn orki-btn--secondary flex-none max-sm:bg-neutral-0 max-sm:shadow-card"
-      >
-        <Icon name="camera" />
-        Con foto
-      </Link>
-    </div>
   )
 }
