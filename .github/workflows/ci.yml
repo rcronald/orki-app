@@ -44,6 +44,11 @@ jobs:
       - name: Pruebas
         run: npm test
 
+      # Pruebas de los scripts de mantenimiento en Node (node:test), con Clerk y Supabase
+      # simulados: no hacen ninguna petición de red.
+      - name: Pruebas de los scripts
+        run: npm run test:scripts
+
       - name: Build
         run: npm run build
 
