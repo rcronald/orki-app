@@ -59,7 +59,7 @@ for (const ancho of [360, 1440]) {
         page.getByRole('heading', { name: '¿Ya la tengo?', level: 1 }),
       ).toBeVisible()
       await expect(campo(page)).toBeFocused()
-      await expect(page).toHaveTitle('¿Ya la tengo? · orqui.apps')
+      await expect(page).toHaveTitle('¿Ya la tengo? · orqui.app')
 
       await campo(page).pressSequentially('Phalaenopsis amabilis')
       await expect(page).toHaveURL(/\/ya-la-tengo\?q=Phalaenopsis\+amabilis$/)

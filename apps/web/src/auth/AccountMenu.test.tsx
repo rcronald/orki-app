@@ -58,7 +58,7 @@ const menuItems = () =>
 beforeEach(() => {
   resetFakeClerk()
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
 })
 
 afterEach(() => {

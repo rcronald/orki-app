@@ -32,7 +32,7 @@ export function AppBar({ account }: AppBarProps) {
 
   return (
     <header className="orki-appbar">
-      {/* Nombre accesible: «Inicio de orqui.apps» (el logotipo). */}
+      {/* Nombre accesible: «Inicio de orqui.app» (el logotipo). */}
       <Link to={PATHS.home} className="orki-appbar__brand">
         <span className="sr-only">Inicio de</span>{' '}
         <Logo className="orki-appbar__logo" />

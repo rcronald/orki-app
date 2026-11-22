@@ -123,7 +123,7 @@ for (const ancho of [1440, 360]) {
     const desdeCuenta = await descargar(page, () => exportar.click())
     await expect(datos.getByRole('status')).toContainText('Listo:')
     expect(desdeCuenta.nombre).toMatch(
-      /^orqui-apps-inventario-\d{4}-\d{2}-\d{2}\.csv$/,
+      /^orqui-app-inventario-\d{4}-\d{2}-\d{2}\.csv$/,
     )
 
     // Privacidad, con «Volver a Tu cuenta».

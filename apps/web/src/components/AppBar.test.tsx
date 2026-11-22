@@ -24,7 +24,7 @@ describe('AppBar', () => {
 
     expect(screen.getByRole('banner')).toHaveClass('orki-appbar')
     expect(
-      screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
+      screen.getByRole('link', { name: 'Inicio de orqui.app' }),
     ).toHaveAttribute('href', '/')
     const nav = screen.getByRole('navigation', { name: 'Principal' })
     const tab = screen.getByRole('link', { name: 'Mi colección' })

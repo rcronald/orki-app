@@ -17,7 +17,7 @@ import { OwnershipPanel, type OwnershipPanelProps } from './OwnershipPanel.tsx'
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Mi colección · orqui.apps'
+  document.title = 'Mi colección · orqui.app'
 })
 
 const amabilis1 = plant({ nickname: 'La blanca' })

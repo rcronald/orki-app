@@ -50,8 +50,8 @@ test('manifiesto instalable', async ({ page, request }) => {
     icons: { src: string; sizes: string; purpose?: string }[]
   }
   expect(manifiesto).toMatchObject({
-    name: 'orqui.apps',
-    short_name: 'orqui.apps',
+    name: 'orqui.app',
+    short_name: 'orqui.app',
     lang: 'es',
     start_url: '/',
     scope: '/',

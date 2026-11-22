@@ -89,7 +89,7 @@ function Harness({ source }: { source: CatalogAdminSource }) {
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Historial de una especie · orqui.apps'
+  document.title = 'Historial de una especie · orqui.app'
 })
 
 function historySection() {

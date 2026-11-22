@@ -13,13 +13,13 @@ beforeEach(() => {
   resetFakeClerk()
   // Como en index.html.
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 
 describe.each([
-  ['SignInPage', SignInPage, 'Iniciar sesión · orqui.apps', 'clerk-sign-in'],
-  ['SignUpPage', SignUpPage, 'Crear cuenta · orqui.apps', 'clerk-sign-up'],
+  ['SignInPage', SignInPage, 'Iniciar sesión · orqui.app', 'clerk-sign-in'],
+  ['SignUpPage', SignUpPage, 'Crear cuenta · orqui.app', 'clerk-sign-up'],
 ] as const)('%s', (_name, AuthPage, title, clerkTestId) => {
   // Las pantallas usan enlaces y parámetros del enrutador.
   function Page() {
@@ -39,7 +39,7 @@ describe.each([
       'path',
     )
     expect(
-      screen.getByRole('link', { name: 'Volver al inicio de orqui.apps' }),
+      screen.getByRole('link', { name: 'Volver al inicio de orqui.app' }),
     ).toHaveAttribute('href', '/')
     await expectNoAxeViolations()
   })
@@ -127,7 +127,7 @@ describe.each([
     await user.tab()
 
     expect(
-      screen.getByRole('link', { name: 'Volver al inicio de orqui.apps' }),
+      screen.getByRole('link', { name: 'Volver al inicio de orqui.app' }),
     ).toHaveFocus()
   })
 })

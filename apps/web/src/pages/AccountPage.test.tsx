@@ -98,7 +98,7 @@ beforeEach(() => {
   resetFakeClerk()
   setFakeClerk({ signedIn: true })
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   order.length = 0
   // Al eliminar la cuenta, Clerk deja de tener sesión.
@@ -135,7 +135,7 @@ describe('AccountPage', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Tu cuenta' }),
     ).toBeInTheDocument()
-    expect(document.title).toBe('Tu cuenta · orqui.apps')
+    expect(document.title).toBe('Tu cuenta · orqui.app')
     expect(screen.getByText(FAKE_USER_EMAIL)).toBeInTheDocument()
     await expectNoAxeViolations()
   })
@@ -185,7 +185,7 @@ describe('AccountPage', () => {
     await deleteFromPage(user)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Todavía no se puede eliminar la cuenta desde orqui.apps.',
+      'Todavía no se puede eliminar la cuenta desde orqui.app.',
     )
     expect(setActive).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -329,7 +329,7 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
     expect(created).toHaveLength(1)
     expect(await csvOf(created[0])).toBe(inventoryCsv(PLANTS))
     expect(within(data()).getByRole('status')).toHaveTextContent(
-      /^Listo: orqui-apps-inventario-\d{4}-\d{2}-\d{2}\.csv, con 3 plantas\.$/,
+      /^Listo: orqui-app-inventario-\d{4}-\d{2}-\d{2}\.csv, con 3 plantas\.$/,
     )
   })
 
@@ -422,14 +422,14 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
     expect(order).toEqual([])
   })
 
-  it('con una eliminación a medias, ofrece continuarla o seguir usando orqui.apps', async () => {
+  it('con una eliminación a medias, ofrece continuarla o seguir usando orqui.app', async () => {
     markAccountDeletionStarted(FAKE_USER_ID)
     renderAt('/cuenta')
     expect(
       screen.getByRole('button', { name: 'Continuar la eliminación' }),
     ).toBeEnabled()
     expect(
-      screen.getByRole('button', { name: 'Seguir usando orqui.apps' }),
+      screen.getByRole('button', { name: 'Seguir usando orqui.app' }),
     ).toBeInTheDocument()
     await expectNoAxeViolations()
   })

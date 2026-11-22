@@ -159,7 +159,7 @@ export function LandingSection() {
             </Link>
             <p className="orki-textpage__title">Privacidad</p>
             <p className="orki-textpage__lead">
-              Qué datos guarda orqui.apps, quién puede verlos y cómo puedes
+              Qué datos guarda orqui.app, quién puede verlos y cómo puedes
               eliminarlos.
             </p>
             <p className="orki-textpage__date">
@@ -171,14 +171,14 @@ export function LandingSection() {
             <ul className="orki-toc__list">
               <li>
                 <a href="#muestra-seccion" className="orki-toc__link">
-                  Qué datos guarda orqui.apps
+                  Qué datos guarda orqui.app
                 </a>
               </li>
             </ul>
           </nav>
           <div className="orki-textpage__section">
             <p id="muestra-seccion" className="orki-textpage__heading">
-              Qué datos guarda orqui.apps
+              Qué datos guarda orqui.app
             </p>
             <p className="orki-textpage__summary">
               Tu cuenta, tus plantas y sus fotos.

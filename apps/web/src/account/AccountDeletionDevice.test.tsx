@@ -111,7 +111,7 @@ beforeEach(() => {
   setFakeClerk({ signedIn: true })
   resetOfflineIdentity()
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   order.length = 0
   deleteUser.mockImplementation(() => {

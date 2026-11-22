@@ -131,7 +131,7 @@ for (const [nombre, ancho, alto] of [
       page.getByRole('link', { name: /^https:\/\/doi\.org\/10\.48580\// }),
     ).toBeVisible()
     await expect(
-      page.getByText(/En orqui\.apps se filtró a las orquídeas y se normalizó/),
+      page.getByText(/En orqui\.app se filtró a las orquídeas y se normalizó/),
     ).toBeVisible()
     await expect(
       page

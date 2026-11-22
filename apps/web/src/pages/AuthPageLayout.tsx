@@ -33,7 +33,7 @@ export function AuthPageLayout({
   return (
     <div className="flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
       <header className="px-space-4 py-space-3">
-        {/* Nombre accesible: «Volver al inicio de orqui.apps» (el logotipo). */}
+        {/* Nombre accesible: «Volver al inicio de orqui.app» (el logotipo). */}
         <Link to={PATHS.home} className="inline-block rounded-md">
           <span className="sr-only">Volver al inicio de</span>{' '}
           <Logo className="block h-[40px] w-auto" />
