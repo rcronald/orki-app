@@ -10,11 +10,11 @@ describe('readFilters', () => {
     expect(readFilters(params('q=phal'))).toEqual(DEFAULT_FILTERS)
   })
 
-  it('lee estado, géneros, colores y orígenes repetidos', () => {
+  it('lee estado, géneros, colores, orígenes y validaciones repetidos', () => {
     expect(
       readFilters(
         params(
-          'estado=lost&genero=g1&genero=g2&color=white&color=pink&origen=Vivero%20Sol&origen=feria%2C%20lima',
+          'estado=lost&genero=g1&genero=g2&color=white&color=pink&origen=Vivero%20Sol&origen=feria%2C%20lima&validacion=unidentifiable&validacion=pending',
         ),
       ),
     ).toEqual({
@@ -22,6 +22,7 @@ describe('readFilters', () => {
       genera: ['g1', 'g2'],
       colors: ['white', 'pink'],
       origins: ['vivero sol', 'feria, lima'],
+      validations: ['unidentifiable', 'pending'],
     })
   })
 
@@ -29,7 +30,7 @@ describe('readFilters', () => {
     expect(
       readFilters(
         params(
-          'estado=borrada&genero=&genero=g1&genero=g1&color=verde&color=Blanco&color=white&color=white&origen=%20%20&origen=Sol&origen=sol',
+          'estado=borrada&genero=&genero=g1&genero=g1&color=verde&color=Blanco&color=white&color=white&origen=%20%20&origen=Sol&origen=sol&validacion=rechazada&validacion=pending&validacion=pending',
         ),
       ),
     ).toEqual({
@@ -37,6 +38,7 @@ describe('readFilters', () => {
       genera: ['g1'],
       colors: ['white'],
       origins: ['sol'],
+      validations: ['pending'],
     })
   })
 })
@@ -54,9 +56,10 @@ describe('writeFilters', () => {
       genera: ['g1'],
       colors: ['bicolor'],
       origins: ['vivero sol'],
+      validations: ['unidentifiable', 'pending'],
     })
     expect(next.toString()).toBe(
-      'q=phal&estado=gifted&genero=g1&color=bicolor&origen=vivero+sol',
+      'q=phal&estado=gifted&genero=g1&color=bicolor&origen=vivero+sol&validacion=unidentifiable&validacion=pending',
     )
   })
 
@@ -66,6 +69,7 @@ describe('writeFilters', () => {
       genera: ['g1', 'g2'],
       colors: ['white' as const],
       origins: ['feria, lima'],
+      validations: ['unidentifiable' as const],
     }
     expect(readFilters(writeFilters(params(''), filters))).toEqual(filters)
   })

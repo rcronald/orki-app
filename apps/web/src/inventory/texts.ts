@@ -1,5 +1,5 @@
 import type { CollectionErrorReason } from '../collection/source.ts'
-import type { PlantStatus } from '../lib/database.ts'
+import type { PlantStatus, PlantValidation } from '../lib/database.ts'
 
 // Textos de la pantalla de inventario: los que llevan número, en singular o
 // plural, y los de error según el motivo que da la capa de datos.
@@ -66,6 +66,13 @@ export const STATUS_FILTER_LABEL: Record<PlantStatus, string> = {
   gifted: 'Regaladas',
 }
 
+/** Validación del nombre en los filtros, en plural. */
+export const VALIDATION_FILTER_LABEL: Record<PlantValidation, string> = {
+  validated: 'Validadas',
+  pending: 'Por validar',
+  unidentifiable: 'No identificables',
+}
+
 export const FILTERS_TEXT = {
   toggle: 'Filtros',
   activeCount: (count: number) =>
@@ -75,6 +82,7 @@ export const FILTERS_TEXT = {
   genus: 'Género',
   color: 'Color de la flor',
   origin: 'Origen',
+  validation: 'Nombre',
   showMore: (count: number) => `Ver ${count} más`,
   showLess: 'Ver menos',
   done: 'Listo',

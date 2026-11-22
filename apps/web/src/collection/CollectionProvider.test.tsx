@@ -10,6 +10,7 @@ import {
 import { CollectionProvider } from './CollectionProvider.tsx'
 import { countPlants } from './selectors.ts'
 import { CollectionLoadError } from './source.ts'
+import { COLLECTION_REFRESH_AFTER_MS } from './store.ts'
 import { useCollection, type CollectionApi } from './useCollection.ts'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
@@ -219,6 +220,41 @@ describe('CollectionProvider y useCollection', () => {
     expect(text('lista')).toBe('loading:-:')
     await resolveLast()
     expect(text('lista')).toBe('ready:1:')
+  })
+
+  it('al volver a la app tras un rato en segundo plano, actualiza la colección sin pasar por loading (#141)', async () => {
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(
+      () => visibility,
+    )
+    const now = vi.spyOn(Date, 'now')
+    const setVisibility = (value: DocumentVisibilityState, at: number) => {
+      now.mockReturnValue(at)
+      visibility = value
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+    }
+    render(
+      <Tree>
+        <Screen name="lista" />
+      </Tree>,
+    )
+    await resolveLast([plant({ id: 'a' })])
+
+    // Un momento en segundo plano: no se vuelve a leer.
+    setVisibility('hidden', 1_000)
+    setVisibility('visible', 1_000 + COLLECTION_REFRESH_AFTER_MS - 1)
+    expect(source.loads).toHaveLength(1)
+
+    // Un rato: se vuelve a leer y se siguen viendo los datos mientras tanto.
+    setVisibility('hidden', 10_000)
+    setVisibility('visible', 10_000 + COLLECTION_REFRESH_AFTER_MS)
+    expect(source.loads).toHaveLength(2)
+    expect(text('lista')).toBe('ready:1:')
+    await resolveLast([plant({ id: 'a' }), plant({ id: 'b' })])
+    expect(text('lista')).toBe('ready:2:')
+    now.mockRestore()
   })
 
   it('upsertPlant y removePlant actualizan todas las pantallas sin otra petición', async () => {

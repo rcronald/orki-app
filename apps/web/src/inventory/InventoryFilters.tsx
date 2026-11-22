@@ -20,7 +20,11 @@ import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import type { ActiveFilterChip } from './filter-chips.ts'
-import { FILTERS_TEXT, STATUS_FILTER_LABEL } from './texts.ts'
+import {
+  FILTERS_TEXT,
+  STATUS_FILTER_LABEL,
+  VALIDATION_FILTER_LABEL,
+} from './texts.ts'
 
 // Filtros del inventario (#15) en el celular: un botón "Filtros" con el número
 // de activos, que abre y cierra un panel (patrón disclosure: aria-expanded y
@@ -88,7 +92,8 @@ interface FiltersPanelProps {
 }
 
 /**
- * Panel de filtros: estado (uno solo), género, color y origen (varios). Un
+ * Panel de filtros: estado (uno solo), género, color, origen y validación del
+ * nombre (varios). Un
  * grupo sin opciones (nadie registró el color) no aparece. Escape lo cierra.
  */
 export function FiltersPanel({
@@ -181,6 +186,25 @@ export function FiltersPanel({
             })
           }
         />
+      )}
+      {options.validations.length > 0 && (
+        <FilterGroup label={FILTERS_TEXT.validation}>
+          {options.validations.map((validation) => (
+            <Chip
+              key={validation}
+              className={`${TOUCH_CHIP} bg-neutral-0`}
+              selected={filters.validations.includes(validation)}
+              onClick={() =>
+                onChange({
+                  ...filters,
+                  validations: toggleValue(filters.validations, validation),
+                })
+              }
+            >
+              {VALIDATION_FILTER_LABEL[validation]}
+            </Chip>
+          ))}
+        </FilterGroup>
       )}
       <div className="flex flex-wrap gap-space-3">
         <Button onClick={onClose}>{FILTERS_TEXT.done}</Button>

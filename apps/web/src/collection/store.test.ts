@@ -297,6 +297,80 @@ describe('CollectionStore: errores y recarga', () => {
   })
 })
 
+describe('CollectionStore: actualización en segundo plano (#141)', () => {
+  it('refresh() vuelve a leer sin pasar por loading y cambia los datos al llegar', async () => {
+    const { source, store } = setup()
+    store.retain()
+    const first = [plant({ id: 'a', validation: 'pending' })]
+    source.last().resolve(first)
+    await settle()
+
+    store.refresh()
+    expect(source.loads).toHaveLength(2)
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      plants: first,
+    })
+
+    const second = [plant({ id: 'a', validation: 'unidentifiable' })]
+    source.last().resolve(second)
+    await settle()
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      plants: second,
+      error: null,
+    })
+  })
+
+  it('si falla, no muestra ningún error y conserva los datos', async () => {
+    const { source, store } = setup()
+    store.retain()
+    const first = [plant()]
+    source.last().resolve(first)
+    await settle()
+
+    store.refresh()
+    source.last().reject(new CollectionLoadError('offline'))
+    await settle()
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      plants: first,
+      error: null,
+    })
+  })
+
+  it('una operación local durante la lectura de fondo no se pierde al llegar', async () => {
+    const { source, store } = setup()
+    store.retain()
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+
+    store.refresh()
+    const added = plant({ id: 'b' })
+    store.upsertPlant(added)
+    // La respuesta salió antes de la escritura: no la trae.
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+    expect(store.getSnapshot().plants?.map((item) => item.id)).toEqual([
+      'a',
+      'b',
+    ])
+  })
+
+  it('sin datos listos no hace nada', async () => {
+    const { source, store } = setup()
+    store.refresh()
+    expect(source.loads).toHaveLength(0)
+    store.retain()
+    store.refresh()
+    expect(source.loads).toHaveLength(1)
+    source.last().reject(new CollectionLoadError('failed'))
+    await settle()
+    store.refresh()
+    expect(source.loads).toHaveLength(1)
+  })
+})
+
 describe('CollectionStore: resultado provisional', () => {
   it('muestra el provisional mientras llega el definitivo', async () => {
     const { source, store } = setup()

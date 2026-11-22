@@ -6,7 +6,7 @@ import {
 } from './registered-plant.ts'
 
 describe('registered-plant', () => {
-  it('lleva la etiqueta de validación; "no identificable" se ve como por validar', () => {
+  it('lleva la etiqueta de validación, también "no identificable"', () => {
     expect(
       readRegisteredPlant(registeredPlantState(plant({ id: 'a' }))),
     ).toEqual({
@@ -26,7 +26,7 @@ describe('registered-plant', () => {
           }),
         ),
       )?.status,
-    ).toBe('pending')
+    ).toBe('unidentifiable')
   })
 
   it('acepta un estado sin etiqueta (de una versión anterior) y descarta lo que no entiende', () => {

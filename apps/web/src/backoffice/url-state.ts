@@ -17,19 +17,22 @@ import { SOURCE_OPTIONS, STATUS_OPTIONS, TYPE_OPTIONS } from './texts.ts'
 //     &pagina=3&desde=<id> | &antes=<id> | &ultima=1
 //     &especie=<id>
 //     &gq=den&rapido=1&gpagina=2
+//     &ppagina=2
 //
-// - pestana: especies (por defecto, no se escribe) o generos.
+// - pestana: especies (por defecto, no se escribe), generos o por-validar (la
+//   cola de propuestas).
 // - Especies: texto (q), filtros (estado, genero, tipo, fuente) con los
 //   valores de la base, página (pagina) y, sin texto, dónde empieza la página
 //   del listado alfabético, que se pagina por clave: después de una especie
 //   (desde), antes de otra (antes) o la última (ultima). Con texto, la página
 //   es solo el número. especie es el detalle abierto.
 // - Géneros: texto (gq), solo acceso rápido (rapido) y página (gpagina).
+// - Por validar: página de la cola (ppagina).
 //
 // Un valor que no se reconoce (un estado inventado, un id que no es un uuid,
 // una página no numérica) se ignora, como si no estuviera.
 
-export type CatalogAdminTab = 'especies' | 'generos'
+export type CatalogAdminTab = 'especies' | 'generos' | 'propuestas'
 
 export interface SpeciesViewState {
   query: string
@@ -48,10 +51,15 @@ export interface GeneraViewState {
   page: number
 }
 
+export interface ProposalsViewState {
+  page: number
+}
+
 export interface CatalogAdminState {
   tab: CatalogAdminTab
   species: SpeciesViewState
   genera: GeneraViewState
+  proposals: ProposalsViewState
 }
 
 export const INITIAL_CATALOG_ADMIN_STATE: CatalogAdminState = {
@@ -64,6 +72,7 @@ export const INITIAL_CATALOG_ADMIN_STATE: CatalogAdminState = {
     detailId: null,
   },
   genera: { query: '', quickAccessOnly: false, page: 1 },
+  proposals: { page: 1 },
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -83,6 +92,18 @@ function oneOf<T extends string>(
   options: readonly T[],
 ): T | undefined {
   return options.find((option) => option === value)
+}
+
+/** Valor de pestana en la URL de cada pestaña (especies no se escribe). */
+const TAB_PARAM: Record<CatalogAdminTab, string> = {
+  especies: 'especies',
+  generos: 'generos',
+  propuestas: 'por-validar',
+}
+
+const TAB_FROM_PARAM: Partial<Record<string, CatalogAdminTab>> = {
+  generos: 'generos',
+  'por-validar': 'propuestas',
 }
 
 export function parseCatalogAdminState(
@@ -108,7 +129,7 @@ export function parseCatalogAdminState(
   if (source) filters.source = source
 
   return {
-    tab: params.get('pestana') === 'generos' ? 'generos' : 'especies',
+    tab: TAB_FROM_PARAM[params.get('pestana') ?? ''] ?? 'especies',
     species: {
       query: params.get('q') ?? '',
       filters,
@@ -124,6 +145,7 @@ export function parseCatalogAdminState(
       quickAccessOnly: params.get('rapido') === '1',
       page: pageParam(params, 'gpagina'),
     },
+    proposals: { page: pageParam(params, 'ppagina') },
   }
 }
 
@@ -132,7 +154,7 @@ export function catalogAdminSearchParams(
   state: CatalogAdminState,
 ): URLSearchParams {
   const params = new URLSearchParams()
-  if (state.tab !== 'especies') params.set('pestana', state.tab)
+  if (state.tab !== 'especies') params.set('pestana', TAB_PARAM[state.tab])
 
   const { species, genera } = state
   if (species.query !== '') params.set('q', species.query)
@@ -149,6 +171,9 @@ export function catalogAdminSearchParams(
   if (genera.query !== '') params.set('gq', genera.query)
   if (genera.quickAccessOnly) params.set('rapido', '1')
   if (genera.page > 1) params.set('gpagina', String(genera.page))
+
+  if (state.proposals.page > 1)
+    params.set('ppagina', String(state.proposals.page))
   return params
 }
 

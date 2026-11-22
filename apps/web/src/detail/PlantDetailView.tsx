@@ -58,9 +58,9 @@ interface PlantDetailViewProps {
  * sus datos. El nombre va en el h1 de la página (PlantName). Lo usan
  * PlantDetailPage con la colección y la página de muestra con datos fijos.
  *
- * Una planta "no identificable" lleva la misma etiqueta que una por validar
- * (el sistema solo tiene dos) y una frase que explica que no se pudo
- * confirmar el nombre.
+ * Una planta "no identificable" (la cola de propuestas no pudo identificar
+ * su nombre, #141) lleva su propia etiqueta y una frase que explica qué
+ * significa y que sigue en la colección.
  */
 export function PlantDetailView({
   plant,
