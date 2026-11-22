@@ -1,0 +1,28 @@
+{
+  "textoAlternativo": "Phalaenopsis rosada en floración",
+  "anchos": [
+    {
+      "archivo": "portada-640.avif",
+      "ancho": 640,
+      "alto": 427
+    },
+    {
+      "archivo": "portada-960.avif",
+      "ancho": 960,
+      "alto": 640
+    },
+    {
+      "archivo": "portada-1280.avif",
+      "ancho": 1280,
+      "alto": 853
+    },
+    {
+      "archivo": "portada-1536.avif",
+      "ancho": 1536,
+      "alto": 1024
+    }
+  ],
+  "respaldo": {
+    "archivo": "portada-960.jpg"
+  }
+}

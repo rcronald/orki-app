@@ -1,0 +1,48 @@
+{
+  "original": {
+    "archivo": "original.jpg",
+    "sha256": "0d34a313a98874cccbe250d97dfe087e3696988e97c1be0509814eb2efa1b40b"
+  },
+  "anchos": [
+    {
+      "archivo": "portada-640.avif",
+      "ancho": 640,
+      "alto": 427,
+      "calidad": 60,
+      "bytes": 31759,
+      "sha256": "43ee0840e2ae79cb4195f3d5b2268b41cad9dd1aceded61b1d1fec45fe286aed"
+    },
+    {
+      "archivo": "portada-960.avif",
+      "ancho": 960,
+      "alto": 640,
+      "calidad": 60,
+      "bytes": 56728,
+      "sha256": "c1a953f876e808dfe0f437c7525b66acf46fc1a42b5e5e078334da4b78663a5e"
+    },
+    {
+      "archivo": "portada-1280.avif",
+      "ancho": 1280,
+      "alto": 853,
+      "calidad": 60,
+      "bytes": 87893,
+      "sha256": "aa19d4416df1e2bfc79a3279afc4a37191c0df0fcc656c3a3bb1229bae82c2ee"
+    },
+    {
+      "archivo": "portada-1536.avif",
+      "ancho": 1536,
+      "alto": 1024,
+      "calidad": 60,
+      "bytes": 120423,
+      "sha256": "b4a4108cdae1c1fc207e6f5ba22ccda7aed8437c796fa3adfcf443945702a7c9"
+    }
+  ],
+  "respaldo": {
+    "archivo": "portada-960.jpg",
+    "ancho": 960,
+    "alto": 640,
+    "calidad": 70,
+    "bytes": 134093,
+    "sha256": "30161e15f076152888941e24651dc7469c82006c506a2e36d491f9563c201425"
+  }
+}
