@@ -5,7 +5,12 @@ import {
   PLANTILLA_PORTADA_PREVIA_ID,
   PORTADA_PREVIA_ID,
 } from './portada-previa.ts'
-import { SCRIPT_DE_CUERPO, scriptDeCabecera } from './scripts.ts'
+import {
+  ATRIBUTO_SRC_DIFERIDO,
+  ATRIBUTO_SRCSET_DIFERIDO,
+  SCRIPT_DE_CUERPO,
+  scriptDeCabecera,
+} from './scripts.ts'
 
 // Los scripts en línea de la portada prerrenderada (#204), ejecutados como
 // los ejecutaría el navegador al leer index.html.
@@ -96,7 +101,7 @@ describe('script del <head>', () => {
 
 describe('script tras #root', () => {
   function documentoDelBuild() {
-    document.body.innerHTML = `<div id="root"></div><template id="${PLANTILLA_PORTADA_PREVIA_ID}"><h1>Portada</h1><img class="orki-hero__photo" alt="Foto"></template>`
+    document.body.innerHTML = `<div id="root"></div><template id="${PLANTILLA_PORTADA_PREVIA_ID}"><h1>Portada</h1><picture><source type="image/avif" ${ATRIBUTO_SRCSET_DIFERIDO}="/assets/foto.avif 960w"><img class="orki-hero__photo" alt="Foto" ${ATRIBUTO_SRC_DIFERIDO}="/assets/foto.jpg"></picture></template>`
   }
 
   it('si toca mostrarla, copia la plantilla a un contenedor justo antes de #root', () => {
@@ -109,6 +114,20 @@ describe('script tras #root', () => {
     expect(contenedor?.querySelector('h1')).toHaveTextContent('Portada')
     expect(document.getElementById('root')).toBeEmptyDOMElement()
     expect(document.getElementById(PLANTILLA_PORTADA_PREVIA_ID)).toBeNull()
+  })
+
+  it('al mostrarla, devuelve a la foto sus direcciones reales', () => {
+    documentoDelBuild()
+    document.documentElement.setAttribute(ATRIBUTO_PORTADA_PREVIA, '')
+    ejecutar(SCRIPT_DE_CUERPO)
+
+    const contenedor = document.getElementById(PORTADA_PREVIA_ID)
+    const source = contenedor?.querySelector('source')
+    const foto = contenedor?.querySelector('img')
+    expect(source).toHaveAttribute('srcset', '/assets/foto.avif 960w')
+    expect(source).not.toHaveAttribute(ATRIBUTO_SRCSET_DIFERIDO)
+    expect(foto).toHaveAttribute('src', '/assets/foto.jpg')
+    expect(foto).not.toHaveAttribute(ATRIBUTO_SRC_DIFERIDO)
   })
 
   it('si no toca, solo quita la plantilla', () => {

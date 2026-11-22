@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { HERO_AVIF_SRCSET, HERO_SIZES } from '../pages/hero-photo-sources.ts'
 import { PLANTILLA_PORTADA_PREVIA_ID } from './portada-previa.ts'
 import { renderizarPortada } from './render.tsx'
+import { ATRIBUTO_SRC_DIFERIDO, ATRIBUTO_SRCSET_DIFERIDO } from './scripts.ts'
 
 // Lo que el build mete en index.html (#204): la portada de `/` sin sesión,
 // con los mismos textos, enlaces y foto que pinta la app.
@@ -42,13 +43,26 @@ describe('renderizarPortada', () => {
   it('la foto lleva las mismas fuentes que precarga el script del <head>', () => {
     const { cabecera } = renderizarPortada()
     const source = plantilla().querySelector('picture source')
-    expect(source).toHaveAttribute('srcset', HERO_AVIF_SRCSET)
+    expect(source).toHaveAttribute(ATRIBUTO_SRCSET_DIFERIDO, HERO_AVIF_SRCSET)
     expect(source).toHaveAttribute('sizes', HERO_SIZES)
     expect(cabecera).toContain(JSON.stringify(HERO_AVIF_SRCSET))
     expect(cabecera).toContain(JSON.stringify(HERO_SIZES))
     expect(plantilla().querySelector('img.orki-hero__photo')).toHaveAttribute(
       'fetchpriority',
       'high',
+    )
+  })
+
+  it('sin direcciones reales de archivos: ningún navegador puede pedir la foto por adelantado', () => {
+    const { cuerpo } = renderizarPortada()
+    expect(cuerpo).not.toMatch(/ src(set)?="(?!data:)/i)
+    const foto = plantilla().querySelector('img.orki-hero__photo')
+    expect(foto).not.toHaveAttribute('src')
+    expect(foto).toHaveAttribute(ATRIBUTO_SRC_DIFERIDO)
+    // El logotipo va en línea (data URL): no se descarga y se queda como está.
+    expect(plantilla().querySelector('img.orki-nav__logo')).toHaveAttribute(
+      'src',
+      expect.stringMatching(/^data:image\/svg\+xml/),
     )
   })
 
