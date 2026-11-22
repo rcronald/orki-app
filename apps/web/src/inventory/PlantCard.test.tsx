@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
@@ -143,20 +143,24 @@ describe('miniatura de la tarjeta', () => {
       }),
     ).toHaveAttribute('src', expect.stringContaining('svg'))
 
-    act(() => {
-      window.dispatchEvent(new Event('online'))
-    })
-    // Margen amplio: en el CI, con la suite entera en paralelo, el reintento ha
-    // llegado a tardar algo más del segundo que espera findByRole por defecto.
-    expect(
-      await screen.findByRole(
-        'img',
-        { name: 'Foto de Cattleya labiata' },
-        { timeout: 5000 },
-      ),
-    ).toBeInTheDocument()
+    // El aviso de conexión se repite hasta que llega la miniatura: la tarjeta
+    // empieza a escucharlo en un efecto posterior al pintado del error, y un
+    // único aviso lanzado justo antes se perdería (pasó en el CI, con la suite
+    // entera en paralelo). Tras el primer reintento deja de escuchar, así que
+    // los avisos de más no piden nada.
+    await waitFor(
+      () => {
+        act(() => {
+          window.dispatchEvent(new Event('online'))
+        })
+        expect(
+          screen.getByRole('img', { name: 'Foto de Cattleya labiata' }),
+        ).toBeInTheDocument()
+      },
+      { timeout: 10_000 },
+    )
     expect(acquire).toHaveBeenCalledTimes(2)
-  })
+  }, 15_000)
 
   it('suelta la miniatura al desmontar', async () => {
     const { source, release } = fakeSource()
