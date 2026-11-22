@@ -16,6 +16,8 @@ Todas las cifras de este documento salen de ejecuciones hechas con las órdenes 
 - El CI falla si el JavaScript inicial, el CSS o el total precacheado superan el presupuesto (`apps/web/presupuesto-tamano.json`, margen del 5 %).
 
 > **Actualización (22 nov 2026):** con la portada del #179, el inicio da 3,95 s de LCP (antes de ella, 3,20 s con el mismo método); el detalle, en «Portada». El presupuesto del CSS inicial y del precaché queda superado por las piezas nuevas del design system y está pendiente de decidir.
+>
+> **Actualización (#204):** el 0,90 s de la tabla no medía cuándo se veía el texto: Lighthouse 13, con un LCP de texto que coincide con el FCP, lo calcula solo con el HTML y el CSS, aunque el texto lo pintara el JavaScript. Con la portada prerrenderada en `index.html` el inicio baja a 2,40 s de LCP (3,95 s en `main`); la causa, las cifras y lo pendiente, en «Carga de la portada (#204)».
 
 ## Cómo medir
 
@@ -89,7 +91,7 @@ Orden: `npm run build:medicion && npm run medir:carga -- --sin-build --solo inic
 - **CLS** bajó a 0,001: la foto lleva `width` y `height` y el Hero reserva el hueco 3:2.
 - Los bytes suben por la foto (55,6 KiB) y por el CSS de las piezas nuevas; la foto no entra en el precaché.
 
-Para bajar el LCP de la portada por debajo de 2,5 s hay que pintarla sin esperar al chunk `App`: que el Hero (sin Clerk) vaya en el chunk inicial o se pinte mientras `App` carga, y que `App` decida después si hay que ir a la colección. Queda propuesto como issue («Issues por abrir», 4); afecta al presupuesto del JavaScript inicial (95,3 % hoy).
+Para bajar el LCP de la portada por debajo de 2,5 s hay que pintarla sin esperar al chunk `App`: que el Hero (sin Clerk) vaya en el chunk inicial o se pinte mientras `App` carga, y que `App` decida después si hay que ir a la colección. Queda propuesto como issue («Issues por abrir», 4); afecta al presupuesto del JavaScript inicial (95,3 % hoy). **Hecho en el #204** con la portada prerrenderada en `index.html`, sin tocar el JavaScript inicial: ver la sección siguiente. (La explicación de los 3,20 s de este apartado, el logotipo que llega con `App`, es incompleta: ver «Causa del salto».)
 
 ### Presupuesto con la portada
 
@@ -102,6 +104,100 @@ Para bajar el LCP de la portada por debajo de 2,5 s hay que pintarla sin esperar
 | `precacheBytes` | 1 355 771 B (99,4 %) | 1 366 871 B (**100,2 %**) | 1 364 418 B |
 
 Las dos que se pasan lo hacen por las piezas de las páginas públicas del design system: `bundle.css` es copia literal del sistema y pasa de 8 848 a 12 712 bytes (NavBar, Hero, FeatureItem, TextLink y `orki-btn--strong`), que van en la hoja inicial. El resto del aumento del precaché es el código de la portada en el chunk `App` (la página, la cabecera pública, la redirección con sesión y los iconos nuevos). Lo recortado antes de medir: la foto y el dibujo fuera del precaché, y el JavaScript solo con el texto alternativo y las medidas de la foto (no su informe). El presupuesto **no** se ha subido: hace falta decidirlo (`npm run presupuesto -- --actualizar` con el porqué en el PR).
+
+## Carga de la portada (#204, 22 nov 2026)
+
+Objetivo: LCP del inicio (`/` sin sesión) por debajo de 2,5 s en esta medición, sin saltos de contenido. Mismo método de siempre (`npm run medir:carga`, Lighthouse 13.6.0, móvil con limitación simulada), en el mismo equipo; los informes de cada paso se guardaron aparte y el desglose de la simulación se sacó recalculando el LCP de Lantern sobre la traza y el registro de red guardados (`--save-assets`).
+
+### Causa del salto de 0,90 s a 3,20 s
+
+Medido commit a commit con los scripts de medición actuales (no cambiaron desde el #149; `git diff 5584506 -- scripts/medir-carga.mjs scripts/medicion` está vacío), 5 ejecuciones, `--solo inicio`:
+
+| Commit | Qué entra | FCP | LCP | Elemento del LCP |
+| --- | --- | --- | --- | --- |
+| `5584506` (el de las cifras del #149) | | 0,90 s (0,90–0,97) | 0,90 s (0,90–0,97) | texto |
+| `f9eda46` | `registerSW.js` con `defer` | 0,75 s | 0,75 s | texto |
+| `da21280` | justo antes del logotipo | 0,75 s (0,75–0,76) | 0,75 s (0,75–0,76) | texto |
+| `d981083` | logotipo (#173) | 2,13 s (0,75–2,13) | **3,20 s** (3,20–3,22) | `<img>` del logotipo |
+| `38db1fb` | fotos de las plantas (#182) | 1,83 s (0,76–2,13) | 3,20 s (3,20–3,36) | `<img>` del logotipo |
+| `c5c32ae` (`main` al empezar) | portada (#179, #197) | 1,83 s (0,75–2,13) | 3,95 s (3,95–3,96) | la foto |
+
+El salto entra con el logotipo, pero no porque el logotipo pese ni porque vaya en línea: una data URL le cuesta a la simulación unos 2 ms. Lo que cambia es **el tipo de elemento del LCP**, y con él cómo lo calcula Lighthouse:
+
+- **El 0,90 s (y el 0,75 s) no medía cuándo se veía el texto.** Lighthouse 13, cuando el LCP es un texto y coincide con el FCP, calcula el LCP con el mismo grafo que el FCP (`LargestContentfulPaint.getPessimisticGraph` de Lantern): solo el HTML y lo que bloquea el pintado (el CSS). El grafo recalculado para `da21280` tiene 4 nodos: el documento, el CSS y dos tareas de la CPU. Pero aquel texto lo pintaba React desde el chunk `App`: en la realidad hacía falta el JavaScript inicial (72 KiB) y `App` (74 KiB), que la cifra no contaba. Se midió con el mismo método y en el mismo equipo (repetido hoy: 0,90 s), así que las condiciones son comparables; lo que no es comparable es lo que mide.
+- **Con el logotipo, el LCP pasa a ser una imagen** (el `<img>` del logotipo, más grande que el texto) y Lighthouse usa el grafo completo: toda petición terminada antes del LCP observado en la carga sin limitar. Ahí entran el JavaScript inicial, `App` y el script de Clerk, que en esta medición apunta a `clerk.orki.invalid` y falla. En la simulación, ese fallo cuesta como una conexión nueva a otro origen (DNS, TCP y TLS: unos 780 ms tras ejecutarse `App`). Los 3,20 s son exactamente el final de esa petición fallida.
+- **Por qué el LCP observado llegaba tan tarde:** `AppRouter` cargaba `App` con `lazy()` y `Suspense`, y React 19 deja **al menos 300 ms** entre que muestra el fallback de un `Suspense` y que lo sustituye por su contenido (`FALLBACK_THROTTLE_MS` en `react-dom`). En una carga sin limitar con Chromium (Playwright), el chunk se pedía a los 118 ms y la portada se confirmaba a los 418 ms; para entonces Clerk ya había fallado dos veces y esas peticiones entraban en el grafo. En un celular real esos 300 ms también existen, en cualquier ruta.
+- **Con la portada (3,95 s)** es lo mismo con la foto como LCP: el grafo termina igual, en la petición fallida a Clerk (3 957 ms en la ejecución recalculada), después de `App` (3 177 ms). Por eso precargar la foto desde el HTML (lo que se probó en el #193) apenas cambiaba nada: la foto no era lo último del grafo.
+
+Con Clerk real el script sí llega (71,6 KiB con Brotli), pero también va detrás de `App`, así que el problema de fondo es el mismo: la portada no se pintaba hasta tener la app, y la app arrastra a Clerk.
+
+### Qué se cambió
+
+Tres commits, medidos uno tras otro sobre `c5c32ae` (5 ejecuciones; el último, 9):
+
+1. **La app se pinta en cuanto llega su chunk** (`AppRouter.tsx`): sin `lazy()` ni `Suspense` para `App`; el chunk se pide al montar y se pinta con una actualización normal. Quita los 300 ms del `Suspense` en **cualquier** primera pantalla. Solo, no mueve el LCP del inicio en esta medición (la foto sigue llegando con `App` y el fallo de Clerk sigue en el grafo), pero el FCP baja de 1,83 a 1,68 s y, en la carga sin limitar, la portada se confirma 300 ms antes.
+2. **Portada prerrenderada en `index.html`** (`prerender/portada-previa-plugin.ts`, `src/prerender/`): el build renderiza `PublicHome` (la misma portada que pinta `HomeRoute`) con `react-dom/server` y la deja en un `<template>`. Un script en línea en el `<head>`, tras la etiqueta meta viewport (antes, el navegador calcula `sizes` con 980 px y precargaría la variante de 1296 px: se vio en la primera prueba, con dos descargas de la foto), decide si se muestra: solo en `/`, sin usuario recordado (`orki-ultimo-usuario`) y sin el aviso de cuenta eliminada en el historial, es decir, los casos en que `HomeRoute` pinta la portada mientras Clerk carga. Si se muestra, precarga la foto (`imagesrcset`, `imagesizes`, `fetchpriority="high"`). Otro script tras `#root` copia la plantilla a un contenedor; no corre hasta tener el CSS, así que nunca se ve sin estilos. La app la retira en la misma confirmación en que pinta la suya (efecto de diseño en `AppRouter`), antes del siguiente pintado. El FCP baja a 0,75 s, pero el LCP queda muy variable: 3,96 s (2,17–4,04), porque `App`, Sentry y Clerk se piden a la vez que la foto y, según quién termine antes en la carga sin limitar, entran o no en el grafo.
+3. **La app y Sentry esperan a que se pinte la foto** (`esperarFotoDePortadaPrevia`): con la portada prerrenderada a la vista, el chunk de la app y el SDK de Sentry se piden cuando la foto ya está en pantalla (en Chromium, con la entrada de LCP de la foto; en los demás, tras decodificarla y un fotograma; como mucho, 2 s). Así no le quitan red a la foto, y los botones de la portada prerrenderada son enlaces normales que funcionan sin la app. Sin portada prerrenderada (otras rutas, usuario recordado) no se espera nada.
+
+| Paso (sobre `c5c32ae`) | FCP | LCP | CLS | Bytes |
+| --- | --- | --- | --- | --- |
+| `main` | 1,83 s (0,75–2,13) | 3,95 s (3,95–3,96) | 0,001 | 313,5 KiB |
+| 1. Sin la espera del `Suspense` | 1,68 s (1,67–1,82) | 3,95 s (3,95–4,03) | 0,001 | 328,1 KiB |
+| 1 y 2. Portada prerrenderada | 0,75 s (0,75–0,77) | 3,96 s (2,17–4,04) | 0,001 | 332,5 KiB |
+| 1, 2 y 3. La app espera a la foto (9 ejecuciones) | 0,76 s (0,75–0,77) | **2,26 s** (2,17–2,41) | 0,001 | 332,8 KiB |
+
+Los bytes suben de 313 a 333 KiB porque las tres fuentes (72 KiB) se descargan ahora en la carga: antes llegaban tarde y las servía ya el service worker recién instalado (0 bytes en el informe); el texto prerrenderado las pide al primer pintado.
+
+### Antes y después, sobre `main` actualizado
+
+Rama rebasada sobre `19b8fef` (`main` al terminar, con la barra y las piezas nuevas del design system). `npm run medir:carga` en las dos: 5 ejecuciones en `main`, 9 en la rama.
+
+| Métrica | Inicio, `main` | Inicio, #204 | Inventario, `main` | Inventario, #204 |
+| --- | --- | --- | --- | --- |
+| FCP | 1,83 s (0,82–1,83) | 0,75 s (0,75–0,75) | 0,75 s (0,75–0,75) | 0,75 s (0,75–1,22) |
+| LCP | 3,95 s (3,95–4,41) | **2,40 s** (2,40–2,40) | 0,75 s (0,75–0,75) | 0,75 s (0,75–1,22) |
+| CLS | 0,001 | 0,001 | 0,000 | 0,000 |
+| Bytes transferidos | 319,7 KiB | 339,2 KiB | 183,6 KiB | 306,5 KiB |
+| Puntuación | 87 (66–87) | 98 (98–98) | 100 (99–100) | 100 (100–100) |
+
+- El elemento del LCP del inicio sigue siendo la foto (`img.orki-hero__photo`), ahora la de la portada prerrenderada. El grafo de la simulación queda en el documento, el CSS, las fuentes, la foto y el JavaScript inicial; ya no entran `App`, Sentry ni Clerk. Sobre `main` actualizado el margen es menor que sobre `c5c32ae` (2,40 frente a 2,26 s): la hoja inicial creció con las piezas nuevas (de 8,0 a 9,6 KiB transferidos) y compite con la foto.
+- Los bytes del inventario suben de 183,6 a 306,5 KiB sin descargar nada nuevo: las fuentes (72 KiB) y el chunk de supabase-js (47 KiB) se piden ahora 300 ms antes, antes de que el service worker recién instalado pueda servirlos, y cuentan como descarga de la página (en `main`, el informe los daba como 0 bytes). En una primera visita real se descargan igual; ver «Resultados», sobre por qué los bytes no son una métrica estable. En la carga sin limitar, la colección se pide a los 97 ms en lugar de a los 367 ms.
+- El inventario no empeora. Su LCP ya era de 0,75 s en `main` porque con la barra nueva el elemento del LCP pasó a ser el título «Mi colección» (texto que coincide con el FCP, el mismo atajo de Lighthouse de arriba); con el logotipo como LCP, en `c5c32ae`, daba 2,32 s. Esa cifra, por tanto, tampoco dice cuándo se ve el inventario: lo que sí se nota es el paso 1, que en la carga sin limitar adelanta la primera pantalla 300 ms.
+
+### Presupuesto
+
+`npm run build && npm run build:medicion && npm run presupuesto`:
+
+| Métrica | `main` (`19b8fef`) | #204 | Límite |
+| --- | --- | --- | --- |
+| `jsInicialGzip` | 86 108 B (95,3 %) | 86 546 B (95,8 %) | 90 340 B |
+| `cssGzip` | 10 749 B (96,4 %) | 10 749 B (96,4 %) | 11 156 B |
+| `precacheBytes` | 1 409 837 B (96,2 %) | 1 433 894 B (97,8 %) | 1 465 989 B |
+
+El JavaScript inicial apenas cambia (el código de la espera y de retirar la portada prerrenderada). El precaché crece por `index.html`, que pasa de 1,3 a 24 kB (6 kB con gzip, 5 960 B): la portada lleva el logotipo en línea dos veces (cabecera y pie), como en la app. El presupuesto no se ha subido.
+
+### Probado y descartado
+
+- **Precargar la foto sin prerrenderizar** (#193): 3,80 s. La foto no era lo último del grafo.
+- **Prerrenderizar sin quitar la espera del `Suspense`** (primera prueba, con la precarga ya tras la meta viewport): 2,42 s de mediana pero con ejecuciones de 3,97 s, y la foto se descargaba dos veces (el `<img>` que React crea durante esos 300 ms no reutilizaba la descarga).
+- **Llevar la portada al chunk inicial**: no se probó. Habría que meter en el JavaScript inicial la portada, el logotipo en línea (8 kB) y los iconos, con el presupuesto al 95,3 %, y la foto seguiría esperando al JavaScript inicial (72 KiB). La portada prerrenderada no añade nada al JavaScript inicial.
+- **Logotipo como archivo aparte**: no hace falta. En línea le cuesta 2 ms a la simulación; el salto era por el cambio de elemento del LCP, no por el logotipo.
+- **Fuentes** (precargar la del título, `font-display`): ya van con `font-display: swap` y el texto no espera a ellas. Precargarlas no adelanta nada: se piden con el CSS y compiten con la foto.
+- **CSS crítico**: la hoja inicial son 8 KiB con Brotli y bloquea el pintado igual que bloquearía un CSS en línea del mismo tamaño en el HTML.
+
+### Riesgos
+
+- **La portada prerrenderada tiene que coincidir con la de la app.** Por construcción es el mismo componente (`PublicHome`), renderizado en el build; las pruebas comprueban el contenido de la plantilla, que las direcciones de la foto existen y que al llegar la app queda una sola portada. Lo que dependa del estado del navegador (el aviso de cuenta eliminada) no está en la plantilla: por eso el script no la usa en ese caso.
+- **Usuarios con sesión sin usuario recordado** (por ejemplo, con el almacenamiento borrado): ven la portada prerrenderada y van a la colección cuando llegan la app y Clerk, como antes, pero la app se pide tras pintarse la foto (en celular, unos cientos de ms más tarde; como mucho 2 s).
+- **Antes de que llegue la app**, los botones de la portada son enlaces: pulsarlos abre la página nueva con una carga completa, en lugar de navegar dentro de la app. El foco puesto en la portada prerrenderada se pierde al sustituirla.
+- **Sin conexión** (app instalada): el service worker sirve el `index.html` con la portada; la foto no está en el precaché, falla y la app sigue enseguida. Lo prueba `e2e/pwa.spec.ts`.
+
+### Pendiente
+
+- **WebKit descarga también el JPEG de respaldo** (134 KiB) cuando la app pinta su portada: React pone `src` al `<img>` antes de meterlo en el `<picture>`, y WebKit lo empieza a descargar en ese momento. Pasaba ya en `main`, donde WebKit descargaba el JPEG y la variante AVIF dos veces; con la portada prerrenderada son el AVIF una vez y el JPEG. Visto con WebKit de Playwright, no en un iPhone. Para arreglarlo, `HeroPhoto` podría reutilizar el `<picture>` ya pintado o no llevar `src` hasta estar dentro del `<picture>`.
+- **Las fuentes (72 KiB) están en el camino del LCP** ahora que el texto se pinta al principio. Subconjuntos más pequeños de Inter y Playfair Display, o solo dos pesos, bajarían el LCP de la simulación; no está medido.
+- **El 300 ms de `Suspense` en las páginas diferidas** (registro, detalle, edición, privacidad, créditos, backoffice) sigue: al abrirlas por primera vez, su contenido aparece como pronto 300 ms después del fallback. No afecta al inicio ni al inventario.
+- **No medido:** un celular real con 4G, la red de producción con Clerk real (su script y su API), y la segunda visita con el service worker instalado.
 
 ## Presupuesto de tamaño (CI)
 
@@ -188,6 +284,6 @@ Redactados aquí; no se han abierto todavía.
 
 > El chunk de supabase-js pesa 47,1 KiB con Brotli y la mayor parte (auth-js, realtime-js, phoenix, functions-js, iceberg-js) no se usa: el token viene de Clerk. Sustituirlo por `@supabase/postgrest-js` y `@supabase/storage-js` en `apps/web/src/lib/supabase.ts`, medir el ahorro con `npm run build:medicion` y bajar el presupuesto con `npm run presupuesto -- --actualizar`.
 
-**4. Portada: pintar el Hero sin esperar al chunk de la app** (prioridad media, área rendimiento, ejecuta: agente)
+**4. Portada: pintar el Hero sin esperar al chunk de la app** (prioridad media, área rendimiento, ejecuta: agente). **Hecho en el #204** (ver «Carga de la portada»).
 
 > La portada (#179) da 3,95 s de LCP en la medición móvil: la foto se descarga enseguida, pero no se pinta hasta que llega y se ejecuta el chunk `App` (Clerk, rutas y pantallas). Opciones: llevar el Hero y las ventajas (sin Clerk) al chunk inicial y que `App` solo decida después si `/` lleva a la colección, o pintarlos como `fallback` mientras `App` carga. Medir el efecto en el JavaScript inicial (hoy al 95,3 % del presupuesto) y en el inventario.
