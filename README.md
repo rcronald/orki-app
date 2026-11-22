@@ -342,6 +342,7 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 | Ruta                       | Pantalla                                                                                                                                                      | Acceso                     |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
 | `/`                        | Portada (ver [Portada](#portada)); con sesión lleva a «Mi colección»                                                                                          | Pública                    |
+| `/creditos`                | Créditos y fuentes (ver [Créditos y fuentes](#créditos-y-fuentes))                                                                                            | Pública                    |
 | `/catalogo`                | Catálogo (provisional, sin enlace en la navegación hasta #187)                                                                                                | Pública                    |
 | `/coleccion`               | Mi colección (provisional)                                                                                                                                    | Con sesión                 |
 | `/coleccion/nueva`         | Registrar una planta (provisional)                                                                                                                            | Con sesión                 |
@@ -717,10 +718,21 @@ Afirmaciones que debe verificar una persona (revisadas contra el código el 21 d
 7. Lo que se guarda en el dispositivo y cuándo se borra (`docs/sin-conexion.md` y `src/account/device-cleanup.ts`): copia del inventario, miniaturas, cola de eventos (29 días como mucho) y id del último usuario se borran al cerrar sesión, también sin conexión; el id se guarda hasta avisar a Clerk si se cerró sin conexión; el borrador (texto y foto) caduca a las 24 horas y no se borra al cerrar sesión; las preferencias tampoco.
 8. Exportación (`src/collection/export-csv.ts`, `src/inventory/ExportAction.tsx`): al final de «Mi colección», todas las plantas con todas sus columnas, sin fotos.
 9. Eliminación (sección «Eliminación de la cuenta»): lo que borra, y que no se borran los informes ya enviados a Sentry ni la auditoría del catálogo.
-10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «En orqui.apps se filtró a las orquídeas y se normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
+10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «En orqui.apps se filtró a las orquídeas y se normalizó», hoy en [Créditos y fuentes](#créditos-y-fuentes). `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el texto.
 11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto. Pasó al 22 de noviembre de 2026 con el #202 (atribución trasladada, secciones reagrupadas y frases de resumen).
 
 Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, índice y foco, cada enlace de volver, que no falta ninguna frase del texto aprobado, reparto en secciones, contacto, enlaces desde el pie y desde el acceso, axe) y `e2e/paginas-de-texto.spec.ts` (a 360 px y en escritorio, con axe).
+
+## Créditos y fuentes
+
+`/creditos` (#203) es pública, con el mismo diseño que la privacidad (`TextPage`), en su propio chunk (`src/credits/CreditsPage.tsx`) y sin Clerk. Se enlaza desde el pie y desde la privacidad, y su enlace de volver sigue la misma regla. Cada dato está comprobado en el repositorio:
+
+- **Catálogo:** el Catalogue of Life con su versión, DOI y licencia (CC BY 4.0), leídos de `scripts/catalog-import/fuente.json` por `src/backoffice/attribution.ts`, y la indicación de que se filtró a las orquídeas y se normalizó; los híbridos de vivero, de la lista curada (`scripts/catalog-import/data/hibridos.csv`).
+- **Imágenes:** la foto de la portada y los fondos por género del registro, generadas con IA (OpenAI) a petición del autor del proyecto (`LEEME.md` de `src/assets/portada/` y `src/assets/fondos-genero/`). Solo su origen, nada sobre sus derechos.
+- **Tipografías:** Playfair Display e Inter, SIL Open Font License 1.1 (el `LICENSE` de cada paquete `@fontsource`).
+- **Iconos:** Lucide, licencia ISC; los derivados de Feather, MIT (el `LICENSE` de `lucide-react`).
+
+Los créditos de las fotos de iNaturalist (#180) irán aquí cuando existan. Pruebas: `src/credits/CreditsPage.test.tsx` y `e2e/paginas-de-texto.spec.ts`.
 
 ## Pruebas de extremo a extremo
 

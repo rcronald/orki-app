@@ -48,9 +48,10 @@ const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
 // precarga al chunk inicial. Probado con el build: diferida, el inicial crecía
 // unos 100 bytes; aquí, solo lo que ocupa su ruta en PATHS.
 
-// Página de privacidad (/privacidad, #111, #202): pública, en su propio chunk
-// y sin Clerk.
+// Páginas de texto públicas, cada una en su propio chunk y sin Clerk:
+// privacidad (/privacidad, #111, #202) y créditos y fuentes (/creditos, #203).
 const PrivacyPage = lazy(() => import('./privacy/PrivacyPage.tsx'))
+const CreditsPage = lazy(() => import('./credits/CreditsPage.tsx'))
 
 const TEXT_PAGE_LOADING = (
   <p role="status" className="text-md text-neutral-700">
@@ -87,6 +88,14 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
             element={
               <Suspense fallback={TEXT_PAGE_LOADING}>
                 <PrivacyPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path={PATHS.credits}
+            element={
+              <Suspense fallback={TEXT_PAGE_LOADING}>
+                <CreditsPage />
               </Suspense>
             }
           />

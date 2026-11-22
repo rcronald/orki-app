@@ -5,15 +5,16 @@ botánico decorativo de la izquierda. La app enlaza la foto en
 `src/pages/HeroPhoto.tsx`; desde el rediseño (#200) el dibujo no se usa en la
 portada (sigue aquí y en el design system).
 
-## Fuente y licencia
+## Origen
 
-| Archivo                                            | Fuente                                                                                                                | Licencia                                                  |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `original.jpg` y `portada-*.avif`, `portada-*.jpg` | Entregada por el responsable del proyecto en el design system (`assets/Photos/portada.png`, 1536 × 1024), 22 nov 2026 | **Pendiente de confirmar** el origen exacto y la licencia |
-| `dibujo-botanico.svg`                              | Design system de orqui.apps (`assets/Illustrations/DibujoBotanico.svg`), copiado tal cual                             | Del proyecto                                              |
+| Archivo                                            | Origen                                                                                                                                                   | Notas                                    |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `original.jpg` y `portada-*.avif`, `portada-*.jpg` | Imagen generada con IA (OpenAI) a petición del autor del proyecto; entregada en el design system (`assets/Photos/portada.png`, 1536 × 1024), 22 nov 2026 | No es una fotografía de un ejemplar real |
+| `dibujo-botanico.svg`                              | Imagen generada con IA (OpenAI) a petición del autor del proyecto; del design system (`assets/Illustrations/DibujoBotanico.svg`), copiado tal cual       | Sin uso en la portada desde #200         |
 
-Cuando se confirme el origen de la foto (autor, página y licencia exacta, por
-ejemplo CC BY-SA 4.0), se anota aquí con la atribución que pida la licencia.
+El origen lo confirmó el responsable del proyecto (#194). La página
+«Créditos y fuentes» (`/creditos`) lo dice así. Una foto nueva con licencia
+que pida atribución se anota aquí y allí.
 
 ## Archivos
 

@@ -108,3 +108,38 @@ test.describe('con sesión', () => {
     ).toBeVisible()
   })
 })
+
+for (const [nombre, ancho, alto] of [
+  ['a 360 px', 360, 780],
+  ['en escritorio', 1536, 1024],
+] as const) {
+  test(`créditos ${nombre}: atribución del catálogo, índice y volver`, async ({
+    page,
+    revisarAccesibilidad,
+  }) => {
+    await page.setViewportSize({ width: ancho, height: alto })
+    await page.goto('/')
+    await page
+      .getByRole('contentinfo')
+      .getByRole('link', { name: 'Créditos y fuentes' })
+      .click()
+    await expect(
+      page.getByRole('heading', { name: 'Créditos y fuentes', level: 1 }),
+    ).toBeVisible()
+    await sinDesplazamientoHorizontal(page)
+    await expect(
+      page.getByRole('link', { name: /^https:\/\/doi\.org\/10\.48580\// }),
+    ).toBeVisible()
+    await expect(
+      page.getByText(/En orqui\.apps se filtró a las orquídeas y se normalizó/),
+    ).toBeVisible()
+    await expect(
+      page
+        .getByRole('navigation', { name: 'En esta página' })
+        .getByRole('link'),
+    ).toHaveText(['Catálogo de especies', 'Imágenes', 'Tipografías', 'Iconos'])
+    await revisarAccesibilidad(`créditos ${nombre}`)
+    await page.getByRole('link', { name: 'Volver al inicio' }).click()
+    await expect(page).toHaveURL(/\/$/)
+  })
+}
