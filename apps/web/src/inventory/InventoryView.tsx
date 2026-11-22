@@ -107,8 +107,9 @@ export interface InventoryViewProps {
 
 // En el celular, el acceso a registrar queda fijo abajo: se deja sitio para
 // que no tape la última tarjeta (48 px del botón y su margen).
-const ROOT_CLASSES =
-  'flex flex-col gap-space-4 max-sm:pb-[calc(var(--space-6)_*_2_+_env(safe-area-inset-bottom))]'
+// En el celular, el hueco al final de la página para la barra fija de
+// registrar lo deja index.css (data-barra-inferior), por debajo del pie.
+const ROOT_CLASSES = 'flex flex-col gap-space-4'
 
 // Chips de 44 px de alto o más (zona táctil): el chip del sistema mide 36.
 const TOUCH_CHIP = 'py-space-3'
@@ -259,7 +260,10 @@ export function InventoryView({
   // con ella queda a la misma distancia del campo que antes.
   const controls = (
     <>
-      <div className="sticky top-[0] z-10 -mx-space-1 bg-neutral-0 px-space-1 py-space-2">
+      <div
+        data-barra-superior
+        className="sticky top-[0] z-10 -mx-space-1 bg-neutral-0 px-space-1 py-space-2"
+      >
         <InventorySearch
           value={query}
           onValueChange={onQueryChange}
@@ -472,7 +476,7 @@ const REGISTER_CLASSES =
 function RegisterLink({ disabledBy }: { disabledBy?: string }) {
   if (disabledBy !== undefined) {
     return (
-      <div className={REGISTER_CLASSES}>
+      <div data-barra-inferior="celular" className={REGISTER_CLASSES}>
         <button
           type="button"
           aria-disabled="true"
@@ -496,7 +500,7 @@ function RegisterLink({ disabledBy }: { disabledBy?: string }) {
     )
   }
   return (
-    <div className={REGISTER_CLASSES}>
+    <div data-barra-inferior="celular" className={REGISTER_CLASSES}>
       <Link
         to={PATHS.newPlant}
         className="orki-btn orki-btn--primary min-w-[0] max-sm:flex-1 max-sm:shadow-card"

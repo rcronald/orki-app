@@ -1124,7 +1124,10 @@ export function PlantForm(props: PlantFormProps) {
       )}
 
       {/* Acciones fijas abajo, al alcance del pulgar. */}
-      <div className="sticky bottom-[0] z-10 -mx-space-4 flex gap-space-3 bg-neutral-0 px-space-4 pt-space-3 pb-[calc(var(--space-3)_+_env(safe-area-inset-bottom))]">
+      <div
+        data-barra-inferior="siempre"
+        className="sticky bottom-[0] z-10 -mx-space-4 flex gap-space-3 bg-neutral-0 px-space-4 pt-space-3 pb-[calc(var(--space-3)_+_env(safe-area-inset-bottom))]"
+      >
         {registered === null ? (
           <Button
             className="flex-none px-space-4"
