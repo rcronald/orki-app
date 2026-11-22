@@ -11,13 +11,12 @@ import {
 
 // Página pública de privacidad (/privacidad, #111, parte de #26).
 //
-// BORRADOR PENDIENTE DE REVISIÓN POR UNA PERSONA. Lo redactó un agente a
-// partir del código de esta rama (21 de noviembre de 2026, actualizado tras el
-// modo sin conexión, los eventos de uso, Sentry, la cola de propuestas y la
-// exportación a CSV); no es asesoría legal. Antes de darlo por bueno, alguien
-// con criterio legal debe revisarlo (ley peruana de protección de datos
-// personales, #26) y comprobar las afirmaciones que lista el README ("Página
-// de privacidad"). Al cambiar lo que guarda o envía la app (eventos, Sentry,
+// Texto revisado y aprobado por el responsable del proyecto el 22 de
+// noviembre de 2026. Lo redactó un agente a partir del código (modo sin
+// conexión, eventos de uso, Sentry, cola de propuestas y exportación a CSV).
+// No es asesoría legal y no lo ha revisado nadie con criterio legal (ley
+// peruana de protección de datos personales, #26); sigue siendo conveniente.
+// Al cambiar lo que guarda o envía la app (eventos, Sentry,
 // lo que se guarda en el dispositivo...), este texto cambia con ella.
 //
 // Va en su propio chunk (carga diferida desde App.tsx). De la atribución solo

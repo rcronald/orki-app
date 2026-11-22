@@ -663,7 +663,7 @@ Sin huérfanos:
 
 `/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie de la app, desde las pantallas de acceso, desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`); de la atribución del catálogo importa solo `src/backoffice/attribution.ts`, sin la pantalla del backoffice.
 
-**Es un borrador pendiente de revisión por una persona.** Lo redactó un agente comprobándolo contra el código de esta rama el 21 de noviembre de 2026. No es asesoría legal: conviene que lo revise alguien con criterio legal (ley peruana de protección de datos personales). La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
+**Texto revisado y aprobado por el responsable del proyecto el 22 de noviembre de 2026.** Lo redactó un agente comprobándolo contra el código el 21 de noviembre de 2026. No es asesoría legal y no lo ha revisado nadie con criterio legal (ley peruana de protección de datos personales); sigue siendo conveniente. La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
 
 Contacto: `src/privacy/contact.ts`, constante `PRIVACY_CONTACT` (el correo que indicó el responsable). Si se deja vacía o con el marcador `CONTACTO_PENDIENTE`, la página dice que aún no hay un medio de contacto publicado.
 
