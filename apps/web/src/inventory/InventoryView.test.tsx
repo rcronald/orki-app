@@ -548,6 +548,49 @@ describe('InventoryView: buscador', () => {
     expect(status()).toBeEmptyDOMElement()
   })
 
+  it('solo el campo queda fijo arriba: la respuesta de "¿Ya la tengo?" se desplaza con la lista (#19)', () => {
+    render(
+      <MemoryRouter>
+        <main>
+          <InventoryView
+            status="ready"
+            plants={PLANTS}
+            error={null}
+            onRetry={() => {}}
+            query="phal"
+            onQueryChange={() => {}}
+            filters={DEFAULT_FILTERS}
+            onFiltersChange={() => {}}
+            searchResult={
+              <a href="/coleccion/planta" data-testid="respuesta">
+                Phalaenopsis amabilis
+              </a>
+            }
+          />
+        </main>
+      </MemoryRouter>,
+    )
+    // El bloque fijo, con su fondo opaco, lleva el campo y el contador.
+    const pinned = searchbox().closest('.sticky')
+    expect(pinned).not.toBeNull()
+    expect(pinned).toHaveClass('bg-neutral-0')
+    expect(pinned).toContainElement(status())
+    // La respuesta no va dentro: no puede quedar montada sobre las tarjetas.
+    const answer = screen.getByTestId('respuesta')
+    expect(pinned).not.toContainElement(answer)
+    expect(answer.closest('.sticky')).toBeNull()
+    // Y va entre el buscador y la lista, en el orden del tabulador.
+    const firstCard = screen.getAllByRole('article')[0]
+    expect(
+      searchbox().compareDocumentPosition(answer) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      answer.compareDocumentPosition(firstCard as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('Escape limpia la búsqueda', async () => {
     const user = userEvent.setup()
     renderInventory(PLANTS)

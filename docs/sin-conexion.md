@@ -238,6 +238,49 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   los chunks del build (comprobado en `dist/sw.js` tras `npm run build`: los
   20 archivos JavaScript están en la lista).
 
+## 6. Eventos de producto sin conexión (#146)
+
+Los dos eventos de producto (#24; tabla `public.product_events`, #145) se
+generan también sin conexión y siguen las mismas reglas que la copia local.
+El código está en `src/telemetry/`.
+
+- **Qué lleva cada evento** (`telemetry/events.ts`): un uuid generado en la
+  app, el tipo, la duración en milisegundos (entera, de 0 a 24 horas; si no
+  cabe, el evento no se crea), si se generó sin conexión y la hora del
+  dispositivo. El registro lleva además si quedó con foto y si el nombre quedó
+  por validar; la búsqueda, su resultado (`owned`, `similar`, `not_owned`).
+  Nunca el texto buscado, nombres de plantas, correo ni nombre: el usuario lo
+  pone la base con el token.
+- **Registro completado** (`telemetry/useRegistrationEvent.ts`): desde que se
+  abre el formulario o, con "Con foto", desde que se elige la primera foto
+  (si no se elige ninguna, desde que se abrió), hasta que el registro termina
+  (planta guardada y, si llevaba foto, subida, o se siguió sin ella).
+- **Cuándo cuenta una búsqueda de "¿Ya la tengo?"**
+  (`telemetry/useHaveItSearchEvents.ts`): una por búsqueda, con la primera
+  respuesta que se queda 2 s en pantalla sin cambiar, o la que había al salir
+  de la pantalla u ocultarse la app. No cuentan las respuestas intermedias
+  mientras se escribe, una búsqueda que se vacía antes, lo que cambia después
+  en la misma búsqueda ni una búsqueda que ya venía en la URL al abrir.
+- **Generado sin conexión:** con la app en solo lectura (sin red o con la
+  sesión sin confirmar) o sin red según el navegador al mostrar la respuesta.
+- **Cola** (`telemetry/queue.ts`): IndexedDB, base `orki-eventos`, una cola
+  por id de usuario; sin IndexedDB, en memoria. Tope de 500 (se descartan los
+  más antiguos) y se descartan los de más de 29 días (la base rechaza los de
+  más de 30).
+- **Envío** (`telemetry/runtime.ts`, `telemetry/sender.ts`): solo con la
+  sesión confirmada por Clerk y conexión; con la sesión sin confirmar no se
+  pide nada a la red. Lotes de hasta 100 con `record_product_events()`, que
+  ignora los ids repetidos, así que reenviar es seguro. Un error de los datos
+  (clase 22 o 23) descarta el lote; cualquier otro fallo lo deja en la cola y
+  se reintenta (30 s, 1 min, 2 min… hasta 15 min) o antes, al volver la red o
+  la sesión. Nada de esto se ve en la interfaz ni va a Sentry.
+- **Cerrar sesión** (también sin conexión) borra todas las colas; entrar con
+  otra cuenta borra las de las demás y cancela un envío en curso. Lo hace
+  `ProductEventsSync`, con `useAppIdentity()`.
+- **Carga diferida:** las pantallas solo importan `telemetry/product-events.ts`
+  (unos pocos cientos de bytes); la cola y el envío van en su propio chunk,
+  que se descarga la primera vez que hay sesión.
+
 ## Pendiente o sin verificar
 
 - Todo lo marcado como hipótesis en la sección 1, y el guion de abajo (#121).

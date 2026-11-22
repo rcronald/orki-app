@@ -15,11 +15,6 @@ export interface InventorySearchProps {
   onValueChange: (value: string) => void
   /** Texto bajo el campo: cuántas coinciden. Se anuncia sin mover el foco. */
   status?: ReactNode
-  /**
-   * Bloque de resultado bajo el campo. Lo usará "¿Ya la tengo?" (#19) para
-   * responder sobre el mismo texto, con OwnershipAnswer.
-   */
-  children?: ReactNode
   /** Referencia al campo, para devolverle el foco desde fuera. */
   inputRef?: RefObject<HTMLInputElement | null>
 }
@@ -36,7 +31,6 @@ export function InventorySearch({
   value,
   onValueChange,
   status,
-  children,
   inputRef: externalRef,
 }: InventorySearchProps) {
   const id = useId()
@@ -101,7 +95,6 @@ export function InventorySearch({
       <p id={statusId} role="status" className="text-sm text-neutral-700">
         {status}
       </p>
-      {children}
     </div>
   )
 }

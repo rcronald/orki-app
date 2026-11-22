@@ -58,8 +58,9 @@ export interface OwnershipPanelProps {
 
 /**
  * Ejemplares que se listan bajo la respuesta; el resto, "Y N más". Pocos: la
- * respuesta va en la cabecera fija del inventario y en el celular no debe
- * tapar la lista, que ya muestra todos los que coinciden por texto.
+ * respuesta va entre el buscador y la lista, y en el celular no debe empujar
+ * la lista, que ya muestra todos los que coinciden por texto, fuera de la
+ * pantalla.
  */
 const LISTED_MATCHES = 3
 
