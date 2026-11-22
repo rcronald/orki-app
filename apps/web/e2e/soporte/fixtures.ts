@@ -182,26 +182,3 @@ export const test = base.extend<Opciones & Fixtures>({
 })
 
 export { expect }
-
-/**
- * Fallo conocido (#148): en estas pantallas, el Firefox de Playwright 1.65
- * (Firefox 159) cierra la pestaña con un fallo de segmentación (SIGSEGV) del
- * proceso de contenido ("Page crashed"), siempre en el mismo punto. Visto en la
- * imagen oficial de Playwright para Linux; sin comprobar todavía en el CI
- * (x86_64) ni en un Firefox normal. Ver el informe del #148 y el issue que lo
- * sigue.
- */
-export const FIREFOX_SE_CAE =
-  'Firefox de Playwright se cae (SIGSEGV del proceso de contenido) en esta pantalla; fallo conocido del #148, pendiente de comprobar en el CI y en un Firefox normal.'
-
-/**
- * Marca la prueba como fallo conocido en Firefox (ver FIREFOX_SE_CAE). Con
- * E2E_PROBAR_FALLOS_CONOCIDOS=1 se ejecuta igual, para comprobar si sigue
- * fallando.
- */
-export function firefoxSeCae(browserName: string) {
-  test.fixme(
-    browserName === 'firefox' && !process.env.E2E_PROBAR_FALLOS_CONOCIDOS,
-    FIREFOX_SE_CAE,
-  )
-}
