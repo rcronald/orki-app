@@ -133,6 +133,12 @@ export default defineConfig({
         // del registro (avif, #13) también: son cinco, de menos de 100 KB cada
         // una, y así aparecen al momento y sin conexión.
         globPatterns: ['**/*.{js,css,html,woff2,avif}'],
+        // La foto de la portada (#193) no: sus cinco variantes suman unos
+        // 450 KB, más de lo que queda en el presupuesto del precaché, y quien
+        // la necesita es una visita nueva, con conexión. Sin conexión, la
+        // portada se ve igual con el fondo de la foto y su texto alternativo.
+        // El JPEG de respaldo no entra en globPatterns; se nombra por claridad.
+        globIgnores: ['**/portada-*.avif', '**/portada-*.jpg'],
         // Cualquier navegación sin coincidencia en caché responde con index.html,
         // así que todas las rutas de la app (src/routes/paths.ts, incluidas las
         // subrutas de Clerk como /iniciar-sesion/sso-callback) se abren y se

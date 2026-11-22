@@ -10,6 +10,10 @@ import {
   resetFakeClerk,
   setFakeClerk,
 } from '../test/clerk-mock.tsx'
+import {
+  LAST_USER_KEY,
+  resetOfflineIdentity,
+} from '../auth/offline-identity.ts'
 import { AppRouter } from './AppRouter.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
@@ -20,7 +24,15 @@ beforeEach(() => {
   document.documentElement.lang = 'es'
   document.title = 'orqui.apps'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+  localStorage.clear()
+  resetOfflineIdentity()
 })
+
+/** Este dispositivo recuerda a un usuario con sesión (#18, #120). */
+function rememberUserOnDevice() {
+  localStorage.setItem(LAST_USER_KEY, 'user_recordado')
+  resetOfflineIdentity()
+}
 
 // Muestra la ubicación actual del enrutador para comprobar redirecciones.
 function LocationProbe() {
@@ -61,17 +73,29 @@ function routerPush(to: string) {
 }
 
 describe('rutas públicas', () => {
-  it('el inicio se abre sin sesión', async () => {
+  it('el inicio se abre sin sesión, con la cabecera pública y sin chips', async () => {
     renderAt('/')
 
-    expect(await findHeading('orqui.apps')).toBeInTheDocument()
-    expect(
-      screen.getByText('Tu colección de orquídeas, siempre a mano.'),
-    ).toBeInTheDocument()
+    expect(await findHeading(/./)).toBeInTheDocument()
     expect(document.title).toBe('orqui.apps')
+    expect(currentLocation()).toBe('/')
     expect(
-      screen.getByRole('link', { name: 'Iniciar sesión' }),
-    ).toBeInTheDocument()
+      screen.queryByRole('navigation', { name: 'Principal' }),
+    ).not.toBeInTheDocument()
+    const banner = screen.getByRole('banner')
+    expect(
+      within(banner).getByRole('link', { name: 'Inicio de orqui.apps' }),
+    ).toHaveAttribute('href', '/')
+    expect(
+      within(banner).getByRole('link', { name: 'Iniciar sesión' }),
+    ).toHaveAttribute('href', '/iniciar-sesion')
+    expect(
+      within(banner).getByRole('link', { name: 'Crear cuenta gratis' }),
+    ).toHaveAttribute('href', '/registro')
+    expect(
+      screen.getByRole('link', { name: 'Saltar al contenido' }),
+    ).toHaveAttribute('href', '#contenido')
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'contenido')
     await expectNoAxeViolations()
   })
 
@@ -84,14 +108,37 @@ describe('rutas públicas', () => {
     await expectNoAxeViolations()
   })
 
-  it('el inicio no queda en blanco si Clerk no carga', async () => {
-    setFakeClerk({ status: 'error' })
+  it.each([
+    ['si Clerk no carga', 'error', true],
+    ['sin conexión y con Clerk sin cargar', 'loading', false],
+  ] as const)(
+    'el inicio no queda en blanco %s: la portada, sin redirigir',
+    async (_case, status, online) => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(online)
+      setFakeClerk({ status })
+      renderAt('/')
+
+      expect(await findHeading(/./)).toBeInTheDocument()
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', {
+          name: 'Crear cuenta gratis',
+        }),
+      ).toBeInTheDocument()
+      expect(currentLocation()).toBe('/')
+    },
+  )
+
+  it('mientras Clerk carga y nadie está recordado: la portada al momento', async () => {
+    setFakeClerk({ status: 'loading' })
     renderAt('/')
 
-    expect(await findHeading('orqui.apps')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'El acceso a tu cuenta no está disponible ahora.',
-    )
+    expect(await findHeading(/./)).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('banner')).getByRole('link', {
+        name: 'Crear cuenta gratis',
+      }),
+    ).toBeInTheDocument()
+    expect(currentLocation()).toBe('/')
   })
 
   it('una ruta que no existe muestra "no encontrado"', async () => {
@@ -104,6 +151,60 @@ describe('rutas públicas', () => {
       '/',
     )
     await expectNoAxeViolations()
+  })
+})
+
+describe('el inicio con sesión', () => {
+  it('lleva a «Mi colección» sin pintar la portada', async () => {
+    setFakeClerk({ signedIn: true })
+    renderAt('/')
+
+    expect(await findHeading('Mi colección')).toBeInTheDocument()
+    expect(currentLocation()).toBe('/coleccion')
+    expect(
+      screen.queryByRole('link', { name: 'Crear cuenta gratis' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('con la sesión recordada sin confirmar (sin conexión) lleva a la colección', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    setFakeClerk({ status: 'loading' })
+    rememberUserOnDevice()
+    renderAt('/')
+
+    expect(await findHeading('Mi colección')).toBeInTheDocument()
+    expect(currentLocation()).toBe('/coleccion')
+  })
+
+  it('mientras Clerk carga con un usuario recordado: «Cargando el acceso…», sin la portada', async () => {
+    setFakeClerk({ status: 'loading' })
+    rememberUserOnDevice()
+    renderAt('/')
+
+    expect(
+      await screen.findByText('Cargando el acceso…', {
+        selector: 'main [role="status"]',
+      }),
+    ).toBeInTheDocument()
+    expect(currentLocation()).toBe('/')
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Crear cuenta gratis' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
+    ).toBeInTheDocument()
+  })
+
+  it('el logotipo de la cabecera lleva al inicio, que vuelve a la colección', async () => {
+    const user = userEvent.setup()
+    setFakeClerk({ signedIn: true })
+    renderAt('/cuenta')
+
+    await findHeading('Tu cuenta')
+    await user.click(screen.getByRole('link', { name: 'Inicio de orqui.apps' }))
+    expect(await findHeading('Mi colección')).toBeInTheDocument()
+    expect(currentLocation()).toBe('/coleccion')
   })
 })
 
@@ -180,7 +281,7 @@ describe('rutas con sesión', () => {
   it('con sesión, la pantalla de cuenta se abre desde la cabecera', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true })
-    renderAt('/')
+    renderAt('/coleccion')
     await user.click(await screen.findByRole('link', { name: 'Tu cuenta' }))
     expect(await findHeading('Tu cuenta')).toBeInTheDocument()
     expect(currentLocation()).toBe('/cuenta')
@@ -254,9 +355,9 @@ describe('administración del catálogo', () => {
   it('con el rol catalog_admin: ve el enlace y la página', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true, appRole: 'catalog_admin' })
-    renderAt('/')
+    renderAt('/coleccion')
 
-    await findHeading('orqui.apps')
+    await findHeading('Mi colección')
     const nav = screen.getByRole('navigation', { name: 'Principal' })
     await user.click(within(nav).getByRole('link', { name: 'Administración' }))
 
@@ -336,38 +437,43 @@ describe('página de muestra', () => {
 })
 
 describe('navegación', () => {
-  it('marca la página actual y se usa con el teclado', async () => {
+  it('sin «Inicio» ni «Catálogo»; marca la página actual y se usa con el teclado', async () => {
     const user = userEvent.setup()
-    renderAt('/')
+    setFakeClerk({ signedIn: true })
+    renderAt('/cuenta')
 
-    await findHeading('orqui.apps')
+    await findHeading('Tu cuenta')
     const nav = screen.getByRole('navigation', { name: 'Principal' })
-    expect(within(nav).getByRole('link', { name: 'Inicio' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    )
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Mi colección'])
 
-    // Saltar al contenido, Iniciar sesión, Crear cuenta, Inicio, Catálogo.
+    // Saltar al contenido, el logotipo, el menú de la cuenta, Tu cuenta,
+    // Cerrar sesión y Mi colección.
     await user.tab()
     expect(
       screen.getByRole('link', { name: 'Saltar al contenido' }),
     ).toHaveFocus()
     await user.tab()
+    expect(
+      screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
+    ).toHaveFocus()
     await user.tab()
     await user.tab()
     await user.tab()
-    const catalog = within(nav).getByRole('link', { name: 'Catálogo' })
-    expect(catalog).toHaveFocus()
+    await user.tab()
+    const collection = within(nav).getByRole('link', { name: 'Mi colección' })
+    expect(collection).toHaveFocus()
+    expect(collection).not.toHaveAttribute('aria-current')
     await user.keyboard('{Enter}')
 
     // El foco pasa al título de la página nueva y la pestaña cambia.
-    const heading = await findHeading('Catálogo')
+    const heading = await findHeading('Mi colección')
     expect(heading).toHaveFocus()
-    expect(document.title).toBe('Catálogo · orqui.apps')
-    expect(catalog).toHaveAttribute('aria-current', 'page')
-    expect(
-      within(nav).getByRole('link', { name: 'Inicio' }),
-    ).not.toHaveAttribute('aria-current')
+    expect(document.title).toBe('Mi colección · orqui.apps')
+    expect(collection).toHaveAttribute('aria-current', 'page')
     await expectNoAxeViolations()
   })
 
@@ -377,16 +483,42 @@ describe('navegación', () => {
     expect(await findHeading('Catálogo')).not.toHaveFocus()
   })
 
+  it('el catálogo sigue existiendo, sin enlace en la navegación', async () => {
+    renderAt('/catalogo')
+
+    expect(await findHeading('Catálogo')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Principal' })
+    expect(
+      within(nav).queryByRole('link', { name: 'Catálogo' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('sin sesión, la colección se ofrece igual y lleva a iniciar sesión', async () => {
     const user = userEvent.setup()
-    renderAt('/')
+    renderAt('/catalogo')
 
-    await findHeading('orqui.apps')
+    await findHeading('Catálogo')
     await user.click(screen.getByRole('link', { name: 'Mi colección' }))
 
     expect(await screen.findByTestId('clerk-sign-in')).toBeInTheDocument()
     expect(currentLocation()).toBe('/iniciar-sesion?redirect_url=%2Fcoleccion')
     // Al llegar navegando, el foco va al contenido de la pantalla de acceso.
     expect(screen.getByRole('main', { name: 'Iniciar sesión' })).toHaveFocus()
+  })
+
+  it('desde la portada, «Crear cuenta gratis» lleva al registro con el foco en su contenido', async () => {
+    const user = userEvent.setup()
+    renderAt('/')
+
+    await findHeading(/./)
+    await user.click(
+      within(screen.getByRole('banner')).getByRole('link', {
+        name: 'Crear cuenta gratis',
+      }),
+    )
+
+    expect(await screen.findByTestId('clerk-sign-up')).toBeInTheDocument()
+    expect(currentLocation()).toBe('/registro')
+    expect(screen.getByRole('main', { name: 'Crear cuenta' })).toHaveFocus()
   })
 })

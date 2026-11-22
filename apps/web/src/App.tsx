@@ -7,7 +7,7 @@ import { RequireAuth, RequireCatalogAdmin } from './auth/RouteGuards.tsx'
 import { AppShell } from './components/AppShell.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
-import { HomePage } from './pages/HomePage.tsx'
+import { HomeRoute } from './pages/HomeRoute.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { SignInPage } from './pages/SignInPage.tsx'
 import { SignUpPage } from './pages/SignUpPage.tsx'
@@ -70,8 +70,10 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
   return (
     <AuthProvider publishableKey={clerkPublishableKey}>
       <Routes>
+        {/* El inicio tiene su propia estructura (cabecera pública, sin chips)
+            y, con sesión, lleva a la colección (#191). */}
+        <Route index element={<HomeRoute />} />
         <Route element={<AppShell />}>
-          <Route index element={<HomePage />} />
           <Route path={PATHS.catalog} element={<CatalogPage />} />
           <Route
             path={PATHS.privacy}

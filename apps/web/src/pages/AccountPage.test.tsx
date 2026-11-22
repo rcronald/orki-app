@@ -17,7 +17,7 @@ import {
   setFakeClerk,
 } from '../test/clerk-mock.tsx'
 import { AccountPage } from './AccountPage.tsx'
-import { HomePage } from './HomePage.tsx'
+import { HomeRoute } from './HomeRoute.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
@@ -42,7 +42,7 @@ function renderAt(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<HomeRoute />} />
         <Route path="/iniciar-sesion" element={<p>Pantalla de acceso</p>} />
         <Route element={<AccountDeletionGate />}>
           <Route element={<RequireAuth />}>
@@ -117,9 +117,7 @@ describe('AccountPage', () => {
 
     const notice = await screen.findByText(/Tu cuenta se eliminó/)
     expect(notice.closest('[role="status"]')).not.toBeNull()
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'orqui.apps' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
     expect(order).toEqual([
       `photos:${FAKE_USER_ID}`,
       `plants:${FAKE_USER_ID}`,

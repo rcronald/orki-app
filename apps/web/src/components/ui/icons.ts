@@ -1,4 +1,6 @@
 import {
+  ArrowRight,
+  BookOpen,
   Calendar,
   Camera,
   Check,
@@ -6,6 +8,7 @@ import {
   ChevronRight,
   CircleCheck,
   Droplets,
+  Flower,
   Flower2,
   Image,
   MapPin,
@@ -18,6 +21,7 @@ import {
   Tag,
   Trash2,
   TriangleAlert,
+  User,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -26,6 +30,8 @@ import {
 // existen en la app; para uno nuevo, primero se añade al sistema. Vive aparte
 // de Icon.tsx para poder exportar la lista sin romper el refresco en caliente.
 export const ICONS = {
+  'arrow-right': ArrowRight,
+  'book-open': BookOpen,
   calendar: Calendar,
   camera: Camera,
   check: Check,
@@ -33,6 +39,7 @@ export const ICONS = {
   'chevron-right': ChevronRight,
   'circle-check': CircleCheck,
   droplets: Droplets,
+  flower: Flower,
   'flower-2': Flower2,
   image: Image,
   'map-pin': MapPin,
@@ -45,6 +52,7 @@ export const ICONS = {
   tag: Tag,
   'trash-2': Trash2,
   'triangle-alert': TriangleAlert,
+  user: User,
   x: X,
 } as const satisfies Record<string, LucideIcon>
 

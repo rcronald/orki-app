@@ -16,6 +16,7 @@ describe('Button', () => {
 
   it.each([
     ['primary', 'orki-btn--primary'],
+    ['strong', 'orki-btn--strong'],
     ['secondary', 'orki-btn--secondary'],
     ['danger', 'orki-btn--danger'],
   ] as const)('variante %s', (variant, className) => {

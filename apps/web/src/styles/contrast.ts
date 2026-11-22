@@ -72,6 +72,16 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   // y acción final sobre color-primary-soft, con el anillo color-secondary.
   text('color-neutral-700', 'color-primary-soft'),
   ui('color-secondary', 'color-primary-soft'),
+  // Páginas públicas (#190): botón orki-btn--strong (y su hover, que pasa a
+  // color-secondary con el par ya listado), títulos y enlaces en
+  // color-secondary-strong, e iconos de las ventajas en su recuadro
+  // color-secondary-soft. color-neutral-200 es solo decorativa: sin par.
+  text('color-neutral-0', 'color-secondary-strong'),
+  text('color-secondary-strong', 'color-neutral-0'),
+  text('color-secondary-strong', 'color-neutral-50'),
+  text('color-secondary-strong', 'color-secondary-soft'),
+  text('color-secondary', 'color-secondary-soft'),
+  ui('color-secondary-strong', 'color-secondary-soft'),
 ]
 
 function relativeLuminance(hex: string): number {

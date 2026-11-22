@@ -26,6 +26,8 @@ async function esperarServiceWorker(page: Page) {
     .toBe(true)
 }
 
+const TITULO_PORTADA = 'Tu colección de orquídeas, en un solo lugar'
+
 test('manifiesto instalable', async ({ page, request }) => {
   await page.goto('/')
   const enlace = page.locator('link[rel="manifest"]')
@@ -81,7 +83,7 @@ test.describe('sin sesión', () => {
   }) => {
     await page.goto('/')
     await expect(
-      page.getByRole('heading', { name: 'orqui.apps', level: 1 }),
+      page.getByRole('heading', { name: TITULO_PORTADA, level: 1 }),
     ).toBeVisible()
     await esperarServiceWorker(page)
 
@@ -98,10 +100,10 @@ test.describe('sin sesión', () => {
     }
     await page.reload()
     await expect(
-      page.getByRole('heading', { name: 'orqui.apps', level: 1 }),
+      page.getByRole('heading', { name: TITULO_PORTADA, level: 1 }),
     ).toBeVisible()
     await expect(
-      page.getByText('Tu colección de orquídeas, siempre a mano.'),
+      page.getByRole('heading', { name: 'Organiza tus plantas', level: 2 }),
     ).toBeVisible()
     // Las demás rutas también se abren desde la caché (navigateFallback).
     await page.goto('/catalogo')

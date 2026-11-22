@@ -165,8 +165,8 @@ Los tokens viven en `apps/web/src/styles/tokens.css`, que es la única fuente de
 
 Los valores por defecto de Tailwind están vaciados: solo existen utilidades con valores del sistema. `bg-white`, `text-base`, `rounded`, `font-bold` o `p-5` no generan nada. Se usan los nombres de los tokens:
 
-- Color: `bg-neutral-0`, `bg-neutral-50`, `text-neutral-900`, `text-neutral-700`, `text-secondary`, `border-secondary`, `bg-primary`, `bg-danger-soft`.
-- Texto: `text-display`, `text-xl`, `text-lg`, `text-md`, `text-sm` y `text-xs` (cada uno con su interlineado y peso), `font-display`, `font-body`, `font-normal`, `font-semibold` y la utilidad `scientific-name` para los nombres científicos (font-display en cursiva).
+- Color: `bg-neutral-0`, `bg-neutral-50`, `text-neutral-900`, `text-neutral-700`, `text-secondary`, `border-secondary`, `bg-primary`, `bg-danger-soft`. Las páginas públicas (#190) añaden `color-secondary-strong` (verde bosque del botón principal, los títulos y los enlaces), `color-secondary-soft` (recuadro de los iconos de las ventajas) y `color-neutral-200` (líneas divisorias de 1 px, solo decorativa).
+- Texto: `text-hero` y `text-lead` (título y frase de apoyo del Hero de las páginas públicas), `text-display`, `text-xl`, `text-lg`, `text-md`, `text-sm` y `text-xs` (cada uno con su interlineado y peso), `font-display`, `font-body`, `font-normal`, `font-semibold` y la utilidad `scientific-name` para los nombres científicos (font-display en cursiva).
 - Espaciado: las utilidades llevan el nombre del token, `p-space-4`, `gap-space-2`, `mt-space-6`, `w-space-6`. No existe la escala numérica, así `space-5` (24 px) no se confunde con el paso 5 de Tailwind.
 - Radios y sombra: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-pill` y `shadow-card` (solo en tarjetas).
 
@@ -178,7 +178,7 @@ Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo 
 
 | Componente        | Para qué                                                                                                                                                                                                                                                                               |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Button`          | Acciones. Variantes `primary` (una por pantalla), `secondary` y `danger`; ancho completo con `block`.                                                                                                                                                                                  |
+| `Button`          | Acciones. Variantes `primary` (una por pantalla), `strong` (la principal de las páginas públicas, verde; no se mezcla con `primary`), `secondary` y `danger`; ancho completo con `block`.                                                                                              |
 | `Chip`            | Filtros y opciones cortas; botón de alternar con `selected`.                                                                                                                                                                                                                           |
 | `ChipGroup`       | Fila de chips con su nombre para el lector de pantalla.                                                                                                                                                                                                                                |
 | `TextField`       | Campo de texto con etiqueta visible, ayuda y error.                                                                                                                                                                                                                                    |
@@ -190,7 +190,10 @@ Están en `apps/web/src/components/ui/`, cada uno con su prueba. No hay archivo 
 | `Modal`           | Base de todos los diálogos modales (#151): `role="dialog"` o `"alertdialog"` con `aria-modal`, resto de la página `inert`, foco inicial, foco atrapado, Escape y foco devuelto al cerrar. La usan `ConfirmDialog`, el `ModalDialog` del backoffice y el diálogo de eliminar la cuenta. |
 | `ConfirmDialog`   | Confirmación modal con "Cancelar" y la acción (`danger` para lo que no se deshace), sobre `Modal`.                                                                                                                                                                                     |
 | `Collapsible`     | Sección plegable.                                                                                                                                                                                                                                                                      |
+| `Feature`         | FeatureItem del sistema (#190): ventaja con icono en un recuadro `color-secondary-soft`, título (`h2` por defecto) y una frase, dentro de `FeatureList` (`orki-features`). De a tres en fila; apiladas hasta 720 px.                                                                   |
 | `Icon`            | Único punto de entrada de los iconos (subconjunto de Lucide del sistema); ningún otro archivo importa `lucide-react`.                                                                                                                                                                  |
+
+Las páginas públicas (la portada, #179) usan además `components/PublicHeader.tsx`, la NavBar del sistema (`orki-nav`), y el marcado del Hero (`orki-hero`, `--bleed`, `--art`, `__title`, `__lead`, `__actions`, `__photo`, `__art`) y del enlace de texto (`orki-link`, `--nav`) tal como lo documenta el sistema. Su media query corta en 720 px; para ajustar algo alrededor de esas piezas al mismo ancho, `src/index.css` define la variante `publico-estrecho:` (`max-width: 720px`), porque `max-[720px]:` de Tailwind sería «menos de 720 px».
 
 ### Página de muestra
 
@@ -338,8 +341,8 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 
 | Ruta                       | Pantalla                                                                                                                                                      | Acceso                     |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `/`                        | Inicio                                                                                                                                                        | Pública                    |
-| `/catalogo`                | Catálogo (provisional)                                                                                                                                        | Pública                    |
+| `/`                        | Portada (ver [Portada](#portada)); con sesión lleva a «Mi colección»                                                                                          | Pública                    |
+| `/catalogo`                | Catálogo (provisional, sin enlace en la navegación hasta #187)                                                                                                | Pública                    |
 | `/coleccion`               | Mi colección (provisional)                                                                                                                                    | Con sesión                 |
 | `/coleccion/nueva`         | Registrar una planta (provisional)                                                                                                                            | Con sesión                 |
 | `/administracion/catalogo` | Administración del catálogo: especies, sus nombres, géneros y abreviaturas, y la cola de propuestas (ver [Backoffice del catálogo](#backoffice-del-catálogo)) | Con sesión y rol de admin. |
@@ -349,10 +352,26 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 | `/diagnostico`             | Diagnóstico de identidad                                                                                                                                      | Solo fuera de producción   |
 | Cualquier otra             | Página no encontrada                                                                                                                                          | Pública                    |
 
-- Navegación: `src/components/AppShell.tsx` pinta la cabecera, un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. El enlace "Administración" solo aparece con el rol de administrador.
+- Navegación: `src/components/AppShell.tsx` pinta la cabecera (el logotipo, que enlaza al inicio, y los controles de cuenta), un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema: «Mi colección» y, solo con el rol de administrador, «Administración». No hay chip «Inicio» (el logotipo lleva al inicio, que con sesión abre la colección) ni «Catálogo», que es un marcador hasta la consulta pública (#187); la ruta sigue existiendo. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. La portada (`/`) no usa `AppShell` sino `PublicShell`, sin chips (ver [Portada](#portada)).
 - Cada página pone el título de la pestaña ("Catálogo · orqui.apps") y, al llegar navegando dentro de la app (no al cargarla), el foco va a su título (`h1` con `tabIndex={-1}`) para que el lector de pantalla anuncie la página nueva; en las pantallas de acceso, al contenido principal. Ver `src/routes/navigation.ts`.
 - Recargar cualquier ruta funciona: en Vercel, la reescritura de `vercel.json` responde con `index.html` todo lo que no es `assets/` ni `workbox-`; con la app instalada, el `navigateFallback` del service worker hace lo mismo con cualquier navegación.
 - Carga: `src/routes/AppRouter.tsx` carga `App.tsx` (Clerk, su localización y las páginas) de forma diferida, en un chunk aparte del inicial. El service worker precachea todos los chunks, así que sin conexión también carga.
+
+### Portada
+
+`/` es la portada pública (#179), según las maquetas de escritorio y de celular y con las piezas de las páginas públicas del design system (ver [Design system en la app](#design-system-en-la-app)): la NavBar (`src/components/PublicHeader.tsx`, dentro de `src/components/PublicShell.tsx`, que conserva «Saltar al contenido» y el pie), el Hero con la foto y el dibujo botánico y tres ventajas (`src/pages/HomePage.tsx`). Los textos son los del #179: nada que la app no haga hoy y sin enlaces al catálogo hasta #187. «Crear cuenta gratis» lleva a `/registro` e «Iniciar sesión» a `/iniciar-sesion`. Hasta 720 px va en una columna y la cabecera queda solo con el logotipo: las dos acciones están en el Hero, una debajo de otra.
+
+Qué se ve en `/` lo decide `src/pages/HomeRoute.tsx` con `useAppIdentity()`:
+
+| Situación                                                                      | Qué se ve                                                                                                                                                   |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Con sesión, o con la sesión recordada sin confirmar (sin conexión o sin Clerk) | Redirige a `/coleccion`, sin pintar la portada                                                                                                              |
+| Sin sesión, o sin Clerk y sin nadie recordado                                  | La portada                                                                                                                                                  |
+| Tras eliminar la cuenta                                                        | La portada con el aviso «Tu cuenta se eliminó…»                                                                                                             |
+| Clerk aún no responde y el dispositivo recuerda a alguien                      | La cabecera con solo el logotipo y «Cargando el acceso…»: lo más probable es que tenga sesión, y así no aparece la portada para quitarla un momento después |
+| Clerk aún no responde y no se recuerda a nadie                                 | La portada al momento, sin esperar a Clerk (lo normal en una visita nueva)                                                                                  |
+
+Un único `h1` (el título); las ventajas son `h2`. La foto y el dibujo están en `src/assets/portada/` con su origen y cómo sustituirlos (`LEEME.md`): la foto se prepara con `npm run portada --workspace=apps/web -- preparar <foto> "<texto alternativo>"` y no entra en el precaché del service worker. La medición de la carga está en [`docs/medicion-de-carga.md`](docs/medicion-de-carga.md).
 
 ### Rutas protegidas y vuelta tras iniciar sesión
 
@@ -428,7 +447,7 @@ Como la muestra, solo existe con `VITE_APP_ENV` distinto de `prod`: `src/App.tsx
 
 ### Sin conexión
 
-La app instalada abre sin red: el service worker sirve `index.html`, el JavaScript y las fuentes desde su precache, la pantalla pública se pinta enseguida y el acceso no bloquea el arranque.
+La app instalada abre sin red: el service worker sirve `index.html`, el JavaScript y las fuentes desde su precache, la portada se pinta enseguida (sin la foto, que no se precachea; queda su texto alternativo) y el acceso no bloquea el arranque. Con una sesión recordada, `/` lleva a la copia local de la colección.
 
 Qué hace Clerk sin red. **Verificado en la documentación de Clerk:**
 
@@ -701,6 +720,8 @@ Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, enc
 ## Pruebas de extremo a extremo
 
 Los flujos principales de la Fase 1 (#148) se prueban con [Playwright](https://playwright.dev) en un navegador real: acceso, registro (con y sin foto, y con un nombre por validar), inventario (lista, cuadrícula, búsqueda y filtros), «¿Ya la tengo?», edición y baja, backoffice del catálogo y la PWA (manifiesto, service worker y arranque sin conexión). Cada pantalla recorrida pasa además por [axe](https://github.com/dequelabs/axe-core) con las reglas de nivel A y AA de WCAG 2.0, 2.1 y 2.2; la app no tiene tema oscuro, así que se revisa solo el claro. Lo que axe no ve se prueba aparte: `e2e/foco-no-tapado.spec.ts` comprueba, con el tabulador en una pantalla de celular, que las barras fijas (el buscador del inventario, registrar desde el inventario y las acciones del formulario) no tapan el control con el foco (WCAG 2.4.11, #151); cada barra se marca con `data-barra-superior` o `data-barra-inferior` y `src/index.css` deja ese margen con `scroll-padding`.
+
+`e2e/portada.spec.ts` revisa la portada a 360 px (una columna, sin desplazamiento horizontal, acciones de al menos 44 px) y en escritorio a 1440 px (dos columnas, foto hasta el borde y ventajas en fila), las dos con axe, y que con sesión `/` lleve a la colección.
 
 Corren en cuatro perfiles: Chromium, Firefox y WebKit de escritorio, y `celular`, un iPhone 15 (WebKit, pantalla pequeña y táctil). Las pruebas están en `apps/web/e2e/` y la configuración en `apps/web/playwright.config.ts`.
 
