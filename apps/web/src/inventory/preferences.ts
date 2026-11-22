@@ -21,8 +21,9 @@ export interface InventoryPreferences {
 /** Clave en localStorage. Si cambia la forma del valor, cambia la versión. */
 export const PREFERENCES_KEY = 'orki:inventario:preferencias:v1'
 
+// Sin preferencia guardada, cuadrícula (la vista de la maqueta del #208).
 export const DEFAULT_PREFERENCES: InventoryPreferences = {
-  view: 'list',
+  view: 'grid',
   grouped: false,
 }
 

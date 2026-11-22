@@ -1,4 +1,5 @@
 import {
+  countActiveFilters,
   DEFAULT_FILTERS,
   type FilterOptions,
   type PlantFilters,
@@ -10,9 +11,11 @@ import {
   VALIDATION_FILTER_LABEL,
 } from './texts.ts'
 
-// Los filtros activos como chips quitables (ActiveFilters en
-// InventoryFilters.tsx), en el orden de las opciones: estado, géneros,
-// colores, orígenes y validaciones.
+// Los filtros activos del panel como chips quitables (ActiveFilters en
+// InventoryFilters.tsx), en el orden de las opciones: estado, colores,
+// orígenes y validaciones. El género no está: tiene su propia fila de chips
+// siempre a la vista (los accesos por género, #208), que ya dice cuál está
+// elegido.
 
 export interface ActiveFilterChip {
   /** Clave única: grupo y valor. */
@@ -25,7 +28,7 @@ export interface ActiveFilterChip {
   without: PlantFilters
 }
 
-/** Los filtros activos como chips, de lo resuelto contra las opciones. */
+/** Los filtros activos del panel como chips, de lo resuelto contra las opciones. */
 export function activeFilterChips(
   filters: PlantFilters,
   options: FilterOptions,
@@ -37,18 +40,6 @@ export function activeFilterChips(
       group: FILTERS_TEXT.status,
       label: STATUS_FILTER_LABEL[filters.status],
       without: { ...filters, status: DEFAULT_FILTERS.status },
-    })
-  }
-  for (const { genus } of options.genera) {
-    if (!filters.genera.includes(genus.id)) continue
-    chips.push({
-      id: `genero:${genus.id}`,
-      group: FILTERS_TEXT.genus,
-      label: genus.name,
-      without: {
-        ...filters,
-        genera: filters.genera.filter((id) => id !== genus.id),
-      },
     })
   }
   for (const { color } of options.colors) {
@@ -90,4 +81,14 @@ export function activeFilterChips(
     })
   }
   return chips
+}
+
+/** Los filtros sin los del panel: conserva solo el género elegido. */
+export function withoutPanelFilters(filters: PlantFilters): PlantFilters {
+  return { ...DEFAULT_FILTERS, genera: filters.genera }
+}
+
+/** Cuántos filtros del panel hay activos (todos menos el género). */
+export function countPanelFilters(filters: PlantFilters): number {
+  return countActiveFilters(filters) - filters.genera.length
 }

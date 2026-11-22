@@ -49,9 +49,9 @@ test('registrar una especie del catálogo sin foto', async ({
   await expect(
     page.getByRole('status').filter({ hasText: 'Registraste' }),
   ).toContainText('Registraste Phalaenopsis amabilis en tu colección.')
-  await expect(
-    page.getByRole('list', { name: 'Resumen de tu colección' }),
-  ).toContainText('6 orquídeas')
+  await expect(page.locator('.orki-pagehead__meta')).toContainText(
+    '6 ejemplares',
+  )
 
   const guardadas = supabase
     .plantasDe(USUARIO)

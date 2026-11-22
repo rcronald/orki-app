@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AccountMenu } from '../auth/AccountMenu.tsx'
@@ -13,7 +14,11 @@ import {
 } from '../lib/account-deletion-marker.ts'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { createMemoryCopyStorage } from '../collection/local-copy.ts'
-import { CollectionPage } from '../pages/CollectionPage.tsx'
+import { useCollection } from '../collection/useCollection.ts'
+import { useCollectionCopy } from '../collection/useCollectionCopy.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
+import { SearchField } from '../components/ui/SearchField.tsx'
+import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
 import { PlantImagesContext } from '../photos/usePlantImage.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { CATTLEYA, plant } from '../test/collection.ts'
@@ -25,10 +30,16 @@ import { ProductEventsSync } from './ProductEventsSync.tsx'
 import { createMemoryEventQueue } from './queue.ts'
 import { createProductEventsRuntime } from './runtime.ts'
 import type { SendOutcome } from './sender.ts'
+import { useHaveItSearchEvents } from './useHaveItSearchEvents.ts'
 
 // Los eventos de producto de punta a punta (#146), con la app real hasta la
 // cola y el envío: la cola en memoria y el envío simulado (sin red). Clerk
 // simulado, como en pages/OfflineMode.test.tsx.
+//
+// La consulta «¿Ya la tengo?» salió del inventario (#208) y tendrá su propia
+// pantalla (#209). Mientras tanto, la pantalla de la prueba monta las mismas
+// piezas que usaba el inventario (OwnershipPanel con useHaveItSearchEvents,
+// sobre la colección compartida) para seguir probando el camino del evento.
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
@@ -44,6 +55,34 @@ const MAXIMA = plant({
   },
 })
 const SAVED_AT = '2026-11-20T08:00:00.000Z'
+
+// Consulta provisional: el buscador y la respuesta, con su medición.
+function HaveItScreen() {
+  const { plants } = useCollection()
+  const extras = useCollectionCopy()?.extras
+  const readOnly = useReadOnly()
+  const [query, setQuery] = useState('')
+  const onMeasure = useHaveItSearchEvents({
+    searching: query.trim() !== '',
+    offline: readOnly !== null,
+  })
+  return (
+    <main>
+      <SearchField
+        label="Buscar en tu colección"
+        value={query}
+        onValueChange={setQuery}
+      />
+      <OwnershipPanel
+        plants={plants}
+        query={query}
+        extras={extras}
+        searchSpecies={null}
+        onMeasure={onMeasure}
+      />
+    </main>
+  )
+}
 
 let online = true
 let queue: ReturnType<typeof createMemoryEventQueue>
@@ -101,7 +140,7 @@ function app() {
           <Routes>
             <Route path="/" element={<p>Inicio</p>} />
             <Route element={<RequireAuth />}>
-              <Route path="/coleccion" element={<CollectionPage />} />
+              <Route path="/coleccion" element={<HaveItScreen />} />
             </Route>
           </Routes>
         </PlantImagesContext>

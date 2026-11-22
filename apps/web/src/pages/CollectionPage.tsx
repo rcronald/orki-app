@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router'
-import { countActiveFilters, type PlantFilters } from '../collection/filters.ts'
+import {
+  NavigationType,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+  useSearchParams,
+} from 'react-router'
+import type { PlantFilters } from '../collection/filters.ts'
+import { countGenera, countPlants } from '../collection/selectors.ts'
 import { useCollection } from '../collection/useCollection.ts'
 import { useCollectionCopy } from '../collection/useCollectionCopy.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
@@ -9,17 +16,17 @@ import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { ActionNotice } from '../detail/ActionNotice.tsx'
 import { clearPlantNotice, peekPlantNotice } from '../detail/notice.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
+import { CollectionActions } from '../inventory/CollectionActions.tsx'
 import { readFilters, writeFilters } from '../inventory/filter-params.ts'
 import { InventoryView } from '../inventory/InventoryView.tsx'
 import {
   OfflineNotice,
   type OfflineNoticeReason,
 } from '../inventory/OfflineNotice.tsx'
-import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
 import { readRegisteredPlant } from '../inventory/registered-plant.ts'
 import { RegisteredNotice } from '../inventory/RegisteredNotice.tsx'
 import { useScrollMemory } from '../inventory/scroll-memory.ts'
-import { useHaveItSearchEvents } from '../telemetry/useHaveItSearchEvents.ts'
+import { collectionSummaryText } from '../inventory/texts.ts'
 
 /** Parámetro de la URL con el texto del buscador: /coleccion?q=phal. */
 const SEARCH_PARAM = 'q'
@@ -29,7 +36,8 @@ const SEARCH_PARAM = 'q'
 //
 // El texto buscado (?q=) y los filtros del #15 (?estado=, ?genero=, ?color=,
 // ?origen=; ver inventory/filter-params.ts) viven en la URL: se conservan al
-// volver con "atrás" desde el registro o el detalle, al recargar y al
+// volver con "atrás" desde el registro, el detalle o «¿Ya la tengo?», al
+// recargar y al
 // compartir el enlace, sin estado propio que sincronizar. Cada pulsación y
 // cada toque de un filtro sustituyen la entrada del historial (replace) en
 // lugar de añadir una: "atrás" sale del inventario en vez de deshacer los
@@ -42,16 +50,20 @@ const SEARCH_PARAM = 'q'
 // estado del historial, para que recargar o volver con "atrás" no lo repita.
 // Al volver de eliminar una planta (#16), "Eliminaste…" (detail/notice.ts).
 //
-// Bajo el buscador, la respuesta de "¿Ya la tengo?" (#19, OwnershipPanel),
-// sobre toda la colección y sin esperar a la red. Con los sinónimos, nombres
-// comunes y abreviaturas de la copia local (#18, useOwnershipExtras), también
-// sin conexión; la lista recibe los mismos extras para encontrar también las
-// plantas por esos nombres (InventoryView, extras). Su prop onMeasure envía el evento de producto de esa búsqueda
-// (#146, useHaveItSearchEvents: uno por búsqueda, nunca el texto).
+// Cabecera (#208, PageHeader a través de Page): «Mi colección», el contador
+// de ejemplares activos y sus géneros, y las acciones «Registrar orquídea» y
+// «¿Ya la tengo?» (CollectionActions). La consulta «¿Ya la tengo?» vive en su
+// propia pantalla (#209): aquí hay un único buscador, que filtra las
+// tarjetas. Con los sinónimos, nombres comunes y abreviaturas de la copia
+// local (#18, useCollectionCopy), la lista encuentra también las plantas por
+// esos nombres, también sin conexión (InventoryView, extras). /coleccion?q=…
+// abre el inventario con ese texto en el buscador: es lo que usa «Ver en mi
+// colección» desde la consulta.
 //
-// Sin conexión (#18, #120): arriba, el indicador con la fecha de la última
-// actualización de la copia local, y los accesos a registrar desactivados
-// citándolo. Buscar, filtrar, ver el detalle y exportar siguen funcionando.
+// Sin conexión (#18, #120): bajo la cabecera, el indicador con la fecha de la
+// última actualización de la copia local, y los accesos a registrar
+// desactivados citándolo. Buscar, filtrar, ver el detalle, «¿Ya la tengo?» y
+// exportar siguen funcionando.
 
 const NO_EXTRAS = {}
 
@@ -70,13 +82,27 @@ export function CollectionPage() {
     readOnly ?? (copy?.unreachable === 'offline' ? 'unreachable' : null)
   const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
   const [searchParams, setSearchParams] = useSearchParams()
-  const query = searchParams.get(SEARCH_PARAM) ?? ''
-  const onOwnershipMeasure = useHaveItSearchEvents({
-    searching: query.trim() !== '',
-    offline: readOnly !== null,
-  })
+  const urlQuery = searchParams.get(SEARCH_PARAM) ?? ''
+  // El campo tiene su propio estado y es la fuente de verdad mientras la
+  // pantalla está abierta: la dirección se actualiza dentro de una transición
+  // del enrutador y llega atrasada, así que si el campo leyera de ella (o se
+  // corrigiera con ella al pintar) se perderían letras al escribir deprisa.
+  // La dirección solo manda al abrir (/coleccion?q=…) y cuando cambia por
+  // OTRA navegación: un enlace a /coleccion estando aquí (PUSH) o atrás y
+  // adelante (POP). Lo que escribe esta pantalla en la dirección (el
+  // buscador, los filtros, limpiar el estado) va siempre con `replace`, así
+  // que una navegación REPLACE nunca trae una búsqueda nueva de fuera.
+  const [query, setQueryText] = useState(urlQuery)
+  const navigationType = useNavigationType()
   const location = useLocation()
   const navigate = useNavigate()
+  // Ajuste al cambiar de ubicación, al pintar (sin efecto): en una navegación
+  // REPLACE solo se anota la ubicación; el texto del campo no se toca.
+  const [seenLocation, setSeenLocation] = useState(location.key)
+  if (seenLocation !== location.key) {
+    setSeenLocation(location.key)
+    if (navigationType !== NavigationType.Replace) setQueryText(urlQuery)
+  }
   const [registered, setRegistered] = useState(() =>
     readRegisteredPlant(location.state),
   )
@@ -97,6 +123,7 @@ export function CollectionPage() {
 
   const setQuery = useCallback(
     (value: string) => {
+      setQueryText(value)
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current)
@@ -132,8 +159,32 @@ export function CollectionPage() {
 
   useScrollMemory(plants !== null)
 
+  // El contador de la cabecera: solo cambia con la colección, no al buscar.
+  const summary = useMemo(() => {
+    if (plants === null) return null
+    const count = countPlants(plants)
+    return count === 0
+      ? null
+      : collectionSummaryText(count, countGenera(plants))
+  }, [plants])
+  // Con la colección vacía, la llamada a registrar la primera va en el cuerpo
+  // (EmptyCollection): sin acciones arriba, una sola acción principal.
+  const empty = plants !== null && plants.length === 0
+
   return (
-    <Page title="Mi colección" width="wide">
+    <Page
+      title="Mi colección"
+      width="wide"
+      header={{
+        meta: summary ?? undefined,
+        // La ilustración no va en el precaché: sin red, el navegador pintaría
+        // el hueco de una imagen rota. Sin conexión, la cabecera va sin ella.
+        art: readOnly !== 'offline',
+        actions: empty ? undefined : (
+          <CollectionActions disabledBy={writeDisabledBy} />
+        ),
+      }}
+    >
       {/* Región siempre montada: así se anuncia al perder la conexión. Vacía,
           sin el hueco de la separación de la página. */}
       <div role="status" className="empty:mt-[calc(var(--space-3)*-1)]">
@@ -174,16 +225,6 @@ export function CollectionPage() {
         onQueryChange={setQuery}
         filters={filters}
         onFiltersChange={setFilters}
-        searchResult={
-          <OwnershipPanel
-            plants={plants}
-            query={query}
-            filtered={countActiveFilters(filters) > 0}
-            extras={extras}
-            registerDisabledBy={writeDisabledBy}
-            onMeasure={onOwnershipMeasure}
-          />
-        }
         extras={extras}
         writeDisabledBy={writeDisabledBy}
       />

@@ -5,11 +5,8 @@ import {
   useRef,
   useState,
   type ReactNode,
-  type Ref,
 } from 'react'
 import {
-  countActiveFilters,
-  DEFAULT_FILTERS,
   toggleValue,
   type FilterOptions,
   type PlantFilters,
@@ -19,67 +16,36 @@ import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
-import type { ActiveFilterChip } from './filter-chips.ts'
+import {
+  countPanelFilters,
+  withoutPanelFilters,
+  type ActiveFilterChip,
+} from './filter-chips.ts'
 import {
   FILTERS_TEXT,
   STATUS_FILTER_LABEL,
   VALIDATION_FILTER_LABEL,
 } from './texts.ts'
 
-// Filtros del inventario (#15) en el celular: un botón "Filtros" con el número
-// de activos, que abre y cierra un panel (patrón disclosure: aria-expanded y
-// aria-controls, el foco se queda en el botón y el panel le sigue en el orden
-// del tabulador), y una fila con los filtros activos, cada uno quitable, y
-// "Quitar filtros". Los filtros que reciben estos componentes ya están
-// resueltos contra las opciones (resolveFilters).
+// Filtros del inventario (#15, #208): el botón «Filtros» de la barra del
+// buscador (FiltersButton, con el número de activos) abre y cierra este panel
+// (patrón disclosure: aria-expanded y aria-controls, el foco se queda en el
+// botón y el panel va justo después de la barra en el orden del tabulador), y
+// una fila con los filtros activos, cada uno quitable, y "Quitar filtros". El
+// género no está en el panel: tiene su fila de chips a la vista (GenusChips),
+// y "Quitar filtros" no lo toca. Los filtros que reciben estos componentes ya
+// están resueltos contra las opciones (resolveFilters).
 
 // Chips de 44 px de alto o más (zona táctil): el chip del sistema mide 36.
 const TOUCH_CHIP = 'py-space-3'
+// Sobre el fondo del panel, el chip sin elegir va en blanco. Solo sin elegir:
+// la utilidad ganaría al relleno verde del elegido (bundle.css va en la capa
+// components) y dejaría su texto claro sobre blanco. Al pasar por encima, el
+// verde suave del sistema.
+const PANEL_CHIP = `${TOUCH_CHIP} aria-[pressed=false]:bg-neutral-0 aria-[pressed=false]:hover:bg-secondary-soft`
 
-/** Opciones que se ven de entrada en género y origen; el resto, con "Ver más". */
+/** Opciones que se ven de entrada en origen; el resto, con "Ver más". */
 export const VISIBLE_OPTIONS = 8
-
-export function FiltersToggle({
-  ref,
-  open,
-  count,
-  panelId,
-  onToggle,
-}: {
-  ref?: Ref<HTMLButtonElement>
-  open: boolean
-  count: number
-  panelId: string
-  onToggle: () => void
-}) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="orki-btn orki-btn--secondary min-h-[44px] px-space-4 py-space-2"
-      aria-expanded={open}
-      aria-controls={panelId}
-      onClick={onToggle}
-    >
-      {FILTERS_TEXT.toggle}
-      {count > 0 && (
-        <>
-          <span
-            aria-hidden="true"
-            className="rounded-pill bg-secondary px-space-2 text-sm font-semibold text-neutral-0"
-          >
-            {count}
-          </span>
-          <span className="sr-only">, {FILTERS_TEXT.activeCount(count)}</span>
-        </>
-      )}
-      <Icon
-        name="chevron-down"
-        className={`motion-safe:transition-transform ${open ? 'rotate-[180deg]' : ''}`}
-      />
-    </button>
-  )
-}
 
 interface FiltersPanelProps {
   id: string
@@ -87,14 +53,17 @@ interface FiltersPanelProps {
   options: FilterOptions
   filters: PlantFilters
   onChange: (filters: PlantFilters) => void
+  /** Agrupar por género (preferencia recordada, no un filtro). */
+  grouped: boolean
+  onGroupedChange: (grouped: boolean) => void
   /** Cierra el panel; quien lo usa devuelve el foco al botón "Filtros". */
   onClose: () => void
 }
 
 /**
- * Panel de filtros: estado (uno solo), género, color, origen y validación del
- * nombre (varios). Un
- * grupo sin opciones (nadie registró el color) no aparece. Escape lo cierra.
+ * Panel de filtros: estado (uno solo), color, origen y validación del nombre
+ * (varios), y cómo se organiza la lista (agrupar por género). Un grupo sin
+ * opciones (nadie registró el color) no aparece. Escape lo cierra.
  */
 export function FiltersPanel({
   id,
@@ -102,6 +71,8 @@ export function FiltersPanel({
   options,
   filters,
   onChange,
+  grouped,
+  onGroupedChange,
   onClose,
 }: FiltersPanelProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -120,7 +91,7 @@ export function FiltersPanel({
     return () => panel.removeEventListener('keydown', onKeyDown)
   }, [open, onClose])
 
-  const active = countActiveFilters(filters) > 0
+  const active = countPanelFilters(filters) > 0
 
   return (
     <section
@@ -134,7 +105,7 @@ export function FiltersPanel({
         {options.statuses.map((status) => (
           <Chip
             key={status}
-            className={`${TOUCH_CHIP} bg-neutral-0`}
+            className={PANEL_CHIP}
             selected={filters.status === status}
             onClick={() => onChange({ ...filters, status })}
           >
@@ -142,25 +113,12 @@ export function FiltersPanel({
           </Chip>
         ))}
       </FilterGroup>
-      {options.genera.length > 0 && (
-        <ExpandableGroup
-          label={FILTERS_TEXT.genus}
-          items={options.genera.map(({ genus }) => ({
-            key: genus.id,
-            label: genus.name,
-          }))}
-          selected={filters.genera}
-          onToggle={(key) =>
-            onChange({ ...filters, genera: toggleValue(filters.genera, key) })
-          }
-        />
-      )}
       {options.colors.length > 0 && (
         <FilterGroup label={FILTERS_TEXT.color}>
           {options.colors.map(({ color }) => (
             <Chip
               key={color}
-              className={`${TOUCH_CHIP} bg-neutral-0`}
+              className={PANEL_CHIP}
               selected={filters.colors.includes(color)}
               onClick={() =>
                 onChange({
@@ -192,7 +150,7 @@ export function FiltersPanel({
           {options.validations.map((validation) => (
             <Chip
               key={validation}
-              className={`${TOUCH_CHIP} bg-neutral-0`}
+              className={PANEL_CHIP}
               selected={filters.validations.includes(validation)}
               onClick={() =>
                 onChange({
@@ -206,10 +164,22 @@ export function FiltersPanel({
           ))}
         </FilterGroup>
       )}
+      <FilterGroup label={FILTERS_TEXT.arrange}>
+        <Chip
+          className={PANEL_CHIP}
+          selected={grouped}
+          onClick={() => onGroupedChange(!grouped)}
+        >
+          {FILTERS_TEXT.grouped}
+        </Chip>
+      </FilterGroup>
       <div className="flex flex-wrap gap-space-3">
         <Button onClick={onClose}>{FILTERS_TEXT.done}</Button>
         {active && (
-          <Button icon="x" onClick={() => onChange(DEFAULT_FILTERS)}>
+          <Button
+            icon="x"
+            onClick={() => onChange(withoutPanelFilters(filters))}
+          >
             {FILTERS_TEXT.clearAll}
           </Button>
         )}
@@ -294,7 +264,7 @@ function ExpandableGroup({
       {visible.map((item) => (
         <Chip
           key={item.key}
-          className={`${TOUCH_CHIP} bg-neutral-0 [overflow-wrap:anywhere]`}
+          className={`${PANEL_CHIP} [overflow-wrap:anywhere]`}
           selected={chosen.has(item.key)}
           onClick={() => onToggle(item.key)}
         >
@@ -312,10 +282,13 @@ function ExpandableGroup({
  */
 export function ActiveFilters({
   chips,
+  filters,
   onChange,
   onEmpty,
 }: {
   chips: readonly ActiveFilterChip[]
+  /** Los filtros de los que salen los chips (para conservar el género). */
+  filters: PlantFilters
   onChange: (filters: PlantFilters) => void
   onEmpty: () => void
 }) {
@@ -365,7 +338,7 @@ export function ActiveFilters({
         type="button"
         className="rounded-sm px-space-2 py-space-3 text-sm font-semibold text-secondary underline"
         onClick={() => {
-          onChange(DEFAULT_FILTERS)
+          onChange(withoutPanelFilters(filters))
           onEmpty()
         }}
       >

@@ -223,8 +223,9 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   colección no llegó por falta de conexión (wifi sin salida), "Sin conexión
   con el servidor", sin desactivar nada (las escrituras fallarían con su
   propio aviso). En la página de muestra: escenario "Copia sin conexión".
-- **Desactivado, con el motivo:** "Registrar orquídea", "Con foto",
-  "Registrar mi primera orquídea" y "Registrarla con este nombre" de "¿Ya la
+- **Desactivado, con el motivo:** "Registrar orquídea" (en la cabecera de
+  «Mi colección», que sin conexión va sin la ilustración: no está en el
+  precaché), "Registrar mi primera orquídea" y "Registrarla con este nombre" de "¿Ya la
   tengo?" se ven desactivados (`aria-disabled`, siguen en el orden del
   tabulador) y citan el indicador con `aria-describedby`. En el detalle,
   "Editar", "Dar de baja" / "Reactivar" y "Eliminar" con su texto (el de sin
