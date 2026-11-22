@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
+import { resetOfflineIdentity } from '../auth/offline-identity.ts'
 
 // Sin globals de Vitest, Testing Library no limpia el DOM por sí sola.
 afterEach(() => {
@@ -9,4 +10,6 @@ afterEach(() => {
   // de registro o una preferencia de una prueba no debe aparecer en la otra.
   // Las pruebas que corren en Node no tienen window.
   if (typeof window !== 'undefined') window.localStorage.clear()
+  // Y el último usuario recordado (#18), que se lee de ahí.
+  resetOfflineIdentity()
 })

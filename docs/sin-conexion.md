@@ -91,18 +91,31 @@ en solo lectura.
   correo ni nombre.
 - Cuando Clerk dice que no hay sesión (`isLoaded && !isSignedIn`: cierre de
   sesión aquí o en otra pestaña, sesión caducada) se borran el recuerdo, la
-  copia local y las miniaturas.
+  copia local y las miniaturas. **Salvo** si en ese momento el navegador está
+  sin conexión: sin red no se puede confirmar, y borrar la copia por eso
+  dejaría al usuario sin su inventario en el campo. Se sigue mostrando la
+  copia en solo lectura hasta que vuelva la red.
 - Si Clerk no está disponible (`offline` o `failed` en
   `useAuthAvailability`) y hay un usuario recordado, la colección es la suya
-  y la app está en **solo lectura**. Sin usuario recordado, se ve el aviso de
-  siempre ("sin conexión").
+  y la app está en **solo lectura** ("sesión sin confirmar"). Sin usuario
+  recordado, se ve el aviso de siempre ("sin conexión"). Con conexión, la
+  app espera a Clerk como antes (hasta 10 s) antes de mostrar la copia.
 - Se acepta el riesgo que señala el #18: quien tenga el celular desbloqueado
   ve el inventario del último usuario hasta que haya conexión.
-- Cerrar sesión sin conexión: el botón de Clerk no existe sin Clerk, así que
-  la app muestra su propio "Cerrar sesión" que borra el recuerdo, la copia y
-  las miniaturas. La sesión de Clerk en el servidor sigue abierta hasta que
-  vuelva la red; al volver, Clerk puede reconocerla otra vez (es lo mismo que
-  pasa al borrar los datos de un sitio sin salir de la cuenta).
+- **Cerrar sesión, también sin conexión** (decisión propuesta en el #18): el
+  botón "Cerrar sesión" es de la app (no el `SignOutButton` de Clerk). Al
+  pulsarlo, la app olvida al usuario y guarda un cierre pendiente
+  (`orki-salida-pendiente`, con su id): desde ese momento lo trata como sin
+  sesión y `CollectionProvider` borra la copia y las miniaturas al instante.
+  `PendingSignOut` le pide a Clerk `signOut()` en cuanto Clerk esté
+  disponible y haya conexión (enseguida, si ya lo estaba). Mientras tanto, la
+  sesión de Clerk en el servidor sigue abierta; si al volver la red Clerk la
+  reconoce, la app no la usa y la cierra.
+
+El código: `src/auth/offline-identity.ts` (lo que se recuerda),
+`src/auth/useAppIdentity.ts` (quién usa la app), `src/auth/PendingSignOut.tsx`
+y `src/auth/AccountControls.tsx` (cerrar sesión), `src/auth/RouteGuards.tsx`
+(las rutas protegidas se abren con un usuario sin confirmar).
 
 La copia local y las miniaturas van siempre por id de usuario: aunque falle
 algún borrado, la app nunca lee la copia de un id distinto del activo.
@@ -182,6 +195,61 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   `photos/process.ts` (30 kB) y el tamaño típico de las pruebas (18 kB).
   Queda medirlo de verdad en el dispositivo (#121) con las herramientas del
   navegador (Aplicación → Almacenamiento).
+
+## 5. Solo lectura, indicador y borrado al cerrar sesión (#120)
+
+- **Cuándo es de solo lectura** (`useReadOnly()`,
+  `src/collection/useReadOnly.ts`): sin conexión (`navigator.onLine`) o con
+  la sesión sin confirmar (Clerk no disponible y el último usuario
+  recordado). Con la red y Clerk de vuelta, todo se reactiva solo.
+- **Sin pedir nada a la red sin sesión confirmada:** con la sesión sin
+  confirmar no hay token de Clerk; una petición saldría como anónima,
+  Supabase devolvería una colección vacía (RLS) y pisaría la copia. Por eso
+  la fuente solo usa la copia (`setVerified(false)`) y no se bajan
+  miniaturas. Cuando Clerk confirma al mismo usuario, la colección se vuelve
+  a leer de la red sola.
+- **Indicador** (`src/inventory/OfflineNotice.tsx`): arriba del inventario,
+  "Sin conexión" o "Sesión sin confirmar", qué se puede hacer y la fecha de
+  la última actualización de la copia desde la red ("hoy a las 9:05", "20 de
+  noviembre, 18:30"). Va en una región `role="status"` siempre montada: se
+  anuncia al perder la conexión. Si el navegador dice tener red pero la
+  colección no llegó por falta de conexión (wifi sin salida), "Sin conexión
+  con el servidor", sin desactivar nada (las escrituras fallarían con su
+  propio aviso). En la página de muestra: escenario "Copia sin conexión".
+- **Desactivado, con el motivo:** "Registrar orquídea", "Con foto",
+  "Registrar mi primera orquídea" y "Registrarla con este nombre" de "¿Ya la
+  tengo?" se ven desactivados (`aria-disabled`, siguen en el orden del
+  tabulador) y citan el indicador con `aria-describedby`. En el detalle,
+  "Editar", "Dar de baja" / "Reactivar" y "Eliminar" con su texto (el de sin
+  conexión o el de sesión sin confirmar). Si se abre directamente
+  `/coleccion/nueva` o `/coleccion/:id/editar`, el formulario se desactiva
+  con su aviso de sin conexión (el mismo texto también con la sesión sin
+  confirmar; no se tocó `registration/`).
+- **Siguen funcionando:** buscar, filtrar, "¿Ya la tengo?" (con sinónimos y
+  abreviaturas de la copia), agrupar, el detalle (con la miniatura en lugar
+  de la foto grande) y exportar a CSV (sale de la colección en memoria).
+- **Cerrar sesión** borra la copia de IndexedDB, las cachés
+  `orki-miniaturas-v1:*` y `orki-ultimo-usuario`, con o sin conexión (ver 2).
+  Otra cuenta en el mismo dispositivo: al entrar, se borran las copias y
+  miniaturas de las demás antes de leer nada, y la copia solo se lee por el
+  id del usuario activo.
+- **Service worker:** no hay rutas nuevas. Las pantallas nuevas van en los
+  chunks ya existentes (el de la app con Clerk) y el precache incluye todos
+  los chunks del build (comprobado en `dist/sw.js` tras `npm run build`: los
+  20 archivos JavaScript están en la lista).
+
+## Pendiente o sin verificar
+
+- Todo lo marcado como hipótesis en la sección 1, y el guion de abajo (#121).
+- Lo que responde `navigator.storage.persist()` en cada plataforma.
+- El tamaño real de la copia y de las miniaturas en un dispositivo.
+- Con mala señal (el navegador dice tener red, pero no llega nada), la app
+  espera a Clerk hasta 10 s antes de mostrar la copia como "sesión sin
+  confirmar".
+- Los extras de "¿Ya la tengo?" de una especie recién enlazada en la app
+  llegan en la siguiente lectura desde la red, no al guardar.
+- La foto grande del detalle no está disponible sin conexión (se ve la
+  miniatura).
 
 ## Guion de prueba en el dispositivo (#117, #121)
 

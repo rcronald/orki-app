@@ -8,6 +8,7 @@ import {
 import type { CollectionPlant } from './model.ts'
 import type { OwnershipExtras } from './ownership.ts'
 import {
+  CollectionLoadError,
   collectionErrorFrom,
   type CollectionErrorReason,
   type CollectionSource,
@@ -38,6 +39,8 @@ import { supabaseCollectionSource } from './supabase-source.ts'
 //   cambiar de cuenta o cerrar sesión (null). Borra las copias de los demás y
 //   desde ese momento solo se escribe la copia de ese usuario: una lectura de
 //   la cuenta anterior que termine tarde no vuelve a crear su copia.
+// - setVerified(false): sin Clerk (sesión sin confirmar, #120) solo se usa
+//   la copia; no se pide nada a la red sin token.
 // - La información de la copia (getInfo, subscribe) dice de qué usuario es,
 //   cuándo se actualizó desde la red, sus extras y si se está mostrando por
 //   falta de conexión. Lo leen las pantallas con useCollectionCopy().
@@ -59,6 +62,13 @@ export interface CollectionCopyInfo {
 export interface CachedCollectionSource extends CollectionSource {
   save(userId: string, plants: readonly CollectionPlant[]): void
   setActiveUser(userId: string | null): void
+  /**
+   * Si la sesión del usuario activo está confirmada (por Clerk). Sin
+   * confirmar (sin Clerk, #120), no se pide nada a la red: las peticiones
+   * irían sin token, Supabase devolvería una colección vacía y la copia se
+   * pisaría con ella. Se entrega la copia, o se rechaza como sin conexión.
+   */
+  setVerified(verified: boolean): void
   subscribe: (listener: () => void) => () => void
   getInfo: () => CollectionCopyInfo | null
 }
@@ -81,7 +91,10 @@ export function createCachedCollectionSource({
   now = () => new Date(),
   onSaved = () => void requestPersistentStorage(),
 }: CachedSourceOptions = {}): CachedCollectionSource {
-  let activeUser: string | null = null
+  // undefined: aún no se fijó (así el primer setActiveUser(null) también
+  // borra las copias que hubiera).
+  let activeUser: string | null | undefined = undefined
+  let verified = true
   /** Lo último guardado del usuario activo (base para save()). */
   let current: LocalCopy | null = null
   let info: CollectionCopyInfo | null = null
@@ -121,6 +134,7 @@ export function createCachedCollectionSource({
 
       let plants: readonly CollectionPlant[]
       try {
+        if (!verified) throw new CollectionLoadError('offline')
         plants = await network.load({ userId, signal, provide })
       } catch (error) {
         const failure = collectionErrorFrom(error)
@@ -175,6 +189,10 @@ export function createCachedCollectionSource({
       }
       current = next
       void write(next)
+    },
+
+    setVerified(next) {
+      verified = next
     },
 
     setActiveUser(userId) {

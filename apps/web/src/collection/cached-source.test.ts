@@ -228,4 +228,22 @@ describe('fuente con copia local', () => {
     await expect(promise).rejects.toBeDefined()
     expect(provided).toEqual([])
   })
+
+  it('sin la sesión confirmada no pide nada a la red: solo la copia', async () => {
+    const { network, storage, source } = setup()
+    const old = [plant({ id: 'vieja' })]
+    await storage.write(copyOf('user_a', old))
+    source.setActiveUser('user_a')
+    source.setVerified(false)
+    const { promise } = load(source, 'user_a')
+    await expect(promise).resolves.toEqual(old)
+    expect(network.loads).toHaveLength(0)
+    expect(source.getInfo()?.unreachable).toBe('offline')
+    expect((await storage.read('user_a'))?.plants).toEqual(old)
+
+    await storage.deleteExcept(null)
+    await expect(load(source, 'user_a').promise).rejects.toMatchObject({
+      reason: 'offline',
+    })
+  })
 })

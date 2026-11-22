@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { countActiveFilters, type PlantFilters } from '../collection/filters.ts'
 import { useCollection } from '../collection/useCollection.ts'
-import { useOwnershipExtras } from '../collection/useCollectionCopy.ts'
+import { useCollectionCopy } from '../collection/useCollectionCopy.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { ActionNotice } from '../detail/ActionNotice.tsx'
@@ -10,6 +11,10 @@ import { clearPlantNotice, peekPlantNotice } from '../detail/notice.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { readFilters, writeFilters } from '../inventory/filter-params.ts'
 import { InventoryView } from '../inventory/InventoryView.tsx'
+import {
+  OfflineNotice,
+  type OfflineNoticeReason,
+} from '../inventory/OfflineNotice.tsx'
 import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
 import { readRegisteredPlant } from '../inventory/registered-plant.ts'
 import { RegisteredNotice } from '../inventory/RegisteredNotice.tsx'
@@ -41,6 +46,12 @@ const SEARCH_PARAM = 'q'
 // comunes y abreviaturas de la copia local (#18, useOwnershipExtras), también
 // sin conexión. Su prop onMeasure es el punto de enganche del evento de
 // producto de esa búsqueda (#146).
+//
+// Sin conexión (#18, #120): arriba, el indicador con la fecha de la última
+// actualización de la copia local, y los accesos a registrar desactivados
+// citándolo. Buscar, filtrar, ver el detalle y exportar siguen funcionando.
+
+const NO_EXTRAS = {}
 
 function deletedNotice() {
   const notice = peekPlantNotice()
@@ -49,7 +60,13 @@ function deletedNotice() {
 
 export function CollectionPage() {
   const { status, plants, error, reload } = useCollection()
-  const extras = useOwnershipExtras()
+  const copy = useCollectionCopy()
+  const extras = copy?.extras ?? NO_EXTRAS
+  const readOnly = useReadOnly()
+  const offlineNoticeId = useId()
+  const offlineReason: OfflineNoticeReason | null =
+    readOnly ?? (copy?.unreachable === 'offline' ? 'unreachable' : null)
+  const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get(SEARCH_PARAM) ?? ''
   const location = useLocation()
@@ -111,6 +128,17 @@ export function CollectionPage() {
 
   return (
     <Page title="Mi colección" width="wide">
+      {/* Región siempre montada: así se anuncia al perder la conexión. Vacía,
+          sin el hueco de la separación de la página. */}
+      <div role="status" className="empty:mt-[calc(var(--space-3)*-1)]">
+        {offlineReason !== null && (
+          <OfflineNotice
+            id={offlineNoticeId}
+            reason={offlineReason}
+            savedAt={copy?.savedAt ?? null}
+          />
+        )}
+      </div>
       {registered && (
         <RegisteredNotice
           key={registered.id}
@@ -146,8 +174,10 @@ export function CollectionPage() {
             query={query}
             filtered={countActiveFilters(filters) > 0}
             extras={extras}
+            registerDisabledBy={writeDisabledBy}
           />
         }
+        writeDisabledBy={writeDisabledBy}
       />
     </Page>
   )

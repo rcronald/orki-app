@@ -40,6 +40,8 @@ export const DETAIL_TEXT = {
   delete: 'Eliminar',
   offline:
     'Sin conexión: editar, dar de baja o eliminar necesitan conexión. Las acciones se activarán solas cuando vuelva.',
+  unverified:
+    'No se pudo confirmar tu sesión: editar, dar de baja o eliminar necesitan confirmarla con conexión. Ves la copia guardada en este dispositivo.',
   inactive: (status: string) =>
     `Dada de baja: ${status.toLocaleLowerCase('es')}. No cuenta en tu colección activa; la ves con el filtro de estado.`,
   retireTitle: 'Dar de baja esta planta',

@@ -49,8 +49,8 @@ function defaultGetToken() {
   )
 }
 
-/** Llamadas a cerrar sesión desde <SignOutButton>. */
-export const signOut = vi.fn()
+/** Llamadas a cerrar sesión, desde <SignOutButton> o useClerk().signOut(). */
+export const signOut = vi.fn<() => Promise<void>>(() => Promise.resolve())
 
 /** Props con las que se pintó <ClerkProvider> por última vez. */
 export let lastProviderProps: Record<string, unknown> | undefined
@@ -75,6 +75,7 @@ export function resetFakeClerk() {
     userId: FAKE_USER_ID,
   })
   signOut.mockReset()
+  signOut.mockImplementation(() => Promise.resolve())
   getToken.mockReset()
   getToken.mockImplementation(defaultGetToken)
   lastProviderProps = undefined
@@ -97,7 +98,7 @@ export function ClerkProvider({
 }
 
 export function useClerk() {
-  return { status: fakeClerk.status }
+  return { status: fakeClerk.status, signOut }
 }
 
 // Como el real (tabla de valores de la documentación de useAuth): mientras
@@ -170,7 +171,7 @@ export function SignOutButton({ children }: { children: ReactNode }) {
   if (!isValidElement<{ onClick?: () => void }>(children)) return null
   return cloneElement(children, {
     onClick: () => {
-      signOut()
+      void signOut()
     },
   })
 }
