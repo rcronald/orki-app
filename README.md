@@ -78,7 +78,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run test:e2e:sin-build` | Ejecuta las pruebas de extremo a extremo sin volver a construir. Lo usa el CI.                                                                                                                  |
 | `npm run datos:sin-dueno`    | Detecta perfiles, plantas, eventos y fotos de usuarios que ya no existen en Clerk (`-- --ambiente desarrollo`); solo borra con `--borrar` (ver [su README](scripts/datos-sin-dueno/README.md)). |
 
-La app web tiene además un script propio para regenerar los iconos provisionales de la PWA en `apps/web/public`:
+La app web tiene además un script propio para regenerar los iconos de la PWA en `apps/web/public` a partir del logotipo (ver [Marca](#marca)):
 
 ```sh
 npm run icons --workspace=apps/web
@@ -136,6 +136,16 @@ orki-app/
 Las dependencias se declaran en el `package.json` de cada workspace y se instalan desde la raíz. Las herramientas comunes (ESLint, Prettier, la CLI de Supabase) viven en el `package.json` de la raíz.
 
 Hay dos versiones de TypeScript a propósito. La app compila y comprueba tipos con TypeScript 7 (`apps/web`). La raíz instala TypeScript 6 solo para ESLint, porque `typescript-eslint` todavía no soporta TypeScript 7. Cuando lo soporte, se elimina el TypeScript de la raíz.
+
+## Marca
+
+La app se llama «orqui.apps», siempre en minúsculas (#173). El logotipo está en `apps/web/src/assets/marca/`: `orqui-apps-light.svg` (flor y nombre) y `orqui-apps-light-icon.svg` (solo la flor, sobre fondo rosa pálido), para fondo claro, y sus variantes `-dark` para fondo oscuro, que no se usan porque la app no tiene tema oscuro. Son los SVG entregados por el responsable, optimizados a mano sin cambiar el dibujo. Sus colores son tokens: `color-primary` (pétalos), `color-secondary` (pétalo central, no `color-success`), `color-neutral-0` (marca de verificación), `color-neutral-900` («orqui»), `color-neutral-700` («.apps») y `color-primary-soft` (fondo del símbolo).
+
+En las pantallas se usa el componente `Logo` (`src/components/Logo.tsx`, variantes `full` y `symbol`): una imagen con el texto alternativo «orqui.apps», en línea en el JavaScript para que se vea sin conexión. Su nombre accesible ya es el de la app, así que al lado no se repite el nombre en texto.
+
+Los iconos de `apps/web/public` (`favicon.svg`, `favicon.ico` con 16, 32 y 48 px, `pwa-192x192.png`, `pwa-512x512.png`, `maskable-icon-512x512.png` y `apple-touch-icon-180x180.png`) salen del símbolo para fondo claro con `npm run icons --workspace=apps/web` (`apps/web/scripts/generate-icons.mjs`). El script rasteriza el SVG con el Chromium de Playwright (si falta: `npx playwright install chromium`) y guarda los PNG con paleta de colores para que pesen poco en el precaché. Todos tienen el fondo opaco hasta el borde; el script comprueba que en el enmascarable la flor queda dentro de la zona segura (círculo central de radio 0,4 del lado). El favicon recorta el margen del lienzo para que la flor se reconozca a 16 px. Tras cambiar el logotipo, se regeneran los iconos y se confirman junto con él.
+
+Quien ya instaló la app puede seguir viendo el icono y el nombre anteriores en la pantalla de inicio del celular: Android los actualiza por su cuenta pasado un tiempo, y en iOS hay que quitar la app de la pantalla de inicio y volver a añadirla.
 
 ## Design system en la app
 
