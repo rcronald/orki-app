@@ -205,6 +205,11 @@ export function createIndexedDbDraftPhotoBackend(
           transaction.onabort = () =>
             reject(transaction.error ?? new Error('IndexedDB'))
         })
+        // Si falla la petición, el error llega por ella (abajo) y `done` ya
+        // no se espera; la transacción se aborta después y su rechazo no debe
+        // quedar sin atender (llegaría a Sentry como "Error: IndexedDB"). Pasa
+        // en Safari en navegación privada, que no guarda Blobs en IndexedDB.
+        done.catch(() => undefined)
         const result = await promised(
           operation(transaction.objectStore(DRAFT_PHOTO_STORE)),
         )

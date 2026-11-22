@@ -7,8 +7,13 @@ npm-debug.log*
 # Vite
 dist/
 dist-ssr/
-# Build de medición de la carga e informes de Lighthouse (npm run medir:carga)
+# Build de medición de la carga e informes de Lighthouse (npm run medir:carga),
+# y build de las pruebas de extremo a extremo (npm run build:e2e)
 dist-medicion/
+# Resultados de Playwright (npm run test:e2e)
+test-results/
+playwright-report/
+blob-report/
 .vite/
 *.local
 
