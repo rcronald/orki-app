@@ -11,7 +11,7 @@ import { useAuthRedirectDestination } from '../auth/useAuthRedirectDestination.t
 export function SignUpPage() {
   const destination = useAuthRedirectDestination()
   return (
-    <AuthPageLayout title="Crear cuenta">
+    <AuthPageLayout title="Crear cuenta" privacyOrigin="registro">
       <AuthGate>
         <SignedOutOnly destination={destination}>
           <SignUp

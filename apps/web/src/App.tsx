@@ -48,8 +48,15 @@ const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
 // precarga al chunk inicial. Probado con el build: diferida, el inicial crecía
 // unos 100 bytes; aquí, solo lo que ocupa su ruta en PATHS.
 
-// Página de privacidad (/privacidad, #111): pública y en su propio chunk.
+// Página de privacidad (/privacidad, #111, #202): pública, en su propio chunk
+// y sin Clerk.
 const PrivacyPage = lazy(() => import('./privacy/PrivacyPage.tsx'))
+
+const TEXT_PAGE_LOADING = (
+  <p role="status" className="text-md text-neutral-700">
+    Cargando…
+  </p>
+)
 
 interface AppProps {
   /** Ambiente ya validado por parseEnv. */
@@ -78,13 +85,7 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
           <Route
             path={PATHS.privacy}
             element={
-              <Suspense
-                fallback={
-                  <p role="status" className="text-md text-neutral-700">
-                    Cargando…
-                  </p>
-                }
-              >
+              <Suspense fallback={TEXT_PAGE_LOADING}>
                 <PrivacyPage />
               </Suspense>
             }

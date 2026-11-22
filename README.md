@@ -695,7 +695,12 @@ Sin huérfanos:
 
 ## Página de privacidad
 
-`/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie de la app, desde las pantallas de acceso, desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`); de la atribución del catálogo importa solo `src/backoffice/attribution.ts`, sin la pantalla del backoffice.
+`/privacidad` (#111, parte de #26) es pública: se abre sin sesión y aunque Clerk no cargue. Se enlaza desde el pie (`SiteFooter`, en la portada y en el resto de la app), desde las pantallas de acceso (junto al formulario), desde `/cuenta` y desde el mensaje de error de la eliminación cuando Clerk no la permite. Va en su propio chunk (`src/privacy/PrivacyPage.tsx`, cargado de forma diferida desde `App.tsx`), sin Clerk.
+
+Con el #202 usa la página de texto del design system (`src/components/TextPage.tsx`): enlace de volver, título, frase de apoyo, fecha, índice «En esta página» y secciones con una frase de resumen. Siguiendo el #194, el índice lleva cuatro secciones y el texto aprobado va dentro, íntegro: «Qué datos guardamos» (con las subsecciones «Mediciones de uso y errores» y «Dónde se guardan y quién los procesa»), «Quién puede verlos» (su resumen dice, junto a la regla general, que el equipo del catálogo puede revisar el nombre y las fotos de una planta por validar), «Qué se guarda en tu dispositivo» y «Cómo eliminar tu cuenta» (con un enlace a «Tu cuenta» y la subsección «Descargar tu inventario»); «Contacto» cierra la página, fuera del índice. La atribución del catálogo pasó a [Créditos y fuentes](#créditos-y-fuentes), enlazada desde «Dónde se guardan…».
+
+- **Volver:** según el estado de navegación del enlace que trajo a la página (`src/routes/text-page-origin.ts`, no `document.referrer`): «Volver al inicio» (por defecto, también al abrir la dirección directamente), «Volver al registro» (desde «Crear cuenta»), «Volver a Mi colección» (desde el pie de las pantallas con sesión) o «Volver a Tu cuenta» (desde `/cuenta`). Para enlazar desde otra pantalla: `privacyLinkProps(origen)` o `textPageState(origen)`.
+- **Índice:** cada enlace apunta al id del título de su sección; al activarlo, el foco pasa a ese título (que lleva `scroll-margin-top`), sin desplazamiento animado, y el `#id` se escribe en la dirección sin perder el estado de volver.
 
 **Texto revisado y aprobado por el responsable del proyecto el 22 de noviembre de 2026.** Lo redactó un agente comprobándolo contra el código el 21 de noviembre de 2026. No es asesoría legal y no lo ha revisado nadie con criterio legal (ley peruana de protección de datos personales); sigue siendo conveniente. La página no lo dice; lo dicen este README y el comentario de `PrivacyPage.tsx`.
 
@@ -713,9 +718,9 @@ Afirmaciones que debe verificar una persona (revisadas contra el código el 21 d
 8. Exportación (`src/collection/export-csv.ts`, `src/inventory/ExportAction.tsx`): al final de «Mi colección», todas las plantas con todas sus columnas, sin fotos.
 9. Eliminación (sección «Eliminación de la cuenta»): lo que borra, y que no se borran los informes ya enviados a Sentry ni la auditoría del catálogo.
 10. La atribución del Catalogue of Life (versión, DOI y licencia CC BY 4.0, leídos de `scripts/catalog-import/fuente.json`) y la frase «En orqui.apps se filtró a las orquídeas y se normalizó». `FUENTE.md` propone mencionar también la WCVP de Kew; no está en el borrador.
-11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto.
+11. La fecha de última actualización (`PRIVACY_LAST_UPDATED`) se cambia a mano con cada revisión del texto. Pasó al 22 de noviembre de 2026 con el #202 (atribución trasladada, secciones reagrupadas y frases de resumen).
 
-Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, fecha, las secciones de eventos, Sentry, propuestas, dispositivo y exportación, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
+Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, índice y foco, cada enlace de volver, que no falta ninguna frase del texto aprobado, reparto en secciones, contacto, enlaces desde el pie y desde el acceso, axe) y `e2e/paginas-de-texto.spec.ts` (a 360 px y en escritorio, con axe).
 
 ## Pruebas de extremo a extremo
 
