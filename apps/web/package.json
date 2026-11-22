@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icons": "node scripts/generate-icons.mjs",
-    "fondos": "node scripts/fondos-genero.mjs"
+    "fondos": "node scripts/fondos-genero.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@clerk/localizations": "^4.26.1",
@@ -29,6 +30,8 @@
     "react-router": "^8.5.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0",
     "@sentry/vite-plugin": "^11.16.0",
     "@tailwindcss/vite": "^4.3.5",
     "@testing-library/dom": "^10.4.2",

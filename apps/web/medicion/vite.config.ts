@@ -3,10 +3,12 @@ import { fileURLToPath } from 'node:url'
 import { mergeConfig, type Plugin } from 'vite'
 import { largeSampleCollection } from '../src/showcase/inventory-data.ts'
 import baseConfig from '../vite.config.ts'
+import { sustitutos } from './sustitutos.ts'
 
 // Build de medición del inventario (#149): la app real (mismo index.html,
 // main.tsx y rutas) con dos módulos sustituidos al construir, para abrir
-// /coleccion con sesión y 100 plantas sin Clerk ni Supabase reales:
+// /coleccion con sesión y 100 plantas sin Clerk ni Supabase reales (ver
+// sustitutos.ts):
 //
 // - @clerk/react → medicion/clerk-simulado.tsx (sesión iniciada, sin red).
 // - src/collection/supabase-source.ts → medicion/coleccion-simulada.ts, que
@@ -20,33 +22,13 @@ import baseConfig from '../vite.config.ts'
 // vite.config.ts lo importan, y nada de esta carpeta llega a apps/web/dist.
 
 const CARPETA = path.dirname(fileURLToPath(import.meta.url))
-const ORIGINAL_DE_LA_COLECCION = path.resolve(
-  CARPETA,
-  '../src/collection/supabase-source.ts',
-)
 
 /** Plantas de la colección simulada; las del criterio del #149. */
 export const PLANTAS_DE_MEDICION = 100
 
-function sustitutosDeMedicion(): Plugin {
+function coleccionDeMedicion(): Plugin {
   return {
-    name: 'orki-medicion-sustitutos',
-    enforce: 'pre',
-    async resolveId(source, importer, options) {
-      if (source === '@clerk/react') {
-        return path.join(CARPETA, 'clerk-simulado.tsx')
-      }
-      if (importer === undefined || !source.includes('supabase-source')) {
-        return null
-      }
-      const resuelto = await this.resolve(source, importer, {
-        ...options,
-        skipSelf: true,
-      })
-      return resuelto?.id === ORIGINAL_DE_LA_COLECCION
-        ? path.join(CARPETA, 'coleccion-simulada.ts')
-        : null
-    },
+    name: 'orki-medicion-coleccion',
     generateBundle() {
       this.emitFile({
         type: 'asset',
@@ -58,7 +40,12 @@ function sustitutosDeMedicion(): Plugin {
 }
 
 export default mergeConfig(baseConfig, {
-  plugins: [sustitutosDeMedicion()],
+  plugins: [
+    sustitutos({
+      fuenteDeLaColeccion: path.join(CARPETA, 'coleccion-simulada.ts'),
+    }),
+    coleccionDeMedicion(),
+  ],
   build: {
     outDir: path.resolve(CARPETA, '../dist-medicion/app'),
     emptyOutDir: true,

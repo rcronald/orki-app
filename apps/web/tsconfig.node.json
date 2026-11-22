@@ -20,5 +20,11 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "medicion/vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "medicion/vite.config.ts",
+    "medicion/vite.config.e2e.ts",
+    "medicion/sustitutos.ts"
+  ]
 }

@@ -1,3 +1,4 @@
+import { IDBFactory, IDBObjectStore as FakeObjectStore } from 'fake-indexeddb'
 import { describe, expect, it, vi } from 'vitest'
 import { processedPhoto } from '../test/photos.ts'
 import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
@@ -112,6 +113,36 @@ describe('foto pendiente del borrador', () => {
       await readDraftPhoto(failing, USER, { plantId: PLANT, now: NOW }),
     ).toBeNull()
     await expect(clearDraftPhoto(failing, USER)).resolves.toBeUndefined()
+  })
+
+  it('si IndexedDB rechaza la escritura, no queda ninguna promesa rechazada sin atender', async () => {
+    // Como Safari en navegación privada (y WebKit de Playwright), que no
+    // guarda Blobs en IndexedDB: la petición falla y la transacción se aborta.
+    // Aquí la petición falla porque put se convierte en add y la clave ya
+    // existe (ConstraintError), con el mismo efecto.
+    const put = vi
+      .spyOn(FakeObjectStore.prototype, 'put')
+      .mockImplementation(function (
+        this: IDBObjectStore,
+        value: unknown,
+        key?: IDBValidKey,
+      ) {
+        return this.add(value, key)
+      })
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      const factory = new IDBFactory()
+      const backend = createIndexedDbDraftPhotoBackend(() => factory)
+      expect(await writeDraftPhoto(backend, USER, draft())).toBe(true)
+      expect(await writeDraftPhoto(backend, USER, draft())).toBe(false)
+      // Da tiempo a que se notifique un rechazo sin atender.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+      put.mockRestore()
+    }
   })
 
   it('sin IndexedDB (navegador antiguo o bloqueado) funciona como "sin foto"', async () => {

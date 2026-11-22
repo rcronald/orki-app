@@ -12,6 +12,9 @@ export default defineConfig([
   globalIgnores([
     '**/dist',
     '**/dist-medicion',
+    '**/test-results',
+    '**/playwright-report',
+    '**/blob-report',
     '**/coverage',
     '**/node_modules',
   ]),
@@ -40,6 +43,17 @@ export default defineConfig([
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  // Pruebas de extremo a extremo (#148): corren en Node con Playwright, no son
+  // React. Sus fixtures reciben una función `use` que no es el hook de React.
+  {
+    files: ['apps/web/e2e/**/*.ts', 'apps/web/playwright.config.ts'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
     },
   },
   // Va al final para desactivar las reglas de estilo que chocan con Prettier.

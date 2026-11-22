@@ -52,28 +52,31 @@ El CI ejecuta además el lint, el formato y las pruebas del proyecto de Python d
 
 Todos se ejecutan desde la raíz del repositorio.
 
-| Script                    | Qué hace                                                                                                                                                                                        |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`             | Levanta el servidor de desarrollo de la app web (Vite). Acepta opciones de Vite después de `--`.                                                                                                |
-| `npm run build`           | Comprueba los tipos y genera el build de producción de la app web en `apps/web/dist`, con el service worker.                                                                                    |
-| `npm run preview`         | Sirve el build de `apps/web/dist` en local para probarlo. Requiere ejecutar antes `npm run build`.                                                                                              |
-| `npm run typecheck`       | Comprueba los tipos de TypeScript de la app web sin generar archivos.                                                                                                                           |
-| `npm run lint`            | Ejecuta ESLint en todo el repositorio. Falla con cualquier aviso.                                                                                                                               |
-| `npm run format`          | Formatea todo el repositorio con Prettier.                                                                                                                                                      |
-| `npm run format:check`    | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                                                                                                        |
-| `npm test`                | Ejecuta las pruebas de la app web una vez (Vitest).                                                                                                                                             |
-| `npm run test:watch`      | Ejecuta las pruebas de la app web en modo observación.                                                                                                                                          |
-| `npm run db:new`          | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                                                                                                            |
-| `npm run db:status`       | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                                                                                                       |
-| `npm run db:push`         | Aplica las migraciones pendientes en el proyecto de desarrollo.                                                                                                                                 |
-| `npm run db:seed:dev`     | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.                                                                                      |
-| `npm run db:seed:plants`  | Carga plantas de ejemplo para un usuario en el proyecto de desarrollo (`-- <id de usuario> [cantidad]`), o las borra con `--borrar`.                                                            |
-| `npm run db:test`         | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.                                                                                       |
-| `npm run db:perf`         | Mide la búsqueda con un catálogo sintético en un Postgres desechable. No corre en el CI (ver [Rendimiento de la búsqueda](supabase/README.md#rendimiento-de-la-búsqueda)).                      |
-| `npm run db:types`        | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.                                                                                      |
-| `npm run db:types:check`  | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.                                                                                            |
-| `npm run test:scripts`    | Ejecuta las pruebas de los scripts de mantenimiento en Node (`scripts/**/*.test.mjs`, con `node:test`). Lo usa el CI.                                                                           |
-| `npm run datos:sin-dueno` | Detecta perfiles, plantas, eventos y fotos de usuarios que ya no existen en Clerk (`-- --ambiente desarrollo`); solo borra con `--borrar` (ver [su README](scripts/datos-sin-dueno/README.md)). |
+| Script                       | Qué hace                                                                                                                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                | Levanta el servidor de desarrollo de la app web (Vite). Acepta opciones de Vite después de `--`.                                                                                                |
+| `npm run build`              | Comprueba los tipos y genera el build de producción de la app web en `apps/web/dist`, con el service worker.                                                                                    |
+| `npm run preview`            | Sirve el build de `apps/web/dist` en local para probarlo. Requiere ejecutar antes `npm run build`.                                                                                              |
+| `npm run typecheck`          | Comprueba los tipos de TypeScript de la app web sin generar archivos.                                                                                                                           |
+| `npm run lint`               | Ejecuta ESLint en todo el repositorio. Falla con cualquier aviso.                                                                                                                               |
+| `npm run format`             | Formatea todo el repositorio con Prettier.                                                                                                                                                      |
+| `npm run format:check`       | Comprueba con Prettier que todo está formateado, sin modificar archivos.                                                                                                                        |
+| `npm test`                   | Ejecuta las pruebas de la app web una vez (Vitest).                                                                                                                                             |
+| `npm run test:watch`         | Ejecuta las pruebas de la app web en modo observación.                                                                                                                                          |
+| `npm run db:new`             | Crea una migración vacía en `supabase/migrations`. Recibe el nombre después de `--`.                                                                                                            |
+| `npm run db:status`          | Muestra qué migraciones están aplicadas y cuáles pendientes en el proyecto de desarrollo.                                                                                                       |
+| `npm run db:push`            | Aplica las migraciones pendientes en el proyecto de desarrollo.                                                                                                                                 |
+| `npm run db:seed:dev`        | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.                                                                                      |
+| `npm run db:seed:plants`     | Carga plantas de ejemplo para un usuario en el proyecto de desarrollo (`-- <id de usuario> [cantidad]`), o las borra con `--borrar`.                                                            |
+| `npm run db:test`            | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.                                                                                       |
+| `npm run db:perf`            | Mide la búsqueda con un catálogo sintético en un Postgres desechable. No corre en el CI (ver [Rendimiento de la búsqueda](supabase/README.md#rendimiento-de-la-búsqueda)).                      |
+| `npm run db:types`           | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.                                                                                      |
+| `npm run db:types:check`     | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.                                                                                            |
+| `npm run test:scripts`       | Ejecuta las pruebas de los scripts de mantenimiento en Node (`scripts/**/*.test.mjs`, con `node:test`). Lo usa el CI.                                                                           |
+| `npm run build:e2e`          | Construye la app de las pruebas de extremo a extremo en `apps/web/dist-medicion/e2e` (ver [Pruebas de extremo a extremo](#pruebas-de-extremo-a-extremo)).                                       |
+| `npm run test:e2e`           | Construye esa app y ejecuta las pruebas de extremo a extremo con Playwright. Acepta opciones de Playwright después de `--`.                                                                     |
+| `npm run test:e2e:sin-build` | Ejecuta las pruebas de extremo a extremo sin volver a construir. Lo usa el CI.                                                                                                                  |
+| `npm run datos:sin-dueno`    | Detecta perfiles, plantas, eventos y fotos de usuarios que ya no existen en Clerk (`-- --ambiente desarrollo`); solo borra con `--borrar` (ver [su README](scripts/datos-sin-dueno/README.md)). |
 
 La app web tiene además un script propio para regenerar los iconos provisionales de la PWA en `apps/web/public`:
 
@@ -683,6 +686,49 @@ Afirmaciones que debe verificar una persona (revisadas contra el código el 21 d
 
 Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, encabezados en orden, fecha, las secciones de eventos, Sentry, propuestas, dispositivo y exportación, enlaces, que no muestra el marcador, enlaces desde el pie y desde el acceso, axe).
 
+## Pruebas de extremo a extremo
+
+Los flujos principales de la Fase 1 (#148) se prueban con [Playwright](https://playwright.dev) en un navegador real: acceso, registro (con y sin foto, y con un nombre por validar), inventario (lista, cuadrícula, búsqueda y filtros), «¿Ya la tengo?», edición y baja, backoffice del catálogo y la PWA (manifiesto, service worker y arranque sin conexión). Cada pantalla recorrida pasa además por [axe](https://github.com/dequelabs/axe-core) con las reglas de nivel A y AA de WCAG 2.0, 2.1 y 2.2; la app no tiene tema oscuro, así que se revisa solo el claro.
+
+Corren en cuatro perfiles: Chromium, Firefox y WebKit de escritorio, y `celular`, un iPhone 15 (WebKit, pantalla pequeña y táctil). Las pruebas están en `apps/web/e2e/` y la configuración en `apps/web/playwright.config.ts`.
+
+### Lanzarlas en local
+
+```sh
+npx --workspace=apps/web playwright install    # una vez (y al actualizar @playwright/test): descarga los navegadores
+npm run test:e2e                                # construye la app de las pruebas y ejecuta todo
+npm run test:e2e:sin-build -- --project=webkit  # sin volver a construir, un solo perfil
+npm run test:e2e:sin-build -- e2e/registro.spec.ts --headed   # un archivo, viendo el navegador
+npm run test:e2e:sin-build -- --ui              # modo interactivo de Playwright
+```
+
+En Linux, la primera vez hace falta `npx playwright install --with-deps` (instala también las bibliotecas del sistema). Al terminar, `npx playwright show-report apps/web/playwright-report` abre el informe; de cada prueba que falla quedan en `apps/web/test-results/` la captura, el vídeo y la traza (`npx playwright show-trace <ruta de trace.zip>`). No hace falta ninguna variable de entorno ni conexión con Clerk, Supabase o Sentry.
+
+### Qué se prueba y qué se simula
+
+- **La app es la de producción.** `npm run build:e2e` construye `apps/web` con los valores ficticios de `scripts/medicion/entorno.mjs` (los mismos que el presupuesto de tamaño) y con un solo módulo cambiado al construir: `@clerk/react`, por `apps/web/medicion/clerk-simulado.tsx` (ver `apps/web/medicion/vite.config.e2e.ts` y `apps/web/medicion/sustitutos.ts`, compartido con la medición de la carga). Clerk descarga su script de su CDN y habla con su API, así que no se puede simular en la red; el sustituto da la sesión que elige cada prueba (sin sesión, la persona de prueba o una con el rol `catalog_admin`) y sus pantallas de acceso son un botón que inicia la sesión. Nada de esto llega a `apps/web/dist`. Se sirve con el servidor de la medición (`scripts/servir-e2e.mjs`), como Vercel: cualquier ruta responde con `index.html`.
+- **Supabase se simula en la red**, no en el código: el cliente de supabase-js de la app hace sus peticiones de verdad hacia `https://supabase.orki.invalid` y Playwright las responde desde la memoria de cada prueba (`apps/web/e2e/soporte/supabase-simulado.ts`), con la forma de PostgREST y de Storage, las reglas de las políticas (cada persona ve y escribe sus plantas; el backoffice, solo `catalog_admin`) y lo que hacen los disparadores de `plants`. Así se ejercita el código de la app que arma las consultas, interpreta las respuestas, sube y descarga las fotos y traduce los errores. Los datos de partida están en `apps/web/e2e/soporte/datos.ts`.
+- **La red está cerrada.** Solo pasa el origen de la app. Una petición a Supabase que el simulado no conoce, cualquier salida a otro dominio o un error que la app envíe a Sentry (el DSN ficticio, que se responde sin salir) hacen fallar la prueba.
+- **Cada prueba es independiente:** contexto de navegador nuevo (almacenamiento vacío) y su propio Supabase simulado. El service worker está bloqueado salvo en las pruebas de la PWA (`apps/web/e2e/pwa.spec.ts`), que lo registran de verdad.
+
+Límites: no se prueba la interfaz real de Clerk (inicio de sesión con Google o correo), ni Supabase o Storage reales, ni Sentry. En Firefox, el modo sin conexión de Playwright no deja responder al service worker, así que la prueba del arranque sin conexión corta el servidor de la app en su lugar; y la del inventario sin conexión solo corre en Chromium, porque en los demás motores Playwright no intercepta la red de una página que controla un service worker.
+
+Fallo conocido: en Firefox, tres pruebas (filtros del inventario, detalle de una especie y cola de propuestas del backoffice) están marcadas con `test.fixme` porque el Firefox de Playwright cierra la pestaña con un fallo de segmentación en esas pantallas (ver `FIREFOX_SE_CAE` en `apps/web/e2e/soporte/fixtures.ts`). Para comprobar si sigue pasando: `E2E_PROBAR_FALLOS_CONOCIDOS=1 npm run test:e2e:sin-build -- --project=firefox`.
+
+### A mano, contra el ambiente de desarrollo
+
+Estas pruebas dependen de los datos simulados y no se lanzan contra el ambiente de desarrollo: allí la sesión es la de Clerk de verdad y en el CI haría falta un secreto de sesión, que a propósito no existe (#25). Para repasar los mismos flujos en desarrollo, a mano y con un usuario de prueba de la instancia de desarrollo de Clerk:
+
+1. Abre la URL de desarrollo con el generador de Playwright, que deja un navegador limpio y anota cada paso: `npx --workspace=apps/web playwright codegen <URL de desarrollo>` (o, sin Playwright, una ventana privada).
+2. Recorre los flujos en el orden de `apps/web/e2e/`: acceso y vuelta a la página pedida, registro con especie, registro con foto y nombre por validar, inventario en lista y cuadrícula con búsqueda y filtros, «¿Ya la tengo?», edición, baja y eliminación, y backoffice con un usuario con el rol de administrador (ver [Rol de administrador del catálogo](#rol-de-administrador-del-catálogo)).
+3. Borra después lo que hayas creado (`npm run db:seed:plants -- <id de usuario> --borrar` quita las plantas de ejemplo).
+
+No guardes el estado de la sesión (`--save-storage`) dentro del repositorio: lleva el token de Clerk.
+
+### En el CI
+
+El job **Pruebas de extremo a extremo (Playwright)** de `.github/workflows/ci.yml` corre en paralelo a los demás: instala los navegadores (en caché por versión de Playwright), construye la app de las pruebas y ejecuta los cuatro perfiles, con un reintento por prueba (una prueba que pasa a la segunda queda marcada como inestable en el informe). No usa secretos. Si falla, sube como artefacto `informe-playwright` el informe HTML y las trazas. Por ahora no es obligatorio para fusionar; la propuesta es exigirlo cuando lleve dos semanas estable.
+
 ## Base de datos y migraciones
 
 Orki tiene dos ambientes, cada uno con su propio proyecto de Supabase: desarrollo y producción. No se usa el entorno local de Supabase con Docker; el ambiente de desarrollo es el proyecto remoto de desarrollo.
@@ -897,4 +943,4 @@ El proyecto sigue GitHub Flow:
 
 ## Integración continua
 
-El workflow `.github/workflows/ci.yml` se ejecuta en cada pull request y en cada push a `main`. Instala las dependencias con `npm ci` usando la versión de Node de `.nvmrc` y la caché de npm, y después ejecuta `lint`, `format:check`, `typecheck`, `test` y `build`, en ese orden. Si cualquiera de esos pasos falla, el job falla. Un segundo job, **Pruebas de base de datos**, ejecuta `npm run db:test` y `npm run db:types:check` sobre un Postgres 17 desechable (ver [Pruebas de la base de datos](#pruebas-de-la-base-de-datos) y [Tipos de TypeScript del esquema](#tipos-de-typescript-del-esquema)). Cuando se suben nuevos commits a un pull request, la ejecución anterior de ese mismo pull request se cancela.
+El workflow `.github/workflows/ci.yml` se ejecuta en cada pull request y en cada push a `main`. Instala las dependencias con `npm ci` usando la versión de Node de `.nvmrc` y la caché de npm, y después ejecuta `lint`, `format:check`, `typecheck`, `test` y `build`, en ese orden. Si cualquiera de esos pasos falla, el job falla. Un segundo job, **Pruebas de base de datos**, ejecuta `npm run db:test` y `npm run db:types:check` sobre un Postgres 17 desechable (ver [Pruebas de la base de datos](#pruebas-de-la-base-de-datos) y [Tipos de TypeScript del esquema](#tipos-de-typescript-del-esquema)). Otro, **Pruebas de extremo a extremo (Playwright)**, prueba los flujos principales en un navegador real (ver [Pruebas de extremo a extremo](#pruebas-de-extremo-a-extremo)); todavía no es obligatorio. Cuando se suben nuevos commits a un pull request, la ejecución anterior de ese mismo pull request se cancela.

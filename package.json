@@ -32,7 +32,10 @@
     "build:medicion": "node scripts/construir-medicion.mjs",
     "presupuesto": "node scripts/presupuesto-tamano.mjs",
     "medir:carga": "node scripts/medir-carga.mjs",
-    "test:scripts": "node --test \"scripts/**/*.test.mjs\""
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+    "build:e2e": "node scripts/construir-e2e.mjs",
+    "test:e2e": "npm run build:e2e && npm run test:e2e:sin-build --",
+    "test:e2e:sin-build": "npm run test:e2e --workspace=apps/web --"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
