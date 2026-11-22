@@ -10,9 +10,20 @@ import { DETAIL_TEXT } from './texts.ts'
  * pedir al recuperar la conexión, ver usePlantImage). La caja tiene
  * proporción fija y la foto se ve entera dentro (object-contain): la imagen
  * no mueve nada al llegar, sea vertical u horizontal.
+ *
+ * Sin conexión (#18), la foto grande no está en el dispositivo (solo se
+ * guardan las miniaturas): si no se puede cargar, se muestra la miniatura,
+ * que sí está guardada.
  */
 export function PlantPhoto({ plant }: { plant: CollectionPlant }) {
-  const image = usePlantImage(plant.photoPath, 'photo')
+  const photo = usePlantImage(plant.photoPath, 'photo')
+  const thumbnail = usePlantImage(
+    plant.thumbnailPath,
+    'thumbnail',
+    photo.status === 'error',
+  )
+  const image =
+    photo.status === 'error' && thumbnail.status === 'ready' ? thumbnail : photo
   const name = plant.displayName
   const src = image.status === 'ready' ? image.src : sinFoto
   const alt =

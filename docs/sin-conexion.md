@@ -148,6 +148,41 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   (`App-*.js`, +5,8 kB, +1,8 kB comprimido); el chunk inicial (`index-*.js`)
   mide lo mismo que antes (271,33 kB).
 
+## 4. Miniaturas sin conexión (#119)
+
+- **Dónde:** Cache Storage, una caché por usuario
+  (`orki-miniaturas-v1:<usuario>`), con la ruta del bucket como clave (nunca
+  una dirección firmada: caduca y cambia en cada firma). Ver
+  `photos/read.ts`.
+- **Descarga en segundo plano** (`photos/thumbnail-sync.ts`, lanzada desde
+  `CollectionProvider`): con la colección completa en memoria, 2 s después
+  (para que primero carguen las que se ven), baja de dos en dos las
+  miniaturas que faltan. Nada sin conexión ni con el ahorro de datos del
+  navegador activado (`navigator.connection.saveData`, Chrome en Android).
+  Cada miniatura se baja una sola vez por dispositivo. Otra pasada cuando
+  cambian las fotos de la colección o tras cada lectura.
+- **Sin red:** la tarjeta lee de esa caché, como siempre; si falta alguna,
+  el marcador neutro "sin foto" con el texto alternativo "no se pudo
+  cargar". La foto grande del detalle no se guarda en el dispositivo (solo
+  en memoria mientras dura la pestaña): sin red, el detalle muestra la
+  miniatura guardada en su lugar (`detail/PlantPhoto.tsx`).
+- **Limpieza:** en cada pasada se borran de la caché del usuario las
+  miniaturas que ya no son de ninguna planta suya (planta eliminada o foto
+  reemplazada: la ruta lleva la versión). Las de otros usuarios se borran al
+  cambiar de cuenta (`forgetPlantImagesExcept`).
+- **Tamaño** (estimado, no medido en un dispositivo):
+
+  | Colección | Miniaturas (tope de 30 kB, WebP de 400 px) | Copia en IndexedDB |
+  | --- | --- | --- |
+  | 100 plantas con foto | hasta 3 MB (unos 1,8 MB con 18 kB típicos) | unos 120 KiB |
+  | 300 plantas con foto | hasta 9 MB (unos 5,4 MB) | unos 360 KiB |
+
+  La copia se midió serializando 100 y 300 plantas con todos los campos
+  llenos y 5 sinónimos por especie. Las miniaturas, por el tope de
+  `photos/process.ts` (30 kB) y el tamaño típico de las pruebas (18 kB).
+  Queda medirlo de verdad en el dispositivo (#121) con las herramientas del
+  navegador (Aplicación → Almacenamiento).
+
 ## Guion de prueba en el dispositivo (#117, #121)
 
 En un iPhone y en un Android, con la app **instalada** (pantalla de inicio) y

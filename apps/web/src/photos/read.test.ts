@@ -189,8 +189,13 @@ describe('Cache Storage', () => {
             current.set(key, response)
             return Promise.resolve()
           },
+          keys: () =>
+            Promise.resolve([...current.keys()].map((key) => new Request(key))),
+          delete: (request: Request) =>
+            Promise.resolve(current.delete(request.url)),
         })
       },
+      has: (name: string) => Promise.resolve(stores.has(name)),
       keys: () => Promise.resolve([...stores.keys()]),
       delete: (name: string) => Promise.resolve(stores.delete(name)),
     }
@@ -237,5 +242,34 @@ describe('Cache Storage', () => {
     const cache = createCacheStorageImageCache()
     await expect(cache.put(THUMB, new Blob())).resolves.toBeUndefined()
     await expect(cache.get(THUMB)).resolves.toBeUndefined()
+    await expect(cache.has?.(THUMB)).resolves.toBe(false)
+    await expect(cache.prune?.(USER_ID, new Set())).resolves.toBeUndefined()
+  })
+
+  it('has() dice si una miniatura está guardada sin leerla', async () => {
+    fakeCaches()
+    const cache = createCacheStorageImageCache()
+    expect(await cache.has?.(THUMB)).toBe(false)
+    await cache.put(THUMB, new Blob(['abc'], { type: 'image/webp' }))
+    expect(await cache.has?.(THUMB)).toBe(true)
+  })
+
+  it('prune() borra las miniaturas del usuario que ya no son de ninguna planta', async () => {
+    const api = fakeCaches()
+    const cache = createCacheStorageImageCache()
+    const replaced = `${USER_ID}/${PLANT_ID}/thumb-v0.webp`
+    await cache.put(THUMB, new Blob(['a']))
+    await cache.put(replaced, new Blob(['b']))
+
+    await cache.prune?.(USER_ID, new Set([THUMB]))
+    const store = api.stores.get(`${THUMBNAIL_CACHE_PREFIX}${USER_ID}`)
+    expect([...(store?.keys() ?? [])]).toEqual([
+      `${location.origin}/_orki/plant-photos/${THUMB}`,
+    ])
+    // Sin caché de ese usuario no crea ninguna.
+    await cache.prune?.('user_sin_cache', new Set())
+    expect(api.stores.has(`${THUMBNAIL_CACHE_PREFIX}user_sin_cache`)).toBe(
+      false,
+    )
   })
 })

@@ -2,6 +2,11 @@ import { useAuth } from '@clerk/react'
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { forgetPlantImagesExcept } from '../photos/read.ts'
 import {
+  syncThumbnails,
+  thumbnailPathsOf,
+  type ThumbnailSyncOptions,
+} from '../photos/thumbnail-sync.ts'
+import {
   createCachedCollectionSource,
   type CachedCollectionSource,
 } from './cached-source.ts'
@@ -46,8 +51,21 @@ interface CollectionProviderProps {
    * efecto.
    */
   source?: CollectionSource
+  /**
+   * Descarga en segundo plano de las miniaturas para verlas sin conexión
+   * (#119). Por defecto, syncThumbnails; null, ninguna.
+   */
+  thumbnailSync?: ((options: ThumbnailSyncOptions) => Promise<unknown>) | null
+  /** Espera antes de empezar esa descarga, en milisegundos. */
+  thumbnailSyncDelayMs?: number
   children: ReactNode
 }
+
+/**
+ * Espera tras tener la colección antes de bajar las miniaturas que faltan:
+ * primero, las que la pantalla está mostrando.
+ */
+const THUMBNAIL_SYNC_DELAY_MS = 2_000
 
 /**
  * Comparte la colección del usuario con sesión entre todas las pantallas (ver
@@ -68,6 +86,8 @@ interface CollectionProviderProps {
  */
 export function CollectionProvider({
   source: sourceProp,
+  thumbnailSync = syncThumbnails,
+  thumbnailSyncDelayMs = THUMBNAIL_SYNC_DELAY_MS,
   children,
 }: CollectionProviderProps) {
   const { isLoaded, isSignedIn, userId } = useAuth()
@@ -122,6 +142,44 @@ export function CollectionProvider({
       window.removeEventListener('online', onOnline)
     }
   }, [store])
+
+  // Miniaturas sin conexión (#119): con la colección completa, se limpian las
+  // que sobran y se bajan las que faltan. Otra pasada cuando cambian las
+  // fotos de la colección o tras cada lectura (al recuperar la conexión).
+  useEffect(() => {
+    if (thumbnailSync === null) return
+    let controller: AbortController | null = null
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let lastKey = ''
+    const stop = () => {
+      controller?.abort()
+      controller = null
+      clearTimeout(timer)
+    }
+    const check = () => {
+      const { userId, status, plants } = store.getSnapshot()
+      if (userId === null || status !== 'ready' || plants === null) {
+        lastKey = ''
+        stop()
+        return
+      }
+      const key = `${userId}|${[...thumbnailPathsOf(userId, plants)].sort().join('|')}`
+      if (key === lastKey) return
+      lastKey = key
+      stop()
+      const current = new AbortController()
+      controller = current
+      timer = setTimeout(() => {
+        void thumbnailSync({ userId, plants, signal: current.signal })
+      }, thumbnailSyncDelayMs)
+    }
+    const unsubscribe = store.subscribe(check)
+    check()
+    return () => {
+      unsubscribe()
+      stop()
+    }
+  }, [store, thumbnailSync, thumbnailSyncDelayMs])
 
   return (
     <CollectionContext value={store}>

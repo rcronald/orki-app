@@ -281,3 +281,23 @@ describe('PlantDetailPage', () => {
     expect(heading().querySelector('.italic')).not.toBeNull()
   })
 })
+
+describe('PlantDetailPage sin conexión (#18)', () => {
+  it('si la foto grande no se puede cargar, muestra la miniatura guardada', async () => {
+    const images = fakeImageSource()
+    images.acquire.mockImplementation((path, kind) =>
+      kind === 'photo'
+        ? Promise.reject(new Error('sin red'))
+        : Promise.resolve(`blob:${path}`),
+    )
+    await renderPlantRoutes({
+      entries: [`/coleccion/${AMABILIS.id}`],
+      plants: [AMABILIS],
+      images: images.source,
+    })
+    const photo = await screen.findByRole('img', {
+      name: 'Foto de Phalaenopsis amabilis',
+    })
+    expect(photo).toHaveAttribute('src', `blob:${AMABILIS.thumbnailPath}`)
+  })
+})

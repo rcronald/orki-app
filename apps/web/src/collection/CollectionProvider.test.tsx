@@ -437,3 +437,88 @@ describe('CollectionProvider con copia local (#18)', () => {
     expect(source.loads).toHaveLength(0)
   })
 })
+
+describe('CollectionProvider: miniaturas sin conexión (#119)', () => {
+  const thumb = (n: number) =>
+    `user_a/6f1c2a4e-8b3d-4e5f-9a7b-${String(n).padStart(12, '0')}/thumb-v1.webp`
+
+  it('con la colección completa, baja las miniaturas; otra vez si cambian las fotos', async () => {
+    vi.useFakeTimers()
+    try {
+      const thumbnailSync = vi.fn(() => Promise.resolve())
+      render(
+        <CollectionProvider
+          source={source}
+          thumbnailSync={thumbnailSync}
+          thumbnailSyncDelayMs={100}
+        >
+          <Screen name="lista" />
+          <ApiProbe />
+        </CollectionProvider>,
+      )
+      await resolveLast([plant({ thumbnailPath: thumb(1) })])
+      expect(thumbnailSync).not.toHaveBeenCalled()
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(thumbnailSync).toHaveBeenCalledTimes(1)
+      expect(thumbnailSync).toHaveBeenLastCalledWith(
+        expect.objectContaining({ userId: 'user_a' }),
+      )
+
+      // Un cambio que no toca las fotos no lanza otra pasada.
+      act(() => api?.upsertPlant(plant({ id: 'sin-foto' })))
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(thumbnailSync).toHaveBeenCalledTimes(1)
+
+      act(() => api?.upsertPlant(plant({ thumbnailPath: thumb(2) })))
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(thumbnailSync).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('al cerrar sesión cancela la pasada en curso', async () => {
+    vi.useFakeTimers()
+    try {
+      const signals: AbortSignal[] = []
+      const thumbnailSync = vi.fn(({ signal }: { signal: AbortSignal }) => {
+        signals.push(signal)
+        return Promise.resolve()
+      })
+      const { rerender } = render(
+        <CollectionProvider
+          source={source}
+          thumbnailSync={thumbnailSync}
+          thumbnailSyncDelayMs={0}
+        >
+          <Screen name="lista" />
+        </CollectionProvider>,
+      )
+      await resolveLast([plant({ thumbnailPath: thumb(1) })])
+      act(() => {
+        vi.advanceTimersByTime(0)
+      })
+      expect(signals).toHaveLength(1)
+
+      setFakeClerk({ signedIn: false })
+      rerender(
+        <CollectionProvider
+          source={source}
+          thumbnailSync={thumbnailSync}
+          thumbnailSyncDelayMs={0}
+        >
+          <Screen name="lista" />
+        </CollectionProvider>,
+      )
+      expect(signals[0]?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
