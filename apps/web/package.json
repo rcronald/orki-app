@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "icons": "node scripts/generate-icons.mjs",
     "fondos": "node scripts/fondos-genero.mjs",
+    "portada": "node scripts/foto-portada.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

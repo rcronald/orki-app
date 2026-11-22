@@ -115,7 +115,10 @@ en solo lectura.
 El código: `src/auth/offline-identity.ts` (lo que se recuerda),
 `src/auth/useAppIdentity.ts` (quién usa la app), `src/auth/PendingSignOut.tsx`
 y `src/auth/AccountControls.tsx` (cerrar sesión), `src/auth/RouteGuards.tsx`
-(las rutas protegidas se abren con un usuario sin confirmar).
+(las rutas protegidas se abren con un usuario sin confirmar) y
+`src/pages/HomeRoute.tsx` (#191): con un usuario sin confirmar, `/` lleva a
+la colección; sin nadie recordado, se ve la portada, cuya foto no está en el
+precaché (sin conexión, en su hueco queda el texto alternativo).
 
 La copia local y las miniaturas van siempre por id de usuario: aunque falle
 algún borrado, la app nunca lee la copia de un id distinto del activo.

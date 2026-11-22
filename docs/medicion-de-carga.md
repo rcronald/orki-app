@@ -15,6 +15,8 @@ Todas las cifras de este documento salen de ejecuciones hechas con las órdenes 
 - El inventario con 100 plantas queda en 2,80 s **sin** el script de Clerk (71,6 KiB con Brotli, ver abajo), sin las idas y vueltas a su API y sin la consulta a Supabase. Con ellos lo más probable es que pase de 3 s en la primera visita; no está medido. Queda propuesto un issue para medirlo contra el ambiente de desarrollo y el plan para bajarlo («Issues por abrir»).
 - El CI falla si el JavaScript inicial, el CSS o el total precacheado superan el presupuesto (`apps/web/presupuesto-tamano.json`, margen del 5 %).
 
+> **Actualización (22 nov 2026):** con la portada del #179, el inicio da 3,95 s de LCP (antes de ella, 3,20 s con el mismo método); el detalle, en «Portada». El presupuesto del CSS inicial y del precaché queda superado por las piezas nuevas del design system y está pendiente de decidir.
+
 ## Cómo medir
 
 Requisitos: Node de `.nvmrc`, dependencias instaladas (`npm ci`) y Google Chrome instalado (o la variable `CHROME_PATH`). No hace falta ninguna variable de entorno real ni conexión con Supabase, Clerk o Sentry.
@@ -66,6 +68,40 @@ Orden: `npm run medir:carga` (5 ejecuciones por pantalla). Lighthouse 13.6.0, He
 - **Sin fotos**: las plantas de la muestra no tienen foto, así que no se miden las miniaturas.
 - **Primera visita**: con la app instalada, el service worker sirve todo el JavaScript, el CSS y las fuentes desde la caché y la carga depende casi solo de la CPU y de Clerk. No está medido.
 - **Simulación**: Lighthouse simula la red a partir de una carga local. Es repetible y sirve para comparar versiones, pero no sustituye una medición en un celular real con 4G.
+
+## Portada (#193, 22 nov 2026)
+
+Orden: `npm run build:medicion && npm run medir:carga -- --sin-build --solo inicio` (5 ejecuciones, mediana con mínimo y máximo), antes y después de la portada del #179 (#190 a #193), en este mismo equipo. Lighthouse 13.6.0, configuración móvil simulada, `benchmarkIndex` 4083 (antes) y 4140 (después).
+
+| Métrica | Antes (`main`, 38db1fb) | Después (portada con foto) |
+| --- | --- | --- |
+| First Contentful Paint | 1,84 s (1,83–2,13) | 1,83 s (0,75–2,13) |
+| Largest Contentful Paint | 3,20 s (3,20–3,21) | 3,95 s (3,95–3,95) |
+| Speed Index | 1,84 s (1,83–2,13) | 1,83 s (1,53–2,13) |
+| Total Blocking Time | 10 ms (0–20) | 0 ms (0–10) |
+| Cumulative Layout Shift | 0,010 | 0,001 |
+| Bytes transferidos | 199,4 KiB | 312,6 KiB |
+| Puntuación de rendimiento | 92 (91–92) | 87 (86–88) |
+
+- **Antes ya pasaba de 2,5 s.** Las cifras del resumen de arriba (0,90 s) son del 21 de noviembre; con lo que entró después, el inicio de `main` ya daba 3,20 s en esta medición, porque lo que pinta (el logotipo en el `h1`) llega con el chunk `App`, que espera al inicial.
+- **Después**, el elemento del LCP es la foto (`img.orki-hero__photo`, la variante de 960 px, 55,6 KiB). Lighthouse lo desglosa así (ejecución 1, tiempos sin simular): espera 3 ms al primer byte, 73 ms a que se descubra la petición, 1 ms de descarga y **796 ms de retraso de pintado**: la foto no se puede pintar hasta que el chunk `App` (78 KiB transferidos) llega y se ejecuta. La petición no se ve en el HTML inicial.
+- **Probado y descartado:** precargar la foto desde `index.html` (un script en línea que, solo en `/` y sin usuario recordado, añade `<link rel="preload" as="image" imagesrcset imagesizes fetchpriority="high">`). El LCP bajó de 3,95 a 3,80 s (mediana de 5), a cambio de 560 bytes más en el precaché, que ya está en el límite. No compensa.
+- **CLS** bajó a 0,001: la foto lleva `width` y `height` y el Hero reserva el hueco 3:2.
+- Los bytes suben por la foto (55,6 KiB) y por el CSS de las piezas nuevas; la foto no entra en el precaché.
+
+Para bajar el LCP de la portada por debajo de 2,5 s hay que pintarla sin esperar al chunk `App`: que el Hero (sin Clerk) vaya en el chunk inicial o se pinte mientras `App` carga, y que `App` decida después si hay que ir a la colección. Queda propuesto como issue («Issues por abrir», 4); afecta al presupuesto del JavaScript inicial (95,3 % hoy).
+
+### Presupuesto con la portada
+
+`npm run build:medicion && npm run presupuesto`, antes y después:
+
+| Métrica | Antes | Después | Límite |
+| --- | --- | --- | --- |
+| `jsInicialGzip` | 86 043 B (95,3 %) | 86 038 B (95,3 %) | 90 321 B |
+| `cssGzip` | 7 795 B (98,5 %) | 8 545 B (**107,9 %**) | 7 916 B |
+| `precacheBytes` | 1 355 771 B (99,4 %) | 1 366 871 B (**100,2 %**) | 1 364 418 B |
+
+Las dos que se pasan lo hacen por las piezas de las páginas públicas del design system: `bundle.css` es copia literal del sistema y pasa de 8 848 a 12 712 bytes (NavBar, Hero, FeatureItem, TextLink y `orki-btn--strong`), que van en la hoja inicial. El resto del aumento del precaché es el código de la portada en el chunk `App` (la página, la cabecera pública, la redirección con sesión y los iconos nuevos). Lo recortado antes de medir: la foto y el dibujo fuera del precaché, y el JavaScript solo con el texto alternativo y las medidas de la foto (no su informe). El presupuesto **no** se ha subido: hace falta decidirlo (`npm run presupuesto -- --actualizar` con el porqué en el PR).
 
 ## Presupuesto de tamaño (CI)
 
@@ -151,3 +187,7 @@ Redactados aquí; no se han abierto todavía.
 **3. Cliente de Supabase sin Auth, Realtime ni Functions** (prioridad baja, área rendimiento, ejecuta: agente)
 
 > El chunk de supabase-js pesa 47,1 KiB con Brotli y la mayor parte (auth-js, realtime-js, phoenix, functions-js, iceberg-js) no se usa: el token viene de Clerk. Sustituirlo por `@supabase/postgrest-js` y `@supabase/storage-js` en `apps/web/src/lib/supabase.ts`, medir el ahorro con `npm run build:medicion` y bajar el presupuesto con `npm run presupuesto -- --actualizar`.
+
+**4. Portada: pintar el Hero sin esperar al chunk de la app** (prioridad media, área rendimiento, ejecuta: agente)
+
+> La portada (#179) da 3,95 s de LCP en la medición móvil: la foto se descarga enseguida, pero no se pinta hasta que llega y se ejecuta el chunk `App` (Clerk, rutas y pantallas). Opciones: llevar el Hero y las ventajas (sin Clerk) al chunk inicial y que `App` solo decida después si `/` lleva a la colección, o pintarlos como `fallback` mientras `App` carga. Medir el efecto en el JavaScript inicial (hoy al 95,3 % del presupuesto) y en el inventario.

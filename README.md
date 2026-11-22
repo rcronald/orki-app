@@ -341,8 +341,8 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 
 | Ruta                       | Pantalla                                                                                                                                                      | Acceso                     |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `/`                        | Inicio                                                                                                                                                        | Pública                    |
-| `/catalogo`                | Catálogo (provisional)                                                                                                                                        | Pública                    |
+| `/`                        | Portada (ver [Portada](#portada)); con sesión lleva a «Mi colección»                                                                                          | Pública                    |
+| `/catalogo`                | Catálogo (provisional, sin enlace en la navegación hasta #187)                                                                                                | Pública                    |
 | `/coleccion`               | Mi colección (provisional)                                                                                                                                    | Con sesión                 |
 | `/coleccion/nueva`         | Registrar una planta (provisional)                                                                                                                            | Con sesión                 |
 | `/administracion/catalogo` | Administración del catálogo: especies, sus nombres, géneros y abreviaturas, y la cola de propuestas (ver [Backoffice del catálogo](#backoffice-del-catálogo)) | Con sesión y rol de admin. |
@@ -352,10 +352,26 @@ El enrutador es [React Router](https://reactrouter.com/) 8 en modo declarativo (
 | `/diagnostico`             | Diagnóstico de identidad                                                                                                                                      | Solo fuera de producción   |
 | Cualquier otra             | Página no encontrada                                                                                                                                          | Pública                    |
 
-- Navegación: `src/components/AppShell.tsx` pinta la cabecera, un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. El enlace "Administración" solo aparece con el rol de administrador.
+- Navegación: `src/components/AppShell.tsx` pinta la cabecera (el logotipo, que enlaza al inicio, y los controles de cuenta), un enlace "Saltar al contenido" y la navegación principal (`<nav aria-label="Principal">`) con enlaces con aspecto de chip del sistema: «Mi colección» y, solo con el rol de administrador, «Administración». No hay chip «Inicio» (el logotipo lleva al inicio, que con sesión abre la colección) ni «Catálogo», que es un marcador hasta la consulta pública (#187); la ruta sigue existiendo. `NavLink` marca la página actual con `aria-current="page"` y el estilo seleccionado sale de ese atributo. La portada (`/`) no usa `AppShell` sino `PublicShell`, sin chips (ver [Portada](#portada)).
 - Cada página pone el título de la pestaña ("Catálogo · orqui.apps") y, al llegar navegando dentro de la app (no al cargarla), el foco va a su título (`h1` con `tabIndex={-1}`) para que el lector de pantalla anuncie la página nueva; en las pantallas de acceso, al contenido principal. Ver `src/routes/navigation.ts`.
 - Recargar cualquier ruta funciona: en Vercel, la reescritura de `vercel.json` responde con `index.html` todo lo que no es `assets/` ni `workbox-`; con la app instalada, el `navigateFallback` del service worker hace lo mismo con cualquier navegación.
 - Carga: `src/routes/AppRouter.tsx` carga `App.tsx` (Clerk, su localización y las páginas) de forma diferida, en un chunk aparte del inicial. El service worker precachea todos los chunks, así que sin conexión también carga.
+
+### Portada
+
+`/` es la portada pública (#179), según las maquetas de escritorio y de celular y con las piezas de las páginas públicas del design system (ver [Design system en la app](#design-system-en-la-app)): la NavBar (`src/components/PublicHeader.tsx`, dentro de `src/components/PublicShell.tsx`, que conserva «Saltar al contenido» y el pie), el Hero con la foto y el dibujo botánico y tres ventajas (`src/pages/HomePage.tsx`). Los textos son los del #179: nada que la app no haga hoy y sin enlaces al catálogo hasta #187. «Crear cuenta gratis» lleva a `/registro` e «Iniciar sesión» a `/iniciar-sesion`. Hasta 720 px va en una columna y la cabecera queda solo con el logotipo: las dos acciones están en el Hero, una debajo de otra.
+
+Qué se ve en `/` lo decide `src/pages/HomeRoute.tsx` con `useAppIdentity()`:
+
+| Situación                                                                      | Qué se ve                                                                                                                                                   |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Con sesión, o con la sesión recordada sin confirmar (sin conexión o sin Clerk) | Redirige a `/coleccion`, sin pintar la portada                                                                                                              |
+| Sin sesión, o sin Clerk y sin nadie recordado                                  | La portada                                                                                                                                                  |
+| Tras eliminar la cuenta                                                        | La portada con el aviso «Tu cuenta se eliminó…»                                                                                                             |
+| Clerk aún no responde y el dispositivo recuerda a alguien                      | La cabecera con solo el logotipo y «Cargando el acceso…»: lo más probable es que tenga sesión, y así no aparece la portada para quitarla un momento después |
+| Clerk aún no responde y no se recuerda a nadie                                 | La portada al momento, sin esperar a Clerk (lo normal en una visita nueva)                                                                                  |
+
+Un único `h1` (el título); las ventajas son `h2`. La foto y el dibujo están en `src/assets/portada/` con su origen y cómo sustituirlos (`LEEME.md`): la foto se prepara con `npm run portada --workspace=apps/web -- preparar <foto> "<texto alternativo>"` y no entra en el precaché del service worker. La medición de la carga está en [`docs/medicion-de-carga.md`](docs/medicion-de-carga.md).
 
 ### Rutas protegidas y vuelta tras iniciar sesión
 
@@ -431,7 +447,7 @@ Como la muestra, solo existe con `VITE_APP_ENV` distinto de `prod`: `src/App.tsx
 
 ### Sin conexión
 
-La app instalada abre sin red: el service worker sirve `index.html`, el JavaScript y las fuentes desde su precache, la pantalla pública se pinta enseguida y el acceso no bloquea el arranque.
+La app instalada abre sin red: el service worker sirve `index.html`, el JavaScript y las fuentes desde su precache, la portada se pinta enseguida (sin la foto, que no se precachea; queda su texto alternativo) y el acceso no bloquea el arranque. Con una sesión recordada, `/` lleva a la copia local de la colección.
 
 Qué hace Clerk sin red. **Verificado en la documentación de Clerk:**
 
@@ -704,6 +720,8 @@ Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, enc
 ## Pruebas de extremo a extremo
 
 Los flujos principales de la Fase 1 (#148) se prueban con [Playwright](https://playwright.dev) en un navegador real: acceso, registro (con y sin foto, y con un nombre por validar), inventario (lista, cuadrícula, búsqueda y filtros), «¿Ya la tengo?», edición y baja, backoffice del catálogo y la PWA (manifiesto, service worker y arranque sin conexión). Cada pantalla recorrida pasa además por [axe](https://github.com/dequelabs/axe-core) con las reglas de nivel A y AA de WCAG 2.0, 2.1 y 2.2; la app no tiene tema oscuro, así que se revisa solo el claro. Lo que axe no ve se prueba aparte: `e2e/foco-no-tapado.spec.ts` comprueba, con el tabulador en una pantalla de celular, que las barras fijas (el buscador del inventario, registrar desde el inventario y las acciones del formulario) no tapan el control con el foco (WCAG 2.4.11, #151); cada barra se marca con `data-barra-superior` o `data-barra-inferior` y `src/index.css` deja ese margen con `scroll-padding`.
+
+`e2e/portada.spec.ts` revisa la portada a 360 px (una columna, sin desplazamiento horizontal, acciones de al menos 44 px) y en escritorio a 1440 px (dos columnas, foto hasta el borde y ventajas en fila), las dos con axe, y que con sesión `/` lleve a la colección.
 
 Corren en cuatro perfiles: Chromium, Firefox y WebKit de escritorio, y `celular`, un iPhone 15 (WebKit, pantalla pequeña y táctil). Las pruebas están en `apps/web/e2e/` y la configuración en `apps/web/playwright.config.ts`.
 

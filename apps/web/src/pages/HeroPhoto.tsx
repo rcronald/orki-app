@@ -10,9 +10,11 @@ import { anchos, respaldo, textoAlternativo } from '../assets/portada/foto.json'
 // - width y height del archivo más grande: el navegador reserva el hueco
 //   (3:2, como el recorte de orki-hero__photo) y nada se mueve al llegar.
 // - Prioridad alta y sin carga diferida: en celular es el elemento más grande
-//   de la primera pantalla (el LCP).
+//   de la primera pantalla (el LCP). Una precarga desde index.html se probó
+//   y solo bajó el LCP de 3,95 a 3,80 s: lo que lo retrasa es esperar al
+//   chunk de la app para pintar (ver docs/medicion-de-carga.md).
 // - Fuera del precaché del service worker (globIgnores en vite.config.ts):
-//   sin conexión, la portada se ve con el fondo y el texto alternativo.
+//   sin conexión, en su hueco queda el texto alternativo.
 // - `?no-inline`: Vite nunca la mete en el JavaScript como data URL.
 
 const AVIF = import.meta.glob<string>('../assets/portada/portada-*.avif', {
