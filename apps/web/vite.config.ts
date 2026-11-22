@@ -127,8 +127,10 @@ export default defineConfig({
         // JS, CSS, HTML y fuentes (woff2) del build; los iconos y el manifest los
         // añade el plugin (includeAssets e iconos del manifest), así no se
         // duplican en el precache. Las fuentes van precacheadas para que la app
-        // se vea con su tipografía sin conexión.
-        globPatterns: ['**/*.{js,css,html,woff2}'],
+        // se vea con su tipografía sin conexión. Las fotos de fondo por género
+        // del registro (avif, #13) también: son cinco, de menos de 100 KB cada
+        // una, y así aparecen al momento y sin conexión.
+        globPatterns: ['**/*.{js,css,html,woff2,avif}'],
         // Cualquier navegación sin coincidencia en caché responde con index.html,
         // así que todas las rutas de la app (src/routes/paths.ts, incluidas las
         // subrutas de Clerk como /iniciar-sesion/sso-callback) se abren y se

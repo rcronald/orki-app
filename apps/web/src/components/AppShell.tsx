@@ -6,11 +6,15 @@ import { PATHS } from '../routes/paths.ts'
 // Estructura común de las páginas de la app (no de las de acceso): enlace para
 // saltar al contenido, cabecera con la marca y la cuenta, navegación principal
 // y el contenido de la ruta. Los enlaces son de React Router: no recargan.
+//
+// `isolate` crea un contexto de apilamiento propio: así el fondo por género del
+// registro (GenusBackdrop, con z-index negativo) se pinta encima del fondo de
+// este contenedor y debajo de todo su contenido.
 export function AppShell() {
   const isCatalogAdmin = useIsCatalogAdmin()
 
   return (
-    <div className="flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
+    <div className="isolate flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
       <a
         href="#contenido"
         className="sr-only focus:not-sr-only focus:absolute focus:top-space-2 focus:left-space-2 focus:z-50 focus:rounded-md focus:bg-neutral-0 focus:p-space-2"

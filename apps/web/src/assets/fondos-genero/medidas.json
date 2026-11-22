@@ -1,0 +1,42 @@
+{
+  "cattleya": {
+    "provisional": true,
+    "calidad": 60,
+    "bytes": 8401,
+    "sha256": "e569cf8a61004814caef86f9b7d534342387dca0ff287c6ffad8378f31661541",
+    "zonaClara": "#fefeff",
+    "zonaOscura": "#08050c"
+  },
+  "dendrobium": {
+    "provisional": true,
+    "calidad": 60,
+    "bytes": 8328,
+    "sha256": "8f23f4f8326118ec1d4588012de11761d877c5cf119eabb6f0bee56cc51f6fd7",
+    "zonaClara": "#fffeff",
+    "zonaOscura": "#050306"
+  },
+  "oncidium": {
+    "provisional": true,
+    "calidad": 60,
+    "bytes": 9287,
+    "sha256": "79d9e0f5b1a636968f040eb74ff78be188be6a3a8e953bad07c067f2b5d41968",
+    "zonaClara": "#ffffff",
+    "zonaOscura": "#080609"
+  },
+  "phalaenopsis": {
+    "provisional": true,
+    "calidad": 60,
+    "bytes": 8164,
+    "sha256": "ce7a377db6b2bab78d0a1577929d922ef0625dca2a1332914ff35aabf2d514fc",
+    "zonaClara": "#fdfffe",
+    "zonaOscura": "#08050c"
+  },
+  "vanda": {
+    "provisional": true,
+    "calidad": 60,
+    "bytes": 9829,
+    "sha256": "0e4fc0d55757bfbd3a82f27d124fef9aa1764e8420525e6897f0d309801f1706",
+    "zonaClara": "#fefeff",
+    "zonaOscura": "#060408"
+  }
+}
