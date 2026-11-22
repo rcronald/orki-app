@@ -10,8 +10,8 @@ import { PhotoStorageError } from './storage.ts'
 
 // plant_photos en memoria, con la misma interfaz que la de PostgREST y las
 // reglas de la base que importan a la app (#219): dueño, carpeta de las rutas,
-// posición de 0 a 5 y única por planta, y copia de la principal a las columnas
-// de la planta. Lo usan las pruebas (y lo puede usar la página de muestra).
+// posición de 0 a 5 y única por planta, copia de la principal a las columnas
+// de la planta y número de fotos (photoCount) al releerla. Lo usan las pruebas (y lo puede usar la página de muestra).
 // Puede fallar a voluntad, también "después de aplicar" (la red cae con la
 // fila ya guardada).
 
@@ -154,7 +154,11 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
       if (!plant || plant.userId !== userId) {
         return Promise.reject(new PhotoStorageError('not-found'))
       }
-      const copy: Partial<typeof plant> = { ...plant }
+      // Como photo_count: el número de filas de la planta.
+      const copy: Partial<typeof plant> = {
+        ...plant,
+        photoCount: photosOf(plantId).length,
+      }
       delete copy.userId
       return Promise.resolve(copy as CollectionPlant)
     },

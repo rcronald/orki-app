@@ -2301,6 +2301,35 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
       expect(JSON.stringify(recorded)).not.toMatch(/phal|amabilis/i)
     })
 
+    // #184: has_photo sigue siendo «al menos una foto» con la galería.
+    it('con las seis fotos, «con foto»', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container, 6)
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      await waitFor(() => expect(recorded).toHaveLength(1))
+      expect(recorded[0]).toMatchObject({ has_photo: true })
+    })
+
+    it('si fallan todas las fotos y se sigue sin ellas, «sin foto»', async () => {
+      failUploads(401)
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container, 2)
+      await user.click(submitButton())
+      await user.click(
+        await screen.findByRole('button', {
+          name: PLANT_FORM_TEXT.photosContinue,
+        }),
+      )
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      await waitFor(() => expect(recorded).toHaveLength(1))
+      expect(recorded[0]).toMatchObject({ has_photo: false })
+    })
+
     it('sin fotos y con el nombre por validar', async () => {
       const user = userEvent.setup()
       await renderPage()

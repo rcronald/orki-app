@@ -62,6 +62,20 @@ describe('evento "registro completado"', () => {
     })
   })
 
+  it('por defecto, «con foto» es tener al menos una (photoCount, #184)', () => {
+    const { result } = renderRegistration()
+    act(() => result.current.onRegistered(plant({ photoCount: 0 })))
+    expect(record.mock.calls[0]?.[0]).toMatchObject({ has_photo: false })
+
+    const second = renderRegistration()
+    act(() =>
+      second.result.current.onRegistered(
+        plant({ photoPath: 'user/planta/foto.webp', photoCount: 3 }),
+      ),
+    )
+    expect(record.mock.calls[1]?.[0]).toMatchObject({ has_photo: true })
+  })
+
   it('sin fotos, «con foto» es falso; y se envía solo una vez', () => {
     const { result } = renderRegistration()
     clock = 11_000

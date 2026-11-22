@@ -360,8 +360,10 @@ export async function uploadPlantPhotos(
 
   const finalResults = results as PlantPhotoUploadResult[]
   const mainAfter = saved[0]?.id ?? null
+  // Se relee la planta si cambió la principal o el número de fotos
+  // (photoCount, #184): la tarjeta y la exportación leen las dos cosas.
   const plant =
-    mainAfter !== mainBefore
+    mainAfter !== mainBefore || saved.length !== before.length
       ? await refreshPlant(rows, plantId, userId, onPlantUpdated)
       : null
   return {

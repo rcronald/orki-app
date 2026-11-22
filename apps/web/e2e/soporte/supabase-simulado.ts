@@ -342,6 +342,9 @@ export class SupabaseSimulado {
       photo_in_bloom: planta.photo_in_bloom,
       photo_path: planta.photo_path,
       thumbnail_path: planta.thumbnail_path,
+      // Campo calculado photo_count (#184): las filas de plant_photos.
+      photo_count: this.fotos.filter((foto) => foto.plant_id === planta.id)
+        .length,
       created_at: planta.created_at,
       updated_at: planta.updated_at,
       species: especie
@@ -916,13 +919,7 @@ export class SupabaseSimulado {
           proposed_name: primera.entered_name,
           type: primera.type,
           plant_count: plantas.length,
-          photos: plantas
-            .filter((p) => p.photo_path && p.thumbnail_path)
-            .slice(0, 4)
-            .map((p) => ({
-              photo_path: p.photo_path,
-              thumbnail_path: p.thumbnail_path,
-            })),
+          photos: this.fotosDeGrupo(plantas),
           plantas,
         }
       })
@@ -931,6 +928,47 @@ export class SupabaseSimulado {
           b.plant_count - a.plant_count ||
           a.proposed_name.localeCompare(b.proposed_name),
       )
+  }
+
+  /**
+   * Como list_proposal_groups() desde el #184: hasta seis fotos de
+   * plant_photos, por turnos (la principal de cada planta, de la más reciente
+   * a la más antigua; después la segunda de cada una...). Una planta sin
+   * filas aporta la foto de sus columnas.
+   */
+  private fotosDeGrupo(plantas: Planta[]) {
+    const porPlanta = [...plantas]
+      .sort(
+        (a, b) =>
+          b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id),
+      )
+      .map((planta) => {
+        const filas = this.fotos
+          .filter((foto) => foto.plant_id === planta.id)
+          .sort((a, b) => a.position - b.position)
+        if (filas.length > 0) return filas
+        return planta.photo_path && planta.thumbnail_path
+          ? [
+              {
+                photo_path: planta.photo_path,
+                thumbnail_path: planta.thumbnail_path,
+              },
+            ]
+          : []
+      })
+    const fotos: { photo_path: string; thumbnail_path: string }[] = []
+    for (let turno = 0; turno < 6; turno++) {
+      for (const filas of porPlanta) {
+        const foto = filas[turno]
+        if (foto && fotos.length < 6) {
+          fotos.push({
+            photo_path: foto.photo_path,
+            thumbnail_path: foto.thumbnail_path,
+          })
+        }
+      }
+    }
+    return fotos
   }
 
   private grupoPedido(argumentos: Record<string, unknown>) {
