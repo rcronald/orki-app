@@ -188,7 +188,7 @@ select pruebas.iguales(
 );
 select pruebas.iguales(
   'el listado y la cuenta no escriben',
-  (select string_agg(p.proname || '=' || p.provolatile, ', ' order by p.proname)
+  (select string_agg(p.proname || '=' || p.provolatile::text, ', ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'public'::regnamespace
        and p.proname in ('list_proposal_groups', 'count_proposal_groups')),
