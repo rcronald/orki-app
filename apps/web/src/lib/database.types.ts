@@ -573,6 +573,22 @@ export type Database = {
         Args: { target_name_id: string }
         Returns: undefined
       }
+      get_public_species: {
+        Args: { target_species_id: string }
+        Returns: {
+          common_name_count: number
+          common_names: Json
+          genus_id: string
+          genus_name: string
+          id: string
+          scientific_name: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string
+          synonym_count: number
+          synonyms: string[]
+          type: Database['public']['Enums']['species_type']
+        }[]
+      }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       is_pending_plant: { Args: { target_plant_id: string }; Returns: boolean }
       is_pending_plant_photo: {
@@ -647,6 +663,32 @@ export type Database = {
           proposed_name: string
           total_count: number
           type: Database['public']['Enums']['plant_type']
+        }[]
+      }
+      list_public_genera: {
+        Args: { page_number?: number; page_size?: number }
+        Returns: {
+          current_page: number
+          id: string
+          name: string
+          species_count: number
+          total_count: number
+        }[]
+      }
+      list_public_genus_species: {
+        Args: {
+          page_number?: number
+          page_size?: number
+          target_genus_id: string
+        }
+        Returns: {
+          current_page: number
+          genus_id: string
+          genus_name: string
+          id: string
+          scientific_name: string
+          total_count: number
+          type: Database['public']['Enums']['species_type']
         }[]
       }
       mark_proposal_unidentifiable: {
@@ -730,6 +772,18 @@ export type Database = {
           is_quick_access: boolean
           matched_abbreviation: string
           name: string
+        }[]
+      }
+      search_public_species: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          genus_id: string
+          genus_name: string
+          id: string
+          matched_name: string
+          matched_name_type: Database['public']['Enums']['species_match_type']
+          scientific_name: string
+          type: Database['public']['Enums']['species_type']
         }[]
       }
       search_species: {

@@ -4,9 +4,10 @@
 // Prepara una base Postgres desechable con todas las migraciones (scripts/db-desechable, la
 // misma que usan las pruebas), carga un catálogo sintético del tamaño del real
 // (scripts/db-perf/catalogo-sintetico.sql), hace vacuum analyze y ejecuta un conjunto de
-// consultas típicas contra public.search_species() como anon, cada una varias veces. Reporta
-// por consulta la mediana y el p95 del tiempo dentro de la base de datos, las filas devueltas
-// y los recorridos de los índices de búsqueda y secuenciales de species y species_names
+// consultas típicas contra public.search_species() como authenticated y contra las cuatro
+// funciones del catálogo público (#231) como anon, cada una varias veces. Reporta por consulta
+// la mediana y el p95 del tiempo dentro de la base de datos, las filas devueltas y los
+// recorridos de los índices que debe usar y secuenciales de species y species_names
 // (diferencia de pg_stat_user_indexes y pg_stat_user_tables, desde PostgreSQL 15), y el
 // tamaño de las tablas e índices del catálogo. Nunca toca los proyectos de Supabase.
 //
@@ -15,8 +16,8 @@
 // supabase/README.md, "Rendimiento de la búsqueda").
 //
 // No corre en el CI: es una orden aparte. Termina con código 1 si el p95 de alguna consulta
-// supera el umbral, si alguna no usa ningún índice de búsqueda o si recorre species_names de
-// forma secuencial, y con 0 si todas cumplen.
+// supera el umbral, si alguna no usa sus índices o si recorre species_names de forma secuencial
+// (las listas y la ficha del catálogo público, tampoco species), y con 0 si todas cumplen.
 //
 // Opciones (todas opcionales):
 //   --generos N        géneros del catálogo sintético (900)
@@ -26,8 +27,9 @@
 //   --semilla TEXTO    semilla del generador; la misma da el mismo catálogo (orki)
 //   --repeticiones N   ejecuciones medidas de cada consulta, tras 3 de calentamiento (30)
 //   --umbral-ms N      objetivo de tiempo por consulta, en ms, comparado con el p95 (300)
-//   --planes           muestra además el plan (explain analyze, buffers) de la consulta
-//                      interna de search_species para cada consulta, con auto_explain
+//   --planes           muestra además el plan (explain analyze, buffers) de las consultas
+//                      internas de search_species y de las funciones del catálogo público
+//                      para cada consulta, con auto_explain
 //   --catalogo-real RUTA
 //                      en lugar del catálogo sintético, carga en la base desechable la
 //                      exportación de COL indicada (export.zip) con "orki-catalogo cargar"
@@ -101,6 +103,140 @@ const indicesBusqueda = [
   'species_scientific_name_prefix_idx',
   'species_scientific_name_trgm_idx',
   'species_names_name_trgm_idx',
+]
+
+// Catálogo público (#231): las cuatro funciones para visitantes, como anon. Las de búsqueda van
+// por search_species(), así que usan sus índices; las listas, el índice parcial de especies
+// públicas (species_public_genus_idx para contar las de todos los géneros y
+// species_public_genus_name_idx para las de uno); la ficha, las claves de species y
+// species_names. Las que llevan "clave" usan el id
+// de pg_temp.perf_ids que se calcula antes de medir (ver idsDeLasConsultas).
+const indiceEspeciesPublicas = 'species_public_genus_name_idx'
+const indiceGenerosPublicos = 'species_public_genus_idx'
+const indicesFicha = ['species_pkey', 'species_names_species_id_name_key']
+const consultasPublicas = [
+  ...[
+    'ph',
+    'dendrob',
+    'phal amab',
+    'catleya labiatta',
+    'alba',
+    'laelia purpurata',
+  ].map((texto) => ({
+    descripcion: 'Búsqueda',
+    texto,
+    llamada: `public.search_public_species(${literal(texto)})`,
+    indices: indicesBusqueda,
+  })),
+  {
+    descripcion: 'Búsqueda, 15 resultados',
+    texto: 'dendrob',
+    llamada: `public.search_public_species('dendrob', 15)`,
+    indices: indicesBusqueda,
+  },
+  {
+    descripcion: 'Géneros, primera página',
+    texto: '100 por página',
+    llamada: 'public.list_public_genera()',
+    indices: [indiceGenerosPublicos],
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Géneros, última página',
+    texto: '200 por página',
+    llamada: 'public.list_public_genera(200, 1000)',
+    indices: [indiceGenerosPublicos],
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Especies del género más grande',
+    texto: 'página 1 de 50',
+    clave: 'genero_grande',
+    llamada: 'public.list_public_genus_species(objetivo)',
+    indices: [indiceEspeciesPublicas],
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Especies del género más grande',
+    texto: 'última página de 100',
+    clave: 'genero_grande',
+    llamada: 'public.list_public_genus_species(objetivo, 100, 1000)',
+    indices: [indiceEspeciesPublicas],
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Especies de un género pequeño',
+    texto: 'página 1 de 50',
+    clave: 'genero_pequeno',
+    llamada: 'public.list_public_genus_species(objetivo)',
+    indices: [indiceEspeciesPublicas],
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Ficha con más nombres',
+    texto: 'la especie con más sinónimos',
+    clave: 'especie_con_nombres',
+    llamada: 'public.get_public_species(objetivo)',
+    indices: indicesFicha,
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Ficha',
+    texto: 'Phalaenopsis amabilis',
+    clave: 'phalaenopsis_amabilis',
+    llamada: 'public.get_public_species(objetivo)',
+    indices: indicesFicha,
+    sinSecuencialEnSpecies: true,
+  },
+]
+
+// Ids que necesitan las consultas públicas, calculados como dueño antes de medir (anon no lee
+// las tablas). Si el catálogo no tiene Phalaenopsis amabilis, la ficha se mide con la primera
+// especie por nombre.
+const idsDeLasConsultas = `create temp table perf_ids (clave text primary key, id uuid not null);
+insert into pg_temp.perf_ids
+select 'genero_grande', s.genus_id from public.species s
+where s.source <> 'user_proposal' or s.status = 'validated'
+group by s.genus_id order by count(*) desc, s.genus_id limit 1;
+insert into pg_temp.perf_ids
+select 'genero_pequeno', s.genus_id from public.species s
+where s.source <> 'user_proposal' or s.status = 'validated'
+group by s.genus_id order by count(*), s.genus_id limit 1;
+insert into pg_temp.perf_ids
+select 'especie_con_nombres', n.species_id from public.species_names n
+join public.species s on s.id = n.species_id
+where s.source <> 'user_proposal' or s.status = 'validated'
+group by n.species_id order by count(*) desc, n.species_id limit 1;
+insert into pg_temp.perf_ids
+select 'phalaenopsis_amabilis', s.id from public.species s
+order by s.scientific_name <> 'Phalaenopsis amabilis', s.scientific_name limit 1;
+grant select on pg_temp.perf_ids to anon;`
+
+// Todas las consultas que se miden: las de search_species() como authenticated (desde #231 anon
+// no la puede ejecutar; la app la llama siempre con sesión) y las del catálogo público como anon.
+const medidas = [
+  ...consultas.map((consulta) => ({
+    ...consulta,
+    grupo: 'busqueda',
+    rol: 'authenticated',
+    llamada: `public.search_species(${literal(consulta.texto)})`,
+    indices: indicesBusqueda,
+  })),
+  ...consultasPublicas.map((consulta) => ({
+    ...consulta,
+    grupo: 'publico',
+    rol: 'anon',
+  })),
+]
+const indicesContados = [
+  ...new Set([
+    ...indicesBusqueda,
+    indiceEspeciesPublicas,
+    indiceGenerosPublicos,
+    ...indicesFicha,
+    'species_genus_id_idx',
+    'species_genus_id_name_idx',
+  ]),
 ]
 const tablasRecorridas = ['species', 'species_names']
 const tablasCatalogo = [
@@ -185,10 +321,10 @@ function literal(texto) {
   return `'${texto.replaceAll("'", "''")}'`
 }
 
-// Script de psql que mide cada consulta como anon: primero las ejecuciones de
-// calentamiento y luego las medidas, con el tiempo tomado con clock_timestamp() alrededor de
-// la llamada, dentro de la base de datos. Con "contarRecorridos", anota también los
-// recorridos de los índices de búsqueda y los secuenciales de species y species_names que
+// Script de psql que mide cada consulta con su rol (authenticated o anon): primero las
+// ejecuciones de calentamiento y luego las medidas, con el tiempo tomado con clock_timestamp()
+// alrededor de la llamada, dentro de la base de datos. Con "contarRecorridos", anota también los
+// recorridos de los índices contados y los secuenciales de species y species_names que
 // hizo la consulta, por llamada: la diferencia de pg_stat_user_indexes y
 // pg_stat_user_tables antes y después, forzando que la sesión vuelque sus estadísticas
 // pendientes (pg_stat_force_next_flush, desde PostgreSQL 15) para que no se pierda ninguna.
@@ -198,7 +334,9 @@ function scriptDeMedicion({ repeticiones, contarRecorridos }) {
   const lineas = [
     'create temp table perf_tiempos (consulta integer, ms double precision, filas integer);',
     'create temp table perf_recorridos (consulta integer, objeto text, por_llamada double precision);',
-    'grant insert on perf_tiempos to anon;',
+    'grant insert on perf_tiempos to anon, authenticated;',
+    idsDeLasConsultas,
+    'grant select on pg_temp.perf_ids to authenticated;',
   ]
   if (contarRecorridos) lineas.push('set stats_fetch_consistency = none;')
   const volcarEstadisticas =
@@ -209,26 +347,28 @@ select ${indice}, r.objeto, ${signo} * r.recorridos::double precision / ${total}
 from (
   select indexrelname::text as objeto, idx_scan as recorridos
   from pg_catalog.pg_stat_user_indexes
-  where schemaname = 'public' and indexrelname in (${lista(indicesBusqueda)})
+  where schemaname = 'public' and indexrelname in (${lista(indicesContados)})
   union all
   select relname::text, seq_scan
   from pg_catalog.pg_stat_user_tables
   where schemaname = 'public' and relname in (${lista(tablasRecorridas)})
 ) as r;`
-  consultas.forEach((consulta, indice) => {
+  medidas.forEach((consulta, indice) => {
     if (contarRecorridos) {
       lineas.push(volcarEstadisticas, recorridosHastaAhora(indice, -1))
     }
     lineas.push(
-      'set role anon;',
+      `set role ${consulta.rol};`,
       `do $medir$
 declare
   inicio timestamptz;
   filas integer;
+  objetivo uuid;
 begin
+  ${consulta.clave ? `select id into objetivo from pg_temp.perf_ids where clave = ${literal(consulta.clave)};` : ''}
   for i in 1..${total} loop
     inicio := pg_catalog.clock_timestamp();
-    select count(*) into filas from public.search_species(${literal(consulta.texto)});
+    select count(*) into filas from ${consulta.llamada};
     if i > ${calentamiento} then
       insert into pg_temp.perf_tiempos values (
         ${indice},
@@ -268,12 +408,12 @@ from (
 const marcaPlan = '=== consulta '
 
 // Script de psql que muestra con auto_explain los planes de las consultas internas de
-// search_species (una por etapa) para cada consulta (una ejecución, como anon, tras el
-// calentamiento).
+// search_species (una por etapa) y de las funciones del catálogo público para cada consulta
+// (una ejecución, con el rol de la consulta, tras el calentamiento).
 // auto_explain escribe el plan como aviso (NOTICE) y \warn escribe la cabecera de cada
-// consulta; los dos van a stderr, en orden. Solo se registran las sentencias de al menos
-// 1 ms: así no salen las miles de llamadas a normalize_search_text, pero tampoco las
-// consultas que tardan menos.
+// consulta; los dos van a stderr, en orden. En la búsqueda solo se registran las sentencias de
+// al menos 1 ms: así no salen las miles de llamadas a normalize_search_text, pero tampoco las
+// consultas que tardan menos. En el catálogo público, todas.
 function scriptDePlanes() {
   const lineas = [
     "load 'auto_explain';",
@@ -283,26 +423,39 @@ function scriptDePlanes() {
     'set auto_explain.log_timing = on;',
     'set auto_explain.log_nested_statements = on;',
     'set auto_explain.log_level = notice;',
-    'set role anon;',
+    idsDeLasConsultas,
+    'grant select on pg_temp.perf_ids to authenticated;',
   ]
-  consultas.forEach((consulta, indice) => {
+  medidas.forEach((consulta, indice) => {
+    // Las del catálogo público tardan menos de 1 ms: se registran todas sus sentencias. Son
+    // pocas, porque normalize_search_text() es sql y se expande en la consulta.
+    const minimo = consulta.grupo === 'publico' ? 0 : 1
+    const llamada = consulta.clave
+      ? consulta.llamada.replace(
+          'objetivo',
+          `(select id from pg_temp.perf_ids where clave = ${literal(consulta.clave)})`,
+        )
+      : consulta.llamada
     lineas.push(
+      'reset role;',
+      `set auto_explain.log_min_duration = ${minimo};`,
+      `set role ${consulta.rol};`,
       'set client_min_messages = warning;',
       ...Array.from(
         { length: calentamiento },
-        () =>
-          `select count(*) from public.search_species(${literal(consulta.texto)});`,
+        () => `select count(*) from ${llamada};`,
       ),
       `\\warn '${marcaPlan}${indice}'`,
       'set client_min_messages = notice;',
-      `select count(*) from public.search_species(${literal(consulta.texto)});`,
+      `select count(*) from ${llamada};`,
     )
   })
   return lineas.join('\n')
 }
 
 // Extrae de la salida de scriptDePlanes() los planes de las consultas internas de cada
-// consulta (no el de la llamada a search_species ni los de normalize_search_text), sin el
+// consulta (no el de la llamada desde el script, la sentencia "select count(*) from public....",
+// ni los de normalize_search_text), sin el
 // texto de la sentencia: la línea de duración y el plan desde su primer nodo (la primera
 // línea con costes). Desde la migración 20261120230000 la búsqueda va por etapas, así que
 // puede haber varios.
@@ -317,7 +470,7 @@ function planesPorConsulta(stderr) {
       .filter(
         (texto) =>
           texto.includes('(cost=') &&
-          !texto.includes('Function Scan on search_species'),
+          !texto.includes('Query Text: select count(*) from public.'),
       )
       .map((aviso) => {
         const lineas = aviso.trimEnd().split('\n')
@@ -508,7 +661,9 @@ async function principal() {
         )
       }
       console.log(
-        `\nMidiendo ${consultas.length} consultas como anon: ${calentamiento} ejecuciones de calentamiento y ${opciones.repeticiones} medidas cada una`,
+        `\nMidiendo ${consultas.length} consultas de search_species() como authenticated y ` +
+          `${consultasPublicas.length} del catálogo público como anon: ${calentamiento} ejecuciones ` +
+          `de calentamiento y ${opciones.repeticiones} medidas cada una`,
       )
       const medicion = exigir(
         ejecutarPsql(['-A', '-t', '-f', '-'], {
@@ -519,26 +674,31 @@ async function principal() {
       const resultados = JSON.parse(medicion.stdout.trim())
 
       const fallos = []
-      const filas = resultados.map((resultado) => {
-        const consulta = consultas[resultado.consulta]
+      const filasPorGrupo = { busqueda: [], publico: [] }
+      for (const resultado of resultados) {
+        const consulta = medidas[resultado.consulta]
+        const nombre = `${consulta.descripcion}: "${consulta.texto}"`
         const recorridosDe = (objeto) => resultado.recorridos?.[objeto] ?? 0
-        const usosIndice = indicesBusqueda.map(recorridosDe)
+        const usosIndice = consulta.indices.map(recorridosDe)
         const usaIndices =
           !contarRecorridos ||
           (usosIndice.some((uso) => uso > 0) &&
-            recorridosDe('species_names') === 0)
+            recorridosDe('species_names') === 0 &&
+            (!consulta.sinSecuencialEnSpecies || recorridosDe('species') === 0))
         const cumple = resultado.p95 <= opciones.umbralMs
         if (!cumple) {
           fallos.push(
-            `"${consulta.texto}": p95 ${ms(resultado.p95)} ms > ${opciones.umbralMs} ms`,
+            `${nombre}: p95 ${ms(resultado.p95)} ms > ${opciones.umbralMs} ms`,
           )
         }
         if (!usaIndices) {
           fallos.push(
-            `"${consulta.texto}": no usa ningún índice de búsqueda o recorre species_names entera`,
+            consulta.grupo === 'busqueda'
+              ? `${nombre}: no usa ningún índice de búsqueda o recorre species_names entera`
+              : `${nombre}: no usa ${consulta.indices.join(' ni ')} o recorre una tabla entera`,
           )
         }
-        return [
+        filasPorGrupo[consulta.grupo].push([
           consulta.descripcion,
           consulta.texto,
           ms(resultado.mediana),
@@ -552,22 +712,26 @@ async function principal() {
             ? tablasRecorridas.map(recorridosDe).map(recorridos).join(' / ')
             : '?',
           cumple && usaIndices ? 'ok' : 'FALLO',
-        ]
-      })
+        ])
+      }
+      const cabecera = (indices) => [
+        'Consulta',
+        'Texto',
+        'Mediana ms',
+        'p95 ms',
+        'Máx ms',
+        'Filas',
+        indices,
+        'Seq sp/nombres',
+        '',
+      ]
+      console.log(
+        '\nBúsqueda del registro: search_species(), como authenticated',
+      )
       console.log(
         tabla(
-          [
-            'Consulta',
-            'Texto',
-            'Mediana ms',
-            'p95 ms',
-            'Máx ms',
-            'Filas',
-            'Prefijo / trigramas sp / nombres',
-            'Seq sp/nombres',
-            '',
-          ],
-          filas,
+          cabecera('Prefijo / trigramas sp / nombres'),
+          filasPorGrupo.busqueda,
           new Set([2, 3, 4, 5]),
         ),
       )
@@ -580,6 +744,21 @@ async function principal() {
           '  Seq sp/nombres: recorridos secuenciales por llamada de species y species_names. En\n' +
           '  species puede haber uno: el hash join que añade los datos de la especie a los\n' +
           '  candidatos, si el planificador lo prefiere al índice; en species_names debe ser 0.',
+      )
+      console.log('\nCatálogo público (#231), como anon')
+      console.log(
+        tabla(
+          cabecera('Índices esperados'),
+          filasPorGrupo.publico,
+          new Set([2, 3, 4, 5]),
+        ),
+      )
+      console.log(
+        '\n  Índices esperados: recorridos por llamada de los índices de cada consulta: en la\n' +
+          '  búsqueda, los mismos de search_species(); en los géneros, species_public_genus_idx; en\n' +
+          '  las especies de un género, species_public_genus_name_idx;\n' +
+          '  en la ficha, species_pkey / species_names_species_id_name_key. Las listas y la ficha no\n' +
+          '  pueden recorrer species ni species_names de forma secuencial.',
       )
 
       const tamanos = consultar(
@@ -594,7 +773,7 @@ async function principal() {
          from pg_catalog.pg_index x
          join pg_catalog.pg_class i on i.oid = x.indexrelid
          where x.indrelid in (${tablasCatalogo.map((t) => `'public.${t}'::regclass`).join(', ')})
-           and i.relname like '%trgm%'
+           and (i.relname like '%trgm%' or i.relname like 'species_public_%')
          order by i.relname`,
       ).map((linea) => linea.split('|'))
       const [tamanoBase] = consultar(
@@ -621,20 +800,22 @@ async function principal() {
         ),
       )
       console.log(
-        `  Índices de trigramas: ${tamanosIndices.map(([nombre, bytes]) => `${nombre} ${megas(Number(bytes))}`).join(', ')}`,
+        `  Índices de trigramas y del catálogo público: ${tamanosIndices.map(([nombre, bytes]) => `${nombre} ${megas(Number(bytes))}`).join(', ')}`,
       )
       console.log(
         `  Base de datos completa: ${megas(Number(tamanoBase))} (el plan gratuito de Supabase admite 500 MB)`,
       )
 
       if (opciones.planes) {
-        console.log('\nPlanes de la consulta interna de search_species')
+        console.log(
+          '\nPlanes de las consultas internas de search_species y del catálogo público',
+        )
         const planes = exigir(
           ejecutarPsql(['-A', '-t', '-f', '-'], { entrada: scriptDePlanes() }),
           'no se pudieron obtener los planes (¿falta la extensión auto_explain?)',
         )
         const porConsulta = planesPorConsulta(planes.stderr)
-        consultas.forEach((consulta, indice) => {
+        medidas.forEach((consulta, indice) => {
           console.log(`\n=== ${consulta.descripcion}: ${consulta.texto}`)
           console.log(
             porConsulta.get(indice) ??
