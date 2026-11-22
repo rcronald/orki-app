@@ -39,7 +39,7 @@ export type ActionRowProps = ActionRowBase &
 // Fila de acción (orki-action, #213): icono, título, texto secundario y
 // chevron-right, con área táctil de todo el ancho (mínimo 56 px). Va dentro
 // de ActionList, que pone la línea entre filas. El nombre accesible es el
-// título (aria-labelledby) y el texto secundario la describe.
+// título seguido del texto secundario (aria-labelledby con los dos).
 export function ActionRow({
   icon,
   title,
@@ -58,6 +58,10 @@ export function ActionRow({
         <span id={titleId} className="orki-action__title">
           {title}
         </span>
+        {/* Espacio entre el título y el texto (no ocupa sitio en la
+            columna flex): sin él, el texto visible que lee axe los junta
+            («CSVEl archivo…») y no lo encuentra en el nombre. */}
+        {secondary != null && ' '}
         {secondary != null && (
           <span id={descriptionId} className="orki-action__desc">
             {secondary}
@@ -67,7 +71,10 @@ export function ActionRow({
       <Icon name="chevron-right" />
     </>
   )
-  const describedBy = secondary != null ? descriptionId : undefined
+  // El nombre accesible lleva todo el texto visible, el título primero (WCAG
+  // 2.5.3, «Etiqueta en el nombre»; axe, label-content-name-mismatch): con
+  // solo el título, el texto secundario visible quedaba fuera del nombre.
+  const labelledBy = secondary != null ? `${titleId} ${descriptionId}` : titleId
 
   if (disabledReason !== undefined) {
     return (
@@ -75,8 +82,7 @@ export function ActionRow({
         type="button"
         className="orki-action"
         aria-disabled="true"
-        aria-labelledby={titleId}
-        aria-describedby={describedBy}
+        aria-labelledby={labelledBy}
       >
         {content}
       </button>
@@ -88,8 +94,7 @@ export function ActionRow({
         to={target.to}
         state={target.state}
         className="orki-action"
-        aria-labelledby={titleId}
-        aria-describedby={describedBy}
+        aria-labelledby={labelledBy}
       >
         {content}
       </Link>
@@ -99,8 +104,7 @@ export function ActionRow({
     <button
       type="button"
       className="orki-action"
-      aria-labelledby={titleId}
-      aria-describedby={describedBy}
+      aria-labelledby={labelledBy}
       onClick={target.onClick}
     >
       {content}

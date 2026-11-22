@@ -37,6 +37,8 @@ export interface Sesion {
   rol?: string | null
   /** user.fullName del Clerk simulado; sin la clave, «Persona de Prueba». */
   nombre?: string | null
+  /** URL de la foto de la cuenta (del mismo origen); sin ella, sin foto. */
+  foto?: string | null
 }
 
 interface Opciones {
@@ -129,6 +131,7 @@ export const test = base.extend<Opciones & Fixtures>({
           usuario: sesion.usuario,
           rol: sesion.rol ?? null,
           ...(sesion.nombre !== undefined && { nombre: sesion.nombre }),
+          ...(sesion.foto != null && { foto: sesion.foto }),
         }),
       ] as const,
     )

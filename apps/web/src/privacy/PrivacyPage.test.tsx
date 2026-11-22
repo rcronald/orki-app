@@ -299,7 +299,7 @@ describe('PrivacyPage', () => {
     await screen.findByRole('heading', { level: 1, name: 'Tu cuenta' })
     await user.click(
       within(screen.getByRole('main')).getByRole('link', {
-        name: 'Qué datos guarda orqui.apps (privacidad)',
+        name: /^Aviso de privacidad/,
       }),
     )
     expect(await findTitle()).toBeInTheDocument()
