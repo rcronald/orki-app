@@ -83,11 +83,27 @@ test('registrar un nombre por validar con foto', async ({
   await expect(
     page.getByText(/quedará en tu inventario como «Nombre por validar»/),
   ).toBeVisible()
+  // Junto a la foto, un solo mensaje: la recomendación, quién podrá verla y
+  // el enlace a Privacidad (#210), como descripción del grupo.
+  const grupoFoto = page.getByRole('group', { name: 'Foto' })
+  await expect(grupoFoto).toHaveAccessibleDescription(
+    'Te recomendamos añadir una foto: el equipo del catálogo podrá verla para validar el nombre. Más en Privacidad.',
+  )
+
+  // El enlace no pierde lo escrito: al volver, el borrador se recupera.
+  await grupoFoto.getByRole('link', { name: 'Privacidad' }).click()
+  await expect(page).toHaveURL(/\/privacidad$/)
   await expect(
-    page.getByText(
-      'Te recomendamos añadir una foto: ayuda al administrador a confirmar el nombre.',
-    ),
+    page.getByRole('heading', { level: 1, name: 'Privacidad' }),
   ).toBeVisible()
+  await page.goBack()
+  await expect(page).toHaveURL(/\/coleccion\/nueva$/)
+  await expect(
+    page.getByText('Recuperamos lo que estabas escribiendo.'),
+  ).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Nombre' })).toHaveValue(
+    'Vanda Pachara Delight',
+  )
 
   await page
     .getByRole('group', { name: 'Género' })
@@ -107,6 +123,10 @@ test('registrar un nombre por validar con foto', async ({
   await expect(
     page.getByRole('img', { name: 'Vista previa de la foto elegida' }),
   ).toBeVisible()
+  // Con la foto elegida, el aviso dice que el equipo del catálogo podrá verla.
+  await expect(grupoFoto).toHaveAccessibleDescription(
+    'Como el nombre queda por validar, el equipo del catálogo podrá ver esta foto para identificarla. Más en Privacidad.',
+  )
   await revisarAccesibilidad('registro por validar con foto')
 
   await page.getByRole('button', { name: 'Registrar orquídea' }).click()

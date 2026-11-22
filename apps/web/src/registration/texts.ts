@@ -22,11 +22,16 @@ export const PLANT_FORM_TEXT = {
   namePendingHint:
     'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
   /**
-   * Recomendación de foto para un nombre por validar (#12). La muestra el
-   * campo de foto (#87), sin exigirla.
+   * Ayuda del campo de foto con un nombre por validar (#12, #210): sin foto,
+   * la recomienda (sin exigirla); con foto, avisa de quién podrá verla. Las
+   * dos siguen con «Más en Privacidad» (pendingPhotoMore y privacyLink).
    */
   pendingPhotoHint:
-    'Te recomendamos añadir una foto: ayuda al administrador a confirmar el nombre.',
+    'Te recomendamos añadir una foto: el equipo del catálogo podrá verla para validar el nombre.',
+  pendingPhotoNotice:
+    'Como el nombre queda por validar, el equipo del catálogo podrá ver esta foto para identificarla.',
+  pendingPhotoMore: 'Más en',
+  privacyLink: 'Privacidad',
   photoLabel: 'Foto',
   photoHint: 'Opcional.',
   /** Ayuda del campo de foto al entrar desde la cámara (?foto=1). */
@@ -131,6 +136,11 @@ export const PLANT_EDIT_NOTICE_TEXT = {
   storedPhotoAlt: 'Foto actual de la planta',
   storedPhotoLoading: 'Foto actual de la planta: cargando',
   storedPhotoFailed: 'Foto actual de la planta: no se pudo cargar',
+  /**
+   * La edición no guarda borrador: el enlace a Privacidad del campo de foto
+   * se abre en otra pestaña para no perder los cambios (#210).
+   */
+  privacyNewTab: '(se abre en otra pestaña)',
 } as const
 
 // Etiquetas de los chips de color de flor y de tipo: viven en

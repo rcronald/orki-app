@@ -315,6 +315,53 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
 }
 
 /**
+ * Ayuda del campo de foto con un nombre por validar (#12, #210): el equipo
+ * del catálogo podrá ver la foto para validar el nombre, como dice la página
+ * de privacidad. Sin foto, la recomienda; con foto (también la que ya tenía la
+ * planta al editar), avisa. Es la descripción del grupo de la foto
+ * (aria-describedby), no un paso más.
+ *
+ * El enlace a Privacidad no pierde lo escrito: al registrar, el borrador se
+ * conserva al salir por un enlace de la app y se recupera al volver; al
+ * editar no hay borrador, así que se abre en otra pestaña y lo dice.
+ */
+function PendingPhotoHint({
+  text,
+  hasPhoto,
+  newTab,
+}: {
+  text: PlantFormTexts
+  hasPhoto: boolean
+  newTab: boolean
+}) {
+  const className = 'font-semibold text-secondary underline'
+  return (
+    <>
+      {hasPhoto ? text.pendingPhotoNotice : text.pendingPhotoHint}{' '}
+      {text.pendingPhotoMore}{' '}
+      {newTab ? (
+        <a
+          className={className}
+          href={PATHS.privacy}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {text.privacyLink}{' '}
+          <span className="sr-only">
+            {PLANT_EDIT_NOTICE_TEXT.privacyNewTab}
+          </span>
+        </a>
+      ) : (
+        <Link className={className} to={PATHS.privacy}>
+          {text.privacyLink}
+        </Link>
+      )}
+      .
+    </>
+  )
+}
+
+/**
  * Formulario de registro de una planta: los cuatro campos obligatorios
  * (nombre, género, tipo y fecha de adquisición, #85), el aviso de duplicado
  * (#88), el origen, la sección plegable "Más detalles" (#86) y la foto
@@ -784,11 +831,13 @@ export function PlantForm(props: PlantFormProps) {
       label={text.photoLabel}
       previewAlt={storedPhotoAlt}
       description={
-        isPendingName(values)
-          ? text.pendingPhotoHint
-          : photoFirst
-            ? text.photoFirstHint
-            : text.photoHint
+        isPendingName(values) ? (
+          <PendingPhotoHint text={text} hasPhoto={hasPhoto} newTab={editing} />
+        ) : photoFirst ? (
+          text.photoFirstHint
+        ) : (
+          text.photoHint
+        )
       }
       disabled={saving || registered !== null}
       onProcessingChange={setPhotoProcessing}
