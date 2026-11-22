@@ -1,5 +1,6 @@
 # Generados
 dist/
+dist-medicion/
 coverage/
 *.tsbuildinfo
 

@@ -1,0 +1,153 @@
+# Medición de la carga y presupuesto de tamaño
+
+Revisión de rendimiento de la Fase 1 (#149, parte del #25). Aquí están el método para medir la carga inicial, los resultados del 21 de noviembre de 2026, el presupuesto de tamaño que vigila el CI, qué pesa en el bundle y qué se puede recortar.
+
+Todas las cifras de este documento salen de ejecuciones hechas con las órdenes que se indican, sobre el commit que añade este documento. No hay estimaciones sin marcar como tales.
+
+## Resumen
+
+| Pantalla | Condición | LCP (mediana de 5) | ¿Menos de 3 s? |
+| --- | --- | --- | --- |
+| Inicio (`/`), sin sesión | build de producción, Clerk sin cargar | 0,90 s | Sí |
+| Inventario (`/coleccion`), 100 plantas | build de medición, sin Clerk ni Supabase reales | 2,80 s | Sí en esta condición, pero es un suelo: falta lo que añaden Clerk y Supabase (ver «Límites») |
+
+- El inicio carga muy por debajo de 3 segundos.
+- El inventario con 100 plantas queda en 2,80 s **sin** el script de Clerk (71,6 KiB con Brotli, ver abajo), sin las idas y vueltas a su API y sin la consulta a Supabase. Con ellos lo más probable es que pase de 3 s en la primera visita; no está medido. Queda propuesto un issue para medirlo contra el ambiente de desarrollo y el plan para bajarlo («Issues por abrir»).
+- El CI falla si el JavaScript inicial, el CSS o el total precacheado superan el presupuesto (`apps/web/presupuesto-tamano.json`, margen del 5 %).
+
+## Cómo medir
+
+Requisitos: Node de `.nvmrc`, dependencias instaladas (`npm ci`) y Google Chrome instalado (o la variable `CHROME_PATH`). No hace falta ninguna variable de entorno real ni conexión con Supabase, Clerk o Sentry.
+
+```sh
+npm run medir:carga                       # construye y mide las dos pantallas, 5 veces cada una
+npm run medir:carga -- --repeticiones 9   # más repeticiones
+npm run medir:carga -- --solo inicio      # o --solo inventario
+npm run medir:carga -- --sin-build        # reutiliza los builds que haya
+```
+
+La orden imprime la mediana, el mínimo y el máximo de cada métrica y deja los informes JSON de Lighthouse en `apps/web/dist-medicion/lighthouse/` (con `resumen.json`), fuera del control de versiones. Se pueden abrir en <https://googlechrome.github.io/lighthouse/viewer/>.
+
+### Qué hace
+
+1. **Build como producción con valores ficticios** (`npm run build:medicion`, `scripts/construir-medicion.mjs`): `VITE_APP_ENV=prod` (sin la muestra ni el diagnóstico), un DSN de Sentry ficticio (producción tiene DSN, y solo con él existe el chunk del SDK) y claves de Clerk y Supabase con formato válido que apuntan a dominios `.invalid`, que nunca resuelven (`scripts/medicion/entorno.mjs`). Quita del entorno las variables que activarían la subida de mapas a Sentry. Vite da prioridad a las variables del proceso sobre los archivos `.env`, así que un `.env.local` con valores reales no se cuela.
+2. **Build de medición del inventario** (`apps/web/medicion/vite.config.ts`, en `apps/web/dist-medicion/app`): la misma app (mismo `index.html`, `main.tsx` y rutas) con dos módulos sustituidos al construir: `@clerk/react` por `medicion/clerk-simulado.tsx` (Clerk cargado, sesión iniciada) y `src/collection/supabase-source.ts` por `medicion/coleccion-simulada.ts`, que lee las 100 plantas de `/medicion/coleccion.json` con una petición. Las plantas son las de la página de muestra (`largeSampleCollection(100)`). Nada de esto entra en `apps/web/dist`: es otra configuración de Vite y otra carpeta de salida, y la app no importa nada de `apps/web/medicion/`.
+3. **Servidor local con compresión** (`scripts/medicion/servidor.mjs`): sirve cada build como Vercel (archivos tal cual y cualquier otra ruta con `index.html`) y con Brotli, que es lo que sirve Vercel. No se usa `vite preview` porque no comprime y la medida saldría peor que la real. Comprime todo antes de escuchar para no penalizar la primera ejecución.
+4. **Lighthouse 13.6.0** con `npx` y versión fija, solo rendimiento, con su configuración móvil por defecto (explícita en la orden): emulación de un celular de gama media (Moto G Power), red 4G lenta simulada (150 ms de RTT, 1,6 Mbit/s) y CPU cuatro veces más lenta (`--form-factor=mobile --throttling-method=simulate`). Cada ejecución abre un Chrome sin caché ni service worker, como una primera visita.
+
+Lighthouse va con `npx` y no como dependencia de desarrollo porque es una herramienta de medición a mano, no del CI: así no alarga cada `npm ci` (también los del CI) y la versión queda fijada en `scripts/medir-carga.mjs`. Cambiar esa versión cambia la vara de medir: hay que volver a medir y anotarlo aquí.
+
+### Ruido
+
+Con limitación simulada, la red no depende de la máquina, pero la CPU sí: Lighthouse multiplica la duración de las tareas observadas. En este equipo había otras tareas corriendo, por eso cada pantalla se mide 5 veces y se da la mediana con el mínimo y el máximo. En las primeras pruebas, antes de comprimir por adelantado, una ejecución suelta llegó a 4,8 s de LCP en el inventario por una tarea larga de 1,7 s ajena a la app; con la mediana de 5 y la compresión previa, las ejecuciones quedaron entre 2,79 y 2,82 s. El `benchmarkIndex` de Lighthouse en estas mediciones fue de 3900 a 4020.
+
+## Resultados (21 nov 2026)
+
+Orden: `npm run medir:carga` (5 ejecuciones por pantalla). Lighthouse 13.6.0, HeadlessChrome 157, macOS.
+
+| Métrica | Inicio, mediana (mín.–máx.) | Inventario con 100 plantas, mediana (mín.–máx.) |
+| --- | --- | --- |
+| First Contentful Paint | 0,90 s (0,90–0,91) | 0,90 s (0,90–0,90) |
+| Largest Contentful Paint | 0,90 s (0,90–0,91) | 2,80 s (2,79–2,82) |
+| Speed Index | 0,91 s (0,90–1,12) | 1,45 s (1,20–1,48) |
+| Total Blocking Time | 0 ms (0–0) | 20 ms (17–33) |
+| Cumulative Layout Shift | 0,011 | 0,030 |
+| Bytes transferidos | 180,5 KiB (180,5–250,7) | 156,0 KiB (156,0–156,0) |
+| Puntuación de rendimiento | 100 | 96 |
+
+- En el inicio, el elemento del LCP es el texto «Tu colección de orquídeas, siempre a mano.». En el inventario, la imagen «Sin foto» de la primera tarjeta (un SVG en línea).
+- Los bytes transferidos varían entre ejecuciones porque el service worker se instala durante la carga y, según cuándo, sirve él las fuentes y el chunk de Supabase (no cuentan como descarga de la página). No es una métrica estable; para el tamaño está el presupuesto.
+- Lighthouse marca `registerSW.js` como recurso que bloquea el pintado (ver «Propuestas»).
+
+### Límites de la medición
+
+- **Clerk no carga** en ninguna de las dos pantallas. En el inicio, su script apunta a `clerk.orki.invalid` y falla, como sin conexión con Clerk; la pantalla de inicio no lo espera. En el inventario, Clerk está sustituido. En la app real, con sesión, `/coleccion` espera a que Clerk cargue (`RequireAuth`), así que añade: el script `clerk.browser.js` (la app lo pide como `@clerk/clerk-js@6`; en la 6.46.3, la última 6.x publicada en npm hoy: 328 873 B, 85 554 B con gzip y 71 616 B con Brotli, medido sobre el paquete de npm con `npm pack @clerk/clerk-js@6`), las peticiones a su API para recuperar la sesión y el token, y la parte de `@clerk/react` que el sustituto quita del chunk `App` (65 128 B transferidos en el inicio frente a 36 919 B en el build de medición).
+- **Supabase no responde**: la colección llega de un JSON local en una petición. En la app, la consulta necesita antes el token de Clerk y va a otro origen (DNS, TLS y la consulta a PostgREST). La petición de perfil (`ProfileBootstrap`) sí sale y falla contra `supabase.orki.invalid`, y el chunk de supabase-js sí se descarga.
+- **Sin fotos**: las plantas de la muestra no tienen foto, así que no se miden las miniaturas.
+- **Primera visita**: con la app instalada, el service worker sirve todo el JavaScript, el CSS y las fuentes desde la caché y la carga depende casi solo de la CPU y de Clerk. No está medido.
+- **Simulación**: Lighthouse simula la red a partir de una carga local. Es repetible y sirve para comparar versiones, pero no sustituye una medición en un celular real con 4G.
+
+## Presupuesto de tamaño (CI)
+
+El job «Lint, formato, typecheck, pruebas y build» del CI ejecuta, después del build normal:
+
+```sh
+npm run build:medicion   # build como producción con valores ficticios
+npm run presupuesto      # scripts/presupuesto-tamano.mjs
+```
+
+`npm run presupuesto` mide `apps/web/dist` y falla (código de salida 1) si alguna métrica supera su límite en `apps/web/presupuesto-tamano.json`. No usa dependencias; sus funciones están probadas en `scripts/medicion/*.test.mjs` (`npm run test:scripts`, también en el CI). El paso que hace fallar el CI es este presupuesto, que es determinista; la puntuación de Lighthouse es demasiado ruidosa para eso y se mide a mano.
+
+| Métrica | Qué cuenta | Referencia | Límite (+5 %) |
+| --- | --- | --- | --- |
+| `jsInicialGzip` | JavaScript que pide `index.html` (script y `modulepreload`) más sus imports estáticos, con gzip: hoy `index-*.js`, `react-*.js` y `registerSW.js` | 86 025 B (84,0 KiB) | 90 327 B |
+| `cssGzip` | Hojas de estilo que enlaza `index.html`, con gzip | 7 258 B (7,1 KiB) | 7 621 B |
+| `precacheBytes` | Todos los archivos del manifiesto de precaché del service worker, sin comprimir (29 entradas) | 1 194 535 B (1166,5 KiB) | 1 254 262 B |
+
+- El JavaScript inicial es lo que se descarga antes de pintar nada. El chunk `App` (Clerk, rutas y pantallas) se pide justo después y no entra en esa cifra; cualquier crecimiento suyo, o de los chunks diferidos, lo recoge el total precacheado.
+- El plugin de PWA informa al terminar el build un precaché algo menor (1150,33 KiB) que la suma de los tamaños de los archivos de su manifiesto (1166,5 KiB); el presupuesto usa la suma.
+- Medido dos veces seguidas con `npm run build:medicion && npm run presupuesto`: mismas cifras al byte. No está comprobado todavía que el build de Linux del CI dé exactamente los mismos bytes que el de macOS; si difiriera, el margen del 5 % lo absorbe.
+- **Subir el presupuesto** a propósito: `npm run build:medicion && npm run presupuesto -- --actualizar` reescribe el archivo con lo medido como referencia y el 5 % de margen. El PR tiene que explicar por qué crece.
+
+## Qué pesa en el bundle
+
+Tamaños del build de `npm run build:medicion`. Las columnas gzip y Brotli están calculadas con Node (gzip nivel 9, Brotli calidad 11) sobre los archivos de `apps/web/dist/assets`.
+
+| Chunk | Cuándo se descarga | Sin comprimir | gzip | Brotli |
+| --- | --- | --- | --- | --- |
+| `index` | al abrir (inicial) | 261 509 B | 82 618 B | 71 718 B |
+| `react` | al abrir (inicial) | 8 539 B | 3 282 B | 2 949 B |
+| `index.css` | al abrir (inicial) | 33 081 B | 7 258 B | 6 320 B |
+| `App` | justo después, en cualquier ruta | 276 610 B | 74 601 B | 64 886 B |
+| `ScientificName` (con los iconos) | con `App` | 11 170 B | 4 947 B | 4 346 B |
+| `sentry` | tras el primer pintado | 94 158 B | 32 267 B | 28 885 B |
+| `dist` (supabase-js) | en la primera consulta (con sesión, al entrar) | 217 567 B | 55 671 B | 47 136 B |
+| `CatalogAdminPage` | solo en el backoffice | 105 806 B | 28 589 B | 24 512 B |
+| Fuentes (4 woff2) | al pintar texto | 93 228 B | — | — |
+
+Reparto por paquete del código de cada chunk, según el tamaño de cada módulo **antes de minificar** que informa el empaquetador (sirve para comparar, no son bytes descargados):
+
+- `index`: react-dom 538 KB, react-router 87 KB, scheduler 9 KB; el código propio (configuración, observabilidad, rutas) suma unos 20 KB.
+- `App`: @clerk/react 108 KB, @clerk/localizations (es-MX) 84 KB, @clerk/shared 69 KB, @tanstack/query-core 63 KB (dependencia de @clerk/shared, no la usa la app), `src/inventory` 50 KB, `src/collection` 29 KB, `src/photos` 13 KB, `src/auth` 10 KB.
+- `dist` (supabase-js): @supabase/auth-js 174 KB, realtime-js 57 KB, storage-js 43 KB, phoenix 41 KB, postgrest-js 32 KB, supabase-js 23 KB, iceberg-js 8 KB, functions-js 6 KB. La app usa supabase-js con `accessToken` (el token de Clerk), así que Auth, Realtime y Functions no se usan.
+- `sentry`: @sentry/core 142 KB, @sentry/browser 38 KB, @sentry/browser-utils 16 KB.
+
+Lo que más pesa en el camino de la primera pantalla es React (react-dom) y, justo detrás, Clerk: entre @clerk/react, su localización, @clerk/shared y TanStack Query ocupan más de la mitad del chunk `App`, y además Clerk descarga su propio script desde su CDN (71,6 KiB con Brotli).
+
+## Propuestas de recorte
+
+Ordenadas por ahorro esperado en la carga. Solo la primera tiene el ahorro medido en tiempo.
+
+> **Actualización (21 nov 2026):** la propuesta 1 ya está aplicada (entró con el modo sin conexión, #163). Las cifras de este documento son anteriores a ese cambio y a las funciones que entraron después; el presupuesto de `apps/web/presupuesto-tamano.json` sí está al día.
+
+1. **Registrar el service worker sin bloquear el pintado** (`apps/web/vite.config.ts`, `injectRegister: 'script'` → `'script-defer'`). `registerSW.js` va hoy en el `<head>` sin `defer` y Lighthouse lo marca como bloqueante. Medido con el cambio aplicado de forma temporal (`npm run build:medicion` y `npm run medir:carga -- --sin-build --solo inicio`, 5 ejecuciones): FCP y LCP del inicio de 0,90 s a 0,75 s (mín.–máx. 0,75–0,75); Speed Index de 0,91 s a 0,84 s. No cambia ningún byte. No se aplica en este cambio porque la configuración de PWA la está tocando otra tarea en paralelo.
+2. **Cliente de Supabase sin Auth, Realtime ni Functions** (`apps/web/src/lib/supabase.ts`): usar `@supabase/postgrest-js` (y `@supabase/storage-js` para las fotos) en lugar de `@supabase/supabase-js`. Los módulos que sobran suman unas tres cuartas partes del chunk de 47,1 KiB (Brotli) según su tamaño antes de minificar; el ahorro exacto está por medir. Ese chunk se descarga en cada entrada con sesión (perfil y colección) y compite por la red con la lista del inventario.
+3. **Retrasar Sentry hasta que la página esté quieta** (`apps/web/src/observability/reporter.ts`): hoy el SDK (28,9 KiB con Brotli) se pide tras el primer pintado, en paralelo con `App` y con la colección. Pedirlo tras el evento `load` o en un momento ocioso libera la red de la primera pantalla; los errores anteriores ya se guardan en memoria. Ahorro en tiempo no medido.
+4. **Revisar el peso de Clerk en `App`**: la localización es-MX (84 KB antes de minificar) y TanStack Query (63 KB, que arrastra @clerk/shared) van en el chunk que necesita cualquier pantalla. Opciones a valorar: comprobar si versiones nuevas de `@clerk/react` lo separan, o cargar la localización solo en las pantallas de acceso si Clerk lo permite. Sin medir.
+5. **Inventario en su propio chunk** (`apps/web/src/App.tsx`, `CollectionPage` con `lazy`). Medido de forma temporal (solo tamaños): `App` baja de 64 886 B a 54 456 B con Brotli (−10,4 KiB) y aparece un chunk `CollectionPage` de 10 798 B que se pide al abrir `/coleccion`. Ayuda al inicio, que ya está en 0,90 s, y añade una petición encadenada al inventario, que es la pantalla en riesgo. **No se recomienda** salvo que se precargue tras el primer pintado.
+
+Lo que se revisó y no hace falta tocar ahora:
+
+- **Precarga de fuentes**: en el inicio el LCP es texto con `font-display: swap` y no espera a las fuentes (LCP = FCP = 0,90 s). Precargarlas competiría con el JavaScript por la red. Las cuatro van precacheadas para usarlas sin conexión.
+- **Carga diferida de rutas**: ya está hecha (`App`, registro, detalle, edición, backoffice, muestra y diagnóstico van en chunks propios).
+- **Tamaños de imagen**: el marcador «Sin foto» es un SVG en línea de 620 B y los iconos y favicons suman 16 126 B (15,7 KiB); solo el favicon y el icono de 192 px se piden al abrir.
+
+## Issues por abrir
+
+Redactados aquí; no se han abierto todavía.
+
+**1. Rendimiento: medir el inventario con Clerk y Supabase reales y bajarlo de 3 s** (prioridad alta, área calidad, ejecuta: ambos)
+
+> Con el método de `docs/medicion-de-carga.md`, el inventario con 100 plantas carga en 2,80 s (LCP, mediana de 5) sin Clerk ni Supabase reales. Falta lo que añaden: el script de Clerk (71,6 KiB con Brotli), su API para recuperar la sesión, el token y la consulta a PostgREST.
+>
+> Pasos: 1) con un usuario de prueba del ambiente de desarrollo y 100 plantas de ejemplo (`npm run db:seed:plants -- <usuario> 100`), medir `/coleccion` a mano con Lighthouse 13.6.0 (móvil, limitación simulada, 5 ejecuciones, mediana), y también la segunda visita con el service worker instalado; 2) anotar el resultado en el documento; 3) si pasa de 3 s, aplicar por orden las propuestas 1 a 3 del documento y volver a medir.
+>
+> Criterio: LCP del inventario con 100 plantas por debajo de 3 s en primera visita, o una decisión explícita sobre la segunda visita como referencia para la app instalada.
+
+**2. Registrar el service worker con `defer`** (prioridad media, área rendimiento, ejecuta: agente)
+
+> `injectRegister: 'script'` en `apps/web/vite.config.ts` pone `registerSW.js` en el `<head>` sin `defer`. Con `'script-defer'`, el FCP y el LCP del inicio bajan de 0,90 s a 0,75 s (medido, 5 ejecuciones). Comprobar que la app instalada sigue actualizándose sola (prueba manual de #60) y que el presupuesto no cambia.
+
+**3. Cliente de Supabase sin Auth, Realtime ni Functions** (prioridad baja, área rendimiento, ejecuta: agente)
+
+> El chunk de supabase-js pesa 47,1 KiB con Brotli y la mayor parte (auth-js, realtime-js, phoenix, functions-js, iceberg-js) no se usa: el token viene de Clerk. Sustituirlo por `@supabase/postgrest-js` y `@supabase/storage-js` en `apps/web/src/lib/supabase.ts`, medir el ahorro con `npm run build:medicion` y bajar el presupuesto con `npm run presupuesto -- --actualizar`.

@@ -1,0 +1,19 @@
+{
+  "descripcion": "Presupuesto de tamaño del build de producción con valores ficticios (npm run build:medicion). Lo comprueba npm run presupuesto en el CI; ver docs/medicion-de-carga.md.",
+  "fecha": "2026-11-21",
+  "margen": 0.05,
+  "metricas": {
+    "jsInicialGzip": {
+      "referencia": 86020,
+      "limite": 90321
+    },
+    "cssGzip": {
+      "referencia": 7539,
+      "limite": 7916
+    },
+    "precacheBytes": {
+      "referencia": 1299445,
+      "limite": 1364418
+    }
+  }
+}
