@@ -7,7 +7,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Prueba · orqui.apps'
+  document.title = 'Prueba · orqui.app'
 })
 
 function Harness({

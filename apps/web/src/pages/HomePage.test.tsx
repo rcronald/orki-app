@@ -50,7 +50,7 @@ describe('HomePage', () => {
       'Registra una orquídea',
       'Organiza tu colección',
     ])
-    expect(document.title).toBe('orqui.apps')
+    expect(document.title).toBe('orqui.app')
     await expectNoAxeViolations()
   })
 

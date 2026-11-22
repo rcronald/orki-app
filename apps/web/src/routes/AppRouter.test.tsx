@@ -26,7 +26,7 @@ beforeEach(() => {
   resetFakeClerk()
   // Como en index.html.
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   localStorage.clear()
   resetOfflineIdentity()
@@ -81,14 +81,14 @@ describe('rutas públicas', () => {
     renderAt('/')
 
     expect(await findHeading(/./)).toBeInTheDocument()
-    expect(document.title).toBe('orqui.apps')
+    expect(document.title).toBe('orqui.app')
     expect(currentLocation()).toBe('/')
     expect(
       screen.queryByRole('navigation', { name: 'Principal' }),
     ).not.toBeInTheDocument()
     const banner = screen.getByRole('banner')
     expect(
-      within(banner).getByRole('link', { name: 'Inicio de orqui.apps' }),
+      within(banner).getByRole('link', { name: 'Inicio de orqui.app' }),
     ).toHaveAttribute('href', '/')
     expect(
       within(banner).getByRole('link', { name: 'Iniciar sesión' }),
@@ -107,7 +107,7 @@ describe('rutas públicas', () => {
     renderAt('/catalogo')
 
     expect(await findHeading('Catálogo')).toBeInTheDocument()
-    expect(document.title).toBe('Catálogo · orqui.apps')
+    expect(document.title).toBe('Catálogo · orqui.app')
     expect(currentLocation()).toBe('/catalogo')
     await expectNoAxeViolations()
   })
@@ -149,7 +149,7 @@ describe('rutas públicas', () => {
     renderAt('/no-existe')
 
     expect(await findHeading('Página no encontrada')).toBeInTheDocument()
-    expect(document.title).toBe('Página no encontrada · orqui.apps')
+    expect(document.title).toBe('Página no encontrada · orqui.app')
     expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
       'href',
       '/',
@@ -196,7 +196,7 @@ describe('el inicio con sesión', () => {
       screen.queryByRole('link', { name: 'Crear cuenta gratis' }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
+      screen.getByRole('link', { name: 'Inicio de orqui.app' }),
     ).toBeInTheDocument()
   })
 
@@ -206,7 +206,7 @@ describe('el inicio con sesión', () => {
     renderAt('/cuenta')
 
     await findHeading('Tu cuenta')
-    await user.click(screen.getByRole('link', { name: 'Inicio de orqui.apps' }))
+    await user.click(screen.getByRole('link', { name: 'Inicio de orqui.app' }))
     expect(await findHeading('Mi colección')).toBeInTheDocument()
     expect(currentLocation()).toBe('/coleccion')
   })
@@ -253,7 +253,7 @@ describe('rutas con sesión', () => {
     await user.click(screen.getByRole('link', { name: 'Registrar orquídea' }))
     expect(await findHeading('Registrar una orquídea')).toBeInTheDocument()
     expect(currentLocation()).toBe('/coleccion/nueva')
-    expect(document.title).toBe('Registrar una orquídea · orqui.apps')
+    expect(document.title).toBe('Registrar una orquídea · orqui.app')
     await expectNoAxeViolations()
   })
 
@@ -467,7 +467,7 @@ describe('navegación', () => {
     ).toHaveFocus()
     await user.tab()
     expect(
-      screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
+      screen.getByRole('link', { name: 'Inicio de orqui.app' }),
     ).toHaveFocus()
     await user.tab()
     const collection = within(nav).getByRole('link', { name: 'Mi colección' })
@@ -478,7 +478,7 @@ describe('navegación', () => {
     // El foco pasa al título de la página nueva y la pestaña cambia.
     const heading = await findHeading('Mi colección')
     expect(heading).toHaveFocus()
-    expect(document.title).toBe('Mi colección · orqui.apps')
+    expect(document.title).toBe('Mi colección · orqui.app')
     expect(collection).toHaveAttribute('aria-current', 'page')
     await expectNoAxeViolations()
   })

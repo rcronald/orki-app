@@ -7,7 +7,7 @@ import { AuthLoading, AuthNotice, AuthUnavailable } from './AuthStatus.tsx'
 beforeEach(() => {
   // Como en index.html.
   document.documentElement.lang = 'es'
-  document.title = 'orqui.apps'
+  document.title = 'orqui.app'
 })
 
 describe('AuthLoading', () => {
