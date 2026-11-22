@@ -23,10 +23,20 @@ interface FakeClerkState {
   userId: string
   /** user.deleteSelfEnabled: si Clerk deja eliminar la cuenta (#109). */
   deleteSelfEnabled: boolean
+  /** user.fullName; null si la cuenta no tiene nombre. */
+  fullName: string | null
+  /** Foto de la cuenta (user.imageUrl con user.hasImage); null sin foto. */
+  imageUrl: string | null
 }
 
 /** Id de usuario de la sesión simulada por defecto (userId y claim sub). */
 export const FAKE_USER_ID = 'user_prueba'
+
+/** Nombre del usuario simulado por defecto. */
+export const FAKE_USER_NAME = 'Persona de Prueba'
+
+/** Foto genérica de Clerk cuando la cuenta no tiene una propia (hasImage false). */
+const CLERK_DEFAULT_IMAGE = 'https://img.clerk.invalid/por-defecto.png'
 
 export const fakeClerk: FakeClerkState = {
   status: 'ready',
@@ -34,6 +44,8 @@ export const fakeClerk: FakeClerkState = {
   appRole: null,
   userId: FAKE_USER_ID,
   deleteSelfEnabled: true,
+  fullName: FAKE_USER_NAME,
+  imageUrl: null,
 }
 
 /** Token de sesión que devuelve getToken() por defecto con sesión. */
@@ -77,8 +89,11 @@ export function resetFakeClerk() {
     appRole: null,
     userId: FAKE_USER_ID,
     deleteSelfEnabled: true,
+    fullName: FAKE_USER_NAME,
+    imageUrl: null,
   })
   signOut.mockReset()
+  openUserProfile.mockReset()
   signOut.mockImplementation(() => Promise.resolve())
   setActive.mockReset()
   setActive.mockImplementation(() => Promise.resolve())
@@ -110,14 +125,21 @@ export const setActive = vi.fn<(params: unknown) => Promise<void>>(() =>
   Promise.resolve(),
 )
 
+/**
+ * openUserProfile() de useClerk(): el editor de perfil de Clerk (#207). Aquí
+ * solo registra la llamada y sus props (con la sección de peligro oculta).
+ */
+export const openUserProfile = vi.fn<(props?: unknown) => void>()
+
 export function useClerk() {
-  return { status: fakeClerk.status, signOut, setActive }
+  return { status: fakeClerk.status, signOut, setActive, openUserProfile }
 }
 
 // Usuario de useUser() --------------------------------------------------------
 //
-// Solo lo que usa la pantalla de cuenta (#110): id, correo principal,
-// deleteSelfEnabled y delete(). Una prueba cambia el permiso con
+// Solo lo que usa la app: id, nombre, foto, correo principal (la barra y la
+// pantalla de cuenta, #110 y #207), deleteSelfEnabled y delete(). El nombre y
+// la foto se cambian con setFakeClerk({ fullName, imageUrl }). Una prueba cambia el permiso con
 // setFakeClerk({ deleteSelfEnabled: false }) y el resultado de delete() con
 // deleteUser.mockImplementation().
 
@@ -137,6 +159,10 @@ export function useUser() {
     isSignedIn: true,
     user: {
       id: fakeClerk.userId,
+      fullName: fakeClerk.fullName,
+      firstName: fakeClerk.fullName?.split(' ')[0] ?? null,
+      hasImage: fakeClerk.imageUrl !== null,
+      imageUrl: fakeClerk.imageUrl ?? CLERK_DEFAULT_IMAGE,
       primaryEmailAddress: { emailAddress: FAKE_USER_EMAIL },
       deleteSelfEnabled: fakeClerk.deleteSelfEnabled,
       delete: deleteUser,
@@ -214,10 +240,6 @@ export function SignIn(props: { routing?: string; [prop: string]: unknown }) {
 export function SignUp(props: { routing?: string; [prop: string]: unknown }) {
   authComponentRendered(props)
   return <div data-testid="clerk-sign-up" data-routing={props.routing} />
-}
-
-export function UserButton() {
-  return <button type="button">Abrir menú de la cuenta</button>
 }
 
 // Como el real: envuelve el botón propio y le añade el cierre de sesión.

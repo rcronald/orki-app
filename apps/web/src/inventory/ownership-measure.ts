@@ -5,8 +5,9 @@ import type { OwnershipOutcome, Ownership } from '../collection/ownership.ts'
 // lo envía el #146 ("búsqueda ¿Ya la tengo?": duración desde que se empieza
 // a escribir hasta que se muestra la respuesta, y resultado; ver
 // telemetry/useHaveItSearchEvents.ts, que decide qué respuesta cuenta); aquí
-// solo se mide y se entrega a quien lo pida con la prop onMeasure de
-// OwnershipPanel. No se envía nada a ningún sitio.
+// solo se mide y se entrega a quien lo pida con la opción onMeasure de
+// useOwnershipAnswer (la pantalla «¿Ya la tengo?», #209, y OwnershipPanel). No
+// se envía nada a ningún sitio.
 //
 // La medida nunca lleva el texto buscado, ni nombres de plantas: solo
 // números y valores cerrados.

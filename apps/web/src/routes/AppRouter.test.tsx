@@ -278,11 +278,12 @@ describe('rutas con sesión', () => {
     expect(currentLocation()).toBe('/iniciar-sesion?redirect_url=%2Fcuenta')
   })
 
-  it('con sesión, la pantalla de cuenta se abre desde la cabecera', async () => {
+  it('con sesión, la pantalla de cuenta se abre desde el menú «Tu cuenta»', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true })
     renderAt('/coleccion')
-    await user.click(await screen.findByRole('link', { name: 'Tu cuenta' }))
+    await user.click(await screen.findByRole('button', { name: 'Tu cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Mi cuenta' }))
     expect(await findHeading('Tu cuenta')).toBeInTheDocument()
     expect(currentLocation()).toBe('/cuenta')
     await expectNoAxeViolations()
@@ -334,8 +335,9 @@ describe('administración del catálogo', () => {
     ['sin rol', null],
     ['con otro rol', 'user'],
   ])(
-    '%s: no ve el enlace y, si abre la ruta, "no tienes acceso"',
+    '%s: no ve la opción del menú y, si abre la ruta, "no tienes acceso"',
     async (_case, appRole) => {
+      const user = userEvent.setup()
       setFakeClerk({ signedIn: true, appRole })
       renderAt('/administracion/catalogo')
 
@@ -344,22 +346,25 @@ describe('administración del catálogo', () => {
       expect(
         screen.queryByRole('heading', { name: 'Administración del catálogo' }),
       ).not.toBeInTheDocument()
-      const nav = screen.getByRole('navigation', { name: 'Principal' })
+      await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
       expect(
-        within(nav).queryByRole('link', { name: 'Administración' }),
-      ).not.toBeInTheDocument()
+        screen.getAllByRole('menuitem').map((item) => item.textContent),
+      ).toEqual(['Mi cuenta', 'Cerrar sesión'])
       await expectNoAxeViolations()
     },
   )
 
-  it('con el rol catalog_admin: ve el enlace y la página', async () => {
+  it('con el rol catalog_admin: ve la opción del menú y la página', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true, appRole: 'catalog_admin' })
     renderAt('/coleccion')
 
     await findHeading('Mi colección')
-    const nav = screen.getByRole('navigation', { name: 'Principal' })
-    await user.click(within(nav).getByRole('link', { name: 'Administración' }))
+    await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent),
+    ).toEqual(['Mi cuenta', 'Administración', 'Cerrar sesión'])
+    await user.click(screen.getByRole('menuitem', { name: 'Administración' }))
 
     expect(await findHeading('Administración del catálogo')).toBeInTheDocument()
     expect(currentLocation()).toBe('/administracion/catalogo')
@@ -437,7 +442,7 @@ describe('página de muestra', () => {
 })
 
 describe('navegación', () => {
-  it('sin «Inicio» ni «Catálogo»; marca la página actual y se usa con el teclado', async () => {
+  it('barra de la app: solo «Mi colección»; marca la página actual y se usa con el teclado', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true })
     renderAt('/cuenta')
@@ -450,8 +455,8 @@ describe('navegación', () => {
         .map((link) => link.textContent),
     ).toEqual(['Mi colección'])
 
-    // Saltar al contenido, el logotipo, el menú de la cuenta, Tu cuenta,
-    // Cerrar sesión y Mi colección.
+    // Saltar al contenido, el logotipo y la pestaña «Mi colección»; después,
+    // el botón del menú «Tu cuenta».
     await user.tab()
     expect(
       screen.getByRole('link', { name: 'Saltar al contenido' }),
@@ -460,9 +465,6 @@ describe('navegación', () => {
     expect(
       screen.getByRole('link', { name: 'Inicio de orqui.apps' }),
     ).toHaveFocus()
-    await user.tab()
-    await user.tab()
-    await user.tab()
     await user.tab()
     const collection = within(nav).getByRole('link', { name: 'Mi colección' })
     expect(collection).toHaveFocus()
@@ -483,25 +485,36 @@ describe('navegación', () => {
     expect(await findHeading('Catálogo')).not.toHaveFocus()
   })
 
-  it('el catálogo sigue existiendo, sin enlace en la navegación', async () => {
+  it('el catálogo sigue existiendo, sin enlace en la barra', async () => {
+    setFakeClerk({ signedIn: true })
     renderAt('/catalogo')
 
     expect(await findHeading('Catálogo')).toBeInTheDocument()
-    const nav = screen.getByRole('navigation', { name: 'Principal' })
+    const banner = screen.getByRole('banner')
     expect(
-      within(nav).queryByRole('link', { name: 'Catálogo' }),
+      within(banner).queryByRole('link', { name: 'Catálogo' }),
     ).not.toBeInTheDocument()
   })
 
-  it('sin sesión, la colección se ofrece igual y lleva a iniciar sesión', async () => {
+  it('sin sesión, las páginas de la app llevan la barra pública', async () => {
     const user = userEvent.setup()
     renderAt('/catalogo')
 
     await findHeading('Catálogo')
-    await user.click(screen.getByRole('link', { name: 'Mi colección' }))
+    expect(
+      screen.queryByRole('navigation', { name: 'Principal' }),
+    ).not.toBeInTheDocument()
+    const banner = screen.getByRole('banner')
+    expect(banner).toHaveClass('orki-nav')
+    expect(
+      within(banner).getByRole('link', { name: 'Crear cuenta gratis' }),
+    ).toHaveClass('orki-btn--strong')
+    await user.click(
+      within(banner).getByRole('link', { name: 'Iniciar sesión' }),
+    )
 
     expect(await screen.findByTestId('clerk-sign-in')).toBeInTheDocument()
-    expect(currentLocation()).toBe('/iniciar-sesion?redirect_url=%2Fcoleccion')
+    expect(currentLocation()).toBe('/iniciar-sesion')
     // Al llegar navegando, el foco va al contenido de la pantalla de acceso.
     expect(screen.getByRole('main', { name: 'Iniciar sesión' })).toHaveFocus()
   })

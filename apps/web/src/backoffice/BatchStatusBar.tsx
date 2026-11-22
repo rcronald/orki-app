@@ -70,7 +70,7 @@ export function BatchStatusBar({
     <div
       role="group"
       aria-labelledby={labelId}
-      className="flex flex-wrap items-end gap-space-3 rounded-lg bg-primary-soft p-space-4"
+      className="flex flex-wrap items-end gap-space-3 rounded-lg bg-secondary-soft p-space-4"
     >
       <p id={labelId} className="text-md font-semibold text-neutral-900">
         {count === 1

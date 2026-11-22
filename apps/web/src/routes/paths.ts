@@ -14,6 +14,11 @@ export const PATHS = {
   plantDetail: '/coleccion/:plantId',
   /** Edición de un ejemplar (#16); construir con plantEditPath(). */
   editPlant: '/coleccion/:plantId/editar',
+  /**
+   * Consulta rápida «¿Ya la tengo?» (#209), la ruta propuesta en el issue. La
+   * barra de la app (#207) la trata como parte de «Mi colección».
+   */
+  ownershipCheck: '/ya-la-tengo',
   catalogAdmin: '/administracion/catalogo',
   /** Datos de la sesión y eliminación de la cuenta (#110). */
   account: '/cuenta',

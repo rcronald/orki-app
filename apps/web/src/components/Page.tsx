@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
+import { PageHeader, type PageHeaderProps } from './ui/PageHeader.tsx'
 
 interface PageProps {
   /** Título visible (h1) y de la pestaña. */
@@ -19,6 +20,12 @@ interface PageProps {
    * full (1280 px) para las tablas del backoffice.
    */
   width?: 'narrow' | 'wide' | 'full'
+  /**
+   * Cabecera de pantalla del sistema (PageHeader, orki-pagehead, #206) en
+   * lugar del h1 sencillo: título grande, contador o frase, acciones e
+   * ilustración. El h1 sigue recibiendo el foco al navegar.
+   */
+  header?: Omit<PageHeaderProps, 'title' | 'headingRef'>
   children?: ReactNode
 }
 
@@ -37,6 +44,7 @@ export function Page({
   heading,
   before,
   width = 'narrow',
+  header,
   children,
 }: PageProps) {
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -46,13 +54,21 @@ export function Page({
   return (
     <div className={`flex w-full flex-col gap-space-3 ${WIDTH_CLASSES[width]}`}>
       {before}
-      <h1
-        ref={headingRef}
-        tabIndex={-1}
-        className="font-display text-xl font-semibold text-neutral-900 [overflow-wrap:anywhere]"
-      >
-        {heading ?? title}
-      </h1>
+      {header ? (
+        <PageHeader
+          {...header}
+          title={heading ?? title}
+          headingRef={headingRef}
+        />
+      ) : (
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="font-display text-xl font-semibold text-neutral-900 [overflow-wrap:anywhere]"
+        >
+          {heading ?? title}
+        </h1>
+      )}
       {children}
     </div>
   )

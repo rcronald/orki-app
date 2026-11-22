@@ -20,7 +20,7 @@ export function LandingSection() {
     <Section
       id="portada"
       title="Páginas públicas"
-      description="Portada y páginas de texto: aquí manda el verde (orki-btn--strong, títulos y enlaces en color-secondary-strong); el rosa queda en el logotipo y la foto. Dentro de la app la acción principal sigue siendo orki-btn--primary."
+      description="Portada y páginas de texto: aquí manda el verde (orki-btn--strong, títulos y enlaces en color-secondary-strong); el rosa queda en el logotipo y la foto. Desde el #206 el verde es también la acción principal dentro de la app: orki-btn--primary y orki-btn--strong se ven igual."
     >
       <Example
         title="Barra superior (NavBar)"

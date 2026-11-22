@@ -90,8 +90,8 @@ describe('ShowcasePage', () => {
     expect(
       screen.getAllByRole('img', { name: 'Sin foto' }).length,
     ).toBeGreaterThan(0)
-    expect(screen.getByText('Sí, la tienes')).toBeInTheDocument()
-    expect(screen.getByText('Aún no la tienes')).toBeInTheDocument()
+    expect(screen.getAllByText('Sí, la tienes').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Aún no la tienes').length).toBeGreaterThan(0)
     expect(
       screen.getByRole('combobox', { name: 'Nombre científico' }),
     ).toBeInTheDocument()
@@ -101,6 +101,63 @@ describe('ShowcasePage', () => {
     expect(
       screen.getByRole('button', { name: 'Notas de floración' }),
     ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('muestra las piezas de «Mi colección» (#206) sin fallos A ni AA', async () => {
+    const user = userEvent.setup()
+    renderShowcase()
+
+    const section = screen.getByRole('region', {
+      name: 'Mi colección y ¿Ya la tengo?: piezas',
+    })
+    expect(
+      within(section).getByRole('navigation', { name: 'Principal' }),
+    ).toBeInTheDocument()
+    expect(
+      within(section).getByRole('heading', { name: 'Mi colección' }),
+    ).toHaveClass('orki-pagehead__title')
+    const grid = within(section).getByRole('button', { name: 'Cuadrícula' })
+    expect(grid).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(section).getByRole('button', { name: 'Lista' }))
+    expect(grid).toHaveAttribute('aria-pressed', 'false')
+    const genera = within(section).getByRole('group', {
+      name: 'Accesos por género',
+    })
+    expect(genera).toHaveClass('orki-chips--scroll')
+    await user.click(within(genera).getByRole('button', { name: 'Vanda' }))
+    expect(
+      within(genera).getByRole('button', { name: 'Vanda' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(within(section).getAllByRole('article')).toHaveLength(5)
+    expect(within(section).getAllByRole('status')).toHaveLength(4)
+    await user.click(within(section).getByRole('button', { name: 'Tu cuenta' }))
+    expect(
+      within(section).getByRole('menu', { name: 'Tu cuenta' }),
+    ).toBeInTheDocument()
+    await expectNoAxeViolations()
+  })
+
+  it('muestra las piezas de «Tu cuenta» (#213) sin fallos A ni AA', async () => {
+    renderShowcase()
+
+    const section = screen.getByRole('region', { name: 'Tu cuenta: piezas' })
+    expect(section.querySelectorAll('.orki-avatar')).toHaveLength(8)
+    expect(
+      within(section).getByRole('region', { name: 'Eliminar cuenta' }),
+    ).toHaveClass('orki-panel--danger')
+    expect(
+      within(section).getByRole('button', { name: 'Eliminar mi cuenta' }),
+    ).toHaveClass('orki-btn--danger-outline')
+    expect(
+      within(section).getByRole('link', { name: 'Aviso de privacidad' }),
+    ).toHaveAttribute('href', '/privacidad')
+    expect(
+      within(section).getByRole('button', {
+        name: 'Editar perfil',
+        description: 'Necesitas conexión para editar tu perfil.',
+      }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    await expectNoAxeViolations()
   })
 
   it('los chips alternan al pulsarlos', async () => {

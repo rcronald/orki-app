@@ -36,7 +36,7 @@ describe('clerkAppearance', () => {
 
   it('usa los colores, las familias y el radio del sistema', () => {
     expect(clerkAppearance.variables).toMatchObject({
-      colorPrimary: 'var(--color-primary)',
+      colorPrimary: 'var(--color-secondary-strong)',
       colorRing: 'var(--color-secondary)',
       fontFamily: 'var(--font-body)',
       borderRadius: 'var(--radius-md)',
