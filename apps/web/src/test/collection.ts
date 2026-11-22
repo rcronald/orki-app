@@ -46,6 +46,18 @@ export function plantRow(
 
 let nextId = 1
 
+/** Especie validada con este nombre científico (id derivado del nombre). */
+export function speciesNamed(
+  scientificName: string,
+): NonNullable<CollectionPlant['species']> {
+  return {
+    id: `species-${scientificName}`,
+    scientificName,
+    type: 'species',
+    status: 'validated',
+  }
+}
+
 /** Planta del modelo; el id es único salvo que se indique. */
 export function plant(
   overrides: Partial<CollectionPlant> = {},

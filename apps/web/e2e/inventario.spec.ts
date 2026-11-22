@@ -150,6 +150,15 @@ test.describe('¿Ya la tengo?', () => {
         .getByRole('list', { name: 'Ejemplares que coinciden' })
         .getByRole('link'),
     ).toHaveAccessibleName(/Nombre común: Orquídea luna/)
+    // La lista de abajo también la encuentra por ese nombre común (de la copia
+    // local), coherente con la respuesta.
+    await expect(tarjetas(page)).toHaveCount(1)
+    await expect(
+      page.getByRole('article', { name: 'Phalaenopsis amabilis' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('list', { name: 'Resumen de tu colección' }),
+    ).toContainText('1 de 5 orquídeas')
     await revisarAccesibilidad('¿Ya la tengo? sí')
   })
 

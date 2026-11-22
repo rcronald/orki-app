@@ -4,7 +4,15 @@ import {
   PHALAENOPSIS,
   plant,
   RHYNCHOLAELIOCATTLEYA,
+  speciesNamed,
 } from '../test/collection.ts'
+import type { CollectionPlant } from './model.ts'
+import {
+  answerOwnership,
+  matchPlantNames,
+  ownershipIndexFor,
+  type OwnershipExtras,
+} from './ownership.ts'
 import {
   compareNames,
   countGenera,
@@ -321,5 +329,137 @@ describe('filterByText', () => {
     expect(filterByText([amabilis], 'rosita')).toEqual([])
     const edited = { ...amabilis, nickname: 'Rosita' }
     expect(filterByText([edited], 'rosita')).toEqual([edited])
+  })
+})
+
+describe('filterByText con los nombres de "¿Ya la tengo?"', () => {
+  // Plantas con su especie enlazada, como las da toCollectionPlant: el nombre
+  // mostrado es el científico de la especie.
+  const linked = (
+    scientificName: string,
+    overrides: Partial<CollectionPlant> = {},
+  ) =>
+    plant({
+      displayName: scientificName,
+      enteredName: scientificName,
+      species: speciesNamed(scientificName),
+      ...overrides,
+    })
+  const luna = linked('Phalaenopsis amabilis')
+  const mayo = linked('Cattleya trianae', { genus: CATTLEYA })
+  const java = linked('Phalaenopsis javanica', { nickname: 'Luna chica' })
+  const lina = linked('Cattleya lueddemanniana', { genus: CATTLEYA })
+  const lostLuna = linked('Phalaenopsis aphrodite', { status: 'lost' })
+  const plants = [luna, mayo, java, lina, lostLuna]
+
+  const names = (
+    entries: Record<string, [string, 'synonym' | 'common'][]>,
+  ): OwnershipExtras => ({
+    speciesNames: new Map(
+      Object.entries(entries).map(([scientificName, list]) => [
+        speciesNamed(scientificName).id,
+        list.map(([name, type]) => ({ name, type })),
+      ]),
+    ),
+  })
+  const EXTRAS = names({
+    'Phalaenopsis amabilis': [
+      ['Phalaenopsis grandiflora', 'synonym'],
+      ['Orquídea luna', 'common'],
+    ],
+    'Cattleya trianae': [['Flor de mayo', 'common']],
+    'Cattleya lueddemanniana': [['Lina', 'common']],
+    'Phalaenopsis aphrodite': [['Luna de Filipinas', 'common']],
+  })
+
+  const search = (
+    query: string,
+    extras: OwnershipExtras | undefined = EXTRAS,
+    includeInactive = false,
+  ) =>
+    filterByText(plants, query, {
+      includeInactive,
+      nameMatches: matchPlantNames(ownershipIndexFor(plants, extras), query),
+    })
+
+  it.each([
+    ['un sinónimo', 'grandiflora', [luna]],
+    ['un sinónimo con el género abreviado', 'Phal. grandiflora', [luna]],
+    ['un nombre común', 'Orquídea luna', [luna]],
+    ['un nombre común sin tildes, a medio escribir', 'flor de ma', [mayo]],
+  ])('encuentra la planta por %s: "%s"', (_case, query, expected) => {
+    expect(search(query)).toEqual(expected)
+  })
+
+  it('sin extras (aún no cargan o no hay), como antes', () => {
+    expect(search('grandiflora', {})).toEqual([])
+    expect(search('orquidea luna', undefined)).toEqual([luna])
+    expect(search('orquidea luna', {})).toEqual([])
+    expect(filterByText(plants, 'orquidea luna')).toEqual([])
+    expect(
+      filterByText(plants, 'orquidea luna', { nameMatches: null }),
+    ).toEqual([])
+    // Lo demás no cambia.
+    expect(search('javanica', {})).toEqual([java])
+  })
+
+  it('mezcla coincidencias directas con las de sus nombres, en el orden de la lista', () => {
+    // "luna": el apodo de una y el nombre común de otra; la perdida, solo
+    // con su estado.
+    expect(search('luna')).toEqual([luna, java])
+    expect(search('luna', EXTRAS, true)).toEqual([luna, java, lostLuna])
+  })
+
+  describe('con errores de tipeo, como el panel', () => {
+    it('un nombre común con un error encuentra la planta', () => {
+      expect(search('orquidea lunna')).toEqual([luna])
+      expect(search('flor de maio')).toEqual([mayo])
+    })
+
+    it('las parecidas solo salen si ninguna coincide sin errores', () => {
+      // "lina" es tal cual el nombre común de una; "luna" se le parece.
+      expect(search('lina')).toEqual([lina])
+      // "lena" no coincide tal cual con ninguna: salen las parecidas.
+      expect(search('lena')).toEqual([luna, java, lina])
+    })
+  })
+
+  it('lo que el panel da por "la tienes" está en la lista', () => {
+    const active = plants.filter((p) => p.status === 'active')
+    for (const query of [
+      'grandiflora',
+      'orquidea luna',
+      'orquidea lunna',
+      'flor de mayo',
+      'luna',
+      'lina',
+      'lena',
+      'phal amab',
+      'Phal. grandiflora',
+    ]) {
+      const index = ownershipIndexFor(plants, EXTRAS)
+      const ownership = answerOwnership(index, query)
+      const listed = filterByText(active, query, {
+        nameMatches: matchPlantNames(index, query),
+      })
+      for (const match of ownership?.matches ?? []) {
+        expect(listed, query).toContain(match.plant)
+      }
+    }
+  })
+
+  it('el índice se crea una vez por plantas y extras', () => {
+    expect(ownershipIndexFor(plants, EXTRAS)).toBe(
+      ownershipIndexFor(plants, EXTRAS),
+    )
+    expect(ownershipIndexFor(plants)).toBe(ownershipIndexFor(plants, undefined))
+    expect(ownershipIndexFor(plants, {})).not.toBe(
+      ownershipIndexFor(plants, EXTRAS),
+    )
+  })
+
+  it('búsquedas que no bastan para el panel no añaden nada', () => {
+    expect(matchPlantNames(ownershipIndexFor(plants, EXTRAS), 'l')).toBeNull()
+    expect(search('l')).toEqual(filterByText(plants, 'l'))
   })
 })

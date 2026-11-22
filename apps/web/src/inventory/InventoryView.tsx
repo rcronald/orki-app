@@ -20,6 +20,11 @@ import {
 } from '../collection/filters.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import {
+  matchPlantNames,
+  ownershipIndexFor,
+  type OwnershipExtras,
+} from '../collection/ownership.ts'
+import {
   countGenera,
   filterByText,
   groupByGenus,
@@ -88,6 +93,12 @@ export interface InventoryViewProps {
    */
   searchResult?: ReactNode
   /**
+   * Sinónimos, nombres comunes y abreviaturas de la copia local (#18), los
+   * mismos que usa "¿Ya la tengo?": con ellos, la lista encuentra también las
+   * plantas por esos nombres. Sin ellos, solo por los campos de cada planta.
+   */
+  extras?: OwnershipExtras
+  /**
    * Solo lectura (sin conexión, #18): id del texto que explica por qué. Con
    * él, los accesos a registrar se ven desactivados y lo citan.
    */
@@ -129,6 +140,7 @@ export function InventoryView({
   filters,
   onFiltersChange,
   searchResult,
+  extras,
   writeDisabledBy,
 }: InventoryViewProps) {
   const [preferences, setPreferences] = useInventoryPreferences()
@@ -173,9 +185,25 @@ export function InventoryView({
     () => applyFilters(withStatus, deferredFilters),
     [withStatus, deferredFilters],
   )
+  // Las coincidencias por nombre de "¿Ya la tengo?" (también sinónimos y
+  // nombres comunes), sobre toda la colección y con el mismo índice que el
+  // panel (ownershipIndexFor lo crea una vez por plantas y extras). Solo
+  // dependen de la búsqueda: cambiar los filtros no las recalcula.
+  const index = useMemo(
+    () => (plants === null ? null : ownershipIndexFor(plants, extras)),
+    [plants, extras],
+  )
+  const nameMatches = useMemo(
+    () => (index === null ? null : matchPlantNames(index, deferredQuery)),
+    [index, deferredQuery],
+  )
   const matches = useMemo(
-    () => filterByText(filtered, deferredQuery, { includeInactive: true }),
-    [filtered, deferredQuery],
+    () =>
+      filterByText(filtered, deferredQuery, {
+        includeInactive: true,
+        nameMatches,
+      }),
+    [filtered, deferredQuery, nameMatches],
   )
   const genusCount = useMemo(
     () => countGenera(matches, { includeInactive: true }),

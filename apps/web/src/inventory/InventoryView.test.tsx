@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_FILTERS, type PlantFilters } from '../collection/filters.ts'
 import { toCollectionPlant, type CollectionPlant } from '../collection/model.ts'
+import type { OwnershipExtras } from '../collection/ownership.ts'
 import { CollectionLoadError } from '../collection/source.ts'
 import type { CollectionStatus } from '../collection/store.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -14,6 +15,7 @@ import {
   plant,
   plantRow,
   RHYNCHOLAELIOCATTLEYA,
+  speciesNamed,
 } from '../test/collection.ts'
 import { InventoryView } from './InventoryView.tsx'
 import { PREFERENCES_KEY } from './preferences.ts'
@@ -34,6 +36,7 @@ interface Props {
   onRetry?: () => void
   initialQuery?: string
   initialFilters?: PlantFilters
+  extras?: OwnershipExtras
 }
 
 // La vista con el buscador y los filtros controlados por un estado local, como
@@ -45,6 +48,7 @@ function Harness({
   onRetry = () => {},
   initialQuery = '',
   initialFilters = DEFAULT_FILTERS,
+  extras,
 }: Props & { plants: readonly CollectionPlant[] | null }) {
   const [query, setQuery] = useState(initialQuery)
   const [filters, setFilters] = useState(initialFilters)
@@ -58,6 +62,7 @@ function Harness({
       onQueryChange={setQuery}
       filters={filters}
       onFiltersChange={setFilters}
+      extras={extras}
     />
   )
 }
@@ -85,12 +90,18 @@ function renderInventory(
   }
 }
 
-// Planta de prueba con el nombre ingresado igual al mostrado (plant() deja
-// "Phalaenopsis amabilis" por defecto, que el buscador también mira).
+// Planta de prueba con el nombre ingresado y el de su especie iguales al
+// mostrado (plant() deja "Phalaenopsis amabilis" por defecto, que el buscador
+// también mira: los campos de la planta y, como "¿Ya la tengo?", el nombre
+// científico de su especie).
 function specimen(
   overrides: Partial<CollectionPlant> & { displayName: string },
 ): CollectionPlant {
-  return plant({ enteredName: overrides.displayName, ...overrides })
+  return plant({
+    enteredName: overrides.displayName,
+    species: speciesNamed(overrides.displayName),
+    ...overrides,
+  })
 }
 
 // Colección de ejemplo: dos Phalaenopsis, una Cattleya, un híbrido de género
@@ -628,6 +639,55 @@ describe('InventoryView: buscador', () => {
     renderInventory(PLANTS)
     await user.type(searchbox(), 'phal')
     await expectNoAxeViolations()
+  })
+  describe('por sinónimos y nombres comunes de la copia local', () => {
+    // Los mismos extras que "¿Ya la tengo?": por id de especie.
+    const EXTRAS: OwnershipExtras = {
+      speciesNames: new Map([
+        [
+          amabilis.species?.id ?? '',
+          [
+            { name: 'Phalaenopsis grandiflora', type: 'synonym' as const },
+            { name: 'Orquídea luna', type: 'common' as const },
+          ],
+        ],
+      ]),
+    }
+
+    it.each([
+      ['un nombre común', 'orquidea luna'],
+      ['un sinónimo', 'grandiflora'],
+      ['un nombre común con un error de tipeo', 'orquidea lunna'],
+    ])('encuentra la planta por %s', async (_case, text) => {
+      const user = userEvent.setup()
+      renderInventory(PLANTS, { extras: EXTRAS })
+
+      await user.type(searchbox(), text)
+      expect(cardNames()).toEqual(['Phalaenopsis amabilis'])
+      expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
+    })
+
+    it('sin extras, como antes; al llegar, la lista los usa', () => {
+      const { rerenderWith } = renderInventory(PLANTS, {
+        initialQuery: 'orquidea luna',
+      })
+      expect(screen.queryAllByRole('article')).toHaveLength(0)
+      expect(
+        screen.getByText(/Ninguna orquídea de tu colección coincide con/),
+      ).toBeInTheDocument()
+
+      rerenderWith(PLANTS, { extras: EXTRAS })
+      expect(cardNames()).toEqual(['Phalaenopsis amabilis'])
+    })
+
+    it('los filtros se siguen aplicando', () => {
+      renderInventory(PLANTS, {
+        extras: EXTRAS,
+        initialQuery: 'orquidea luna',
+        initialFilters: { ...DEFAULT_FILTERS, genera: [CATTLEYA.id] },
+      })
+      expect(screen.queryAllByRole('article')).toHaveLength(0)
+    })
   })
 })
 

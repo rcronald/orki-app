@@ -1,5 +1,6 @@
 import type { CollectionGenus, CollectionPlant } from './model.ts'
 import { normalizeSearchText } from './normalize.ts'
+import type { OwnershipMatch } from './ownership.ts'
 import {
   allowedTypos,
   boundedPrefixDistance,
@@ -107,6 +108,14 @@ function matchesWithTypos(
   return true
 }
 
+export interface TextFilterOptions extends StatusOptions {
+  /**
+   * Las coincidencias de "¿Ya la tengo?" por nombre, por id de planta
+   * (matchPlantNames en ownership.ts), o null si no las hay.
+   */
+  nameMatches?: ReadonlyMap<string, Pick<OwnershipMatch, 'quality'>> | null
+}
+
 /**
  * Filtra por texto sobre el nombre mostrado, el nombre ingresado, el género, el
  * apodo y el origen, sin distinguir mayúsculas, tildes ni el signo de híbrido
@@ -115,7 +124,14 @@ function matchesWithTypos(
  * amabilis" y "amabilis vivero" la encuentra si su origen es "Vivero Sol". Una
  * búsqueda vacía (o que se queda vacía al normalizar) no filtra por texto.
  *
- * Si ninguna planta coincide así, se toleran los errores de tipeo
+ * Con nameMatches, coinciden también las plantas que "¿Ya la tengo?" encuentra
+ * por sus nombres, entre ellos los sinónimos y nombres comunes de su especie
+ * ("orquídea luna" encuentra Phalaenopsis amabilis): lo que el panel da por
+ * "Sí, la tienes" está en la lista. Las exactas o por prefijo cuentan como
+ * coincidencias sin errores; las parecidas ("similar"), como las que toleran
+ * errores de tipeo.
+ *
+ * Si ninguna planta coincide sin errores, se toleran los errores de tipeo
  * ("phalenopsis amabils" encuentra "Phalaenopsis amabilis"), para que la lista
  * no quede vacía cuando "¿Ya la tengo?" responde que hay una parecida. Como
  * allí, las coincidencias con errores solo se muestran cuando no hay ninguna
@@ -124,12 +140,15 @@ function matchesWithTypos(
 export function filterByText(
   plants: readonly CollectionPlant[],
   query: string,
-  options?: StatusOptions,
+  { nameMatches, ...options }: TextFilterOptions = {},
 ): readonly CollectionPlant[] {
   const candidates = plantsByStatus(plants, options)
   const words = normalizeSearchText(query).split(' ').filter(Boolean)
   if (words.length === 0) return candidates
+  const byName = (plant: CollectionPlant) => nameMatches?.get(plant.id)?.quality
   const matches = candidates.filter((plant) => {
+    const quality = byName(plant)
+    if (quality !== undefined && quality !== 'similar') return true
     const text = searchTextOf(plant)
     return words.every((word) => text.includes(word))
   })
@@ -138,7 +157,10 @@ export function filterByText(
     .map((word) => word.replace(/\.+$/, ''))
     .filter(Boolean)
   if (typoWords.length === 0) return matches
-  return candidates.filter((plant) => matchesWithTypos(plant, typoWords))
+  return candidates.filter(
+    (plant) =>
+      byName(plant) !== undefined || matchesWithTypos(plant, typoWords),
+  )
 }
 
 // Orden ------------------------------------------------------------------------
