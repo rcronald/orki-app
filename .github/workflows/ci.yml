@@ -66,10 +66,27 @@ jobs:
   # producción con Clerk simulado y Supabase simulado en la red de Playwright.
   # No usa secretos ni sale a ningún servicio (las pruebas fallan si la app lo
   # intenta). Por ahora no es obligatorio para fusionar; ver el README.
+  #
+  # Un job por perfil, en paralelo: cada uno instala solo su navegador y corre
+  # solo sus pruebas, así el CI no espera a los cuatro en fila y un fallo dice
+  # en qué navegador ocurrió. El perfil «celular» usa WebKit.
   extremo-a-extremo:
-    name: Pruebas de extremo a extremo (Playwright)
+    name: Pruebas de extremo a extremo (${{ matrix.perfil }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      # Que un navegador falle no cancela los demás: interesa verlos todos.
+      fail-fast: false
+      matrix:
+        include:
+          - perfil: chromium
+            navegador: chromium
+          - perfil: firefox
+            navegador: firefox
+          - perfil: webkit
+            navegador: webkit
+          - perfil: celular
+            navegador: webkit
     steps:
       - name: Obtener el código
         uses: actions/checkout@v7
@@ -85,42 +102,42 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      # Los navegadores dependen de la versión exacta de @playwright/test: la
-      # caché se invalida sola al actualizarla.
+      # El navegador depende de la versión exacta de @playwright/test: la caché
+      # se invalida sola al actualizarla. Una caché por navegador.
       - name: Versión de Playwright
         id: playwright
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
         working-directory: apps/web
 
-      - name: Caché de los navegadores
+      - name: Caché del navegador
         id: cache-navegadores
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ matrix.navegador }}
 
-      - name: Instalar los navegadores y sus dependencias del sistema
+      - name: Instalar el navegador y sus dependencias del sistema
         if: steps.cache-navegadores.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps ${{ matrix.navegador }}
         working-directory: apps/web
 
-      # Con los navegadores en caché solo faltan las bibliotecas del sistema.
-      - name: Instalar las dependencias del sistema de los navegadores
+      # Con el navegador en caché solo faltan las bibliotecas del sistema.
+      - name: Instalar las dependencias del sistema del navegador
         if: steps.cache-navegadores.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium firefox webkit
+        run: npx playwright install-deps ${{ matrix.navegador }}
         working-directory: apps/web
 
       - name: Build de las pruebas
         run: npm run build:e2e
 
       - name: Pruebas de extremo a extremo
-        run: npm run test:e2e:sin-build
+        run: npm run test:e2e:sin-build -- --project=${{ matrix.perfil }}
 
       - name: Guardar el informe y las trazas
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: informe-playwright
+          name: informe-playwright-${{ matrix.perfil }}
           path: |
             apps/web/playwright-report/
             apps/web/test-results/
