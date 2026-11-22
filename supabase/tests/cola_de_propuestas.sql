@@ -227,18 +227,18 @@ select pruebas.comprobar(
      from (select to_jsonb(g)::text t from public.list_proposal_groups() g) r)
 );
 
--- prueba: listado: grupos por nombre normalizado y género, del más grande al más pequeño, con la forma más frecuente, el tipo más frecuente y hasta cuatro fotos
+-- prueba: listado: grupos por nombre normalizado y género, del más grande al más pequeño, con la forma más frecuente, el tipo más frecuente y hasta seis fotos
 set local role authenticated;
 select pg_temp.como_admin();
 select pruebas.iguales(
   'la cola',
   pg_temp.cola(),
-  'Nube blanca [nube blanca] Phalaenopsis hybrid ×5 fotos:4 | '
+  'Nube blanca [nube blanca] Phalaenopsis hybrid ×5 fotos:5 | '
   'rosa del Monte [rosa del monte] Vanda species ×4 fotos:2 | '
   'Rosa del monte [rosa del monte] Phalaenopsis hybrid ×1 fotos:0'
 );
 select pruebas.iguales(
-  'fotos de la más reciente a la más antigua',
+  'principales de la planta más reciente a la más antigua',
   (select string_agg(f ->> 'thumbnail_path', ', ' order by o.n)
      from public.list_proposal_groups() g
      cross join lateral jsonb_array_elements(g.photos) with ordinality o (f, n)
@@ -293,7 +293,7 @@ select pg_temp.como_admin();
 select pruebas.iguales(
   'el grupo sale de la cola',
   pg_temp.cola(),
-  'Nube blanca [nube blanca] Phalaenopsis hybrid ×5 fotos:4 | Rosa del monte [rosa del monte] Phalaenopsis hybrid ×1 fotos:0'
+  'Nube blanca [nube blanca] Phalaenopsis hybrid ×5 fotos:5 | Rosa del monte [rosa del monte] Phalaenopsis hybrid ×1 fotos:0'
 );
 select pruebas.iguales('count_proposal_groups', public.count_proposal_groups(), 2::bigint);
 -- El dueño ve su planta con la especie.
@@ -450,7 +450,7 @@ select pruebas.iguales(
 select pruebas.iguales(
   'la cola',
   pg_temp.cola(),
-  'Nube blanca [nube blanca] Phalaenopsis hybrid ×5 fotos:4 | Rosa del monte [rosa del monte] Phalaenopsis hybrid ×1 fotos:0'
+  'Nube blanca [nube blanca] Phalaenopsis hybrid ×5 fotos:5 | Rosa del monte [rosa del monte] Phalaenopsis hybrid ×1 fotos:0'
 );
 select set_config('request.jwt.claims', '{"sub": "user_b", "role": "authenticated"}', true);
 select pruebas.iguales(

@@ -556,7 +556,8 @@ function buildProposals(): ProposalGroup[] {
     photos: photos(proposalKey(proposedName).replace(/\s+/g, '-'), photoCount),
   })
   return [
-    group('Phalaenopsis Rosa del Monte', 'Phalaenopsis', 'hybrid', 4, 3),
+    // Seis fotos, el máximo que devuelve la cola (#184).
+    group('Phalaenopsis Rosa del Monte', 'Phalaenopsis', 'hybrid', 4, 6),
     group('Cattleya de la abuela', 'Cattleya', 'unknown', 2, 1),
     group('Vanda azul ficticia', 'Vanda', 'species', 1, 0),
   ]

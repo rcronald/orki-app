@@ -101,7 +101,8 @@ describe('Cola de propuestas', () => {
     const rosa = await card('Phalaenopsis Rosa del Monte')
     expect(rosa).toHaveTextContent('Phalaenopsis · Híbrido · 4 plantas')
     const photos = within(rosa).getAllByRole('button', { name: /^Ampliar/ })
-    expect(photos).toHaveLength(3)
+    // Hasta seis por grupo (#184), de varias plantas.
+    expect(photos).toHaveLength(6)
     const abuela = await card('Cattleya de la abuela')
     expect(abuela).toHaveTextContent('Cattleya · Tipo sin indicar · 2 plantas')
     const vanda = await card('Vanda azul ficticia')
@@ -118,7 +119,7 @@ describe('Cola de propuestas', () => {
     ])
 
     // Las miniaturas, con su URL de objeto (alt vacío: el botón la nombra).
-    await waitFor(() => expect(rosa.querySelectorAll('img')).toHaveLength(3))
+    await waitFor(() => expect(rosa.querySelectorAll('img')).toHaveLength(6))
     expect(container.innerHTML).not.toContain('muestra/')
     expect(document.body.innerHTML).not.toMatch(/photo-|thumb-/)
     await expectNoAxeViolations()
@@ -130,7 +131,7 @@ describe('Cola de propuestas', () => {
     render(<View source={source} />)
     const rosa = await card('Phalaenopsis Rosa del Monte')
     const opener = within(rosa).getByRole('button', {
-      name: 'Ampliar la foto 1 de 3 de «Phalaenopsis Rosa del Monte»',
+      name: 'Ampliar la foto 1 de 6 de «Phalaenopsis Rosa del Monte»',
     })
     await press(user, opener)
     const dialog = await screen.findByRole('dialog', {
@@ -138,15 +139,24 @@ describe('Cola de propuestas', () => {
     })
     expect(
       await within(dialog).findByRole('img', {
-        name: 'Foto 1 de 3 de «Phalaenopsis Rosa del Monte»',
+        name: 'Foto 1 de 6 de «Phalaenopsis Rosa del Monte»',
       }),
     ).toBeInTheDocument()
     await press(user, within(dialog).getByRole('button', { name: 'Siguiente' }))
     expect(
       await within(dialog).findByRole('img', {
-        name: 'Foto 2 de 3 de «Phalaenopsis Rosa del Monte»',
+        name: 'Foto 2 de 6 de «Phalaenopsis Rosa del Monte»',
       }),
     ).toBeInTheDocument()
+    // Hasta la última de las seis; ahí "Siguiente" ya no avanza.
+    const next = within(dialog).getByRole('button', { name: 'Siguiente' })
+    for (let step = 0; step < 5; step++) await press(user, next)
+    expect(
+      await within(dialog).findByRole('img', {
+        name: 'Foto 6 de 6 de «Phalaenopsis Rosa del Monte»',
+      }),
+    ).toBeInTheDocument()
+    expect(next).toHaveAttribute('aria-disabled', 'true')
     expect(document.body.innerHTML).not.toMatch(/photo-|thumb-/)
     await expectNoAxeViolations()
     await user.keyboard('{Escape}')

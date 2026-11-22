@@ -185,8 +185,9 @@ export type Database = {
           updated_at: string
           user_id: string
           validation: Database['public']['Enums']['plant_validation']
+          photo_count: number | null
         }
-        ComputedFields: never
+        ComputedFields: 'photo_count'
         Insert: {
           acquired_on?: string
           created_at?: string
@@ -668,6 +669,15 @@ export type Database = {
         }[]
       }
       normalize_search_text: { Args: { value: string }; Returns: string }
+      photo_count: {
+        Args: {
+          plant: Omit<
+            Database['public']['Tables']['plants']['Row'],
+            Database['public']['Tables']['plants']['ComputedFields']
+          >
+        }
+        Returns: number
+      }
       preview_species_merge: {
         Args: { kept_species_id: string; merged_species_id: string }
         Returns: {
