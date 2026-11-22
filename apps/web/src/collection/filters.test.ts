@@ -112,6 +112,58 @@ describe('filterOptions', () => {
   })
 })
 
+describe('filtro de validación (#141)', () => {
+  const pending = plant({
+    displayName: 'la naranja del mercado',
+    species: null,
+    validation: 'pending',
+  })
+  const unidentifiable = plant({
+    displayName: 'regalo de la abuela',
+    species: null,
+    validation: 'unidentifiable',
+  })
+  const plants = [amabilis, pending, unidentifiable]
+
+  it('ofrece las validaciones presentes, de la más a la menos resuelta', () => {
+    expect(filterOptions(plants).validations).toEqual([
+      'validated',
+      'pending',
+      'unidentifiable',
+    ])
+    expect(filterOptions([amabilis, unidentifiable]).validations).toEqual([
+      'validated',
+      'unidentifiable',
+    ])
+  })
+
+  it('filtra con O dentro del grupo y cuenta como filtro activo', () => {
+    expect(
+      names(applyFilters(plants, filters({ validations: ['unidentifiable'] }))),
+    ).toEqual(['regalo de la abuela'])
+    expect(
+      names(
+        applyFilters(
+          plants,
+          filters({ validations: ['pending', 'unidentifiable'] }),
+        ),
+      ),
+    ).toEqual(['la naranja del mercado', 'regalo de la abuela'])
+    const chosen = filters({ validations: ['unidentifiable'] })
+    expect(countActiveFilters(chosen)).toBe(1)
+    expect(narrowsStatus(chosen)).toBe(true)
+  })
+
+  it('resolveFilters descarta una validación que no está en la colección', () => {
+    expect(
+      resolveFilters(
+        filters({ validations: ['unidentifiable', 'pending'] }),
+        filterOptions([amabilis, pending]),
+      ).validations,
+    ).toEqual(['pending'])
+  })
+})
+
 describe('resolveFilters', () => {
   const options = filterOptions(ALL)
 

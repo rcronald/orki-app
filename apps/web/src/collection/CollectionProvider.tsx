@@ -1,7 +1,7 @@
 import { useAuth } from '@clerk/react'
-import { useLayoutEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
 import { forgetPlantImagesExcept } from '../photos/read.ts'
-import { CollectionStore } from './store.ts'
+import { COLLECTION_REFRESH_AFTER_MS, CollectionStore } from './store.ts'
 import type { CollectionSource } from './source.ts'
 import { supabaseCollectionSource } from './supabase-source.ts'
 import { CollectionContext } from './useCollection.ts'
@@ -26,6 +26,12 @@ interface CollectionProviderProps {
  * descarta. Lo hace en un efecto de layout: corre antes que los efectos
  * normales de las pantallas (que piden la colección) y antes de pintar, así
  * que ninguna pantalla ve un instante los datos de la cuenta anterior.
+ *
+ * Al volver a la app tras COLLECTION_REFRESH_AFTER_MS o más en segundo plano
+ * (la pestaña o la PWA oculta, evento visibilitychange), la colección ya
+ * cargada se actualiza en segundo plano (store.refresh()): así se ve lo que
+ * cambió fuera del dispositivo, como una propuesta que resolvió un
+ * administrador, sin perder la búsqueda, los filtros ni la posición.
  */
 export function CollectionProvider({
   source = supabaseCollectionSource,
@@ -46,6 +52,27 @@ export function CollectionProvider({
     // olvidan las de los demás (#83, #18).
     forgetPlantImagesExcept(activeUserId)
   }, [store, activeUserId, keepPrevious])
+
+  useEffect(() => {
+    let hiddenAt: number | null =
+      document.visibilityState === 'hidden' ? Date.now() : null
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
+      }
+      if (
+        hiddenAt !== null &&
+        Date.now() - hiddenAt >= COLLECTION_REFRESH_AFTER_MS
+      ) {
+        store.refresh()
+      }
+      hiddenAt = null
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [store])
 
   return <CollectionContext value={store}>{children}</CollectionContext>
 }

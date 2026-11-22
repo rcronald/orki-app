@@ -23,6 +23,17 @@ describe('StatusBadge', () => {
     expect(icon).toHaveAttribute('aria-hidden', 'true')
   })
 
+  it('no identificable: palabra, icono tag y estilo propio, distinto de pendiente', () => {
+    render(<StatusBadge status="unidentifiable" />)
+
+    const badge = screen.getByText('No identificable')
+    expect(badge).toHaveClass('orki-badge', 'border-neutral-700')
+    expect(badge).not.toHaveClass('orki-badge--pending')
+    const icon = badge.querySelector('svg')
+    expect(icon).toHaveClass('lucide-tag')
+    expect(icon).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('acepta className y atributos nativos', () => {
     render(<StatusBadge status="validated" className="extra" title="Estado" />)
 

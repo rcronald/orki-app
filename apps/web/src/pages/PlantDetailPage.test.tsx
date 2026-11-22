@@ -252,7 +252,7 @@ describe('PlantDetailPage', () => {
     await expectNoAxeViolations()
   })
 
-  it('una planta no identificable dice que no se pudo confirmar el nombre', async () => {
+  it('una planta no identificable lleva su etiqueta y explica que sigue en la colección', async () => {
     const unidentifiable = plant({
       displayName: 'Orquídea del abuelo',
       displayNameIsScientific: false,
@@ -265,8 +265,10 @@ describe('PlantDetailPage', () => {
       plants: [unidentifiable],
     })
     const value = datum(DETAIL_TEXT.validation)
-    expect(value).toHaveTextContent('Nombre por validar')
+    expect(value).toHaveTextContent('No identificable')
+    expect(value).not.toHaveTextContent('Nombre por validar')
     expect(value).toHaveTextContent(DETAIL_TEXT.unidentifiable)
+    expect(DETAIL_TEXT.unidentifiable).toContain('sigue en tu colección')
   })
 
   it('muestra el nombre ingresado si difiere del de la especie', async () => {

@@ -2,6 +2,7 @@ import {
   enumValues,
   type FlowerColor,
   type PlantStatus,
+  type PlantValidation,
 } from '../lib/database.ts'
 import type { CollectionGenus, CollectionPlant } from './model.ts'
 import { normalizeSearchText } from './normalize.ts'
@@ -11,7 +12,8 @@ import { compareNames } from './selectors.ts'
 //
 // - Estado: uno solo; por defecto "active" (decisión del #14). Es la forma de
 //   ver las perdidas o regaladas.
-// - Género, color de flor y origen: varios valores a la vez.
+// - Género, color de flor, origen y validación del nombre (validada, por
+//   validar o no identificable, #141): varios valores a la vez.
 // - Entre grupos se combinan con Y y dentro de un grupo con O: "Phalaenopsis o
 //   Cattleya, y de color blanco".
 // - Un ejemplar sin color no aparece al filtrar por color; uno sin origen, al
@@ -32,6 +34,8 @@ export interface PlantFilters {
   colors: readonly FlowerColor[]
   /** Claves de origen (originKey); vacío, sin filtro. */
   origins: readonly string[]
+  /** Estados de validación del nombre; vacío, sin filtro. */
+  validations: readonly PlantValidation[]
 }
 
 export const DEFAULT_FILTERS: PlantFilters = {
@@ -39,6 +43,7 @@ export const DEFAULT_FILTERS: PlantFilters = {
   genera: [],
   colors: [],
   origins: [],
+  validations: [],
 }
 
 /** Clave de un origen: normalizado; null si queda vacío. */
@@ -75,7 +80,16 @@ export interface FilterOptions {
   origins: readonly OriginOption[]
   /** Todos los estados del enumerado, en su orden. */
   statuses: readonly PlantStatus[]
+  /** Validaciones presentes, en el orden de VALIDATION_ORDER. */
+  validations: readonly PlantValidation[]
 }
+
+/** Orden en que se ofrecen las validaciones: de la más a la menos resuelta. */
+export const VALIDATION_ORDER: readonly PlantValidation[] = [
+  'validated',
+  'pending',
+  'unidentifiable',
+]
 
 /**
  * Opciones de los filtros a partir de toda la colección (también las dadas de
@@ -92,8 +106,11 @@ export function filterOptions(
     string,
     { count: number; spellings: Map<string, number> }
   >()
+  const validations = new Set<PlantValidation>()
 
   for (const plant of plants) {
+    validations.add(plant.validation)
+
     const genus = genera.get(plant.genus.id)
     if (genus) genus.count += 1
     else genera.set(plant.genus.id, { genus: plant.genus, count: 1 })
@@ -134,6 +151,7 @@ export function filterOptions(
           compareKeys(a.key, b.key),
       ),
     statuses: enumValues.plant_status,
+    validations: VALIDATION_ORDER.filter((value) => validations.has(value)),
   }
 }
 
@@ -173,6 +191,7 @@ export function resolveFilters(
   const genera = new Set(filters.genera)
   const colors = new Set(filters.colors)
   const origins = new Set(filters.origins)
+  const validations = new Set(filters.validations)
   const resolved: PlantFilters = {
     status: options.statuses.includes(filters.status)
       ? filters.status
@@ -186,6 +205,7 @@ export function resolveFilters(
     origins: options.origins
       .map((option) => option.key)
       .filter((key) => origins.has(key)),
+    validations: options.validations.filter((value) => validations.has(value)),
   }
   return sameFilters(resolved, filters) ? filters : resolved
 }
@@ -196,7 +216,8 @@ export function sameFilters(a: PlantFilters, b: PlantFilters): boolean {
     a.status === b.status &&
     sameSet(a.genera, b.genera) &&
     sameSet(a.colors, b.colors) &&
-    sameSet(a.origins, b.origins)
+    sameSet(a.origins, b.origins) &&
+    sameSet(a.validations, b.validations)
   )
 }
 
@@ -215,8 +236,8 @@ export function plantsWithStatus(
 }
 
 /**
- * Aplica los filtros (ya pasados por resolveFilters): estado, y género, color
- * y origen con O dentro de cada grupo e Y entre grupos. Conserva el orden de
+ * Aplica los filtros (ya pasados por resolveFilters): estado, y género, color,
+ * origen y validación con O dentro de cada grupo e Y entre grupos. Conserva el orden de
  * entrada.
  */
 export function applyFilters(
@@ -226,6 +247,7 @@ export function applyFilters(
   const genera = new Set(filters.genera)
   const colors = new Set<FlowerColor>(filters.colors)
   const origins = new Set(filters.origins)
+  const validations = new Set<PlantValidation>(filters.validations)
   return plants.filter((plant) => {
     if (plant.status !== filters.status) return false
     if (genera.size > 0 && !genera.has(plant.genus.id)) return false
@@ -239,32 +261,37 @@ export function applyFilters(
       const key = originKey(plant.origin)
       if (key === null || !origins.has(key)) return false
     }
+    if (validations.size > 0 && !validations.has(plant.validation)) {
+      return false
+    }
     return true
   })
 }
 
 /**
- * Cuántos filtros hay activos: cada valor elegido de género, color y origen
- * cuenta uno, y el estado cuenta uno si no es el de por defecto.
+ * Cuántos filtros hay activos: cada valor elegido de género, color, origen y
+ * validación cuenta uno, y el estado cuenta uno si no es el de por defecto.
  */
 export function countActiveFilters(filters: PlantFilters): number {
   return (
     filters.genera.length +
     filters.colors.length +
     filters.origins.length +
+    filters.validations.length +
     (filters.status === DEFAULT_FILTERS.status ? 0 : 1)
   )
 }
 
 /**
- * Si los filtros reducen el conjunto de su estado: algún género, color u
- * origen elegido. El estado solo cambia de qué conjunto se habla.
+ * Si los filtros reducen el conjunto de su estado: algún género, color,
+ * origen o validación elegido. El estado solo cambia de qué conjunto se habla.
  */
 export function narrowsStatus(filters: PlantFilters): boolean {
   return (
     filters.genera.length > 0 ||
     filters.colors.length > 0 ||
-    filters.origins.length > 0
+    filters.origins.length > 0 ||
+    filters.validations.length > 0
   )
 }
 

@@ -7,18 +7,22 @@ import {
   enumValues,
   type FlowerColor,
   type PlantStatus,
+  type PlantValidation,
 } from '../lib/database.ts'
 
 // Los filtros del inventario en la dirección de la página, junto a la búsqueda
 // (?q=). Nombres de parámetro en español y valores estables, no traducidos:
 //
 //   /coleccion?q=phal&estado=lost&genero=<id>&genero=<id>&color=white&origen=vivero%20sol
+//     &validacion=unidentifiable
 //
 // - estado: clave del enumerado plant_status; sin él (o con "active"), activas.
 // - genero: id del género, uno por parámetro repetido.
 // - color: clave del enumerado flower_color, repetido.
 // - origen: el origen normalizado (minúsculas, sin tildes), repetido. Va
 //   repetido y no separado por comas porque un origen puede llevar comas.
+// - validacion: clave del enumerado plant_validation (validated, pending,
+//   unidentifiable), repetido.
 //
 // Al leer se ignoran los valores que no se entienden (un color o un estado
 // inventado, vacíos, repetidos); los géneros y orígenes que no están en la
@@ -30,10 +34,12 @@ export const FILTER_PARAMS = {
   genus: 'genero',
   color: 'color',
   origin: 'origen',
+  validation: 'validacion',
 } as const
 
 const STATUSES: readonly string[] = enumValues.plant_status
 const COLORS: readonly string[] = enumValues.flower_color
+const VALIDATIONS: readonly string[] = enumValues.plant_validation
 
 function isStatus(value: string | null): value is PlantStatus {
   return value !== null && STATUSES.includes(value)
@@ -41,6 +47,10 @@ function isStatus(value: string | null): value is PlantStatus {
 
 function isColor(value: string): value is FlowerColor {
   return COLORS.includes(value)
+}
+
+function isValidation(value: string): value is PlantValidation {
+  return VALIDATIONS.includes(value)
 }
 
 function unique<T>(values: readonly T[]): T[] {
@@ -65,6 +75,9 @@ export function readFilters(params: URLSearchParams): PlantFilters {
         .map(originKey)
         .filter((key): key is string => key !== null),
     ),
+    validations: unique(
+      params.getAll(FILTER_PARAMS.validation).filter(isValidation),
+    ),
   }
 }
 
@@ -84,5 +97,7 @@ export function writeFilters(
   for (const id of filters.genera) next.append(FILTER_PARAMS.genus, id)
   for (const color of filters.colors) next.append(FILTER_PARAMS.color, color)
   for (const key of filters.origins) next.append(FILTER_PARAMS.origin, key)
+  for (const value of filters.validations)
+    next.append(FILTER_PARAMS.validation, value)
   return next
 }
