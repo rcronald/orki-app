@@ -2,6 +2,9 @@ import { parsePhotoPath } from './paths.ts'
 
 // Lógica pura del script de limpieza de fotos (scripts/fotos-huerfanas.mjs,
 // #83): compara los objetos del bucket con las rutas que guardan las plantas.
+// Desde el #219, un archivo está en uso si lo cita una fila de plant_photos
+// (cualquiera de las hasta 6 fotos de una planta) o las columnas de plants (la
+// copia de la principal, que también escribe la app antigua).
 // Vive aquí, en TypeScript con sintaxis borrable, para probarla con Vitest;
 // el script la importa con Node, que quita los tipos al cargarla.
 
@@ -21,8 +24,16 @@ export interface PlantPhotoRow {
   thumbnail_path: string | null
 }
 
+/** Lo que el script lee de cada fila de plant_photos. */
+export interface GalleryPhotoRow {
+  id: string
+  plant_id: string
+  photo_path: string
+  thumbnail_path: string
+}
+
 export type OrphanReason =
-  /** Sigue la convención, pero ninguna planta apunta a él. */
+  /** Sigue la convención, pero ninguna planta ni ninguna foto apunta a él. */
   | 'sin-planta'
   /** No sigue la convención de rutas (ni es de ninguna planta). */
   | 'fuera-de-convencion'
@@ -35,6 +46,8 @@ export interface MissingFile {
   plantId: string
   column: 'photo_path' | 'thumbnail_path'
   path: string
+  /** Id de la fila de plant_photos, si la ruta sale de ahí y no de plants. */
+  photoId?: string
 }
 
 export interface OrphanReport {
@@ -45,25 +58,34 @@ export interface OrphanReport {
    * ser una subida en curso cuya planta aún no apunta a ellos. No se tocan.
    */
   recent: Orphan[]
-  /** Plantas que apuntan a un archivo que no está en el bucket. */
+  /**
+   * Plantas o fotos de plant_photos que apuntan a un archivo que no está en el
+   * bucket (una vez por ruta: la principal está en las dos tablas).
+   */
   missing: MissingFile[]
-  /** Objetos que sí son de alguna planta. */
+  /** Objetos que sí son de alguna planta o foto. */
   referenced: number
 }
 
 export interface FindOrphansInput {
   objects: readonly BucketObject[]
   plants: readonly PlantPhotoRow[]
+  /** Filas de plant_photos; vacío si la tabla no existe todavía. */
+  photos?: readonly GalleryPhotoRow[]
   /** Momento de referencia (Date.now()). */
   now: number
   /** Antigüedad mínima para dar un huérfano por borrable, en milisegundos. */
   minAgeMs: number
 }
 
-/** Clasifica los objetos del bucket frente a las rutas de las plantas. */
+/**
+ * Clasifica los objetos del bucket frente a las rutas de las plantas y de
+ * plant_photos.
+ */
 export function findOrphans({
   objects,
   plants,
+  photos = [],
   now,
   minAgeMs,
 }: FindOrphansInput): OrphanReport {
@@ -71,6 +93,10 @@ export function findOrphans({
   for (const plant of plants) {
     if (plant.photo_path) referenced.add(plant.photo_path)
     if (plant.thumbnail_path) referenced.add(plant.thumbnail_path)
+  }
+  for (const photo of photos) {
+    referenced.add(photo.photo_path)
+    referenced.add(photo.thumbnail_path)
   }
   const existing = new Set(objects.map((object) => object.name))
 
@@ -100,11 +126,27 @@ export function findOrphans({
   }
 
   const missing: MissingFile[] = []
+  const reported = new Set<string>()
   for (const plant of plants) {
     for (const column of ['photo_path', 'thumbnail_path'] as const) {
       const path = plant[column]
-      if (path && !existing.has(path)) {
+      if (path && !existing.has(path) && !reported.has(path)) {
+        reported.add(path)
         missing.push({ plantId: plant.id, column, path })
+      }
+    }
+  }
+  for (const photo of photos) {
+    for (const column of ['photo_path', 'thumbnail_path'] as const) {
+      const path = photo[column]
+      if (!existing.has(path) && !reported.has(path)) {
+        reported.add(path)
+        missing.push({
+          plantId: photo.plant_id,
+          column,
+          path,
+          photoId: photo.id,
+        })
       }
     }
   }
@@ -197,6 +239,8 @@ export function parseCleanupArguments(
 export interface OrphanCleanupIo {
   listObjects: () => Promise<BucketObject[]>
   listPlants: () => Promise<PlantPhotoRow[]>
+  /** Filas de plant_photos (vacío si la tabla no existe en ese proyecto). */
+  listPlantPhotos: () => Promise<GalleryPhotoRow[]>
   /** Borra un lote de rutas; rechaza si falla. */
   removeObjects: (paths: string[]) => Promise<void>
   log: (line: string) => void
@@ -222,18 +266,20 @@ export async function runOrphanCleanup(
   }: Pick<CleanupArguments, 'borrar' | 'antiguedadMinimaHoras'>,
   io: OrphanCleanupIo,
 ): Promise<OrphanCleanupResult> {
-  const [objects, plants] = await Promise.all([
+  const [objects, plants, photos] = await Promise.all([
     io.listObjects(),
     io.listPlants(),
+    io.listPlantPhotos(),
   ])
   const report = findOrphans({
     objects,
     plants,
+    photos,
     now: io.now,
     minAgeMs: antiguedadMinimaHoras * 3600 * 1000,
   })
   io.log(
-    `Objetos: ${objects.length}. Plantas: ${plants.length}. En uso: ${report.referenced}.`,
+    `Objetos: ${objects.length}. Plantas: ${plants.length}. Fotos (plant_photos): ${photos.length}. En uso: ${report.referenced}.`,
   )
   io.log(
     `Huérfanos con más de ${antiguedadMinimaHoras} h: ${report.orphans.length}.`,
@@ -250,10 +296,13 @@ export async function runOrphanCleanup(
     io.log(`  ${orphan.name} (${orphan.createdAt ?? 'sin fecha'})`)
   }
   io.log(
-    `Plantas que apuntan a un archivo que no existe: ${report.missing.length}.`,
+    `Plantas o fotos que apuntan a un archivo que no existe: ${report.missing.length}.`,
   )
   for (const missing of report.missing) {
-    io.log(`  planta ${missing.plantId}, ${missing.column}: ${missing.path}`)
+    const photo = missing.photoId ? `, foto ${missing.photoId}` : ''
+    io.log(
+      `  planta ${missing.plantId}${photo}, ${missing.column}: ${missing.path}`,
+    )
   }
 
   if (!borrar) {

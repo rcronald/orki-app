@@ -436,15 +436,18 @@ a todo el ancho. Clases `orki-profile`, `__text`, `__name`, `__email`.
 ```ts
 type ActionRowProps = {
   icon: IconName
-  title: string // nombre accesible
-  description?: ReactNode // descripción accesible
+  title: string // nombre accesible (junto con el texto)
+  description?: ReactNode // texto secundario, también en el nombre
   disabledReason?: string // deshabilitada: aria-disabled y este motivo como texto
 } & ({ to: string; state?: unknown } | { onClick?: () => void })
 ```
 
 Fila de todo el ancho (mínimo 56 px) con icono, título, texto y
 `chevron-right`; con `to`, un `Link`; sin él, un botón. Deshabilitada sigue
-recibiendo el foco (se lee el motivo) y no hace nada. `ActionList`
+recibiendo el foco (se lee el motivo) y no hace nada. El nombre accesible es
+el título seguido del texto secundario (o del motivo): todo el texto visible
+de la fila, como pide WCAG 2.5.3 y comprueba axe
+(`label-content-name-mismatch`, #214). `ActionList`
 (`ul.orki-actions`) pone la línea entre filas; cada fila en su `<li>`. Marcado:
 `a|button.orki-action` > `svg` + `span.orki-action__text` >
 `span.orki-action__title` + `span.orki-action__desc` + `svg` (chevron).
@@ -511,8 +514,8 @@ export function useProfileEditor(): {
 La apariencia del design system llega del `ClerkProvider`; las props solo
 ocultan el «Eliminar cuenta» propio de Clerk (borraría la cuenta sin borrar
 los datos; la cuenta se elimina desde `/cuenta`). Al cerrar el editor,
-`useUser()` ya trae el nombre y la foto nuevos, sin recargar. Hoy lo usa el
-botón «Editar perfil» de `pages/AccountPage.tsx` (provisional hasta el #214).
+`useUser()` ya trae el nombre y la foto nuevos, sin recargar. Lo usa el
+botón «Editar perfil» de «Tu cuenta» (`pages/AccountPage.tsx`, #214).
 
 En las pruebas:
 
@@ -520,11 +523,15 @@ En las pruebas:
   reinicia con `resetFakeClerk()`); `setFakeClerk({ fullName, imageUrl })` fija
   el nombre (por defecto «Persona de Prueba»; `null` sin nombre) y la foto
   (por defecto `null`: `hasImage` false). `useUser().user` trae `fullName`,
-  `firstName`, `hasImage`, `imageUrl` y `primaryEmailAddress`.
+  `firstName`, `hasImage`, `imageUrl` y `primaryEmailAddress`. Como el real,
+  `useUser()` es reactivo: `changeFakeUser({ fullName, imageUrl })` cambia los
+  datos y repinta (por ejemplo, desde `openUserProfile.mockImplementation`).
 - De extremo a extremo (`medicion/clerk-simulado.tsx`): `openUserProfile()`
   marca `<body data-perfil-simulado="abierto">`; la sesión de la prueba admite
-  `nombre` (`test.use({ sesion: { usuario: 'user_x', nombre: null } })`) y el
-  correo es `persona@orki.invalid`.
+  `nombre` (`test.use({ sesion: { usuario: 'user_x', nombre: null } })`) y
+  `foto` (una URL del mismo origen), y el correo es `persona@orki.invalid`.
+  Para simular que se guardó un cambio en el editor, el evento
+  `orki-perfil-simulado` en `window` con `{ nombre, foto }` en `detail`.
 
 ## Cerrar sesión
 

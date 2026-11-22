@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fakeRecords, PLANT_ID, USER_ID } from '../test/photos.ts'
+import {
+  fakeRecords,
+  PLANT_ID,
+  processedPhoto,
+  USER_ID,
+} from '../test/photos.ts'
+import { plant } from '../test/collection.ts'
 import { deletePlantPhotoFolder, deletePlantWithPhotos } from './delete.ts'
+import { uploadPlantPhotos } from './gallery.ts'
+import { createMemoryPlantPhotoRows } from './memory-photo-rows.ts'
 import { createMemoryPhotoStorage } from './memory-storage.ts'
 import { PhotoStorageError } from './storage.ts'
 
@@ -89,5 +97,47 @@ describe('deletePlantWithPhotos', () => {
       records: fakeRecords(),
     })
     expect(result).toEqual({ photosDeleted: false })
+  })
+
+  it('con varias fotos: la cascada borra sus filas y la carpeta, todos sus archivos', async () => {
+    const storage = createMemoryPhotoStorage()
+    const rows = createMemoryPlantPhotoRows()
+    rows.plants.set(PLANT_ID, {
+      ...plant({ id: PLANT_ID, photoPath: null, thumbnailPath: null }),
+      userId: USER_ID,
+    })
+    const photos = Array.from({ length: 6 }, () => ({
+      files: processedPhoto(),
+    }))
+    await uploadPlantPhotos(photos, {
+      userId: USER_ID,
+      plantId: PLANT_ID,
+      storage,
+      rows,
+    })
+    // Una foto de otra planta del mismo usuario no se toca.
+    const other = `${USER_ID}/${OTHER_PLANT}/photo-v1.webp`
+    storage.objects.set(other, { blob: new Blob(), contentType: 'image/webp' })
+    expect(storage.objects.size).toBe(13)
+
+    const records = fakeRecords()
+    records.deletePlant.mockImplementation((plantId) => {
+      // Lo que hace la base: on delete cascade de plant_photos.plant_id.
+      for (const [id, row] of rows.rows) {
+        if (row.plantId === plantId) rows.rows.delete(id)
+      }
+      rows.plants.delete(plantId)
+      return Promise.resolve()
+    })
+    const result = await deletePlantWithPhotos({
+      userId: USER_ID,
+      plantId: PLANT_ID,
+      storage,
+      records,
+    })
+
+    expect(result).toEqual({ photosDeleted: true })
+    expect(rows.rows.size).toBe(0)
+    expect([...storage.objects.keys()]).toEqual([other])
   })
 })

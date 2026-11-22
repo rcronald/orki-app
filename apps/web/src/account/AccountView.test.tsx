@@ -93,7 +93,6 @@ function renderView(
           <button type="button">Antes</button>
           <AccountView
             userId={USER}
-            email="persona@example.com"
             canDeleteAccount
             onDeleted={onDeleted}
             onKeepUsing={onKeepUsing}
@@ -163,18 +162,21 @@ afterEach(() => {
 })
 
 describe('AccountView', () => {
-  it('muestra el correo, explica qué se borra y enlaza la privacidad', async () => {
+  it('tres paneles: resume qué se borra y enlaza la privacidad con su origen', async () => {
     const { effects } = controlledEffects()
     renderView({ effects })
-    expect(screen.getByText('persona@example.com')).toBeInTheDocument()
     expect(
-      screen.getByRole('link', {
-        name: 'Qué datos guarda orqui.apps (privacidad)',
-      }),
-    ).toHaveAttribute('href', '/privacidad')
+      screen
+        .getAllByRole('heading', { level: 2 })
+        .map((heading) => heading.textContent),
+    ).toEqual(['Perfil', 'Datos y privacidad', 'Eliminar cuenta'])
+    const privacy = screen.getByRole('link', {
+      name: 'Aviso de privacidad Consulta qué datos guardamos y quién puede verlos.',
+    })
+    expect(privacy).toHaveAttribute('href', '/privacidad')
     expect(
-      screen.getByText(
-        /se borran tus plantas con todos sus detalles, sus fotos, tu perfil/,
+      within(screen.getByRole('region', { name: 'Eliminar cuenta' })).getByText(
+        'Se eliminarán tu cuenta, tus plantas y sus fotos. Esta acción es irreversible.',
       ),
     ).toBeInTheDocument()
     await expectNoAxeViolations()

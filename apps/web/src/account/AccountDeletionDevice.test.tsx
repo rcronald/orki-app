@@ -22,10 +22,7 @@ import { AccountPage } from '../pages/AccountPage.tsx'
 import { HomeRoute } from '../pages/HomeRoute.tsx'
 import { THUMBNAIL_CACHE_PREFIX } from '../photos/read.ts'
 import { plantDraftKey } from '../registration/draft.ts'
-import {
-  createIndexedDbDraftPhotoBackend,
-  type DraftPhoto,
-} from '../registration/draft-photo.ts'
+import { createIndexedDbDraftPhotoBackend } from '../registration/draft-photo.ts'
 import {
   deleteUser,
   fakeClerk,
@@ -190,7 +187,7 @@ describe('eliminar la cuenta no deja nada del usuario en el dispositivo', () => 
       plantId: 'planta-borrador',
       savedAt: NOW.getTime(),
       fileName: 'foto.jpg',
-    } as unknown as DraftPhoto)
+    })
     localStorage.setItem(plantDraftKey(USER), '{}')
     localStorage.setItem(PREFERENCES_KEY, '{"view":"grid"}')
     const thumbnails = fakeCaches([
@@ -285,17 +282,17 @@ describe('eliminar la cuenta no deja nada del usuario en el dispositivo', () => 
     await vi.waitFor(() => expect(signOut).toHaveBeenCalled())
   })
 
-  it('con la sesión sin confirmar no se ofrece: explica por qué y no borra nada', async () => {
+  it('con la sesión sin confirmar queda deshabilitada: explica por qué y no borra nada', async () => {
     setFakeClerk({ status: 'error', signedIn: false })
     rememberUser(USER)
     renderApp()
 
-    expect(
-      await screen.findByText(/No se pudo confirmar tu sesión/),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Eliminar mi cuenta' }),
-    ).not.toBeInTheDocument()
+    // La pantalla se abre (#214); el botón, deshabilitado con el motivo.
+    const button = await screen.findByRole('button', {
+      name: 'Eliminar mi cuenta',
+    })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(/No se pudo confirmar tu sesión/)
     expect(order).toEqual([])
     expect(localStorage.getItem(LAST_USER_KEY)).toBe(USER)
   })

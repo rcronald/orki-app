@@ -86,6 +86,17 @@ function crearSupabaseFalso({ tablas, objetos }) {
       },
       then(resolver, rechazar) {
         const filas = estado.tablas[tabla]
+        if (filas === undefined) {
+          // Como PostgREST con una tabla que el proyecto no tiene.
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: 'PGRST205',
+              message: `Could not find the table 'public.${tabla}' in the schema cache`,
+            },
+            count: null,
+          }).then(resolver, rechazar)
+        }
         const coinciden = filas
           .filter((fila) => filtros.every((filtro) => filtro(fila)))
           .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
@@ -104,6 +115,13 @@ function crearSupabaseFalso({ tablas, objetos }) {
         }
         estado.tablas[tabla] = filas.filter((fila) => !coinciden.includes(fila))
         estado.borrados.push({ tabla, ids: coinciden.map((fila) => fila.id) })
+        // Lo que hace la base: plant_photos.plant_id con on delete cascade.
+        if (tabla === 'plants' && estado.tablas.plant_photos) {
+          const plantas = new Set(coinciden.map((fila) => fila.id))
+          estado.tablas.plant_photos = estado.tablas.plant_photos.filter(
+            (foto) => !plantas.has(foto.plant_id),
+          )
+        }
         return Promise.resolve({
           data: null,
           error: null,
@@ -197,9 +215,10 @@ function crearClerkFalso({ existentes, especiales = {}, conteo }) {
 // Datos de partida -----------------------------------------------------------
 //
 // Existen en Clerk: user_ana, user_beto, user_carla, user_dani, user_eva,
-// user_fede, user_gabi y user_hugo. No existen: user_viejo (perfil, plantas,
-// eventos y fotos) y user_solofotos (solo una carpeta en el bucket). Hay
-// además un id con formato desconocido que nunca se consulta ni se borra.
+// user_fede, user_gabi y user_hugo. No existen: user_viejo (perfil, plantas
+// con varias fotos en plant_photos, eventos y archivos) y user_solofotos (solo
+// una carpeta en el bucket). Hay además un id con formato desconocido que
+// nunca se consulta ni se borra.
 
 const EXISTENTES = [
   'user_ana',
@@ -229,6 +248,13 @@ function datosDePartida() {
     { id: 'e-ana-1', user_id: 'user_ana' },
     { id: 'e-viejo-1', user_id: 'user_viejo' },
   ]
+  // Varias fotos por planta (#219): la principal y las secundarias.
+  const fotosDePlantas = [
+    { id: 'f-ana-1', user_id: 'user_ana', plant_id: 'p-ana-1' },
+    { id: 'f-viejo-1', user_id: 'user_viejo', plant_id: 'p-viejo-1' },
+    { id: 'f-viejo-2', user_id: 'user_viejo', plant_id: 'p-viejo-1' },
+    { id: 'f-viejo-3', user_id: 'user_viejo', plant_id: 'p-viejo-2' },
+  ]
   const objetos = [
     'user_ana/p-ana-1/photo-1.webp',
     'user_ana/p-ana-1/thumb-1.webp',
@@ -238,7 +264,12 @@ function datosDePartida() {
     'user_solofotos/p-x/photo-1.webp',
   ]
   return crearSupabaseFalso({
-    tablas: { profiles: perfiles, plants: plantas, product_events: eventos },
+    tablas: {
+      profiles: perfiles,
+      plants: plantas,
+      plant_photos: fotosDePlantas,
+      product_events: eventos,
+    },
     objetos,
   })
 }
@@ -302,6 +333,11 @@ describe('modo de prueba', () => {
     )
     assert.equal(viejo.perfil, true)
     assert.deepEqual(viejo.plantas, ['p-viejo-1', 'p-viejo-2'])
+    assert.deepEqual(viejo.filasDeFotos, [
+      'f-viejo-1',
+      'f-viejo-2',
+      'f-viejo-3',
+    ])
     assert.deepEqual(viejo.eventos, ['e-viejo-1'])
     assert.equal(viejo.fotos.length, 3)
     assert.deepEqual(
@@ -534,6 +570,7 @@ describe('borrado', () => {
     assert.deepEqual(borrados, {
       usuarios: 2,
       fotos: 4,
+      filasDeFotos: 3,
       plantas: 2,
       eventos: 1,
       perfiles: 1,
@@ -551,6 +588,10 @@ describe('borrado', () => {
       tablas.product_events.map((fila) => fila.id),
       ['e-ana-1'],
     )
+    assert.deepEqual(
+      tablas.plant_photos.map((fila) => fila.id),
+      ['f-ana-1'],
+    )
     assert.deepEqual([...objetos].sort(), [
       'user_ana/p-ana-1/photo-1.webp',
       'user_ana/p-ana-1/thumb-1.webp',
@@ -559,6 +600,9 @@ describe('borrado', () => {
     const tocados = ejecucion.supabase.estado.borrados.flatMap((b) => b.ids)
     assert.deepEqual(tocados.sort(), [
       'e-viejo-1',
+      'f-viejo-1',
+      'f-viejo-2',
+      'f-viejo-3',
       'p-viejo-1',
       'p-viejo-2',
       'user_solofotos/p-x/photo-1.webp',
@@ -569,7 +613,7 @@ describe('borrado', () => {
     ])
   })
 
-  test('sigue el orden de la app: fotos, plantas, eventos y perfil', async () => {
+  test('sigue el orden de la app: fotos, filas de fotos, plantas, eventos y perfil', async () => {
     const ejecucion = ejecutarCon({
       argv: ['--ambiente', 'desarrollo', '--borrar'],
     })
@@ -577,7 +621,13 @@ describe('borrado', () => {
     const orden = ejecucion.supabase.estado.borrados
       .filter((b) => b.ids.some((id) => String(id).includes('viejo')))
       .map((b) => b.tabla)
-    assert.deepEqual(orden, ['storage', 'plants', 'product_events', 'profiles'])
+    assert.deepEqual(orden, [
+      'storage',
+      'plant_photos',
+      'plants',
+      'product_events',
+      'profiles',
+    ])
   })
 
   test('los borrados filtran también por usuario y por carpeta', async () => {
@@ -596,6 +646,30 @@ describe('borrado', () => {
       /fuera de la carpeta de user_viejo/,
     )
     assert.ok(supabase.estado.objetos.has('user_ana/p-ana-1/photo-1.webp'))
+  })
+
+  test('la cascada desde plants ya borra las filas de fotos de las plantas sin dueño', async () => {
+    // Aunque falle el borrado explícito de plant_photos, borrar las plantas se
+    // lleva sus fotos; el script no deja filas de fotos de un usuario borrado.
+    const supabase = datosDePartida()
+    const datos = crearAccesoSupabase(supabase.cliente, BUCKET)
+    await datos.borrarPlantas('user_viejo', ['p-viejo-1', 'p-viejo-2'])
+    assert.deepEqual(
+      supabase.estado.tablas.plant_photos.map((fila) => fila.id),
+      ['f-ana-1'],
+    )
+  })
+
+  test('sin la tabla plant_photos (migración sin aplicar) sigue con lo demás', async () => {
+    const supabase = datosDePartida()
+    delete supabase.estado.tablas.plant_photos
+    const ejecucion = ejecutarCon({
+      argv: ['--ambiente', 'desarrollo', '--borrar'],
+      supabase,
+    })
+    const { borrados } = await ejecucion.promesa
+    assert.equal(borrados.filasDeFotos, 0)
+    assert.equal(borrados.plantas, 2)
   })
 
   test('un fallo a mitad se detiene y lo dice', async () => {

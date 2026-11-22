@@ -46,6 +46,10 @@ import { PLANT_PHOTOS_BUCKET, type PlantPhotoType } from './paths.ts'
  * - unsupported-type: el bucket rechazó el tipo de contenido.
  * - forbidden: las políticas no lo permiten (una ruta que no es del usuario).
  * - not-found: la planta o el archivo no existen.
+ * - too-many-photos: la planta ya tiene el máximo de fotos (6, #219).
+ * - position-taken: la posición de la foto ya está ocupada (23505 de
+ *   plant_photos); la galería lo resuelve eligiendo otra o lo traduce a
+ *   too-many-photos.
  * - failed: cualquier otro fallo.
  * - aborted: se canceló.
  */
@@ -56,6 +60,8 @@ export type PhotoStorageErrorReason =
   | 'unsupported-type'
   | 'forbidden'
   | 'not-found'
+  | 'too-many-photos'
+  | 'position-taken'
   | 'failed'
   | 'aborted'
 
@@ -71,6 +77,10 @@ export const PHOTO_STORAGE_ERROR_TEXT: Record<PhotoStorageErrorReason, string> =
       'No se pudo guardar la foto en ese formato. Elige otra foto.',
     forbidden: 'No tienes permiso para guardar esta foto.',
     'not-found': 'La planta ya no existe.',
+    'too-many-photos':
+      'Una planta puede tener como mucho 6 fotos. Quita alguna para añadir otra.',
+    'position-taken':
+      'Otra foto ocupó ese lugar de la galería. Vuelve a intentarlo.',
     failed: 'No se pudo guardar la foto. Vuelve a intentarlo.',
     aborted: 'Se canceló la subida de la foto.',
   }

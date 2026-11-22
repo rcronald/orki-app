@@ -1916,7 +1916,7 @@ describe('NewPlantPage: foto (#87)', () => {
       savedAt: Date.now(),
       fileName: 'vieja.jpg',
       photo: processedPhoto(),
-    } as never)
+    })
     await renderPage()
     await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
     expect(previewImage()).toBeNull()

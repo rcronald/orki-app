@@ -1,9 +1,8 @@
-import { useId, useState } from 'react'
-import { exportFileName, inventoryCsv } from '../collection/export-csv.ts'
+import { useId } from 'react'
 import type { CollectionPlant } from '../collection/model.ts'
 import { Icon } from '../components/ui/Icon.tsx'
-import { saveFile, type SaveResult } from './save-file.ts'
 import { EXPORT_TEXT } from './texts.ts'
+import { useInventoryExport } from './useInventoryExport.ts'
 
 /**
  * Exportación del inventario a CSV (#17), al final de la lista y encima del
@@ -11,7 +10,8 @@ import { EXPORT_TEXT } from './texts.ts'
  * con una nota breve de qué incluye (todas las plantas, también las dadas de
  * baja, sin importar los filtros). Genera el archivo en el dispositivo con la
  * colección en memoria. El resultado se anuncia en una región de estado, sin
- * mover el foco. Es un botón (hace algo, no navega), con 44 px de alto.
+ * mover el foco. Es un botón (hace algo, no navega), con 44 px de alto. La
+ * lógica es la de useInventoryExport, compartida con «Tu cuenta» (#214).
  */
 export function ExportAction({
   plants,
@@ -19,34 +19,7 @@ export function ExportAction({
   plants: readonly CollectionPlant[]
 }) {
   const hintId = useId()
-  const [message, setMessage] = useState('')
-
-  const exportCsv = () => {
-    // Todo en el manejador del clic, sin esperas antes de compartir o
-    // descargar: los navegadores exigen el gesto del usuario.
-    const fileName = exportFileName()
-    let result: Promise<SaveResult>
-    try {
-      result = saveFile(
-        inventoryCsv(plants),
-        fileName,
-        'text/csv;charset=utf-8',
-      )
-    } catch {
-      setMessage(EXPORT_TEXT.failed)
-      return
-    }
-    result.then(
-      (outcome) => {
-        setMessage(
-          outcome === 'cancelled'
-            ? ''
-            : EXPORT_TEXT.done(fileName, plants.length),
-        )
-      },
-      () => setMessage(EXPORT_TEXT.failed),
-    )
-  }
+  const { exportCsv, message } = useInventoryExport(plants)
 
   return (
     <section

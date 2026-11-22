@@ -114,7 +114,7 @@ en solo lectura.
 
 El código: `src/auth/offline-identity.ts` (lo que se recuerda),
 `src/auth/useAppIdentity.ts` (quién usa la app), `src/auth/PendingSignOut.tsx`
-y `src/auth/useSignOutHere.ts` (cerrar sesión, desde el menú «Tu cuenta» de la barra, `src/auth/AccountMenu.tsx`), `src/auth/RouteGuards.tsx`
+y `src/auth/useSignOutHere.ts` (cerrar sesión, desde el menú «Tu cuenta» de la barra, `src/auth/AccountMenu.tsx`, y desde la pantalla «Tu cuenta», `src/pages/AccountPage.tsx`), `src/auth/RouteGuards.tsx`
 (las rutas protegidas se abren con un usuario sin confirmar) y
 `src/pages/HomeRoute.tsx` (#191): con un usuario sin confirmar, `/` lleva a
 la colección; sin nadie recordado, se ve la portada, cuya foto no está en el

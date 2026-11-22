@@ -1,13 +1,13 @@
 import { useId, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { ActionList, ActionRow } from '../components/ui/ActionRow.tsx'
 import { Button } from '../components/ui/Button.tsx'
+import { Panel } from '../components/ui/Panel.tsx'
 import {
   clearAccountDeletionMarker,
   isAccountDeletionPending,
   subscribeToAccountDeletionMarker,
 } from '../lib/account-deletion-marker.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
-import { PATHS } from '../routes/paths.ts'
 import { privacyLinkProps } from '../routes/text-page-origin.ts'
 import { DeleteAccountDialog } from './DeleteAccountDialog.tsx'
 import type { AccountDeletionEffects } from './deletion.ts'
@@ -17,10 +17,13 @@ import { useAccountDeletion } from './useAccountDeletion.ts'
 
 export interface AccountViewProps {
   userId: string
-  /** Correo principal según Clerk; null si la cuenta no tiene. */
-  email: string | null
   /** user.deleteSelfEnabled de Clerk. */
   canDeleteAccount: boolean
+  /**
+   * Si Clerk ya trajo al usuario. Sin él (Clerk aún carga), la eliminación
+   * queda deshabilitada con «Cargando tu cuenta…». Por defecto, sí.
+   */
+  accountReady?: boolean
   effects: AccountDeletionEffects
   /** Con la cuenta eliminada: cerrar la sesión e ir al inicio. */
   onDeleted: () => Promise<void> | void
@@ -28,24 +31,48 @@ export interface AccountViewProps {
   onKeepUsing?: () => void
   /** Lo que se hace en el dispositivo; por defecto, el de la app. */
   device?: AccountDeletionDevice
-  /** Botón «Editar perfil» (el editor de Clerk, #207), bajo el correo. */
-  profileAction?: ReactNode
+  /** Contenido del panel «Perfil» (ProfileSummary con «Editar perfil»). */
+  profile?: ReactNode
+  /**
+   * Fila «Exportar inventario a CSV» (un ActionRow) del panel «Datos y
+   * privacidad», con lo que haga falta debajo (el resultado en una región de
+   * estado). Sin ella, el panel solo lleva el aviso de privacidad.
+   */
+  exportRow?: ReactNode
+  /** Lo que va bajo la lista de «Datos y privacidad»: el resultado de exportar. */
+  dataFooter?: ReactNode
+  /** «Cerrar sesión», fuera del panel de peligro. Sin él, no se muestra. */
+  onSignOut?: () => void
+  /** Nivel de los títulos de los paneles: 2 en la app, 3 en la muestra. */
+  headingLevel?: 2 | 3
 }
 
+// Las filas deshabilitadas (aria-disabled) se distinguen poco de las activas
+// con los estilos de orki-action: sin el chevron, que promete una acción, y
+// con el motivo en lugar del texto secundario (lo pone ActionRow).
+const DATA_LIST_CLASSES =
+  "[&_[aria-disabled='true']]:cursor-not-allowed [&_[aria-disabled='true']>svg:last-child]:hidden"
+
 /**
- * Contenido de la pantalla de cuenta (#110), sin Clerk ni Supabase: los datos
- * y los efectos llegan por props. AccountPage la conecta; la página de
- * muestra la pinta con efectos simulados.
+ * Contenido de la pantalla de cuenta (#110, rediseño del #214), sin Clerk ni
+ * Supabase: los datos y los efectos llegan por props. Tres paneles (Perfil,
+ * Datos y privacidad, y Eliminar cuenta, en tono de peligro) y «Cerrar
+ * sesión» debajo. AccountPage la conecta; la página de muestra la pinta con
+ * efectos simulados.
  */
 export function AccountView({
   userId,
-  email,
   canDeleteAccount,
+  accountReady = true,
   effects,
   onDeleted,
   onKeepUsing,
   device,
-  profileAction,
+  profile,
+  exportRow,
+  dataFooter,
+  onSignOut,
+  headingLevel = 2,
 }: AccountViewProps) {
   // Solo lectura (#120): sin conexión, o con la sesión sin confirmar.
   const readOnly = useReadOnly()
@@ -63,19 +90,20 @@ export function AccountView({
     () => isAccountDeletionPending(userId),
     () => false,
   )
-  const sessionHeadingId = useId()
-  const deleteHeadingId = useId()
   const reasonId = useId()
   const pendingHeadingId = useId()
+  const privacy = privacyLinkProps('cuenta')
 
   const reason =
     readOnly === 'offline'
       ? ACCOUNT_TEXT.offline
       : readOnly === 'unverified'
         ? ACCOUNT_TEXT.unverified
-        : !canDeleteAccount
-          ? ACCOUNT_TEXT.notAllowed
-          : null
+        : !accountReady
+          ? ACCOUNT_TEXT.loadingAccount
+          : !canDeleteAccount
+            ? ACCOUNT_TEXT.notAllowed
+            : null
 
   function close() {
     deletion.reset()
@@ -84,48 +112,34 @@ export function AccountView({
 
   return (
     <>
-      <section
-        aria-labelledby={sessionHeadingId}
-        className="flex flex-col gap-space-2"
-      >
-        <h2 id={sessionHeadingId} className="text-lg font-semibold">
-          {ACCOUNT_TEXT.sessionHeading}
-        </h2>
-        <dl className="flex flex-col gap-space-1 text-md">
-          <dt className="font-semibold">{ACCOUNT_TEXT.emailLabel}</dt>
-          <dd className="break-words">{email ?? ACCOUNT_TEXT.noEmail}</dd>
-        </dl>
-        <p className="text-sm text-neutral-700">{ACCOUNT_TEXT.manageHint}</p>
-        {profileAction}
-        <p className="text-sm">
-          <Link
-            {...privacyLinkProps('cuenta')}
-            className="font-semibold text-secondary underline"
-          >
-            {ACCOUNT_TEXT.privacyLink}
-          </Link>
-        </p>
-      </section>
+      <Panel title={ACCOUNT_TEXT.profileHeading} headingLevel={headingLevel}>
+        {profile}
+      </Panel>
 
-      <section
-        aria-labelledby={deleteHeadingId}
-        className="mt-space-4 flex flex-col gap-space-3"
-      >
-        <h2 id={deleteHeadingId} className="text-lg font-semibold">
-          {ACCOUNT_TEXT.deleteHeading}
-        </h2>
+      <Panel title={ACCOUNT_TEXT.dataHeading} headingLevel={headingLevel}>
+        <div className="flex flex-col gap-space-2">
+          <ActionList className={DATA_LIST_CLASSES}>
+            {exportRow != null && <li>{exportRow}</li>}
+            <li>
+              <ActionRow
+                icon="shield"
+                title={ACCOUNT_TEXT.privacyTitle}
+                description={ACCOUNT_TEXT.privacyDescription}
+                to={privacy.to}
+                state={privacy.state}
+              />
+            </li>
+          </ActionList>
+          {dataFooter}
+        </div>
+      </Panel>
 
-        <p className="text-md">{ACCOUNT_TEXT.deleteIntro}</p>
-        <p className="text-sm text-neutral-700">
-          {ACCOUNT_TEXT.exportHint}{' '}
-          <Link
-            to={PATHS.collection}
-            className="font-semibold text-secondary underline"
-          >
-            {ACCOUNT_TEXT.exportLink}
-          </Link>
-          .
-        </p>
+      <Panel
+        title={ACCOUNT_TEXT.deleteHeading}
+        headingLevel={headingLevel}
+        tone="danger"
+      >
+        <p className="orki-panel__text">{ACCOUNT_TEXT.deleteSummary}</p>
 
         {/* Mientras el diálogo está abierto, la marca ya está puesta: se
             sigue mostrando el mismo botón (con otro texto) para que el foco
@@ -133,7 +147,7 @@ export function AccountView({
         {pending && !open && (
           <section
             aria-labelledby={pendingHeadingId}
-            className="flex flex-col gap-space-2 rounded-md bg-danger-soft p-space-3"
+            className="flex flex-col gap-space-2 rounded-md border border-danger bg-neutral-0 p-space-3"
           >
             <h3 id={pendingHeadingId} className="text-md font-semibold">
               {ACCOUNT_TEXT.pendingHeading}
@@ -153,23 +167,34 @@ export function AccountView({
         )}
 
         {reason && (
-          <p id={reasonId} className="text-md text-neutral-700">
+          <p id={reasonId} className="orki-panel__text text-neutral-700">
             {reason}
           </p>
         )}
-        <div>
-          <Button
-            variant="danger"
-            disabled={reason !== null}
-            aria-describedby={reason ? reasonId : undefined}
-            onClick={() => setOpen(true)}
+        <Button
+          variant="danger-outline"
+          className="self-start publico-estrecho:self-stretch"
+          disabled={reason !== null}
+          aria-describedby={reason ? reasonId : undefined}
+          onClick={() => setOpen(true)}
+        >
+          {pending && !open
+            ? ACCOUNT_TEXT.pendingContinue
+            : ACCOUNT_TEXT.deleteButton}
+        </Button>
+      </Panel>
+
+      {onSignOut && (
+        <p>
+          <button
+            type="button"
+            className="orki-link min-h-[44px] cursor-pointer"
+            onClick={onSignOut}
           >
-            {pending && !open
-              ? ACCOUNT_TEXT.pendingContinue
-              : ACCOUNT_TEXT.deleteButton}
-          </Button>
-        </div>
-      </section>
+            {ACCOUNT_TEXT.signOut}
+          </button>
+        </p>
+      )}
 
       {open && (
         <DeleteAccountDialog

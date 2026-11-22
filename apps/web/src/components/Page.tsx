@@ -16,10 +16,11 @@ interface PageProps {
   before?: ReactNode
   /**
    * Ancho máximo: narrow (por defecto, 512 px) para textos y formularios;
-   * wide (1024 px) para listas y cuadrículas que aprovechan el escritorio;
-   * full (1280 px) para las tablas del backoffice.
+   * medium (896 px) para pantallas de paneles, como «Tu cuenta»; wide
+   * (1024 px) para listas y cuadrículas que aprovechan el escritorio; full
+   * (1280 px) para las tablas del backoffice.
    */
-  width?: 'narrow' | 'wide' | 'full'
+  width?: 'narrow' | 'medium' | 'wide' | 'full'
   /**
    * Cabecera de pantalla del sistema (PageHeader, orki-pagehead, #206) en
    * lugar del h1 sencillo: título grande, contador o frase, acciones e
@@ -31,6 +32,7 @@ interface PageProps {
 
 const WIDTH_CLASSES = {
   narrow: 'max-w-lg',
+  medium: 'max-w-[56rem]',
   wide: 'max-w-5xl',
   full: 'max-w-7xl',
 } as const

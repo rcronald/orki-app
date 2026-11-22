@@ -192,27 +192,24 @@ describe('ActionRow', () => {
     )
 
     expect(screen.getByRole('list')).toHaveClass('orki-actions')
+    // El nombre lleva todo el texto visible, el título primero (WCAG 2.5.3).
     const exportRow = screen.getByRole('button', {
-      name: 'Exportar inventario a CSV',
+      name: 'Exportar inventario a CSV El archivo CSV no incluye las fotos.',
     })
     expect(exportRow).toHaveClass('orki-action')
-    expect(exportRow).toHaveAccessibleDescription(
-      'El archivo CSV no incluye las fotos.',
-    )
     expect(exportRow.querySelector('svg:last-child')).toHaveClass(
       'lucide-chevron-right',
     )
     await user.click(exportRow)
     expect(onExport).toHaveBeenCalledOnce()
 
-    const privacy = screen.getByRole('link', { name: 'Aviso de privacidad' })
+    const privacy = screen.getByRole('link', { name: /^Aviso de privacidad/ })
     expect(privacy).toHaveAttribute('href', '/privacidad')
 
-    const disabled = screen.getByRole('button', { name: 'Editar perfil' })
+    const disabled = screen.getByRole('button', {
+      name: 'Editar perfil Necesitas conexión para editar tu perfil.',
+    })
     expect(disabled).toHaveAttribute('aria-disabled', 'true')
-    expect(disabled).toHaveAccessibleDescription(
-      'Necesitas conexión para editar tu perfil.',
-    )
     expect(screen.queryByText('No se ve')).not.toBeInTheDocument()
     await expectNoAxeViolations()
   })

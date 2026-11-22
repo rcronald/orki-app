@@ -6,6 +6,9 @@ import {
   type GenusAbbreviation,
   type Plant,
   type PlantInsert,
+  type PlantPhoto,
+  type PlantPhotoInsert,
+  type PlantPhotoUpdate,
   type PlantStatus,
   type PlantType,
   type PlantUpdate,
@@ -103,6 +106,20 @@ describe('tipos del esquema', () => {
     expectTypeOf<Genus['name']>().toEqualTypeOf<string>()
     expectTypeOf<GenusAbbreviation['genus_id']>().toEqualTypeOf<string>()
     expectTypeOf<Profile['id']>().toEqualTypeOf<string>()
+    expectTypeOf<PlantPhoto['position']>().toEqualTypeOf<number>()
+    expectTypeOf<PlantPhoto['note']>().toEqualTypeOf<string | null>()
+    expectTypeOf<PlantPhotoInsert['position']>().toEqualTypeOf<number>()
+    expectTypeOf<PlantPhotoInsert['user_id']>().toEqualTypeOf<
+      string | undefined
+    >()
+    expectTypeOf<keyof PlantPhotoUpdate>().toEqualTypeOf<
+      | 'photo_path'
+      | 'thumbnail_path'
+      | 'in_bloom'
+      | 'taken_at'
+      | 'note'
+      | 'position'
+    >()
   })
 
   it('los enumerados son uniones de sus valores', () => {

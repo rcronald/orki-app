@@ -43,7 +43,11 @@ export interface PhotoUploadApi<T> {
 
 /** ¿Tiene sentido ofrecer "Reintentar" para este motivo? */
 export function canRetryUpload(reason: PhotoStorageErrorReason): boolean {
-  return reason !== 'session-ended' && reason !== 'not-found'
+  return (
+    reason !== 'session-ended' &&
+    reason !== 'not-found' &&
+    reason !== 'too-many-photos'
+  )
 }
 
 export function usePhotoUpload<T>(): PhotoUploadApi<T> {

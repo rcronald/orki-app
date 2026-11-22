@@ -25,6 +25,18 @@ import {
 // identidad sale del token que pone el Clerk simulado
 // (apps/web/medicion/clerk-simulado.tsx).
 //
+// Varias fotos por planta (#219): plant_photos con las reglas de la migración
+// 20261122090000_varias_fotos_por_planta.sql que importan a la app: cada
+// persona solo sus fotos, el dueño de la foto es el de la planta, rutas dentro
+// de <usuario>/<planta>/, position de 0 a 5 y única por planta (23505), solo
+// se cambian las columnas permitidas, la cascada al borrar la planta y la
+// sincronización en los dos sentidos con photo_path, thumbnail_path y
+// photo_in_bloom de plants (la principal es la de position más baja; lo que
+// escribe la app de una foto en plants se refleja en la principal). Si una
+// prueba pone la foto de una planta directamente en `datos.plantas`, antes de
+// la siguiente petición se crea su fila en la posición 0, como la copia de la
+// migración.
+//
 // Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
 // 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
 // pida algo nuevo no pasa desapercibido.
@@ -44,6 +56,44 @@ interface Identidad {
 interface Archivo {
   tipo: string
   bytes: Buffer
+}
+
+/** Una fila de plant_photos. */
+export interface FotoDePlanta {
+  id: string
+  plant_id: string
+  user_id: string
+  photo_path: string
+  thumbnail_path: string
+  in_bloom: boolean
+  taken_at: string | null
+  note: string | null
+  position: number
+  created_at: string
+}
+
+/** Columnas de plant_photos que la API deja cambiar. */
+const COLUMNAS_EDITABLES_DE_FOTO = new Set([
+  'photo_path',
+  'thumbnail_path',
+  'in_bloom',
+  'taken_at',
+  'note',
+  'position',
+])
+
+const MAXIMO_DE_FOTOS = 6
+
+/** ¿Está la ruta dentro de <usuario>/<planta>/ y con un solo nombre de archivo? */
+function rutaDeLaPlanta(ruta: unknown, usuario: string, planta: string) {
+  const carpeta = `${usuario}/${planta}/`
+  return (
+    typeof ruta === 'string' &&
+    ruta.length <= 1024 &&
+    ruta.startsWith(carpeta) &&
+    ruta.length > carpeta.length &&
+    !ruta.slice(carpeta.length).includes('/')
+  )
 }
 
 export interface EventoDeProducto {
@@ -189,6 +239,8 @@ export class SupabaseSimulado {
   readonly archivos = new Map<string, Archivo>()
   readonly perfiles = new Set<string>()
   readonly eventos: EventoDeProducto[] = []
+  /** Filas de plant_photos. */
+  fotos: FotoDePlanta[] = []
   /** Peticiones que no se supo responder (la prueba falla si hay alguna). */
   readonly sinSimular: string[] = []
   /** Subidas cuyo archivo no se pudo leer del cuerpo (se guardó uno de muestra). */
@@ -198,6 +250,14 @@ export class SupabaseSimulado {
   /** Plantas de una persona, para comprobar lo que guardó la app. */
   plantasDe(usuario: string): Planta[] {
     return this.datos.plantas.filter((planta) => planta.user_id === usuario)
+  }
+
+  /** Fotos de una planta en orden (la principal primero). */
+  fotosDe(plantaId: string): FotoDePlanta[] {
+    this.copiarFotosAntiguas()
+    return this.fotos
+      .filter((foto) => foto.plant_id === plantaId)
+      .sort((a, b) => a.position - b.position)
   }
 
   async responder(route: Route): Promise<void> {
@@ -232,6 +292,7 @@ export class SupabaseSimulado {
     const cabeceras = await request.allHeaders()
     const yo = identidadDe(cabeceras)
     const ruta = url.pathname
+    this.copiarFotosAntiguas()
 
     if (ruta.startsWith('/rest/v1/rpc/')) {
       const argumentos = (request.postDataJSON() ?? {}) as Record<
@@ -388,6 +449,11 @@ export class SupabaseSimulado {
       case 'DELETE plants':
       case 'POST plants':
         return this.plantas(metodo, coincide, cabeceras, request, yo)
+      case 'GET plant_photos':
+      case 'POST plant_photos':
+      case 'PATCH plant_photos':
+      case 'DELETE plant_photos':
+        return this.fotosDePlantas(metodo, coincide, cabeceras, request, yo)
       default:
         throw new Error('tabla sin simular')
     }
@@ -465,21 +531,308 @@ export class SupabaseSimulado {
     }
     if (metodo === 'PATCH') {
       const cambios = request.postDataJSON() as Partial<Planta>
+      const cambiaRutas = 'photo_path' in cambios || 'thumbnail_path' in cambios
       for (const planta of mias) {
+        const despues = { ...planta, ...cambios }
+        const sinFoto = despues.photo_path === null
+        const sinMiniatura = despues.thumbnail_path === null
+        if (cambiaRutas && sinFoto !== sinMiniatura) {
+          return errorPostgrest(
+            400,
+            '23514',
+            'violates check constraint "plants_photo_paths_together" (simulado)',
+          )
+        }
+      }
+      for (const planta of mias) {
+        const antes = { ...planta }
         Object.assign(planta, cambios, { updated_at: this.ahora() })
         this.aplicarEspecie(planta, 'species_id' in cambios)
+        this.reflejarFotoEnLaGaleria(planta, antes)
       }
       return filas(
         mias.map((p) => this.filaDePlanta(p)),
         cabeceras,
       )
     }
-    // DELETE
+    // DELETE: con la planta se van sus fotos (on delete cascade).
     this.datos.plantas = this.datos.plantas.filter((p) => !mias.includes(p))
+    this.fotos = this.fotos.filter(
+      (foto) => !mias.some((planta) => planta.id === foto.plant_id),
+    )
     return filas(
       mias.map((p) => ({ id: p.id })),
       cabeceras,
     )
+  }
+
+  // Fotos de las plantas (plant_photos) ------------------------------------------
+
+  /**
+   * Como private.copy_legacy_plant_photos(): una planta con foto y sin filas
+   * de fotos pasa a tener su principal en la posición 0. Cubre las pruebas que
+   * ponen la foto directamente en `datos.plantas`.
+   */
+  private copiarFotosAntiguas() {
+    for (const planta of this.datos.plantas) {
+      if (
+        rutaDeLaPlanta(planta.photo_path, planta.user_id, planta.id) &&
+        rutaDeLaPlanta(planta.thumbnail_path, planta.user_id, planta.id) &&
+        !this.fotos.some((foto) => foto.plant_id === planta.id)
+      ) {
+        this.fotos.push({
+          id: crypto.randomUUID(),
+          plant_id: planta.id,
+          user_id: planta.user_id,
+          photo_path: String(planta.photo_path),
+          thumbnail_path: String(planta.thumbnail_path),
+          in_bloom: planta.photo_in_bloom,
+          taken_at: null,
+          note: null,
+          position: 0,
+          created_at: planta.created_at,
+        })
+      }
+    }
+  }
+
+  /** Disparador sync_plant: la principal (position más baja) pasa a plants. */
+  private copiarPrincipal(plantaId: string) {
+    const planta = this.datos.plantas.find((p) => p.id === plantaId)
+    if (!planta) return
+    const [principal] = this.fotos
+      .filter((foto) => foto.plant_id === plantaId)
+      .sort((a, b) => a.position - b.position)
+    const foto = principal?.photo_path ?? null
+    const miniatura = principal?.thumbnail_path ?? null
+    const enFloracion = principal?.in_bloom ?? false
+    if (
+      planta.photo_path !== foto ||
+      planta.thumbnail_path !== miniatura ||
+      planta.photo_in_bloom !== enFloracion
+    ) {
+      planta.photo_path = foto
+      planta.thumbnail_path = miniatura
+      planta.photo_in_bloom = enFloracion
+      planta.updated_at = this.ahora()
+    }
+  }
+
+  /**
+   * Lo que hace la base cuando la app de una foto escribe en plants: poner la
+   * foto crea la principal; sustituirla cambia sus rutas (y su fecha y su nota
+   * vuelven a null); cambiar photo_in_bloom lo cambia en la principal; quitarla
+   * borra solo la principal y la siguiente pasa a la planta.
+   */
+  private reflejarFotoEnLaGaleria(planta: Planta, antes: Planta) {
+    const mismas =
+      planta.photo_path === antes.photo_path &&
+      planta.thumbnail_path === antes.thumbnail_path
+    if (mismas && planta.photo_in_bloom === antes.photo_in_bloom) return
+    const deLaPlanta = () =>
+      this.fotos
+        .filter((foto) => foto.plant_id === planta.id)
+        .sort((a, b) => a.position - b.position)
+    const [principal] = deLaPlanta()
+
+    if (planta.photo_path === null && planta.thumbnail_path === null) {
+      if (antes.photo_path === null && antes.thumbnail_path === null) return
+      if (principal) this.fotos = this.fotos.filter((f) => f !== principal)
+      const [siguiente] = deLaPlanta()
+      if (siguiente) {
+        planta.photo_path = siguiente.photo_path
+        planta.thumbnail_path = siguiente.thumbnail_path
+        planta.photo_in_bloom = siguiente.in_bloom
+      }
+      return
+    }
+    if (planta.photo_path === null || planta.thumbnail_path === null) return
+    if (!principal) {
+      this.fotos.push({
+        id: crypto.randomUUID(),
+        plant_id: planta.id,
+        user_id: planta.user_id,
+        photo_path: planta.photo_path,
+        thumbnail_path: planta.thumbnail_path,
+        in_bloom: planta.photo_in_bloom,
+        taken_at: null,
+        note: null,
+        position: 0,
+        created_at: this.ahora(),
+      })
+    } else if (!mismas) {
+      Object.assign(principal, {
+        photo_path: planta.photo_path,
+        thumbnail_path: planta.thumbnail_path,
+        in_bloom: planta.photo_in_bloom,
+        taken_at: null,
+        note: null,
+      })
+    } else {
+      principal.in_bloom = planta.photo_in_bloom
+    }
+  }
+
+  /** Posiciones de 0 a 5 y sin repetir en ninguna planta. */
+  private posicionesValidas(fotos: FotoDePlanta[]): Respuesta | null {
+    const vistas = new Set<string>()
+    for (const foto of fotos) {
+      if (
+        !Number.isInteger(foto.position) ||
+        foto.position < 0 ||
+        foto.position >= MAXIMO_DE_FOTOS
+      ) {
+        return errorPostgrest(
+          400,
+          '23514',
+          'violates check constraint "plant_photos_position_range" (simulado)',
+        )
+      }
+      const clave = `${foto.plant_id}:${foto.position}`
+      if (vistas.has(clave)) {
+        return errorPostgrest(
+          409,
+          '23505',
+          'duplicate key value violates unique constraint "plant_photos_plant_id_position_key" (simulado)',
+        )
+      }
+      vistas.add(clave)
+    }
+    return null
+  }
+
+  private fotosDePlantas(
+    metodo: string,
+    coincide: (fila: Record<string, unknown>) => boolean,
+    cabeceras: Record<string, string>,
+    request: Request,
+    yo: Identidad,
+  ): Respuesta {
+    // RLS: cada persona solo sus fotos; sin sesión, nada.
+    const mias = this.fotos
+      .filter(
+        (foto) =>
+          yo.usuario !== null &&
+          foto.user_id === yo.usuario &&
+          coincide(foto as unknown as Record<string, unknown>),
+      )
+      .sort(
+        (a, b) =>
+          a.plant_id.localeCompare(b.plant_id) || a.position - b.position,
+      )
+    const conRepresentacion = (cabeceras.prefer ?? '').includes(
+      'return=representation',
+    )
+    if (metodo === 'GET') return filas(mias, cabeceras)
+    if (yo.usuario === null) {
+      return errorPostgrest(401, 'PGRST301', 'JWT required (simulado)')
+    }
+    const usuario = yo.usuario
+
+    if (metodo === 'POST') {
+      const cuerpo = request.postDataJSON() as
+        Partial<FotoDePlanta> | Partial<FotoDePlanta>[]
+      const nuevas: FotoDePlanta[] = []
+      for (const fila of Array.isArray(cuerpo) ? cuerpo : [cuerpo]) {
+        const dueno = fila.user_id ?? usuario
+        if (dueno !== usuario) {
+          return errorPostgrest(
+            403,
+            '42501',
+            'new row violates row-level security policy for table "plant_photos" (simulado)',
+          )
+        }
+        const planta = this.datos.plantas.find((p) => p.id === fila.plant_id)
+        if (!planta) {
+          return errorPostgrest(
+            409,
+            '23503',
+            'violates foreign key constraint "plant_photos_plant_id_fkey" (simulado)',
+          )
+        }
+        if (planta.user_id !== dueno) {
+          return errorPostgrest(
+            400,
+            '23514',
+            'el dueño de la foto tiene que ser el de la planta (simulado)',
+          )
+        }
+        if (
+          !rutaDeLaPlanta(fila.photo_path, dueno, planta.id) ||
+          !rutaDeLaPlanta(fila.thumbnail_path, dueno, planta.id)
+        ) {
+          return errorPostgrest(
+            400,
+            '23514',
+            'violates check constraint "plant_photos_photo_path_valid" (simulado)',
+          )
+        }
+        nuevas.push({
+          id: fila.id ?? crypto.randomUUID(),
+          plant_id: planta.id,
+          user_id: dueno,
+          photo_path: String(fila.photo_path),
+          thumbnail_path: String(fila.thumbnail_path),
+          in_bloom: fila.in_bloom ?? false,
+          taken_at: fila.taken_at ?? null,
+          note: fila.note ?? null,
+          position: Number(fila.position),
+          created_at: this.ahora(),
+        })
+      }
+      const error = this.posicionesValidas([...this.fotos, ...nuevas])
+      if (error) return error
+      this.fotos.push(...nuevas)
+      for (const plantaId of new Set(nuevas.map((foto) => foto.plant_id))) {
+        this.copiarPrincipal(plantaId)
+      }
+      return conRepresentacion ? filas(nuevas, cabeceras, 201) : vacia(201)
+    }
+
+    if (metodo === 'PATCH') {
+      const cambios = request.postDataJSON() as Record<string, unknown>
+      const prohibida = Object.keys(cambios).find(
+        (columna) => !COLUMNAS_EDITABLES_DE_FOTO.has(columna),
+      )
+      if (prohibida) {
+        return errorPostgrest(
+          403,
+          '42501',
+          `permission denied for column ${prohibida} of table plant_photos (simulado)`,
+        )
+      }
+      const cambiadas = mias.map((foto) => ({ ...foto, ...cambios }))
+      for (const foto of cambiadas) {
+        if (
+          !rutaDeLaPlanta(foto.photo_path, foto.user_id, foto.plant_id) ||
+          !rutaDeLaPlanta(foto.thumbnail_path, foto.user_id, foto.plant_id)
+        ) {
+          return errorPostgrest(
+            400,
+            '23514',
+            'violates check constraint "plant_photos_photo_path_valid" (simulado)',
+          )
+        }
+      }
+      // La unicidad se comprueba al final de la sentencia (deferrable).
+      const error = this.posicionesValidas([
+        ...this.fotos.filter((foto) => !mias.includes(foto)),
+        ...cambiadas,
+      ])
+      if (error) return error
+      mias.forEach((foto, indice) => Object.assign(foto, cambiadas[indice]))
+      for (const plantaId of new Set(mias.map((foto) => foto.plant_id))) {
+        this.copiarPrincipal(plantaId)
+      }
+      return conRepresentacion ? filas(mias, cabeceras) : vacia()
+    }
+
+    // DELETE
+    this.fotos = this.fotos.filter((foto) => !mias.includes(foto))
+    for (const plantaId of new Set(mias.map((foto) => foto.plant_id))) {
+      this.copiarPrincipal(plantaId)
+    }
+    return conRepresentacion ? filas(mias, cabeceras) : vacia()
   }
 
   // Funciones (RPC) ---------------------------------------------------------------

@@ -53,6 +53,13 @@ export const PAUSA_CLERK_MS = 120
 const PAGINA = 1000
 const LOTE = 100
 
+/**
+ * Códigos de PostgREST y de Postgres para una tabla que no existe. plant_photos
+ * llega con la migración de varias fotos (#182), que puede no estar aplicada en
+ * un ambiente: sin la tabla no hay filas de fotos que revisar.
+ */
+const CODIGOS_TABLA_INEXISTENTE = ['PGRST205', '42P01']
+
 /** Error de Clerk: detiene el script y nunca se interpreta como «no existe». */
 export class ErrorClerk extends Error {
   constructor(mensaje, opciones) {
@@ -294,7 +301,7 @@ export function crearClienteClerk({
 export function crearAccesoSupabase(supabase, nombreBucket) {
   const bucket = supabase.storage.from(nombreBucket)
 
-  async function leerTabla(tabla, columnas) {
+  async function leerTabla(tabla, columnas, { opcional = false } = {}) {
     const filas = []
     let ultimo = null
     for (;;) {
@@ -303,7 +310,13 @@ export function crearAccesoSupabase(supabase, nombreBucket) {
       const { data, error } = await consulta
         .order('id', { ascending: true })
         .limit(PAGINA)
-      if (error) throw new Error(`no se pudo leer ${tabla}: ${error.message}`)
+      if (error) {
+        // Una tabla que el proyecto aún no tiene (migración sin aplicar).
+        if (opcional && CODIGOS_TABLA_INEXISTENTE.includes(error.code)) {
+          return null
+        }
+        throw new Error(`no se pudo leer ${tabla}: ${error.message}`)
+      }
       filas.push(...data)
       if (data.length < PAGINA) return filas
       ultimo = data.at(-1).id
@@ -357,6 +370,12 @@ export function crearAccesoSupabase(supabase, nombreBucket) {
     leerPerfiles: () => leerTabla('profiles', 'id'),
     leerPlantas: () => leerTabla('plants', 'id, user_id'),
     leerEventos: () => leerTabla('product_events', 'id, user_id'),
+    /**
+     * Filas de plant_photos (varias fotos por planta, #219); null si el
+     * proyecto aún no tiene la tabla.
+     */
+    leerFotosDePlantas: () =>
+      leerTabla('plant_photos', 'id, user_id', { opcional: true }),
     /** Carpetas del primer nivel del bucket: una por usuario. */
     listarCarpetasDeUsuario: async () =>
       (await listar(''))
@@ -375,6 +394,8 @@ export function crearAccesoSupabase(supabase, nombreBucket) {
       }
       return rutas.length
     },
+    borrarFilasDeFotos: (usuario, ids) =>
+      borrarFilas('plant_photos', usuario, ids),
     borrarPlantas: (usuario, ids) => borrarFilas('plants', usuario, ids),
     borrarEventos: (usuario, ids) =>
       borrarFilas('product_events', usuario, ids),
@@ -402,25 +423,33 @@ function agrupar(filas, columna) {
 }
 
 /**
- * Reúne los usuarios que aparecen en perfiles, plantas, eventos de producto y
- * carpetas del bucket, y pregunta a Clerk por cada uno. Si Clerk falla, lanza
- * y no devuelve ningún huérfano.
+ * Reúne los usuarios que aparecen en perfiles, plantas, filas de fotos
+ * (plant_photos), eventos de producto y carpetas del bucket, y pregunta a Clerk
+ * por cada uno. Si Clerk falla, lanza y no devuelve ningún huérfano.
+ *
+ * Las filas de plant_photos tienen siempre el dueño de su planta y se borran
+ * con ella (on delete cascade), así que solo puede haber filas sin dueño si
+ * hay plantas sin dueño; se detectan igualmente, por si acaso, y se borran
+ * antes que las plantas.
  */
 export async function detectar(datos, clerk) {
-  const [perfiles, plantas, eventos, carpetas] = [
+  const [perfiles, plantas, fotosDePlantas, eventos, carpetas] = [
     await datos.leerPerfiles(),
     await datos.leerPlantas(),
+    (await datos.leerFotosDePlantas()) ?? [],
     await datos.leerEventos(),
     await datos.listarCarpetasDeUsuario(),
   ]
   const conPerfil = new Set(perfiles.map((perfil) => perfil.id))
   const plantasPorUsuario = agrupar(plantas, 'user_id')
+  const filasDeFotosPorUsuario = agrupar(fotosDePlantas, 'user_id')
   const eventosPorUsuario = agrupar(eventos, 'user_id')
   const conCarpeta = new Set(carpetas)
   const usuarios = [
     ...new Set([
       ...conPerfil,
       ...plantasPorUsuario.keys(),
+      ...filasDeFotosPorUsuario.keys(),
       ...eventosPorUsuario.keys(),
       ...conCarpeta,
     ]),
@@ -430,6 +459,7 @@ export async function detectar(datos, clerk) {
     id,
     perfil: conPerfil.has(id),
     plantas: plantasPorUsuario.get(id) ?? [],
+    filasDeFotos: filasDeFotosPorUsuario.get(id) ?? [],
     eventos: eventosPorUsuario.get(id) ?? [],
     carpeta: conCarpeta.has(id),
   })
@@ -471,6 +501,9 @@ function describir(usuario) {
     `${usuario.plantas.length} plantas`,
     `${usuario.eventos.length} eventos`,
   ]
+  if (usuario.filasDeFotos.length > 0) {
+    partes.push(`${usuario.filasDeFotos.length} filas de plant_photos`)
+  }
   if (usuario.fotos) partes.push(`${usuario.fotos.length} fotos`)
   else if (usuario.carpeta) partes.push('carpeta en el bucket')
   return partes.join(', ')
@@ -480,8 +513,10 @@ function describir(usuario) {
 
 /**
  * Detecta, informa y, solo con `borrar`, borra los datos de los usuarios que
- * Clerk confirma inexistentes: fotos, plantas, eventos y perfil, en ese orden
- * (el de la app al eliminar una cuenta) y usuario por usuario.
+ * Clerk confirma inexistentes: archivos de fotos, filas de plant_photos,
+ * plantas, eventos y perfil, en ese orden (el de la app al eliminar una
+ * cuenta, con las filas de fotos explícitas antes que la cascada de las
+ * plantas) y usuario por usuario.
  */
 export async function ejecutar(
   { borrar, permitirProporcionAlta },
@@ -528,6 +563,7 @@ export async function ejecutar(
   const borrados = {
     usuarios: 0,
     fotos: 0,
+    filasDeFotos: 0,
     plantas: 0,
     eventos: 0,
     perfiles: 0,
@@ -536,6 +572,12 @@ export async function ejecutar(
     try {
       if (usuario.fotos.length > 0) {
         borrados.fotos += await datos.borrarFotos(usuario.id, usuario.fotos)
+      }
+      if (usuario.filasDeFotos.length > 0) {
+        borrados.filasDeFotos += await datos.borrarFilasDeFotos(
+          usuario.id,
+          usuario.filasDeFotos,
+        )
       }
       if (usuario.plantas.length > 0) {
         borrados.plantas += await datos.borrarPlantas(
@@ -564,7 +606,8 @@ export async function ejecutar(
     log(`  Borrado ${usuario.id}.`)
   }
   log(
-    `Borrados: ${borrados.usuarios} usuarios, ${borrados.fotos} fotos, ${borrados.plantas} plantas, ` +
+    `Borrados: ${borrados.usuarios} usuarios, ${borrados.fotos} fotos, ` +
+      `${borrados.filasDeFotos} filas de plant_photos, ${borrados.plantas} plantas, ` +
       `${borrados.eventos} eventos y ${borrados.perfiles} perfiles.`,
   )
   return { informe, borrados }
