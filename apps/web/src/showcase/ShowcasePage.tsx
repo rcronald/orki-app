@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import tokensCss from '../styles/tokens.css?raw'
 import { parseTokens } from '../styles/tokens.ts'
+import { AccountPiecesSection } from './AccountPiecesSection.tsx'
 import { AccountSection } from './AccountSection.tsx'
 import { BrandSection } from './BrandSection.tsx'
 import { CatalogAdminSection } from './CatalogAdminSection.tsx'
@@ -38,6 +39,7 @@ const SECTIONS = [
   { id: 'plegable', label: 'Sección plegable' },
   { id: 'portada', label: 'Portada' },
   { id: 'coleccion-piezas', label: 'Mi colección: piezas' },
+  { id: 'cuenta-piezas', label: 'Tu cuenta: piezas' },
   { id: 'inventario', label: 'Pantalla de inventario' },
   { id: 'registro', label: 'Formulario de registro' },
   { id: 'detalle', label: 'Detalle del ejemplar' },
@@ -97,6 +99,7 @@ export default function ShowcasePage() {
           <ComponentSections />
           <LandingSection />
           <CollectionPiecesSection />
+          <AccountPiecesSection />
           <InventorySection />
           <RegistrationSection />
           <DetailSection />

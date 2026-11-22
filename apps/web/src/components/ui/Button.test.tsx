@@ -19,6 +19,7 @@ describe('Button', () => {
     ['strong', 'orki-btn--strong'],
     ['secondary', 'orki-btn--secondary'],
     ['danger', 'orki-btn--danger'],
+    ['danger-outline', 'orki-btn--danger-outline'],
   ] as const)('variante %s', (variant, className) => {
     render(<Button variant={variant}>Guardar</Button>)
 
