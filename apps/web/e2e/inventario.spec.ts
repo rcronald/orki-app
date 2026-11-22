@@ -26,8 +26,15 @@ async function objetivosDe44(controles: Locator) {
     const caja = await control.boundingBox()
     expect(caja, await control.innerText()).not.toBeNull()
     if (!caja) continue
-    expect(caja.height, await control.innerText()).toBeGreaterThanOrEqual(44)
-    expect(caja.width, await control.innerText()).toBeGreaterThanOrEqual(44)
+    // Redondeado: Firefox mide 43,99994 px en un control de 44 px.
+    expect(
+      Math.round(caja.height),
+      await control.innerText(),
+    ).toBeGreaterThanOrEqual(44)
+    expect(
+      Math.round(caja.width),
+      await control.innerText(),
+    ).toBeGreaterThanOrEqual(44)
   }
 }
 
