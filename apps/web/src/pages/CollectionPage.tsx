@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import {
+  NavigationType,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+  useSearchParams,
+} from 'react-router'
 import type { PlantFilters } from '../collection/filters.ts'
 import { countGenera, countPlants } from '../collection/selectors.ts'
 import { useCollection } from '../collection/useCollection.ts'
@@ -77,31 +83,26 @@ export function CollectionPage() {
   const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
   const [searchParams, setSearchParams] = useSearchParams()
   const urlQuery = searchParams.get(SEARCH_PARAM) ?? ''
-  // El campo tiene su propio estado: la dirección se actualiza dentro de una
-  // transición del enrutador y, si el campo leyera de ella, al escribir
-  // deprisa se perderían letras (el valor atrasado de la dirección pisaría lo
-  // escrito). La dirección manda al abrir (/coleccion?q=…) y cuando cambia
-  // por otra navegación (un enlace a /coleccion estando aquí); los valores
-  // que escribió el propio campo (written) no cuentan como cambio externo.
-  const [search, setSearch] = useState(() => ({
-    query: urlQuery,
-    url: urlQuery,
-    written: [] as readonly string[],
-  }))
-  let query = search.query
-  if (urlQuery !== search.url) {
-    const own = search.written.includes(urlQuery)
-    const caughtUp = own && urlQuery === search.query
-    const next = {
-      query: own ? search.query : urlQuery,
-      url: urlQuery,
-      written: own && !caughtUp ? search.written : [],
-    }
-    setSearch(next)
-    query = next.query
-  }
+  // El campo tiene su propio estado y es la fuente de verdad mientras la
+  // pantalla está abierta: la dirección se actualiza dentro de una transición
+  // del enrutador y llega atrasada, así que si el campo leyera de ella (o se
+  // corrigiera con ella al pintar) se perderían letras al escribir deprisa.
+  // La dirección solo manda al abrir (/coleccion?q=…) y cuando cambia por
+  // OTRA navegación: un enlace a /coleccion estando aquí (PUSH) o atrás y
+  // adelante (POP). Lo que escribe esta pantalla en la dirección (el
+  // buscador, los filtros, limpiar el estado) va siempre con `replace`, así
+  // que una navegación REPLACE nunca trae una búsqueda nueva de fuera.
+  const [query, setQueryText] = useState(urlQuery)
+  const navigationType = useNavigationType()
   const location = useLocation()
   const navigate = useNavigate()
+  // Ajuste al cambiar de ubicación, al pintar (sin efecto): en una navegación
+  // REPLACE solo se anota la ubicación; el texto del campo no se toca.
+  const [seenLocation, setSeenLocation] = useState(location.key)
+  if (seenLocation !== location.key) {
+    setSeenLocation(location.key)
+    if (navigationType !== NavigationType.Replace) setQueryText(urlQuery)
+  }
   const [registered, setRegistered] = useState(() =>
     readRegisteredPlant(location.state),
   )
@@ -122,11 +123,7 @@ export function CollectionPage() {
 
   const setQuery = useCallback(
     (value: string) => {
-      setSearch((current) => ({
-        ...current,
-        query: value,
-        written: [...current.written, value],
-      }))
+      setQueryText(value)
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current)
