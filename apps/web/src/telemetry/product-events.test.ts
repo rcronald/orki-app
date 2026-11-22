@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { haveItSearchEvent, type ProductEvent } from './events.ts'
 import {
+  discardProductEvents,
   recordProductEvent,
   setProductEventsRuntimeLoader,
   setProductEventsSession,
@@ -20,6 +21,7 @@ function fakeRuntime() {
     setSession: vi.fn<ProductEventsRuntime['setSession']>(),
     record: vi.fn<ProductEventsRuntime['record']>(),
     flush: vi.fn(() => Promise.resolve()),
+    settle: vi.fn(() => Promise.resolve()),
   }
 }
 
@@ -85,5 +87,50 @@ describe('punto de entrada de los eventos', () => {
       online: false,
     })
     expect(runtime.record).toHaveBeenCalledWith('user_a', EVENT)
+  })
+
+  it('discardProductEvents deja sin sesión, espera a la cola y descarta lo que llegue después (#110)', async () => {
+    const runtime = fakeRuntime()
+    let finishSettle: () => void = () => {}
+    runtime.settle.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSettle = resolve
+        }),
+    )
+    setProductEventsRuntimeLoader(() => Promise.resolve(runtime))
+    setProductEventsSession({ userId: 'user_a', confirmed: true, online: true })
+
+    let done = false
+    const discarded = discardProductEvents().then(() => {
+      done = true
+    })
+    await settle()
+    expect(runtime.setSession).toHaveBeenLastCalledWith(null)
+    expect(runtime.settle).toHaveBeenCalled()
+    // Hasta que la cola y el envío en curso terminan, no se resuelve.
+    expect(done).toBe(false)
+    finishSettle()
+    await discarded
+    expect(done).toBe(true)
+
+    recordProductEvent(EVENT)
+    await settle()
+    expect(runtime.record).not.toHaveBeenCalled()
+  })
+
+  it('discardProductEvents carga la cola aunque no hubiera sesión, para borrarla', async () => {
+    const runtime = fakeRuntime()
+    const loader = vi.fn(() => Promise.resolve(runtime))
+    setProductEventsRuntimeLoader(loader)
+    await discardProductEvents()
+    expect(loader).toHaveBeenCalledTimes(1)
+    expect(runtime.setSession).toHaveBeenCalledWith(null)
+    expect(runtime.settle).toHaveBeenCalled()
+  })
+
+  it('discardProductEvents se resuelve aunque la cola no se pueda cargar', async () => {
+    setProductEventsRuntimeLoader(() => Promise.reject(new Error('sin chunk')))
+    await expect(discardProductEvents()).resolves.toBeUndefined()
   })
 })

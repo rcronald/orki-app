@@ -239,4 +239,37 @@ describe('eventos de producto: cola y envío', () => {
     expect(sentIds()).toEqual([['e1'], ['e2']])
     expect(storage.queues.size).toBe(0)
   })
+
+  it('settle espera al borrado de las colas y al envío en curso (#110)', async () => {
+    let finishSend: (outcome: SendOutcome) => void = () => {}
+    send.mockImplementation(
+      () =>
+        new Promise<SendOutcome>((resolve) => {
+          finishSend = resolve
+        }),
+    )
+    const runtime = create()
+    runtime.setSession(A_ONLINE)
+    runtime.record('user_a', event('e1'))
+    await settle()
+    expect(send).toHaveBeenCalledTimes(1)
+
+    // Como al eliminar la cuenta: sin sesión, y esperar a que todo termine.
+    runtime.setSession(null)
+    runtime.record('user_a', event('e2'))
+    let settled = false
+    const done = runtime.settle().then(() => {
+      settled = true
+    })
+    await settle()
+    // El envío en curso se canceló, pero settle espera a que se resuelva.
+    finishSend('sent')
+    await settle()
+    await done
+    expect(settled).toBe(true)
+    expect(storage.queues.size).toBe(0)
+    // Nada más sale después.
+    await vi.advanceTimersByTimeAsync(RETRY_BASE_MS * 4)
+    expect(send).toHaveBeenCalledTimes(1)
+  })
 })

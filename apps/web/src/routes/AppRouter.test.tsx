@@ -171,6 +171,22 @@ describe('rutas con sesión', () => {
     expect(currentLocation()).toBe(path)
   })
 
+  it('sin sesión, la pantalla de cuenta lleva al inicio de sesión', async () => {
+    renderAt('/cuenta')
+    await screen.findByTestId('clerk-sign-in')
+    expect(currentLocation()).toBe('/iniciar-sesion?redirect_url=%2Fcuenta')
+  })
+
+  it('con sesión, la pantalla de cuenta se abre desde la cabecera', async () => {
+    const user = userEvent.setup()
+    setFakeClerk({ signedIn: true })
+    renderAt('/')
+    await user.click(await screen.findByRole('link', { name: 'Tu cuenta' }))
+    expect(await findHeading('Tu cuenta')).toBeInTheDocument()
+    expect(currentLocation()).toBe('/cuenta')
+    await expectNoAxeViolations()
+  })
+
   it('mientras Clerk carga: estado de carga, sin redirigir', async () => {
     setFakeClerk({ status: 'loading' })
     renderAt('/coleccion')

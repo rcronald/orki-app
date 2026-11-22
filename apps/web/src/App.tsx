@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router'
+import { AccountDeletionGate } from './account/AccountDeletionGate.tsx'
 import { AuthProvider } from './auth/AuthProvider.tsx'
+import { AccountPage } from './pages/AccountPage.tsx'
 import { RequireAuth, RequireCatalogAdmin } from './auth/RouteGuards.tsx'
 import { AppShell } from './components/AppShell.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
@@ -40,6 +42,15 @@ const EditPlantPage = lazy(() => import('./pages/EditPlantPage.tsx'))
 // administradores, así que va en su propio chunk y no lo descarga nadie más.
 const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
 
+// La pantalla de cuenta (/cuenta, #110) va en este mismo chunk, sin carga
+// diferida: usa Clerk, y una página diferida que importa @clerk/react hace que
+// el empaquetador saque Clerk a un chunk compartido, lo que añade entradas de
+// precarga al chunk inicial. Probado con el build: diferida, el inicial crecía
+// unos 100 bytes; aquí, solo lo que ocupa su ruta en PATHS.
+
+// Página de privacidad (/privacidad, #111): pública y en su propio chunk.
+const PrivacyPage = lazy(() => import('./privacy/PrivacyPage.tsx'))
+
 interface AppProps {
   /** Ambiente ya validado por parseEnv. */
   appEnv: AppEnv
@@ -62,6 +73,20 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
           <Route path={PATHS.catalog} element={<CatalogPage />} />
+          <Route
+            path={PATHS.privacy}
+            element={
+              <Suspense
+                fallback={
+                  <p role="status" className="text-md text-neutral-700">
+                    Cargando…
+                  </p>
+                }
+              >
+                <PrivacyPage />
+              </Suspense>
+            }
+          />
           {IdentityDiagnosticsPage && appEnv !== 'prod' && (
             <Route
               path={PATHS.identityDiagnostics}
@@ -72,6 +97,14 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
               }
             />
           )}
+          {/* AccountDeletionGate va por encima de RequireAuth: al eliminar la
+              cuenta la sesión cae y, en vez del inicio de sesión, se va al
+              inicio con el aviso (ver account/deletion-status.ts). */}
+          <Route element={<AccountDeletionGate />}>
+            <Route element={<RequireAuth />}>
+              <Route path={PATHS.account} element={<AccountPage />} />
+            </Route>
+          </Route>
           <Route element={<RequireAuth />}>
             <Route path={PATHS.collection} element={<CollectionPage />} />
             <Route

@@ -101,7 +101,46 @@ function entrar() {
   cambiarSesion({ usuario: USUARIO_AL_ENTRAR, rol: null })
 }
 
-const CLERK = { status, signOut }
+// setActive({ session: null }): lo que hace la app al terminar de eliminar la
+// cuenta. Solo se simula quitar la sesión.
+function setActive({ session }: { session: null }) {
+  if (session === null) cambiarSesion({ usuario: null, rol: null })
+  return Promise.resolve()
+}
+
+const CLERK = { status, signOut, setActive }
+
+// El usuario de useUser(), con lo que usa la pantalla de cuenta
+// (src/pages/AccountPage.tsx). delete() solo cierra la sesión simulada: los
+// datos los borra la app en Supabase antes de llamarlo.
+let usuarioCacheado: {
+  de: Sesion
+  valor: ReturnType<typeof usuarioDe>
+} | null = null
+
+function usuarioDe(actual: Sesion) {
+  if (status !== 'ready') return { isLoaded: false, user: undefined }
+  if (actual.usuario === null) return { isLoaded: true, user: null }
+  return {
+    isLoaded: true,
+    user: {
+      id: actual.usuario,
+      primaryEmailAddress: { emailAddress: 'persona@orki.invalid' },
+      deleteSelfEnabled: true,
+      delete: () => {
+        cambiarSesion({ usuario: null, rol: null })
+        return Promise.resolve()
+      },
+    },
+  }
+}
+
+function usuarioActual() {
+  if (usuarioCacheado?.de !== sesion) {
+    usuarioCacheado = { de: sesion, valor: usuarioDe(sesion) }
+  }
+  return usuarioCacheado.valor
+}
 
 // Una instancia por sesión, para que useAuth() devuelva el mismo objeto
 // mientras no cambie (como el real entre pintados).
@@ -165,6 +204,18 @@ export function useClerk() {
 
 export function useAuth() {
   return useSyncExternalStore(suscribir, estadoActual, estadoActual)
+}
+
+export function useUser() {
+  return useSyncExternalStore(suscribir, usuarioActual, usuarioActual)
+}
+
+// El real pide verificar la identidad antes de ejecutar la acción; aquí la
+// acción corre tal cual.
+export function useReverification<Accion extends (...args: never[]) => unknown>(
+  accion: Accion,
+): Accion {
+  return accion
 }
 
 export function Show({
