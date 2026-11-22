@@ -3,8 +3,13 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.medicion.tsbuildinfo"
   },
-  // Sustitutos del build de medición de la carga (#149). Su configuración de
-  // Vite, medicion/vite.config.ts, va con tsconfig.node.json.
+  // Sustitutos de los builds de medición de la carga (#149) y de pruebas de
+  // extremo a extremo (#148). Sus configuraciones de Vite y el plugin que
+  // sustituye los módulos van con tsconfig.node.json.
   "include": ["medicion"],
-  "exclude": ["medicion/vite.config.ts"]
+  "exclude": [
+    "medicion/vite.config.ts",
+    "medicion/vite.config.e2e.ts",
+    "medicion/sustitutos.ts"
+  ]
 }

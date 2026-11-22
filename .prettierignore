@@ -1,6 +1,9 @@
 # Generados
 dist/
 dist-medicion/
+test-results/
+playwright-report/
+blob-report/
 coverage/
 *.tsbuildinfo
 

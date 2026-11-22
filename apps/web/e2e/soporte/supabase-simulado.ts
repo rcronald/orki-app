@@ -1,0 +1,955 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import type { Request, Route } from '@playwright/test'
+import {
+  catalogoInicial,
+  type Catalogo,
+  type Especie,
+  type Planta,
+} from './datos.ts'
+
+// Supabase simulado en la capa de red de Playwright (#148).
+//
+// La app de las pruebas es la de producción con su cliente de Supabase real
+// (supabase-js): sus peticiones salen hacia https://supabase.orki.invalid y
+// este módulo las responde desde la memoria del proceso de la prueba, con la
+// forma de PostgREST y de Storage. Así se ejercita todo el código de la app que
+// arma las consultas, interpreta las respuestas y traduce los errores; lo único
+// simulado es el servidor.
+//
+// Solo implementa lo que usa la app, con las reglas que importan para los
+// flujos: las políticas RLS (cada persona ve y escribe sus plantas; el
+// backoffice, solo catalog_admin) y los disparadores de plants (con especie, el
+// género, el tipo y la validación son los suyos; sin ella, "pending"). La
+// identidad sale del token que pone el Clerk simulado
+// (apps/web/medicion/clerk-simulado.tsx).
+//
+// Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
+// 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
+// pida algo nuevo no pasa desapercibido.
+
+export const ORIGEN_SUPABASE = 'https://supabase.orki.invalid'
+
+const FIXTURES = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../src/photos/fixtures',
+)
+
+interface Identidad {
+  usuario: string | null
+  rol: string | null
+}
+
+interface Archivo {
+  tipo: string
+  bytes: Buffer
+}
+
+export interface EventoDeProducto {
+  name?: string
+  [campo: string]: unknown
+}
+
+interface Respuesta {
+  status: number
+  body?: string | Buffer
+  headers?: Record<string, string>
+}
+
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, HEAD, OPTIONS',
+  'access-control-allow-headers': '*',
+  'access-control-expose-headers': 'content-range, x-supabase-api-version',
+}
+
+function json(body: unknown, status = 200, headers = {}): Respuesta {
+  return {
+    status,
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json', ...headers },
+  }
+}
+
+const vacia = (status = 204): Respuesta => ({ status })
+
+function errorPostgrest(status: number, code: string, message: string) {
+  return json({ code, message, details: null, hint: null }, status)
+}
+
+const sinPermiso = () =>
+  errorPostgrest(403, '42501', 'permission denied (simulado)')
+
+/** Texto en minúsculas, sin tildes ni puntuación, para comparar nombres. */
+export function normalizar(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+function identidadDe(cabeceras: Record<string, string>): Identidad {
+  const token = /^Bearer (.+)$/i.exec(cabeceras.authorization ?? '')?.[1] ?? ''
+  if (!token.startsWith('simulado.')) return { usuario: null, rol: null }
+  try {
+    const datos = JSON.parse(
+      Buffer.from(token.slice('simulado.'.length), 'base64').toString('utf8'),
+    ) as { sub?: unknown; app_role?: unknown }
+    return {
+      usuario: typeof datos.sub === 'string' ? datos.sub : null,
+      rol: typeof datos.app_role === 'string' ? datos.app_role : null,
+    }
+  } catch {
+    return { usuario: null, rol: null }
+  }
+}
+
+/** Filtros de PostgREST de la dirección (columna=eq.valor, in.(…), gt.…). */
+function filtrosDe(parametros: URLSearchParams) {
+  const reservados = new Set([
+    'select',
+    'order',
+    'limit',
+    'offset',
+    'on_conflict',
+    'columns',
+  ])
+  const filtros: ((fila: Record<string, unknown>) => boolean)[] = []
+  for (const [columna, expresion] of parametros) {
+    if (reservados.has(columna)) continue
+    const [, operador, valor] = /^(\w+)\.(.*)$/.exec(expresion) ?? []
+    const texto = (fila: Record<string, unknown>) => String(fila[columna])
+    switch (operador) {
+      case 'eq':
+        filtros.push((fila) => texto(fila) === valor)
+        break
+      case 'gt':
+        filtros.push((fila) => texto(fila) > valor)
+        break
+      case 'in': {
+        const lista = valor.replace(/^\(|\)$/g, '').split(',')
+        filtros.push((fila) => lista.includes(texto(fila)))
+        break
+      }
+      default:
+        throw new Error(`Filtro sin simular: ${columna}=${expresion}`)
+    }
+  }
+  return (fila: Record<string, unknown>) => filtros.every((f) => f(fila))
+}
+
+/** Respuesta de una lectura o escritura según lo que pide la cabecera Accept. */
+function filas(
+  lista: unknown[],
+  cabeceras: Record<string, string>,
+  status = 200,
+): Respuesta {
+  if ((cabeceras.accept ?? '').includes('application/vnd.pgrst.object+json')) {
+    if (lista.length !== 1) {
+      return errorPostgrest(
+        406,
+        'PGRST116',
+        `JSON object requested, multiple (or no) rows returned (${lista.length})`,
+      )
+    }
+    return json(lista[0], status)
+  }
+  return json(lista, status)
+}
+
+/** Las partes de un cuerpo multipart/form-data. */
+function partesMultipart(cuerpo: Buffer, tipo: string) {
+  const limite = /boundary=(?:"([^"]+)"|([^;]+))/.exec(tipo)
+  const separador = limite?.[1] ?? limite?.[2]
+  if (!separador) return []
+  const partes: { cabeceras: string; contenido: Buffer }[] = []
+  const marca = Buffer.from(`--${separador}`)
+  let inicio = cuerpo.indexOf(marca)
+  while (inicio !== -1) {
+    const siguiente = cuerpo.indexOf(marca, inicio + marca.length)
+    if (siguiente === -1) break
+    const parte = cuerpo.subarray(inicio + marca.length + 2, siguiente - 2)
+    const corte = parte.indexOf('\r\n\r\n')
+    if (corte !== -1) {
+      partes.push({
+        cabeceras: parte.subarray(0, corte).toString('utf8'),
+        contenido: parte.subarray(corte + 4),
+      })
+    }
+    inicio = siguiente
+  }
+  return partes
+}
+
+export class SupabaseSimulado {
+  readonly datos: Catalogo = catalogoInicial()
+  readonly archivos = new Map<string, Archivo>()
+  readonly perfiles = new Set<string>()
+  readonly eventos: EventoDeProducto[] = []
+  /** Peticiones que no se supo responder (la prueba falla si hay alguna). */
+  readonly sinSimular: string[] = []
+  /** Subidas cuyo archivo no se pudo leer del cuerpo (se guardó uno de muestra). */
+  subidasSinCuerpo = 0
+  private reloj = Date.parse('2026-11-21T15:00:00.000Z')
+
+  /** Plantas de una persona, para comprobar lo que guardó la app. */
+  plantasDe(usuario: string): Planta[] {
+    return this.datos.plantas.filter((planta) => planta.user_id === usuario)
+  }
+
+  async responder(route: Route): Promise<void> {
+    const request = route.request()
+    if (request.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: CORS })
+      return
+    }
+    let respuesta: Respuesta
+    try {
+      respuesta = await this.atender(request)
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : String(error)
+      this.sinSimular.push(`${request.method()} ${request.url()} (${detalle})`)
+      respuesta = json({ message: detalle }, 501)
+    }
+    await route.fulfill({
+      status: respuesta.status,
+      body: respuesta.body,
+      headers: { ...CORS, ...respuesta.headers },
+    })
+  }
+
+  private ahora(): string {
+    this.reloj += 1000
+    return new Date(this.reloj).toISOString()
+  }
+
+  private async atender(request: Request): Promise<Respuesta> {
+    const url = new URL(request.url())
+    const metodo = request.method()
+    const cabeceras = await request.allHeaders()
+    const yo = identidadDe(cabeceras)
+    const ruta = url.pathname
+
+    if (ruta.startsWith('/rest/v1/rpc/')) {
+      const argumentos = (request.postDataJSON() ?? {}) as Record<
+        string,
+        unknown
+      >
+      return this.rpc(ruta.slice('/rest/v1/rpc/'.length), argumentos, yo)
+    }
+    if (ruta.startsWith('/rest/v1/')) {
+      return this.tabla(
+        ruta.slice('/rest/v1/'.length),
+        metodo,
+        url.searchParams,
+        cabeceras,
+        request,
+        yo,
+      )
+    }
+    if (ruta.startsWith('/storage/v1/')) {
+      return this.storage(
+        ruta.slice('/storage/v1/'.length),
+        metodo,
+        request,
+        yo,
+      )
+    }
+    throw new Error('ruta desconocida')
+  }
+
+  // Tablas ----------------------------------------------------------------------
+
+  private filaDePlanta(planta: Planta) {
+    const especie = this.datos.especies.find((e) => e.id === planta.species_id)
+    const genero = this.datos.generos.find((g) => g.id === planta.genus_id)
+    if (!genero) throw new Error(`planta sin género: ${planta.id}`)
+    return {
+      id: planta.id,
+      entered_name: planta.entered_name,
+      type: planta.type,
+      validation: planta.validation,
+      status: planta.status,
+      acquired_on: planta.acquired_on,
+      origin: planta.origin,
+      location: planta.location,
+      nickname: planta.nickname,
+      flower_color: planta.flower_color,
+      photo_in_bloom: planta.photo_in_bloom,
+      photo_path: planta.photo_path,
+      thumbnail_path: planta.thumbnail_path,
+      created_at: planta.created_at,
+      updated_at: planta.updated_at,
+      species: especie
+        ? {
+            id: especie.id,
+            scientific_name: especie.scientific_name,
+            type: especie.type,
+            status: especie.status,
+          }
+        : null,
+      genus: { id: genero.id, name: genero.name },
+    }
+  }
+
+  /** Lo que hace el disparador de plants al insertar o cambiar la especie. */
+  private aplicarEspecie(planta: Planta, cambioDeEspecie: boolean) {
+    const especie = this.datos.especies.find((e) => e.id === planta.species_id)
+    if (especie) {
+      planta.genus_id = especie.genus_id
+      planta.type = especie.type
+      planta.validation = 'validated'
+    } else if (cambioDeEspecie) {
+      planta.species_id = null
+      planta.validation = 'pending'
+    }
+  }
+
+  private tabla(
+    tabla: string,
+    metodo: string,
+    parametros: URLSearchParams,
+    cabeceras: Record<string, string>,
+    request: Request,
+    yo: Identidad,
+  ): Respuesta {
+    const coincide = filtrosDe(parametros)
+    switch (`${metodo} ${tabla}`) {
+      case 'POST profiles': {
+        if (yo.usuario === null) return sinPermiso()
+        this.perfiles.add(yo.usuario)
+        return vacia(201)
+      }
+      case 'GET genera': {
+        const select = parametros.get('select') ?? ''
+        return filas(
+          this.datos.generos
+            .filter((g) => coincide(g as unknown as Record<string, unknown>))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((g) =>
+              select.includes('genus_abbreviations')
+                ? {
+                    id: g.id,
+                    name: g.name,
+                    is_quick_access: g.is_quick_access,
+                    genus_abbreviations: g.abreviaturas.map((a, i) => ({
+                      id: `${g.id}-${i}`,
+                      abbreviation: a,
+                    })),
+                  }
+                : { id: g.id, name: g.name },
+            ),
+          cabeceras,
+        )
+      }
+      case 'GET species_names':
+        return filas(
+          this.datos.nombres
+            .filter((n) => coincide(n as unknown as Record<string, unknown>))
+            .map(({ id, species_id, name, type }) => ({
+              id,
+              species_id,
+              name,
+              type,
+            })),
+          cabeceras,
+        )
+      case 'GET genus_abbreviations':
+        return filas(
+          this.datos.generos
+            .flatMap((g) =>
+              g.abreviaturas.map((abbreviation, i) => ({
+                id: `${g.id}-${i}`,
+                genus_id: g.id,
+                abbreviation,
+              })),
+            )
+            .filter((a) => coincide(a)),
+          cabeceras,
+        )
+      case 'GET species':
+        return filas(
+          this.datos.especies
+            .filter((e) => coincide(e as unknown as Record<string, unknown>))
+            .map((e) => this.detalleDeEspecie(e)),
+          cabeceras,
+        )
+      case 'HEAD species': {
+        const total = this.datos.especies.filter((e) =>
+          coincide(e as unknown as Record<string, unknown>),
+        ).length
+        return { status: 200, headers: { 'content-range': `*/${total}` } }
+      }
+      case 'GET plants':
+      case 'PATCH plants':
+      case 'DELETE plants':
+      case 'POST plants':
+        return this.plantas(metodo, coincide, cabeceras, request, yo)
+      default:
+        throw new Error('tabla sin simular')
+    }
+  }
+
+  private detalleDeEspecie(especie: Especie) {
+    const genero = this.datos.generos.find((g) => g.id === especie.genus_id)
+    return {
+      ...especie,
+      genera: { name: genero?.name ?? '' },
+      species_names: this.datos.nombres
+        .filter((n) => n.species_id === especie.id)
+        .map(({ id, name, type, language }) => ({ id, name, type, language })),
+    }
+  }
+
+  private plantas(
+    metodo: string,
+    coincide: (fila: Record<string, unknown>) => boolean,
+    cabeceras: Record<string, string>,
+    request: Request,
+    yo: Identidad,
+  ): Respuesta {
+    // RLS: cada persona solo ve y toca sus plantas; sin sesión, nada.
+    const mias = this.datos.plantas.filter(
+      (p) =>
+        yo.usuario !== null &&
+        p.user_id === yo.usuario &&
+        coincide(p as unknown as Record<string, unknown>),
+    )
+    if (metodo === 'GET') {
+      return filas(
+        mias
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((p) => this.filaDePlanta(p)),
+        cabeceras,
+      )
+    }
+    if (yo.usuario === null) {
+      return errorPostgrest(401, 'PGRST301', 'JWT required (simulado)')
+    }
+    if (metodo === 'POST') {
+      const cuerpo = request.postDataJSON() as Partial<Planta>
+      if (this.datos.plantas.some((p) => p.id === cuerpo.id)) {
+        return errorPostgrest(
+          409,
+          '23505',
+          'duplicate key value violates unique constraint "plants_pkey"',
+        )
+      }
+      const momento = this.ahora()
+      const nueva: Planta = {
+        id: String(cuerpo.id),
+        user_id: yo.usuario,
+        entered_name: String(cuerpo.entered_name),
+        species_id: cuerpo.species_id ?? null,
+        genus_id: String(cuerpo.genus_id),
+        type: cuerpo.type ?? 'unknown',
+        validation: 'pending',
+        status: 'active',
+        acquired_on: String(cuerpo.acquired_on),
+        origin: cuerpo.origin ?? null,
+        location: cuerpo.location ?? null,
+        nickname: cuerpo.nickname ?? null,
+        flower_color: cuerpo.flower_color ?? null,
+        photo_in_bloom: cuerpo.photo_in_bloom ?? false,
+        photo_path: null,
+        thumbnail_path: null,
+        created_at: momento,
+        updated_at: momento,
+      }
+      this.aplicarEspecie(nueva, false)
+      this.datos.plantas.push(nueva)
+      return filas([this.filaDePlanta(nueva)], cabeceras, 201)
+    }
+    if (metodo === 'PATCH') {
+      const cambios = request.postDataJSON() as Partial<Planta>
+      for (const planta of mias) {
+        Object.assign(planta, cambios, { updated_at: this.ahora() })
+        this.aplicarEspecie(planta, 'species_id' in cambios)
+      }
+      return filas(
+        mias.map((p) => this.filaDePlanta(p)),
+        cabeceras,
+      )
+    }
+    // DELETE
+    this.datos.plantas = this.datos.plantas.filter((p) => !mias.includes(p))
+    return filas(
+      mias.map((p) => ({ id: p.id })),
+      cabeceras,
+    )
+  }
+
+  // Funciones (RPC) ---------------------------------------------------------------
+
+  private buscarEspecies(consulta: string) {
+    const texto = normalizar(consulta)
+    const resultados: {
+      especie: Especie
+      nombre: string
+      tipo: 'scientific' | 'synonym' | 'common'
+    }[] = []
+    for (const especie of this.datos.especies) {
+      const genero = this.datos.generos.find((g) => g.id === especie.genus_id)
+      const epiteto = especie.scientific_name.split(' ').slice(1).join(' ')
+      const candidatos: [string, 'scientific' | 'synonym' | 'common'][] = [
+        [especie.scientific_name, 'scientific'],
+        ...(genero?.abreviaturas ?? []).map((a): [string, 'scientific'] => [
+          `${a} ${epiteto}`,
+          'scientific',
+        ]),
+        ...this.datos.nombres
+          .filter((n) => n.species_id === especie.id)
+          .map((n): [string, 'synonym' | 'common'] => [n.name, n.type]),
+      ]
+      const encontrado = candidatos.find(([nombre]) =>
+        normalizar(nombre).includes(texto),
+      )
+      if (encontrado) {
+        const [nombre, tipo] = encontrado
+        resultados.push({
+          especie,
+          nombre: tipo === 'scientific' ? especie.scientific_name : nombre,
+          tipo,
+        })
+      }
+    }
+    return resultados.sort((a, b) =>
+      a.especie.scientific_name.localeCompare(b.especie.scientific_name),
+    )
+  }
+
+  private filaDeCatalogo(especie: Especie) {
+    const genero = this.datos.generos.find((g) => g.id === especie.genus_id)
+    const nombres = this.datos.nombres.filter(
+      (n) => n.species_id === especie.id,
+    )
+    return {
+      id: especie.id,
+      scientific_name: especie.scientific_name,
+      genus_id: especie.genus_id,
+      genus_name: genero?.name ?? '',
+      type: especie.type,
+      status: especie.status,
+      source: especie.source,
+      source_ref: especie.source_ref,
+      synonym_count: nombres.filter((n) => n.type === 'synonym').length,
+      common_name_count: nombres.filter((n) => n.type === 'common').length,
+      created_at: especie.created_at,
+      updated_at: especie.updated_at,
+    }
+  }
+
+  /** Grupos de la cola: plantas por validar con el mismo nombre y género. */
+  private gruposDePropuestas() {
+    const grupos = new Map<string, Planta[]>()
+    for (const planta of this.datos.plantas) {
+      if (planta.validation !== 'pending' || planta.species_id !== null) {
+        continue
+      }
+      const clave = `${planta.genus_id}:${normalizar(planta.entered_name)}`
+      grupos.set(clave, [...(grupos.get(clave) ?? []), planta])
+    }
+    return [...grupos.values()]
+      .map((plantas) => {
+        const primera = plantas[0]
+        const genero = this.datos.generos.find((g) => g.id === primera.genus_id)
+        return {
+          genus_id: primera.genus_id,
+          genus_name: genero?.name ?? '',
+          name_key: normalizar(primera.entered_name),
+          proposed_name: primera.entered_name,
+          type: primera.type,
+          plant_count: plantas.length,
+          photos: plantas
+            .filter((p) => p.photo_path && p.thumbnail_path)
+            .slice(0, 4)
+            .map((p) => ({
+              photo_path: p.photo_path,
+              thumbnail_path: p.thumbnail_path,
+            })),
+          plantas,
+        }
+      })
+      .sort(
+        (a, b) =>
+          b.plant_count - a.plant_count ||
+          a.proposed_name.localeCompare(b.proposed_name),
+      )
+  }
+
+  private grupoPedido(argumentos: Record<string, unknown>) {
+    return this.gruposDePropuestas().find(
+      (g) =>
+        g.genus_id === argumentos.group_genus_id &&
+        g.name_key === argumentos.group_name_key,
+    )
+  }
+
+  private crearEspecie(
+    argumentos: Record<string, unknown>,
+    source: Especie['source'],
+  ): Especie {
+    const momento = this.ahora()
+    const especie: Especie = {
+      id: crypto.randomUUID(),
+      scientific_name: String(argumentos.new_scientific_name),
+      genus_id: String(argumentos.new_genus_id),
+      type: argumentos.new_type === 'hybrid' ? 'hybrid' : 'species',
+      status:
+        argumentos.new_status === 'imported' ||
+        argumentos.new_status === 'observed'
+          ? argumentos.new_status
+          : 'validated',
+      source,
+      source_ref: null,
+      created_at: momento,
+      updated_at: momento,
+    }
+    this.datos.especies.push(especie)
+    return especie
+  }
+
+  private rpc(
+    nombre: string,
+    argumentos: Record<string, unknown>,
+    yo: Identidad,
+  ): Respuesta {
+    const esAdmin = yo.rol === 'catalog_admin'
+    switch (nombre) {
+      case 'search_species': {
+        const maximo = Number(argumentos.max_results ?? 10)
+        return json(
+          this.buscarEspecies(String(argumentos.query))
+            .slice(0, maximo)
+            .map(({ especie, nombre: coincidencia, tipo }) => {
+              const genero = this.datos.generos.find(
+                (g) => g.id === especie.genus_id,
+              )
+              return {
+                id: especie.id,
+                scientific_name: especie.scientific_name,
+                genus_id: especie.genus_id,
+                genus_name: genero?.name ?? '',
+                type: especie.type,
+                status: especie.status,
+                matched_name: coincidencia,
+                matched_name_type: tipo,
+              }
+            }),
+        )
+      }
+      case 'search_genera': {
+        const texto = normalizar(String(argumentos.query))
+        return json(
+          this.datos.generos
+            .map((g) => ({
+              genero: g,
+              abreviatura:
+                g.abreviaturas.find((a) => normalizar(a).startsWith(texto)) ??
+                null,
+            }))
+            .filter(
+              ({ genero, abreviatura }) =>
+                normalizar(genero.name).includes(texto) || abreviatura !== null,
+            )
+            .map(({ genero, abreviatura }) => ({
+              id: genero.id,
+              name: genero.name,
+              is_quick_access: genero.is_quick_access,
+              matched_abbreviation: normalizar(genero.name).includes(texto)
+                ? null
+                : abreviatura,
+            })),
+        )
+      }
+      case 'record_product_events': {
+        if (yo.usuario === null) return sinPermiso()
+        const lote = Array.isArray(argumentos.events) ? argumentos.events : []
+        this.eventos.push(...(lote as EventoDeProducto[]))
+        return vacia()
+      }
+      default:
+        break
+    }
+
+    // Backoffice: solo administradores del catálogo (como las políticas).
+    if (!esAdmin) return sinPermiso()
+    switch (nombre) {
+      case 'catalog_summary': {
+        const especies = this.datos.especies
+        const cuenta = (filtro: (e: Especie) => boolean) =>
+          especies.filter(filtro).length
+        return json([
+          {
+            genus_count: this.datos.generos.length,
+            species_count: cuenta((e) => e.type === 'species'),
+            hybrid_count: cuenta((e) => e.type === 'hybrid'),
+            synonym_count: this.datos.nombres.filter(
+              (n) => n.type === 'synonym',
+            ).length,
+            common_name_count: this.datos.nombres.filter(
+              (n) => n.type === 'common',
+            ).length,
+            imported_count: cuenta((e) => e.status === 'imported'),
+            validated_count: cuenta((e) => e.status === 'validated'),
+            observed_count: cuenta((e) => e.status === 'observed'),
+            col_source_count: cuenta((e) => e.source === 'col'),
+            curated_source_count: cuenta((e) => e.source === 'curated'),
+            user_proposal_source_count: cuenta(
+              (e) => e.source === 'user_proposal',
+            ),
+            gbif_source_count: cuenta((e) => e.source === 'gbif'),
+          },
+        ])
+      }
+      case 'list_catalog_species': {
+        const lista = [...this.datos.especies]
+          .filter(
+            (e) =>
+              (argumentos.filter_genus_id === undefined ||
+                e.genus_id === argumentos.filter_genus_id) &&
+              (argumentos.filter_status === undefined ||
+                e.status === argumentos.filter_status) &&
+              (argumentos.filter_type === undefined ||
+                e.type === argumentos.filter_type) &&
+              (argumentos.filter_source === undefined ||
+                e.source === argumentos.filter_source),
+          )
+          .sort((a, b) => a.scientific_name.localeCompare(b.scientific_name))
+        return json(
+          lista.map((e) => ({
+            ...this.filaDeCatalogo(e),
+            total_count: lista.length,
+            has_previous: false,
+            has_next: false,
+          })),
+        )
+      }
+      case 'search_catalog_species': {
+        const lista = this.buscarEspecies(String(argumentos.query))
+        return json(
+          lista.map(({ especie, nombre: coincidencia, tipo }) => ({
+            ...this.filaDeCatalogo(especie),
+            matched_name: coincidencia,
+            matched_name_type: tipo,
+            total_count: lista.length,
+            current_page: 1,
+          })),
+        )
+      }
+      case 'list_catalog_genera': {
+        const texto =
+          typeof argumentos.query === 'string'
+            ? normalizar(argumentos.query)
+            : ''
+        const lista = this.datos.generos
+          .filter(
+            (g) =>
+              (texto === '' || normalizar(g.name).includes(texto)) &&
+              (argumentos.quick_access_only !== true || g.is_quick_access),
+          )
+          .sort((a, b) => a.name.localeCompare(b.name))
+        return json(
+          lista.map((g) => ({
+            id: g.id,
+            name: g.name,
+            is_quick_access: g.is_quick_access,
+            abbreviations: g.abreviaturas,
+            species_count: this.datos.especies.filter(
+              (e) => e.genus_id === g.id,
+            ).length,
+            total_count: lista.length,
+            current_page: 1,
+          })),
+        )
+      }
+      case 'count_species_plants':
+        return json(
+          this.datos.plantas.filter(
+            (p) => p.species_id === argumentos.target_species_id,
+          ).length,
+        )
+      case 'species_history':
+        return json([])
+      case 'count_proposal_groups':
+        return json(this.gruposDePropuestas().length)
+      case 'list_proposal_groups': {
+        const grupos = this.gruposDePropuestas()
+        const desde = Number(argumentos.page_offset ?? 0)
+        const tamano = Number(argumentos.page_size ?? 20)
+        return json(
+          grupos.slice(desde, desde + tamano).map((grupo) => ({
+            genus_id: grupo.genus_id,
+            genus_name: grupo.genus_name,
+            name_key: grupo.name_key,
+            proposed_name: grupo.proposed_name,
+            type: grupo.type,
+            plant_count: grupo.plant_count,
+            photos: grupo.photos,
+            total_count: grupos.length,
+          })),
+        )
+      }
+      case 'link_proposal_group': {
+        const grupo = this.grupoPedido(argumentos)
+        const especie = this.datos.especies.find(
+          (e) => e.id === argumentos.target_species_id,
+        )
+        if (!grupo || !especie) {
+          return errorPostgrest(400, 'P0002', 'grupo o especie inexistente')
+        }
+        for (const planta of grupo.plantas) {
+          planta.species_id = especie.id
+          this.aplicarEspecie(planta, true)
+        }
+        return json([
+          { action_id: crypto.randomUUID(), plant_count: grupo.plant_count },
+        ])
+      }
+      case 'mark_proposal_unidentifiable': {
+        const grupo = this.grupoPedido(argumentos)
+        if (!grupo) return errorPostgrest(400, 'P0002', 'grupo inexistente')
+        for (const planta of grupo.plantas) planta.validation = 'unidentifiable'
+        return json([
+          { action_id: crypto.randomUUID(), plant_count: grupo.plant_count },
+        ])
+      }
+      case 'create_catalog_species':
+        return json(this.crearEspecie(argumentos, 'curated'))
+      case 'create_species_from_proposal': {
+        const grupo = this.grupoPedido(argumentos)
+        if (!grupo) {
+          return json([
+            {
+              action_id: crypto.randomUUID(),
+              plant_count: 0,
+              species_id: null,
+            },
+          ])
+        }
+        const especie = this.crearEspecie(argumentos, 'user_proposal')
+        for (const planta of grupo.plantas) {
+          planta.species_id = especie.id
+          this.aplicarEspecie(planta, true)
+        }
+        return json([
+          {
+            action_id: crypto.randomUUID(),
+            plant_count: grupo.plant_count,
+            species_id: especie.id,
+          },
+        ])
+      }
+      default:
+        throw new Error('función sin simular')
+    }
+  }
+
+  // Storage ---------------------------------------------------------------------
+
+  private storage(
+    ruta: string,
+    metodo: string,
+    request: Request,
+    yo: Identidad,
+  ): Respuesta {
+    const errorDeStorage = (status: number, error: string) =>
+      json({ statusCode: String(status), error, message: error }, status)
+    if (yo.usuario === null) return errorDeStorage(401, 'InvalidJWT')
+    const propia = (archivo: string) => archivo.startsWith(`${yo.usuario}/`)
+    const esAdmin = yo.rol === 'catalog_admin'
+
+    const subida = /^object\/plant-photos\/(.+)$/.exec(ruta)
+    if (metodo === 'POST' && subida) {
+      const archivo = decodeURIComponent(subida[1])
+      if (!propia(archivo)) return errorDeStorage(403, 'AccessDenied')
+      if (this.archivos.has(archivo)) return errorDeStorage(409, 'Duplicate')
+      this.archivos.set(archivo, this.archivoSubido(request, archivo))
+      return json({ Id: archivo, Key: `plant-photos/${archivo}` })
+    }
+
+    // supabase-js descarga con object/<bucket>/<ruta> (con la sesión) o, en
+    // otras versiones, con object/authenticated/<bucket>/<ruta>.
+    const descarga = /^object\/(?:authenticated\/)?plant-photos\/(.+)$/.exec(
+      ruta,
+    )
+    if (metodo === 'GET' && descarga) {
+      const archivo = decodeURIComponent(descarga[1])
+      if (!propia(archivo) && !esAdmin) {
+        return errorDeStorage(400, 'AccessDenied')
+      }
+      const guardado = this.archivos.get(archivo)
+      if (!guardado) return errorDeStorage(404, 'NoSuchKey')
+      return {
+        status: 200,
+        body: guardado.bytes,
+        headers: { 'content-type': guardado.tipo },
+      }
+    }
+
+    if (metodo === 'POST' && ruta === 'object/list/plant-photos') {
+      const { prefix = '' } = (request.postDataJSON() ?? {}) as {
+        prefix?: string
+      }
+      const carpeta = prefix.endsWith('/') ? prefix : `${prefix}/`
+      if (!propia(carpeta)) return json([])
+      return json(
+        [...this.archivos.keys()]
+          .filter((archivo) => archivo.startsWith(carpeta))
+          .map((archivo) => ({
+            name: archivo.slice(carpeta.length),
+            id: archivo,
+          })),
+      )
+    }
+
+    if (metodo === 'DELETE' && ruta === 'object/plant-photos') {
+      const { prefixes = [] } = (request.postDataJSON() ?? {}) as {
+        prefixes?: string[]
+      }
+      const borrados = prefixes.filter(
+        (archivo) => propia(archivo) && this.archivos.delete(archivo),
+      )
+      return json(borrados.map((name) => ({ name })))
+    }
+    throw new Error('ruta de Storage sin simular')
+  }
+
+  /**
+   * El archivo de una subida (multipart/form-data de supabase-js). Si el
+   * navegador no deja leer el cuerpo, se guarda una imagen de muestra del
+   * mismo tipo para que la app pueda descargarla después.
+   */
+  private archivoSubido(request: Request, archivo: string): Archivo {
+    const tipoPorExtension = archivo.endsWith('.webp')
+      ? 'image/webp'
+      : 'image/jpeg'
+    const cuerpo = request.postDataBuffer()
+    const parte = cuerpo
+      ? partesMultipart(cuerpo, request.headers()['content-type'] ?? '').find(
+          (p) => /content-type:/i.test(p.cabeceras),
+        )
+      : undefined
+    if (parte && parte.contenido.length > 0) {
+      const tipo =
+        /content-type:\s*([^\r\n;]+)/i.exec(parte.cabeceras)?.[1] ??
+        tipoPorExtension
+      return { tipo, bytes: Buffer.from(parte.contenido) }
+    }
+    this.subidasSinCuerpo += 1
+    return {
+      tipo: tipoPorExtension,
+      bytes: readFileSync(
+        path.join(
+          FIXTURES,
+          tipoPorExtension === 'image/webp'
+            ? 'sin-metadatos.webp'
+            : 'sin-metadatos.jpg',
+        ),
+      ),
+    }
+  }
+}
