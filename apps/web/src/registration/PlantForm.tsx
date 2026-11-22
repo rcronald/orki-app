@@ -168,6 +168,11 @@ interface PlantFormCommonProps {
    */
   photoFirst?: boolean
   /**
+   * Se eligió una foto nueva (no la del borrador recuperado). Con "Con foto",
+   * el registro se mide desde la primera (evento de producto, #146).
+   */
+  onPhotoChosen?: () => void
+  /**
    * Nombre con el que empieza el registro, como si se hubiera escrito en el
    * campo: lo buscado en "¿Ya la tengo?" (#123, ?nombre=). Si hay un borrador
    * guardado, gana el borrador; al descartarlo, el formulario vuelve a
@@ -703,6 +708,7 @@ export function PlantForm(props: PlantFormProps) {
         if (!isPlantFormDirty(values, initial)) clearPlantDraft(draftOwner)
       }
     }
+    if (next?.kind === 'new') props.onPhotoChosen?.()
     // Desde la cámara, tras la primera foto se sigue por el nombre.
     if (photoFirst && first && next !== null && values.name === '') {
       nameRef.current?.focus()

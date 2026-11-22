@@ -3,9 +3,10 @@ import type { OwnershipOutcome, Ownership } from '../collection/ownership.ts'
 
 // Punto de enganche para medir "¿Ya la tengo?" (#19). El evento de producto
 // lo envía el #146 ("búsqueda ¿Ya la tengo?": duración desde que se empieza
-// a escribir hasta que se muestra la respuesta, y resultado); aquí solo se
-// mide y se entrega a quien lo pida con la prop onMeasure de OwnershipPanel.
-// No se envía nada a ningún sitio.
+// a escribir hasta que se muestra la respuesta, y resultado; ver
+// telemetry/useHaveItSearchEvents.ts, que decide qué respuesta cuenta); aquí
+// solo se mide y se entrega a quien lo pida con la prop onMeasure de
+// OwnershipPanel. No se envía nada a ningún sitio.
 //
 // La medida nunca lleva el texto buscado, ni nombres de plantas: solo
 // números y valores cerrados.
@@ -19,6 +20,12 @@ export interface OwnershipMeasurement {
    * la última de cada búsqueda es la que el usuario vio al final.
    */
   searchId: number
+  /**
+   * Si la búsqueda empezó al escribir. false si ya venía en la URL al abrir
+   * la pantalla (al volver del detalle con "atrás", al recargar): nadie
+   * empezó a escribir, así que no mide lo que tarda en responder.
+   */
+  startedByTyping: boolean
   /** Milisegundos desde que empezó la búsqueda hasta que se pintó esta respuesta. */
   durationMs: number
   /** Milisegundos que tardó en calcularse la respuesta local. */
@@ -67,7 +74,14 @@ export function useOwnershipMeasurement(
   onMeasure: OnOwnershipMeasure | undefined,
   now: () => number,
 ): void {
-  const search = useRef<{ id: number; start: number } | null>(null)
+  const search = useRef<{
+    id: number
+    start: number
+    typed: boolean
+  } | null>(null)
+  // Hasta que corre el primer efecto de query: lo que haya entonces venía en
+  // la URL.
+  const mounted = useRef(false)
   const { ownership, source, computeMs, online } = shown
   // Lo que acompaña a la medida, sin que su cambio cuente como otra respuesta.
   const latest = useRef({ computeMs, online, onMeasure, now })
@@ -76,10 +90,12 @@ export function useOwnershipMeasurement(
   })
 
   useEffect(() => {
+    const typed = mounted.current
+    mounted.current = true
     if (query.trim() === '') search.current = null
     else if (search.current === null) {
       lastSearchId += 1
-      search.current = { id: lastSearchId, start: latest.current.now() }
+      search.current = { id: lastSearchId, start: latest.current.now(), typed }
     }
   }, [query])
 
@@ -90,6 +106,7 @@ export function useOwnershipMeasurement(
     if (report === undefined || ownership === null || current === null) return
     report({
       searchId: current.id,
+      startedByTyping: current.typed,
       durationMs: Math.max(0, clock() - current.start),
       computeMs: latest.current.computeMs,
       outcome: ownership.outcome,

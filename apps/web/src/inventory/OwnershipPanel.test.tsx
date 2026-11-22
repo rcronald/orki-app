@@ -265,7 +265,9 @@ describe('OwnershipPanel', () => {
       'scope',
       'searchId',
       'source',
+      'startedByTyping',
     ])
+    expect(last?.startedByTyping).toBe(true)
 
     // Al vaciar el campo empieza otra búsqueda, con otro número.
     const firstId = last?.searchId
@@ -275,6 +277,20 @@ describe('OwnershipPanel', () => {
     const next = onMeasure.mock.calls.at(-1)?.[0]
     expect(next?.outcome).toBe('not-owned')
     expect(next?.searchId).not.toBe(firstId)
+  })
+
+  it('una búsqueda que ya venía al abrir no empezó al escribir', async () => {
+    const user = userEvent.setup()
+    const onMeasure = vi.fn<(measurement: OwnershipMeasurement) => void>()
+    renderPanel({ onMeasure, initialQuery: 'cattleya' })
+    expect(onMeasure.mock.calls.at(-1)?.[0].startedByTyping).toBe(false)
+
+    // Seguir escribiendo es la misma búsqueda; vaciar y escribir, otra.
+    await user.type(field(), ' max')
+    expect(onMeasure.mock.calls.at(-1)?.[0].startedByTyping).toBe(false)
+    await user.clear(field())
+    await user.type(field(), 'ca')
+    expect(onMeasure.mock.calls.at(-1)?.[0].startedByTyping).toBe(true)
   })
 })
 

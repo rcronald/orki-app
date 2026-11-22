@@ -40,6 +40,11 @@ import {
   PLANT_FORM_TEXT,
 } from '../registration/texts.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
+import type { ProductEvent } from '../telemetry/events.ts'
+import {
+  setProductEventsRuntimeLoader,
+  setProductEventsSession,
+} from '../telemetry/product-events.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { plant } from '../test/collection.ts'
@@ -1915,6 +1920,66 @@ describe('NewPlantPage: foto (#87)', () => {
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
     expect(storageUploads()).toHaveLength(2)
+  })
+
+  describe('evento "registro completado" (#146)', () => {
+    const recorded: ProductEvent[] = []
+    beforeEach(() => {
+      recorded.length = 0
+      setProductEventsRuntimeLoader(() =>
+        Promise.resolve({
+          setSession: () => {},
+          record: (_userId: string, event: ProductEvent) => {
+            recorded.push(event)
+          },
+          flush: () => Promise.resolve(),
+        }),
+      )
+      setProductEventsSession({
+        userId: 'user_prueba',
+        confirmed: true,
+        online: true,
+      })
+    })
+    afterEach(() => {
+      setProductEventsRuntimeLoader(null)
+    })
+
+    it('desde la cámara, con foto y nombre del catálogo, sin nombres en el evento', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage([], '/coleccion/nueva?foto=1')
+      await choosePhoto(user, container)
+      await user.keyboard('phal amab')
+      await user.click(
+        await screen.findByRole('option', { name: 'Phalaenopsis amabilis' }),
+      )
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      await waitFor(() => expect(recorded).toHaveLength(1))
+      expect(recorded[0]).toMatchObject({
+        type: 'plant_registered',
+        result: null,
+        has_photo: true,
+        name_pending: false,
+        generated_offline: false,
+      })
+      expect(recorded[0]?.duration_ms).toBeGreaterThanOrEqual(0)
+      expect(JSON.stringify(recorded)).not.toMatch(/phal|amabilis/i)
+    })
+
+    it('sin foto y con el nombre por validar', async () => {
+      const user = userEvent.setup()
+      await renderPage()
+      await fillFreeName(user)
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      await waitFor(() => expect(recorded).toHaveLength(1))
+      expect(recorded[0]).toMatchObject({
+        type: 'plant_registered',
+        has_photo: false,
+        name_pending: true,
+      })
+    })
   })
 
   it('sin conexión, el campo de foto queda desactivado con el resto y la foto se conserva', async () => {

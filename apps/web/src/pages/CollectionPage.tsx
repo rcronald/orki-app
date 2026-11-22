@@ -19,6 +19,7 @@ import { OwnershipPanel } from '../inventory/OwnershipPanel.tsx'
 import { readRegisteredPlant } from '../inventory/registered-plant.ts'
 import { RegisteredNotice } from '../inventory/RegisteredNotice.tsx'
 import { useScrollMemory } from '../inventory/scroll-memory.ts'
+import { useHaveItSearchEvents } from '../telemetry/useHaveItSearchEvents.ts'
 
 /** Parámetro de la URL con el texto del buscador: /coleccion?q=phal. */
 const SEARCH_PARAM = 'q'
@@ -44,8 +45,8 @@ const SEARCH_PARAM = 'q'
 // Bajo el buscador, la respuesta de "¿Ya la tengo?" (#19, OwnershipPanel),
 // sobre toda la colección y sin esperar a la red. Con los sinónimos, nombres
 // comunes y abreviaturas de la copia local (#18, useOwnershipExtras), también
-// sin conexión. Su prop onMeasure es el punto de enganche del evento de
-// producto de esa búsqueda (#146).
+// sin conexión. Su prop onMeasure envía el evento de producto de esa búsqueda
+// (#146, useHaveItSearchEvents: uno por búsqueda, nunca el texto).
 //
 // Sin conexión (#18, #120): arriba, el indicador con la fecha de la última
 // actualización de la copia local, y los accesos a registrar desactivados
@@ -69,6 +70,10 @@ export function CollectionPage() {
   const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get(SEARCH_PARAM) ?? ''
+  const onOwnershipMeasure = useHaveItSearchEvents({
+    searching: query.trim() !== '',
+    offline: readOnly !== null,
+  })
   const location = useLocation()
   const navigate = useNavigate()
   const [registered, setRegistered] = useState(() =>
@@ -175,6 +180,7 @@ export function CollectionPage() {
             filtered={countActiveFilters(filters) > 0}
             extras={extras}
             registerDisabledBy={writeDisabledBy}
+            onMeasure={onOwnershipMeasure}
           />
         }
         writeDisabledBy={writeDisabledBy}

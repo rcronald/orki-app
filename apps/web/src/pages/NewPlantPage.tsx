@@ -15,11 +15,13 @@ import { loadQuickAccessGenera } from '../registration/quick-genera.ts'
 import { insertPlant } from '../registration/save-plant.ts'
 import { PLANT_FORM_TEXT } from '../registration/texts.ts'
 import { PATHS } from '../routes/paths.ts'
+import { useRegistrationEvent } from '../telemetry/useRegistrationEvent.ts'
 
 // Registro de una planta (#85), en /coleccion/nueva. Exige sesión. Va en su
 // propio chunk (App.tsx lo carga de forma diferida). Con ?foto=1 (#87), el
 // mismo formulario empieza por la foto; con ?nombre= (#123, desde "Aún no la
-// tienes"), con ese nombre ya escrito.
+// tienes"), con ese nombre ya escrito. Al terminar, el evento de producto
+// "registro completado" (#146, useRegistrationEvent).
 
 const SUPABASE_SERVICES: PlantFormServices = {
   searchSpecies,
@@ -49,6 +51,8 @@ export default function NewPlantPage() {
   // desactiva con su aviso de sin conexión.
   const online = useReadOnly() === null
   const [search] = useSearchParams()
+  const photoFirst = isPhotoFirst(search)
+  const registration = useRegistrationEvent({ photoFirst, offline: !online })
 
   return (
     <Page title={PLANT_FORM_TEXT.title}>
@@ -59,13 +63,15 @@ export default function NewPlantPage() {
         online={online}
         knownPlants={knownPlants}
         draftUserId={userId}
-        photoFirst={isPhotoFirst(search)}
+        photoFirst={photoFirst}
+        onPhotoChosen={registration.onPhotoChosen}
         initialName={prefilledName(search)}
         // En cuanto la planta existe (y otra vez al tener su foto), a la
         // colección: si la foto falla o se sale a mitad, ya está en el
         // inventario.
         onPlantStored={upsertPlant}
         onSaved={(plant) => {
+          registration.onRegistered(plant)
           // La colección ya tiene la última versión (onPlantStored). Sustituye
           // la entrada del registro: "atrás" desde el inventario no vuelve al
           // formulario ya guardado.

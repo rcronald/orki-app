@@ -4,6 +4,7 @@ import { useCallback, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { internalPathOf, PATHS } from '../routes/paths.ts'
+import { ProductEventsSync } from '../telemetry/ProductEventsSync.tsx'
 import { clerkAppearance } from './appearance.ts'
 import { ObservedUser } from './ObservedUser.tsx'
 import { PendingSignOut } from './PendingSignOut.tsx'
@@ -37,7 +38,8 @@ interface AuthProviderProps {
 // ObservedUser pasa a Sentry solo el id de Clerk del usuario. ProfileBootstrap
 // va justo después: crea el perfil en el primer ingreso, ya con la fuente del
 // token registrada. PendingSignOut termina con Clerk un cierre de sesión hecho
-// sin conexión (#18). CollectionProvider comparte la colección del usuario
+// sin conexión (#18). ProductEventsSync dice a los eventos de producto
+// (#146) de quién es la cola y si se puede enviar. CollectionProvider comparte la colección del usuario
 // entre pantallas; no lee nada hasta que una pantalla la pide.
 export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
   const navigate = useNavigate()
@@ -65,6 +67,7 @@ export function AuthProvider({ publishableKey, children }: AuthProviderProps) {
       <ObservedUser />
       <ProfileBootstrap />
       <PendingSignOut />
+      <ProductEventsSync />
       <CollectionProvider>{children}</CollectionProvider>
     </ClerkProvider>
   )
