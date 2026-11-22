@@ -89,3 +89,48 @@ export function contrastRatio(foreground: string, background: string): number {
   const b = relativeLuminance(background)
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
 }
+
+/**
+ * Lo que el formulario de registro pinta directamente sobre el fondo de la
+ * página (sin tarjeta ni campo debajo), y que con el fondo por género (#13)
+ * queda sobre la foto bajo el velo overlay-genus: títulos y textos
+ * (neutral-900), ayudas (neutral-700), etiquetas, botón secundario y
+ * "Más detalles" (secondary) y errores (danger); como interfaz, el borde de
+ * los campos y el anillo de foco (secondary) y el borde del campo con error
+ * (danger). Los chips, los campos y la barra de acciones llevan fondo propio
+ * opaco. Lo comprueba src/registration/genus-backdrop-contrast.test.ts.
+ */
+export const BACKDROP_FOREGROUNDS: readonly Omit<ContrastPair, 'background'>[] =
+  [
+    { foreground: 'color-neutral-900', kind: 'texto', min: NORMAL_TEXT },
+    { foreground: 'color-neutral-700', kind: 'texto', min: NORMAL_TEXT },
+    { foreground: 'color-secondary', kind: 'texto', min: NORMAL_TEXT },
+    { foreground: 'color-danger', kind: 'texto', min: NORMAL_TEXT },
+    { foreground: 'color-secondary', kind: 'interfaz', min: UI },
+    { foreground: 'color-danger', kind: 'interfaz', min: UI },
+  ]
+
+/**
+ * Color #rrggbb que resulta de pintar `overlay` (rgba(r, g, b, a), como
+ * overlay-genus) sobre `background` (#rrggbb), mezclando en sRGB como hacen
+ * los navegadores.
+ */
+export function compositeOver(overlay: string, background: string): string {
+  const match =
+    /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/i.exec(
+      overlay,
+    )
+  if (!match) throw new Error(`Color con transparencia no válido: ${overlay}`)
+  const [, r = '0', g = '0', b = '0', a = '1'] = match
+  const alpha = Number(a)
+  return `#${[r, g, b]
+    .map((channel, index) => {
+      const under = Number.parseInt(
+        background.slice(1 + index * 2, 3 + index * 2),
+        16,
+      )
+      const mixed = Math.round(alpha * Number(channel) + (1 - alpha) * under)
+      return mixed.toString(16).padStart(2, '0')
+    })
+    .join('')}`
+}

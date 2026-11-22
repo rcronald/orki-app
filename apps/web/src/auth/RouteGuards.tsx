@@ -1,10 +1,10 @@
-import { useAuth } from '@clerk/react'
 import { Navigate, Outlet, useLocation } from 'react-router'
 import { NoAccessPage } from '../pages/NoAccessPage.tsx'
-import { signInPathFor } from '../routes/paths.ts'
+import { PATHS, signInPathFor } from '../routes/paths.ts'
 import { AuthLoading, AuthUnavailable } from './AuthStatus.tsx'
 import { useIsCatalogAdmin } from './roles.ts'
-import { useAuthAvailability } from './useAuthAvailability.ts'
+import { useOfflineIdentity } from './offline-identity.ts'
+import { useAppIdentity } from './useAppIdentity.ts'
 
 /**
  * Rutas que exigen sesión. Sin sesión, redirige al inicio de sesión con la
@@ -12,22 +12,33 @@ import { useAuthAvailability } from './useAuthAvailability.ts'
  * carga, estado de carga; si no está disponible (sin conexión o fallo), el
  * aviso con la opción de reintentar, en vez de redirigir a una pantalla de
  * acceso que tampoco funcionaría o de quedarse en blanco.
+ *
+ * Sin Clerk pero con un usuario recordado en este dispositivo (#18, #120),
+ * deja pasar: las pantallas muestran su copia local en solo lectura.
  */
 export function RequireAuth() {
-  const availability = useAuthAvailability()
-  const { isLoaded, isSignedIn } = useAuth()
+  const identity = useAppIdentity()
+  const { pendingSignOut } = useOfflineIdentity()
   const location = useLocation()
 
-  if (availability === 'loading') return <AuthLoading />
-  if (availability !== 'ready') return <AuthUnavailable reason={availability} />
-  // isLoaded puede volver a false un momento mientras Clerk actualiza la
-  // sesión; no es motivo para echar a nadie.
-  if (!isLoaded) return <AuthLoading />
-  if (!isSignedIn) {
-    const requested = `${location.pathname}${location.search}${location.hash}`
-    return <Navigate to={signInPathFor(requested)} replace />
+  switch (identity.kind) {
+    // También cuando Clerk actualiza la sesión (isLoaded vuelve un momento a
+    // false): no es motivo para echar a nadie.
+    case 'loading':
+      return <AuthLoading />
+    case 'unavailable':
+      return <AuthUnavailable reason={identity.reason} />
+    case 'signed-out': {
+      // Acaba de cerrar sesión aquí (quizá sin conexión): al inicio, no a
+      // volver a entrar.
+      if (pendingSignOut !== null) return <Navigate to={PATHS.home} replace />
+      const requested = `${location.pathname}${location.search}${location.hash}`
+      return <Navigate to={signInPathFor(requested)} replace />
+    }
+    case 'signed-in':
+    case 'unverified':
+      return <Outlet />
   }
-  return <Outlet />
 }
 
 /**

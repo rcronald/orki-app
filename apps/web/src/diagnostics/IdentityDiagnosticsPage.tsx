@@ -6,6 +6,10 @@ import { Page } from '../components/Page.tsx'
 import { Button } from '../components/ui/Button.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import {
+  persistentStorageState,
+  type PersistentStorageState,
+} from '../lib/persistent-storage.ts'
+import {
   getSupabase,
   SESSION_TOKEN_ERROR_TEXT,
   sessionTokenFailure,
@@ -88,6 +92,7 @@ export default function IdentityDiagnosticsPage() {
   }, [canQuery, queryKey])
 
   const result = latest?.key === queryKey ? latest.result : null
+  const persisted = usePersistentStorageState()
   const rawRole: unknown = sessionClaims?.[APP_ROLE_CLAIM]
 
   return (
@@ -115,6 +120,9 @@ export default function IdentityDiagnosticsPage() {
                 ? rawRole
                 : 'Sin rol'}
         </Row>
+        <Row term="Almacenamiento persistente">
+          {PERSISTENT_STORAGE_TEXT[persisted ?? 'pending']}
+        </Row>
       </dl>
       {result?.state === 'error' && (
         <div
@@ -134,6 +142,32 @@ export default function IdentityDiagnosticsPage() {
       </Button>
     </Page>
   )
+}
+
+// Si el navegador conserva la copia local y las miniaturas aunque le falte
+// espacio (#18, lib/persistent-storage.ts): lo que responde cada plataforma.
+const PERSISTENT_STORAGE_TEXT: Record<
+  PersistentStorageState | 'pending',
+  string
+> = {
+  pending: 'Consultando…',
+  granted: 'Sí, concedido',
+  denied: 'No (el navegador puede borrarlo si le falta espacio)',
+  unsupported: 'El navegador no lo permite',
+}
+
+function usePersistentStorageState(): PersistentStorageState | null {
+  const [state, setState] = useState<PersistentStorageState | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void persistentStorageState().then((value) => {
+      if (!cancelled) setState(value)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return state
 }
 
 function Row({ term, children }: { term: string; children: ReactNode }) {

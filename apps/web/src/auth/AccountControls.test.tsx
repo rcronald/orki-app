@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk, signOut } from '../test/clerk-mock.tsx'
 import { AccountControls } from './AccountControls.tsx'
+import { PendingSignOut } from './PendingSignOut.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
@@ -40,7 +41,12 @@ describe('AccountControls', () => {
   it('con sesión: acceso a la cuenta y botón para salir', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true })
-    renderInRouter(<AccountControls />)
+    renderInRouter(
+      <>
+        <PendingSignOut />
+        <AccountControls />
+      </>,
+    )
 
     expect(
       screen.getByRole('button', { name: 'Abrir menú de la cuenta' }),

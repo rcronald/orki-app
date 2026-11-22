@@ -45,6 +45,11 @@ export interface OwnershipPanelProps {
   searchSpecies?: CatalogSearchFunction<SpeciesSearchResult> | null
   /** Si hay conexión; por defecto, useOnlineStatus(). */
   online?: boolean
+  /**
+   * Sin conexión (#18): id del texto con el motivo. Con él, el acceso a
+   * registrar lo buscado se ve desactivado y lo cita.
+   */
+  registerDisabledBy?: string
   /** Punto de enganche para medir cada respuesta mostrada (#146). */
   onMeasure?: OnOwnershipMeasure
   /** Reloj en milisegundos, para las pruebas. Por defecto, performance.now. */
@@ -79,6 +84,7 @@ export function OwnershipPanel({
   searchSpecies = catalogSearchSpecies,
   online: onlineProp,
   onMeasure,
+  registerDisabledBy,
   now = performanceNow,
 }: OwnershipPanelProps) {
   const deferredQuery = useDeferredValue(query)
@@ -131,21 +137,26 @@ export function OwnershipPanel({
       {ownership !== null && (
         <>
           <MatchList ownership={ownership} />
-          {ownership.outcome !== 'owned' && (
-            <Link
-              to={newPlantPathWithName(name)}
-              className={`orki-btn self-start ${
-                ownership.outcome === 'not-owned'
-                  ? 'orki-btn--primary'
-                  : 'orki-btn--secondary'
-              }`}
-            >
-              <Icon name="plus" />
-              {ownership.outcome === 'not-owned'
-                ? OWNERSHIP_TEXT.register
-                : OWNERSHIP_TEXT.registerAnyway}
-            </Link>
-          )}
+          {ownership.outcome !== 'owned' &&
+            (registerDisabledBy === undefined ? (
+              <Link
+                to={newPlantPathWithName(name)}
+                className={registerClasses(ownership)}
+              >
+                <Icon name="plus" />
+                {registerText(ownership)}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                aria-disabled="true"
+                aria-describedby={registerDisabledBy}
+                className={registerClasses(ownership)}
+              >
+                <Icon name="plus" />
+                {registerText(ownership)}
+              </button>
+            ))}
           {filtered && (
             <p className="text-sm text-neutral-700">
               {OWNERSHIP_TEXT.wholeCollection}
@@ -155,6 +166,20 @@ export function OwnershipPanel({
       )}
     </div>
   )
+}
+
+function registerClasses(ownership: Ownership): string {
+  return `orki-btn self-start ${
+    ownership.outcome === 'not-owned'
+      ? 'orki-btn--primary'
+      : 'orki-btn--secondary'
+  }`
+}
+
+function registerText(ownership: Ownership): string {
+  return ownership.outcome === 'not-owned'
+    ? OWNERSHIP_TEXT.register
+    : OWNERSHIP_TEXT.registerAnyway
 }
 
 /** El nombre del que se habla en la respuesta. */

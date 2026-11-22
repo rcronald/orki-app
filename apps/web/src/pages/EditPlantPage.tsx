@@ -1,5 +1,6 @@
 import { useLocation, useNavigate, useParams } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { cameFromDetail } from '../detail/navigation.ts'
 import { leavePlantNotice } from '../detail/notice.ts'
@@ -7,7 +8,6 @@ import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
-import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import { removePlantPhoto, replacePlantPhoto } from '../photos/upload.ts'
 import {
   PlantForm,
@@ -43,7 +43,9 @@ export default function EditPlantPage() {
   const { plantId } = useParams()
   const { lookup, collection } = usePlantLookup(plantId)
   const { upsertPlant, plants, status, userId } = collection
-  const online = useOnlineStatus()
+  // Solo con conexión y la sesión confirmada (#18): si no, el formulario se
+  // desactiva con su aviso de sin conexión.
+  const online = useReadOnly() === null
   const navigate = useNavigate()
   const location = useLocation()
   const fromDetail = cameFromDetail(location.state)

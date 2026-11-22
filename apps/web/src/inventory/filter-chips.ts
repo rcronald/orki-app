@@ -4,11 +4,15 @@ import {
   type PlantFilters,
 } from '../collection/filters.ts'
 import { FLOWER_COLOR_LABEL } from '../collection/labels.ts'
-import { FILTERS_TEXT, STATUS_FILTER_LABEL } from './texts.ts'
+import {
+  FILTERS_TEXT,
+  STATUS_FILTER_LABEL,
+  VALIDATION_FILTER_LABEL,
+} from './texts.ts'
 
 // Los filtros activos como chips quitables (ActiveFilters en
 // InventoryFilters.tsx), en el orden de las opciones: estado, géneros,
-// colores y orígenes.
+// colores, orígenes y validaciones.
 
 export interface ActiveFilterChip {
   /** Clave única: grupo y valor. */
@@ -68,6 +72,20 @@ export function activeFilterChips(
       without: {
         ...filters,
         origins: filters.origins.filter((value) => value !== key),
+      },
+    })
+  }
+  for (const validation of options.validations) {
+    if (!filters.validations.includes(validation)) continue
+    chips.push({
+      id: `validacion:${validation}`,
+      group: FILTERS_TEXT.validation,
+      label: VALIDATION_FILTER_LABEL[validation],
+      without: {
+        ...filters,
+        validations: filters.validations.filter(
+          (value) => value !== validation,
+        ),
       },
     })
   }

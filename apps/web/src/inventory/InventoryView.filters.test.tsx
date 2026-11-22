@@ -231,7 +231,43 @@ describe('InventoryView: filtros', () => {
       genera: [PHALAENOPSIS.id, CATTLEYA.id],
       colors: ['pink'],
       origins: ['vivero moyobamba'],
+      validations: [],
     })
+    await expectNoAxeViolations()
+  })
+
+  it('filtra por validación del nombre, con "no identificables" (#141)', async () => {
+    const user = userEvent.setup()
+    const naranja = specimen({
+      displayName: 'la naranja del mercado',
+      displayNameIsScientific: false,
+      species: null,
+      validation: 'pending',
+      createdAt: '2026-10-30T10:00:00+00:00',
+    })
+    const abuela = specimen({
+      displayName: 'regalo de la abuela',
+      displayNameIsScientific: false,
+      species: null,
+      validation: 'unidentifiable',
+      createdAt: '2026-10-29T10:00:00+00:00',
+    })
+    renderInventory([...COLLECTION, naranja, abuela])
+    await user.click(toggle())
+    expect(
+      within(group('Nombre'))
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Validadas', 'Por validar', 'No identificables'])
+
+    await user.click(chip('Nombre', 'No identificables'))
+    expect(cardNames()).toEqual(['regalo de la abuela'])
+    expect(lastFilters()?.validations).toEqual(['unidentifiable'])
+    await user.click(chip('Nombre', 'Por validar'))
+    expect(cardNames()).toEqual([
+      'la naranja del mercado',
+      'regalo de la abuela',
+    ])
     await expectNoAxeViolations()
   })
 
@@ -283,6 +319,7 @@ describe('InventoryView: filtros', () => {
         genera: [PHALAENOPSIS.id],
         colors: ['pink'],
         origins: [],
+        validations: [],
       },
     })
     const row = activeRow()
@@ -314,6 +351,7 @@ describe('InventoryView: filtros', () => {
         genera: [PHALAENOPSIS.id],
         colors: ['white'],
         origins: [],
+        validations: [],
       },
     })
     expect(
@@ -381,6 +419,7 @@ describe('InventoryView: filtros', () => {
         genera: ['genero-borrado'],
         colors: [],
         origins: ['vivero que ya no está'],
+        validations: [],
       },
     })
     expect(cardNames()).toHaveLength(4)

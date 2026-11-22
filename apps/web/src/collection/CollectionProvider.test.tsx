@@ -7,10 +7,14 @@ import {
   fakeCollectionSource,
   type FakeCollectionSource,
 } from '../test/collection-source.ts'
+import { createCachedCollectionSource } from './cached-source.ts'
 import { CollectionProvider } from './CollectionProvider.tsx'
+import { createMemoryCopyStorage } from './local-copy.ts'
 import { countPlants } from './selectors.ts'
 import { CollectionLoadError } from './source.ts'
+import { COLLECTION_REFRESH_AFTER_MS } from './store.ts'
 import { useCollection, type CollectionApi } from './useCollection.ts'
+import { useCollectionCopy } from './useCollectionCopy.ts'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
@@ -221,6 +225,41 @@ describe('CollectionProvider y useCollection', () => {
     expect(text('lista')).toBe('ready:1:')
   })
 
+  it('al volver a la app tras un rato en segundo plano, actualiza la colección sin pasar por loading (#141)', async () => {
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(
+      () => visibility,
+    )
+    const now = vi.spyOn(Date, 'now')
+    const setVisibility = (value: DocumentVisibilityState, at: number) => {
+      now.mockReturnValue(at)
+      visibility = value
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+    }
+    render(
+      <Tree>
+        <Screen name="lista" />
+      </Tree>,
+    )
+    await resolveLast([plant({ id: 'a' })])
+
+    // Un momento en segundo plano: no se vuelve a leer.
+    setVisibility('hidden', 1_000)
+    setVisibility('visible', 1_000 + COLLECTION_REFRESH_AFTER_MS - 1)
+    expect(source.loads).toHaveLength(1)
+
+    // Un rato: se vuelve a leer y se siguen viendo los datos mientras tanto.
+    setVisibility('hidden', 10_000)
+    setVisibility('visible', 10_000 + COLLECTION_REFRESH_AFTER_MS)
+    expect(source.loads).toHaveLength(2)
+    expect(text('lista')).toBe('ready:1:')
+    await resolveLast([plant({ id: 'a' }), plant({ id: 'b' })])
+    expect(text('lista')).toBe('ready:2:')
+    now.mockRestore()
+  })
+
   it('upsertPlant y removePlant actualizan todas las pantallas sin otra petición', async () => {
     render(
       <Tree>
@@ -269,6 +308,217 @@ describe('CollectionProvider y useCollection', () => {
       )
     } finally {
       error.mockRestore()
+    }
+  })
+})
+
+describe('CollectionProvider con copia local (#18)', () => {
+  function CopyScreen() {
+    const { status, plants } = useCollection()
+    const copy = useCollectionCopy()
+    return (
+      <p data-testid="copia">
+        {status}:{plants === null ? '-' : plants.length}:
+        {copy === null ? 'sin-copia' : `${copy.userId}@${copy.savedAt ?? ''}`}
+        {copy?.unreachable ? `:${copy.unreachable}` : ''}
+      </p>
+    )
+  }
+
+  function cached() {
+    const storage = createMemoryCopyStorage()
+    const cachedSource = createCachedCollectionSource({
+      network: source,
+      storage,
+      fetchExtras: () => Promise.resolve({}),
+      now: () => new Date('2026-11-21T12:00:00.000Z'),
+      onSaved: () => {},
+    })
+    return { storage, cachedSource }
+  }
+
+  it('muestra la copia guardada sin esperar a la red y dice de cuándo es', async () => {
+    const { storage, cachedSource } = cached()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [plant(), plant()],
+      extras: {},
+    })
+    render(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(text('copia')).toBe('loading:2:user_a@2026-11-20T08:00:00.000Z')
+
+    await resolveLast([plant()])
+    expect(text('copia')).toBe('ready:1:user_a@2026-11-21T12:00:00.000Z')
+  })
+
+  it('al cerrar sesión borra las copias guardadas', async () => {
+    const { storage, cachedSource } = cached()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [plant()],
+      extras: {},
+    })
+    const { rerender } = render(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    setFakeClerk({ signedIn: false })
+    rerender(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(storage.copies.size).toBe(0)
+    expect(text('copia')).toBe('idle:-:sin-copia')
+  })
+
+  it('otra cuenta en el mismo dispositivo no ve la copia de la anterior', async () => {
+    const { storage, cachedSource } = cached()
+    await storage.write({
+      userId: 'user_a',
+      savedAt: '2026-11-20T08:00:00.000Z',
+      plants: [plant(), plant(), plant()],
+      extras: {},
+    })
+    setFakeClerk({ userId: 'user_b' })
+    render(
+      <CollectionProvider source={cachedSource}>
+        <CopyScreen />
+      </CollectionProvider>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(text('copia')).toBe('loading:-:sin-copia')
+    expect(storage.copies.has('user_a')).toBe(false)
+  })
+
+  it('al recuperar la conexión vuelve a leer la colección sola', async () => {
+    render(
+      <Tree>
+        <Screen name="lista" />
+      </Tree>,
+    )
+    await resolveLast([plant()])
+    expect(source.loads).toHaveLength(1)
+
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(source.loads).toHaveLength(2)
+    await resolveLast([plant(), plant()])
+    expect(text('lista')).toBe('ready:2:')
+  })
+
+  it('el evento online sin colección pedida no lee nada', () => {
+    render(
+      <Tree>
+        <p>Inicio</p>
+      </Tree>,
+    )
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(source.loads).toHaveLength(0)
+  })
+})
+
+describe('CollectionProvider: miniaturas sin conexión (#119)', () => {
+  const thumb = (n: number) =>
+    `user_a/6f1c2a4e-8b3d-4e5f-9a7b-${String(n).padStart(12, '0')}/thumb-v1.webp`
+
+  it('con la colección completa, baja las miniaturas; otra vez si cambian las fotos', async () => {
+    vi.useFakeTimers()
+    try {
+      const thumbnailSync = vi.fn(() => Promise.resolve())
+      render(
+        <CollectionProvider
+          source={source}
+          thumbnailSync={thumbnailSync}
+          thumbnailSyncDelayMs={100}
+        >
+          <Screen name="lista" />
+          <ApiProbe />
+        </CollectionProvider>,
+      )
+      await resolveLast([plant({ thumbnailPath: thumb(1) })])
+      expect(thumbnailSync).not.toHaveBeenCalled()
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(thumbnailSync).toHaveBeenCalledTimes(1)
+      expect(thumbnailSync).toHaveBeenLastCalledWith(
+        expect.objectContaining({ userId: 'user_a' }),
+      )
+
+      // Un cambio que no toca las fotos no lanza otra pasada.
+      act(() => api?.upsertPlant(plant({ id: 'sin-foto' })))
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(thumbnailSync).toHaveBeenCalledTimes(1)
+
+      act(() => api?.upsertPlant(plant({ thumbnailPath: thumb(2) })))
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(thumbnailSync).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('al cerrar sesión cancela la pasada en curso', async () => {
+    vi.useFakeTimers()
+    try {
+      const signals: AbortSignal[] = []
+      const thumbnailSync = vi.fn(({ signal }: { signal: AbortSignal }) => {
+        signals.push(signal)
+        return Promise.resolve()
+      })
+      const { rerender } = render(
+        <CollectionProvider
+          source={source}
+          thumbnailSync={thumbnailSync}
+          thumbnailSyncDelayMs={0}
+        >
+          <Screen name="lista" />
+        </CollectionProvider>,
+      )
+      await resolveLast([plant({ thumbnailPath: thumb(1) })])
+      act(() => {
+        vi.advanceTimersByTime(0)
+      })
+      expect(signals).toHaveLength(1)
+
+      setFakeClerk({ signedIn: false })
+      rerender(
+        <CollectionProvider
+          source={source}
+          thumbnailSync={thumbnailSync}
+          thumbnailSyncDelayMs={0}
+        >
+          <Screen name="lista" />
+        </CollectionProvider>,
+      )
+      expect(signals[0]?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
     }
   })
 })

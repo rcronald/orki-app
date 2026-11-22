@@ -207,7 +207,7 @@ describe('InventoryView', () => {
     ])
   })
 
-  it('una planta por validar se ve con su nombre ingresado, sin cursiva, y su etiqueta', () => {
+  it('una planta por validar o no identificable se ve con su nombre ingresado, sin cursiva, y su propia etiqueta', () => {
     const unidentifiable = specimen({
       displayName: 'regalo de la abuela',
       displayNameIsScientific: false,
@@ -217,14 +217,23 @@ describe('InventoryView', () => {
     })
     renderInventory([pending, unidentifiable, maxima])
 
-    for (const name of ['la naranja del mercado', 'regalo de la abuela']) {
+    for (const [name, label] of [
+      ['la naranja del mercado', 'Nombre por validar'],
+      ['regalo de la abuela', 'No identificable'],
+    ] as const) {
       const card = screen.getByRole('article', { name })
       expect(within(card).getByRole('heading', { name })).toHaveClass(
         'not-italic',
         'font-body',
       )
-      expect(within(card).getByText('Nombre por validar')).toBeInTheDocument()
+      expect(within(card).getByText(label)).toBeInTheDocument()
     }
+    // Se distinguen: la no identificable no dice "por validar".
+    expect(
+      within(
+        screen.getByRole('article', { name: 'regalo de la abuela' }),
+      ).queryByText('Nombre por validar'),
+    ).toBeNull()
     const validated = screen.getByRole('article', { name: 'Cattleya maxima' })
     expect(within(validated).getByText('Validada')).toBeInTheDocument()
     expect(within(validated).getByText('Cattleya maxima')).toHaveClass('italic')

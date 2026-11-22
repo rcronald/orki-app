@@ -37,6 +37,13 @@ export type PlantImageKind = 'thumbnail' | 'photo'
 export interface PersistentImageCache {
   get(path: string): Promise<Blob | undefined>
   put(path: string, blob: Blob): Promise<void>
+  /** Si la ruta está guardada, sin leerla (descarga previa, #119). */
+  has?(path: string): Promise<boolean>
+  /**
+   * Borra las imágenes guardadas de `userId` cuya ruta no está en `keep`:
+   * las de plantas eliminadas o con la foto reemplazada (#119).
+   */
+  prune?(userId: string, keep: ReadonlySet<string>): Promise<void>
 }
 
 export interface PlantImageSource {
@@ -86,6 +93,33 @@ export function createCacheStorageImageCache(): PersistentImageCache {
     return parsed ? `${THUMBNAIL_CACHE_PREFIX}${parsed.userId}` : null
   }
   return {
+    async has(path) {
+      const name = cacheName(path)
+      if (!name || !hasCacheStorage()) return false
+      try {
+        const cache = await caches.open(name)
+        return (await cache.match(cacheKey(path))) !== undefined
+      } catch {
+        return false
+      }
+    },
+    async prune(userId, keep) {
+      if (!hasCacheStorage()) return
+      try {
+        const name = `${THUMBNAIL_CACHE_PREFIX}${userId}`
+        if (!(await caches.has(name))) return
+        const cache = await caches.open(name)
+        const kept = new Set([...keep].map(cacheKey))
+        const requests = await cache.keys()
+        await Promise.all(
+          requests
+            .filter((request) => !kept.has(request.url))
+            .map((request) => cache.delete(request)),
+        )
+      } catch {
+        // Sin Cache Storage utilizable no hay nada que limpiar.
+      }
+    },
     async get(path) {
       const name = cacheName(path)
       if (!name || !hasCacheStorage()) return undefined
@@ -192,9 +226,17 @@ function untilAborted<T>(
   })
 }
 
+let sharedThumbnailCache: PersistentImageCache | undefined
+
+/** Caché de miniaturas de la app (Cache Storage), compartida. */
+export function appThumbnailCache(): PersistentImageCache {
+  sharedThumbnailCache ??= createCacheStorageImageCache()
+  return sharedThumbnailCache
+}
+
 export function createPlantImageSource({
   storage = appPhotoStorage(),
-  thumbnailCache = createCacheStorageImageCache(),
+  thumbnailCache = appThumbnailCache(),
   maxConcurrent = 6,
   releaseDelayMs = 30_000,
 }: PlantImageSourceOptions = {}): PlantImageSource {

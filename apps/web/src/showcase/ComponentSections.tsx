@@ -211,12 +211,13 @@ function BadgeSection() {
     <Section
       id="insignias"
       title="Insignias"
-      description="StatusBadge. Solo dos estados, siempre con palabra e icono."
+      description="StatusBadge. Validada y por validar son las insignias del design system; no identificable (#141) se arma con sus tokens hasta que el design system tenga la suya. Siempre con palabra e icono."
     >
       <Example title="Estados de validación del nombre">
         <div className="flex flex-wrap gap-space-3">
           <StatusBadge status="validated" />
           <StatusBadge status="pending" />
+          <StatusBadge status="unidentifiable" />
         </div>
       </Example>
     </Section>

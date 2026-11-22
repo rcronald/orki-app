@@ -25,9 +25,9 @@ export const DETAIL_TEXT = {
   yes: 'Sí',
   no: 'No',
   missing: 'Sin indicar',
-  /** Explica la etiqueta "Nombre por validar" de una planta no identificable. */
+  /** Explica la etiqueta "No identificable". */
   unidentifiable:
-    'No se pudo confirmar el nombre de esta planta con el catálogo: queda con el nombre que escribiste.',
+    'Revisamos el nombre y no pudimos identificarlo en el catálogo. La planta sigue en tu colección con el nombre que escribiste y la puedes editar como cualquier otra.',
   photoAlt: (name: string) => `Foto de ${name}`,
   photoLoading: (name: string) => `Foto de ${name}: cargando`,
   photoFailed: (name: string) => `Foto de ${name}: no se pudo cargar`,
@@ -40,6 +40,8 @@ export const DETAIL_TEXT = {
   delete: 'Eliminar',
   offline:
     'Sin conexión: editar, dar de baja o eliminar necesitan conexión. Las acciones se activarán solas cuando vuelva.',
+  unverified:
+    'No se pudo confirmar tu sesión: editar, dar de baja o eliminar necesitan confirmarla con conexión. Ves la copia guardada en este dispositivo.',
   inactive: (status: string) =>
     `Dada de baja: ${status.toLocaleLowerCase('es')}. No cuenta en tu colección activa; la ves con el filtro de estado.`,
   retireTitle: 'Dar de baja esta planta',

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { PLANT_STATUS_LABEL } from '../collection/labels.ts'
 import type { CollectionPlant } from '../collection/model.ts'
+import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { ActionNotice } from '../detail/ActionNotice.tsx'
 import { BackToCollection } from '../detail/BackToCollection.tsx'
@@ -19,7 +20,6 @@ import { PlantDetailView, PlantName } from '../detail/PlantDetailView.tsx'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
-import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import { deletePlantWithPhotos } from '../photos/delete.ts'
 import { updatePlant } from '../registration/save-plant.ts'
 import { PATHS } from '../routes/paths.ts'
@@ -52,7 +52,8 @@ export default function PlantDetailPage() {
   const { plantId } = useParams()
   const { lookup, collection } = usePlantLookup(plantId)
   const { userId, upsertPlant, removePlant } = collection
-  const online = useOnlineStatus()
+  // Sin conexión o sin poder confirmar la sesión (#18): solo lectura.
+  const readOnly = useReadOnly()
   const navigate = useNavigate()
   const location = useLocation()
   // "Guardaste los cambios" al volver de la edición: se lee al montarse y se
@@ -121,7 +122,12 @@ export default function PlantDetailPage() {
           actions={
             <PlantActions
               plant={plant}
-              online={online}
+              online={readOnly === null}
+              offlineText={
+                readOnly === 'unverified'
+                  ? DETAIL_TEXT.unverified
+                  : DETAIL_TEXT.offline
+              }
               services={services}
               onStatusChanged={(updated) => {
                 upsertPlant(updated)

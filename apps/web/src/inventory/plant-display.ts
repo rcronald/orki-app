@@ -9,12 +9,11 @@ export function plantPhotoAlt(plant: CollectionPlant): string {
 }
 
 /**
- * Etiqueta de validación: "Validada" solo si la planta está validada; "por
- * validar" y "no identificable" se muestran las dos como "Nombre por validar"
- * (el sistema solo tiene esas dos insignias).
+ * Etiqueta de validación: "Validada", "Nombre por validar" o, si la cola de
+ * propuestas no pudo identificarla (#141), "No identificable".
  */
 export function plantValidationStatus(
   plant: CollectionPlant,
 ): ValidationStatus {
-  return plant.validation === 'validated' ? 'validated' : 'pending'
+  return plant.validation
 }

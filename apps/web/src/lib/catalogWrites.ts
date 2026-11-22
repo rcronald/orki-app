@@ -1,4 +1,9 @@
-import { CatalogAdminError, loadClient, toAdminError } from './catalogAdmin.ts'
+import {
+  CatalogAdminError,
+  loadClient,
+  toAdminError,
+  type ProposalGroupKey,
+} from './catalogAdmin.ts'
 import type {
   Database,
   Json,
@@ -66,6 +71,8 @@ export type CatalogWriteProblem =
   | 'invalid-abbreviation'
   | 'abbreviation-taken'
   | 'abbreviation-not-found'
+  // Cola de propuestas.
+  | 'group-required'
 
 /** Campo del formulario al que se asocia el error (aria-describedby). */
 export type CatalogWriteField =
@@ -231,6 +238,8 @@ export function catalogWriteMessage(
         : 'Esa abreviatura ya es de otro género.'
     case 'abbreviation-not-found':
       return 'Esta abreviatura ya no está en el catálogo.'
+    case 'group-required':
+      return 'Falta el grupo de la propuesta: vuelve a cargar la cola.'
   }
 }
 
@@ -294,6 +303,7 @@ const REASON: Record<string, CatalogWriteProblem> = {
   invalid_abbreviation: 'invalid-abbreviation',
   abbreviation_taken: 'abbreviation-taken',
   abbreviation_not_found: 'abbreviation-not-found',
+  group_required: 'group-required',
 }
 
 // Restricciones del esquema, por si la base rechaza la fila sin pasar por las
@@ -1063,4 +1073,88 @@ export async function mergeCatalogSpecies(
   const row = rows[0]
   if (!row) throw new CatalogWriteError('failed')
   return toSpeciesMergeResult(row)
+}
+
+// Cola de propuestas (#139) -------------------------------------------------------
+//
+// Las tres resoluciones de un grupo de la cola (migración
+// 20261121180000_cola_de_propuestas.sql). Cambian todas las plantas por
+// validar del grupo a la vez. Si otro administrador ya lo resolvió, la base no
+// falla: devuelve plantCount 0 y no cambia nada.
+
+/** Lo que hizo una resolución. */
+export interface ProposalResolution {
+  /** Plantas resueltas; 0 si el grupo ya no tenía ninguna por validar. */
+  plantCount: number
+}
+
+type ResolutionRow = { plant_count: number }
+
+function toResolution(rows: readonly ResolutionRow[]): ProposalResolution {
+  const row = rows[0]
+  if (!row) throw new CatalogWriteError('failed')
+  return { plantCount: row.plant_count }
+}
+
+/** Enlaza todas las plantas del grupo a una especie existente. */
+export async function linkProposalGroup(
+  group: ProposalGroupKey,
+  speciesId: string,
+): Promise<ProposalResolution> {
+  const supabase = await client()
+  const rows = await settleWrite(
+    supabase.rpc('link_proposal_group', {
+      group_name_key: group.nameKey,
+      group_genus_id: group.genusId,
+      target_species_id: speciesId,
+    }),
+  )
+  return toResolution(rows)
+}
+
+/** Lo que se escribe de la especie nueva: su estado siempre es "validada". */
+export type ProposalSpeciesInput = Omit<SpeciesInput, 'status'>
+
+/**
+ * Crea la especie (fuente "propuesta de usuario", validada) y le enlaza el
+ * grupo, en una transacción. Si el grupo ya no tenía plantas, no crea nada y
+ * species es null.
+ */
+export async function createSpeciesFromProposal(
+  group: ProposalGroupKey,
+  input: ProposalSpeciesInput,
+): Promise<ProposalResolution & { speciesId: string | null }> {
+  const invalid = validateSpeciesInput({ ...input, status: 'validated' })
+  if (invalid) throw invalid
+  const supabase = await client()
+  const rows = await settleWrite(
+    supabase.rpc('create_species_from_proposal', {
+      group_name_key: group.nameKey,
+      group_genus_id: group.genusId,
+      new_scientific_name: cleanCatalogText(input.scientificName),
+      new_genus_id: input.genusId ?? '',
+      new_type: input.type,
+    }),
+  )
+  const resolution = toResolution(rows)
+  // Los tipos generados no saben que species_id puede ser nulo.
+  const speciesId = (rows[0]?.species_id as string | null | undefined) ?? null
+  return {
+    ...resolution,
+    speciesId: resolution.plantCount === 0 ? null : speciesId,
+  }
+}
+
+/** Marca todas las plantas del grupo como no identificables. */
+export async function markProposalUnidentifiable(
+  group: ProposalGroupKey,
+): Promise<ProposalResolution> {
+  const supabase = await client()
+  const rows = await settleWrite(
+    supabase.rpc('mark_proposal_unidentifiable', {
+      group_name_key: group.nameKey,
+      group_genus_id: group.genusId,
+    }),
+  )
+  return toResolution(rows)
 }

@@ -7,6 +7,7 @@ import type {
   SpeciesSource,
   SpeciesStatus,
   SpeciesType,
+  PlantType,
 } from './database.ts'
 import { prepareSearchQuery } from './catalogSearch.ts'
 import { getSupabase, sessionTokenFailure } from './supabase.ts'
@@ -26,6 +27,8 @@ import type { OrkiSupabaseClient } from './supabase.ts'
 //   countSpeciesPlants y getGenus.
 // - getSpeciesHistory: el historial de una especie, de la auditoría (#133,
 //   migración 20261121150000_historial_de_especie.sql), por páginas de clave.
+// - listProposalGroups y countProposalGroups: la cola de propuestas (#139,
+//   migración 20261121180000_cola_de_propuestas.sql), por número de página.
 //
 // Todas aceptan un AbortSignal y fallan con CatalogAdminError, que dice el
 // motivo. Las funciones de listado solo las puede llamar un administrador del
@@ -722,4 +725,122 @@ export async function getSpeciesHistory(
     entries: data.map(toHistoryEntry),
     hasMore: data[0]?.has_more ?? false,
   }
+}
+
+// Cola de propuestas (#139) -------------------------------------------------------
+
+/** Grupos por página de la cola. La base admite hasta 100. */
+export const PROPOSAL_PAGE_SIZE = 20
+
+type ProposalRow = Functions['list_proposal_groups']['Returns'][number]
+
+/**
+ * Una foto de una propuesta, como rutas del bucket. Las rutas llevan el id del
+ * usuario: solo sirven para pedir la imagen y nunca se muestran ni se
+ * registran.
+ */
+export interface ProposalPhoto {
+  photoPath: string
+  thumbnailPath: string
+}
+
+/** Clave de un grupo: el nombre normalizado y el género. */
+export interface ProposalGroupKey {
+  nameKey: string
+  genusId: string
+}
+
+/** Un grupo de la cola: plantas por validar con el mismo nombre y género. */
+export interface ProposalGroup extends ProposalGroupKey {
+  /** La forma más frecuente del nombre, tal como se escribió. */
+  proposedName: string
+  genusName: string
+  /** El tipo más frecuente de sus plantas. */
+  type: PlantType
+  plantCount: number
+  /** Hasta cuatro fotos, de la más reciente a la más antigua. */
+  photos: ProposalPhoto[]
+}
+
+/** Clave estable de un grupo, para las listas y los conjuntos. */
+export function proposalGroupId(key: ProposalGroupKey): string {
+  return `${key.genusId}:${key.nameKey}`
+}
+
+function toProposalPhotos(value: Json): ProposalPhoto[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item))
+      return []
+    const { photo_path: photo, thumbnail_path: thumbnail } = item
+    return typeof photo === 'string' && typeof thumbnail === 'string'
+      ? [{ photoPath: photo, thumbnailPath: thumbnail }]
+      : []
+  })
+}
+
+function toProposalGroup(row: ProposalRow): ProposalGroup {
+  return {
+    nameKey: row.name_key,
+    genusId: row.genus_id,
+    genusName: row.genus_name,
+    proposedName: row.proposed_name,
+    type: row.type,
+    plantCount: row.plant_count,
+    photos: toProposalPhotos(row.photos),
+  }
+}
+
+export interface ListProposalsOptions extends RequestOptions {
+  /** Desde 1. */
+  page?: number
+  pageSize?: number
+}
+
+/**
+ * Una página de la cola, del grupo con más plantas al que tiene menos. Si la
+ * página pedida ya no existe (se resolvieron grupos), devuelve la última.
+ * Solo para administradores del catálogo.
+ */
+export async function listProposalGroups({
+  page = 1,
+  pageSize = PROPOSAL_PAGE_SIZE,
+  signal,
+}: ListProposalsOptions = {}): Promise<NumberedPage<ProposalGroup>> {
+  const supabase = await loadClient(signal)
+  const fetchPage = async (number: number) => {
+    const request = withSignal(
+      supabase.rpc('list_proposal_groups', {
+        page_size: pageSize,
+        page_offset: (number - 1) * pageSize,
+      }),
+      signal,
+    )
+    return (await settle(request, signal)) ?? []
+  }
+  const requested = Math.max(1, Math.floor(page))
+  let rows = await fetchPage(requested)
+  let shown = requested
+  if (rows.length === 0 && requested > 1) {
+    // Sin filas no se sabe el total: se pide la primera para saberlo.
+    const first = await fetchPage(1)
+    const total = first[0]?.total_count ?? 0
+    const last = Math.max(1, Math.ceil(total / pageSize))
+    rows = last === 1 ? first : await fetchPage(last)
+    shown = last
+  }
+  return {
+    rows: rows.map(toProposalGroup),
+    total: rows[0]?.total_count ?? 0,
+    page: shown,
+  }
+}
+
+/** Cuántos grupos hay en la cola. Solo para administradores del catálogo. */
+export async function countProposalGroups({
+  signal,
+}: RequestOptions = {}): Promise<number> {
+  const supabase = await loadClient(signal)
+  const request = withSignal(supabase.rpc('count_proposal_groups'), signal)
+  return (await settle(request, signal)) ?? 0
 }

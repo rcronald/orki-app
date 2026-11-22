@@ -66,6 +66,7 @@ import {
   type PlantFormValues,
   type PlantPatch,
 } from './form-state.ts'
+import { GenusBackdrop } from './GenusBackdrop.tsx'
 import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField } from './NameField.tsx'
 import { OriginField } from './OriginField.tsx'
@@ -198,6 +199,12 @@ interface PlantFormCommonProps {
   draftUserId?: string | null
   /** Reloj, para las pruebas. Por defecto, la hora del dispositivo. */
   now?: () => Date
+  /**
+   * Dónde va la foto de fondo del género (#13): screen (por defecto) ocupa la
+   * pantalla, detrás de la página; contained, el contenedor posicionado más
+   * cercano (la página de muestra). Ver GenusBackdrop.
+   */
+  backdrop?: 'screen' | 'contained'
 }
 
 /**
@@ -334,6 +341,7 @@ export function PlantForm(props: PlantFormProps) {
     initialName = '',
     photoDraftBackend = appDraftPhotoBackend(),
     now = deviceNow,
+    backdrop = 'screen',
   } = props
   // Lo que se lee una sola vez al montarse: al registrar, el formulario
   // vacío de hoy y el borrador, si lo hay; al editar, la planta y el
@@ -824,6 +832,15 @@ export function PlantForm(props: PlantFormProps) {
       className="flex flex-col gap-space-5"
       onSubmit={(event) => void handleSubmit(event)}
     >
+      {/*
+        Fondo del género (#13): sigue al género fijado (values.genus), que solo
+        cambia al elegir una especie, un chip o un género de "Otro"; escribir
+        el nombre no lo toca.
+      */}
+      <GenusBackdrop
+        genusName={values.genus?.name ?? null}
+        placement={backdrop}
+      />
       {draftRestored && <DraftNotice onDiscard={discardDraft} />}
 
       {/* Región siempre presente: así se anuncia al perder la conexión. */}

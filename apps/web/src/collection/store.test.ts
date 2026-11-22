@@ -297,6 +297,80 @@ describe('CollectionStore: errores y recarga', () => {
   })
 })
 
+describe('CollectionStore: actualización en segundo plano (#141)', () => {
+  it('refresh() vuelve a leer sin pasar por loading y cambia los datos al llegar', async () => {
+    const { source, store } = setup()
+    store.retain()
+    const first = [plant({ id: 'a', validation: 'pending' })]
+    source.last().resolve(first)
+    await settle()
+
+    store.refresh()
+    expect(source.loads).toHaveLength(2)
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      plants: first,
+    })
+
+    const second = [plant({ id: 'a', validation: 'unidentifiable' })]
+    source.last().resolve(second)
+    await settle()
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      plants: second,
+      error: null,
+    })
+  })
+
+  it('si falla, no muestra ningún error y conserva los datos', async () => {
+    const { source, store } = setup()
+    store.retain()
+    const first = [plant()]
+    source.last().resolve(first)
+    await settle()
+
+    store.refresh()
+    source.last().reject(new CollectionLoadError('offline'))
+    await settle()
+    expect(store.getSnapshot()).toMatchObject({
+      status: 'ready',
+      plants: first,
+      error: null,
+    })
+  })
+
+  it('una operación local durante la lectura de fondo no se pierde al llegar', async () => {
+    const { source, store } = setup()
+    store.retain()
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+
+    store.refresh()
+    const added = plant({ id: 'b' })
+    store.upsertPlant(added)
+    // La respuesta salió antes de la escritura: no la trae.
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+    expect(store.getSnapshot().plants?.map((item) => item.id)).toEqual([
+      'a',
+      'b',
+    ])
+  })
+
+  it('sin datos listos no hace nada', async () => {
+    const { source, store } = setup()
+    store.refresh()
+    expect(source.loads).toHaveLength(0)
+    store.retain()
+    store.refresh()
+    expect(source.loads).toHaveLength(1)
+    source.last().reject(new CollectionLoadError('failed'))
+    await settle()
+    store.refresh()
+    expect(source.loads).toHaveLength(1)
+  })
+})
+
 describe('CollectionStore: resultado provisional', () => {
   it('muestra el provisional mientras llega el definitivo', async () => {
     const { source, store } = setup()
@@ -457,5 +531,95 @@ describe('CollectionStore: operaciones locales', () => {
 
     store.removePlant('a')
     expect(store.getSnapshot()).toMatchObject({ status: 'error', plants: [b] })
+  })
+})
+
+describe('CollectionStore: copia local (#18)', () => {
+  function setupWithSave() {
+    const save = vi.fn<(userId: string, plants: readonly unknown[]) => void>()
+    const source = Object.assign(fakeCollectionSource(), { save })
+    const store = new CollectionStore(source)
+    store.setUser('user_a')
+    return { source, store, save }
+  }
+
+  it('pasa la colección completa a save() tras cada cambio local', async () => {
+    const { source, store, save } = setupWithSave()
+    store.retain()
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+    expect(save).not.toHaveBeenCalled()
+
+    store.upsertPlant(plant({ id: 'b' }))
+    expect(save).toHaveBeenLastCalledWith('user_a', store.getSnapshot().plants)
+    store.removePlant('a')
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save.mock.lastCall?.[1]).toHaveLength(1)
+  })
+
+  it('un cambio durante la lectura se guarda al terminar, con el resultado', async () => {
+    const { source, store, save } = setupWithSave()
+    store.retain()
+    store.upsertPlant(plant({ id: 'nueva' }))
+    expect(save).not.toHaveBeenCalled()
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(
+      (save.mock.lastCall?.[1] as { id: string }[]).map((item) => item.id),
+    ).toEqual(['a', 'nueva'])
+  })
+
+  it('tras un error no guarda: lo que hay en memoria puede estar incompleto', async () => {
+    const { source, store, save } = setupWithSave()
+    store.retain()
+    source.last().request.provide([plant({ id: 'a' })])
+    source.last().reject(new CollectionLoadError('failed'))
+    await settle()
+    store.upsertPlant(plant({ id: 'b' }))
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('resume() (al recuperar la conexión): en segundo plano con datos; tras un error, una lectura normal; sin pedir, nada', async () => {
+    const { source, store } = setup()
+    store.resume()
+    expect(source.loads).toHaveLength(0)
+
+    store.retain()
+    // Con una lectura en curso, no la repite.
+    store.resume()
+    expect(source.loads).toHaveLength(1)
+    source.last().reject(new CollectionLoadError('offline'))
+    await settle()
+    expect(store.getSnapshot().status).toBe('error')
+
+    // Tras el error: se vuelve a leer, con su carga.
+    store.resume()
+    expect(source.loads).toHaveLength(2)
+    expect(store.getSnapshot().status).toBe('loading')
+    source.last().resolve([plant()])
+    await settle()
+
+    // Con datos: en segundo plano, como refresh() (#141).
+    store.resume()
+    expect(source.loads).toHaveLength(3)
+    expect(store.getSnapshot()).toMatchObject({ status: 'ready', error: null })
+    expect(store.getSnapshot().plants).toHaveLength(1)
+  })
+
+  it('un cambio local durante la lectura de fondo se guarda también al terminar', async () => {
+    const { source, store, save } = setupWithSave()
+    store.retain()
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+    store.refresh()
+    store.upsertPlant(plant({ id: 'b' }))
+    expect(save).toHaveBeenCalledTimes(1)
+    source.last().resolve([plant({ id: 'a' })])
+    await settle()
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(
+      (save.mock.lastCall?.[1] as { id: string }[]).map((item) => item.id),
+    ).toEqual(['a', 'b'])
   })
 })

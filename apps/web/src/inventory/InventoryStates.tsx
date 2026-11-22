@@ -130,7 +130,14 @@ export function ReloadErrorBanner({
  * plantas dadas de baja (hasInactive), la pantalla ya muestra el acceso a
  * registrar y los filtros: aquí solo se dice dónde verlas.
  */
-export function EmptyCollection({ hasInactive }: { hasInactive: boolean }) {
+export function EmptyCollection({
+  hasInactive,
+  registerDisabledBy,
+}: {
+  hasInactive: boolean
+  /** Sin conexión (#18): id del motivo; el acceso a registrar se desactiva. */
+  registerDisabledBy?: string
+}) {
   return (
     <div className="flex flex-col items-start gap-space-3 rounded-lg bg-neutral-50 p-space-5">
       <Icon name="sprout" className="size-[24px] text-secondary" />
@@ -144,15 +151,26 @@ export function EmptyCollection({ hasInactive }: { hasInactive: boolean }) {
           ? 'Las que perdiste o regalaste no se cuentan aquí: para verlas, elige su estado en «Filtros».'
           : 'Registra tu primera orquídea para empezar tu inventario.'}
       </p>
-      {!hasInactive && (
-        <Link
-          to={PATHS.newPlant}
-          className="orki-btn orki-btn--primary orki-btn--block sm:w-auto"
-        >
-          <Icon name="plus" />
-          Registrar mi primera orquídea
-        </Link>
-      )}
+      {!hasInactive &&
+        (registerDisabledBy === undefined ? (
+          <Link
+            to={PATHS.newPlant}
+            className="orki-btn orki-btn--primary orki-btn--block sm:w-auto"
+          >
+            <Icon name="plus" />
+            Registrar mi primera orquídea
+          </Link>
+        ) : (
+          <button
+            type="button"
+            aria-disabled="true"
+            aria-describedby={registerDisabledBy}
+            className="orki-btn orki-btn--primary orki-btn--block sm:w-auto"
+          >
+            <Icon name="plus" />
+            Registrar mi primera orquídea
+          </button>
+        ))}
     </div>
   )
 }

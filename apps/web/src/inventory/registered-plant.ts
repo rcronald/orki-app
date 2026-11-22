@@ -50,7 +50,9 @@ export function readRegisteredPlant(state: unknown): RegisteredPlant | null {
     return null
   }
   const status =
-    value.status === 'validated' || value.status === 'pending'
+    value.status === 'validated' ||
+    value.status === 'pending' ||
+    value.status === 'unidentifiable'
       ? value.status
       : undefined
   return {
