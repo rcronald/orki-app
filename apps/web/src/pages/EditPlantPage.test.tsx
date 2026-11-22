@@ -279,6 +279,39 @@ describe('EditPlantPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('con la foto que ya tenía, al pasar a «por validar» avisa de que el equipo del catálogo podrá verla', async () => {
+    const { user } = await renderEdit([amabilis()])
+    const photoGroup = () => screen.getByRole('group', { name: 'Foto' })
+    // Especie del catálogo: sin aviso ni enlace.
+    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
+    expect(screen.queryByRole('link', { name: /^Privacidad/ })).toBeNull()
+
+    await user.clear(nameInput())
+    await user.type(nameInput(), 'Mariposa blanca')
+
+    // La edición no guarda borrador: el enlace se abre en otra pestaña.
+    expect(photoGroup()).toHaveAccessibleDescription(
+      `${PLANT_EDIT_TEXT.pendingPhotoNotice} Más en Privacidad (se abre en otra pestaña).`,
+    )
+    const link = within(photoGroup()).getByRole('link', {
+      name: 'Privacidad (se abre en otra pestaña)',
+    })
+    expect(link).toHaveAttribute('href', PATHS.privacy)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    await expectNoAxeViolations()
+  })
+
+  it('una planta por validar sin foto recomienda añadirla, con el aviso', async () => {
+    await renderEdit([pending()])
+    expect(
+      screen.getByRole('group', { name: 'Foto' }),
+    ).toHaveAccessibleDescription(
+      `${PLANT_EDIT_TEXT.pendingPhotoHint} Más en Privacidad (se abre en otra pestaña).`,
+    )
+    await expectNoAxeViolations()
+  })
+
   it('elegir otra especie actualiza solos el género y el tipo, y avisa del duplicado sin contarse', async () => {
     const otherVeitchiana = plant({
       id: '7a2b3c4d-0000-4000-8000-000000000009',

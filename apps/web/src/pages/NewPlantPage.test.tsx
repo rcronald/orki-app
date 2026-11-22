@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import {
   afterAll,
   afterEach,
@@ -342,6 +342,10 @@ async function renderPage(
             <Routes>
               <Route path="/coleccion" element={<CollectionPage />} />
               <Route path="/coleccion/nueva" element={<NewPlantPage />} />
+              <Route
+                path="/privacidad"
+                element={<Link to="/coleccion/nueva">Volver al registro</Link>}
+              />
             </Routes>
           </main>
           <LocationProbe />
@@ -1619,9 +1623,61 @@ describe('NewPlantPage: foto (#87)', () => {
     await renderPage()
     await fillFreeName(user)
     expect(photoGroup()).toHaveAccessibleDescription(
-      PLANT_FORM_TEXT.pendingPhotoHint,
+      `${PLANT_FORM_TEXT.pendingPhotoHint} Más en Privacidad.`,
     )
     await expectNoAxeViolations()
+
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).not.toHaveProperty('species_id')
+    expect(storageUploads()).toEqual([])
+  })
+
+  it('con un nombre por validar y una foto, avisa de que el equipo del catálogo podrá verla', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
+    await fillFreeName(user)
+    await choosePhoto(user, container)
+
+    expect(photoGroup()).toHaveAccessibleDescription(
+      `${PLANT_FORM_TEXT.pendingPhotoNotice} Más en Privacidad.`,
+    )
+    // Un solo mensaje: la recomendación sin foto ya no está.
+    expect(
+      screen.queryByText(PLANT_FORM_TEXT.pendingPhotoHint, { exact: false }),
+    ).toBeNull()
+    const link = within(photoGroup()).getByRole('link', { name: 'Privacidad' })
+    expect(link).toHaveAttribute('href', '/privacidad')
+    expect(link).not.toHaveAttribute('target')
+    await expectNoAxeViolations()
+  })
+
+  it('con una especie del catálogo no avisa de la foto ni enlaza a privacidad', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    await chooseAmabilis(user)
+    await choosePhoto(user, container)
+    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
+    expect(screen.queryByRole('link', { name: 'Privacidad' })).toBeNull()
+  })
+
+  it('el enlace a Privacidad no pierde lo escrito: al volver se recupera el borrador', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await fillFreeName(user)
+
+    await user.click(screen.getByRole('link', { name: 'Privacidad' }))
+    expect(location()).toBe('/privacidad')
+    await user.click(screen.getByRole('link', { name: 'Volver al registro' }))
+
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.draftRestored),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('La naranja del mercado')
+    expect(photoGroup()).toHaveAccessibleDescription(
+      `${PLANT_FORM_TEXT.pendingPhotoHint} Más en Privacidad.`,
+    )
 
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
