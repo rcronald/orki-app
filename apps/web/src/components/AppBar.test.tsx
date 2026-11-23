@@ -63,6 +63,28 @@ describe('AppBar', () => {
       expect(
         screen.getByRole('link', { name: 'Mi colección' }),
       ).not.toHaveAttribute('aria-current')
+      expect(
+        screen.getByRole('link', { name: 'Catálogo' }),
+      ).not.toHaveAttribute('aria-current')
+    },
+  )
+
+  it.each(['/catalogo', '/catalogo/genero/abc', '/catalogo/especie/abc'])(
+    '%s: la pestaña «Catálogo» (#232) es la actual',
+    async (path) => {
+      renderAt(path)
+
+      const tab = screen.getByRole('link', { name: 'Catálogo' })
+      expect(
+        screen.getByRole('navigation', { name: 'Principal' }),
+      ).toContainElement(tab)
+      expect(tab).toHaveAttribute('href', '/catalogo')
+      expect(tab).toHaveAttribute('aria-current', 'page')
+      expect(tab.querySelector('svg')).toHaveClass('lucide-book-open')
+      expect(
+        screen.getByRole('link', { name: 'Mi colección' }),
+      ).not.toHaveAttribute('aria-current')
+      await expectNoAxeViolations()
     },
   )
 })

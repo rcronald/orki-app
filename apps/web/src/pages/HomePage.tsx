@@ -4,6 +4,7 @@ import { isAccountDeletedState } from '../account/deletion-status.ts'
 import { DELETED_NOTICE } from '../account/texts.ts'
 import { Feature, FeatureList } from '../components/ui/Feature.tsx'
 import { useFocusOnNavigation, usePageTitle } from '../routes/navigation.ts'
+import { Icon } from '../components/ui/Icon.tsx'
 import { PATHS } from '../routes/paths.ts'
 import { HeroPhoto } from './HeroPhoto.tsx'
 
@@ -13,9 +14,13 @@ import { HeroPhoto } from './HeroPhoto.tsx'
 // (orki-features--plain). La NavBar y el pie los pone PublicShell. Se ve
 // también sin conexión y aunque Clerk no cargue.
 //
-// Los textos describen funciones que existen hoy; sin enlaces al catálogo
-// hasta que exista la consulta pública (#187). Sin el dibujo botánico de la
-// versión anterior (sigue en src/assets/portada/, sin uso).
+// Los textos describen funciones que existen hoy. Bajo las ventajas,
+// «Explorar el catálogo» (#232), un enlace de texto a la consulta pública.
+// Sin el dibujo botánico de la versión anterior (sigue en src/assets/portada/,
+// sin uso).
+//
+// Va prerrenderada en index.html (src/prerender/, #204): cualquier cambio
+// aquí sale igual en las dos, porque las dos pintan este componente.
 //
 // Tras eliminar la cuenta (#110) se llega aquí con el estado
 // { accountDeleted: true } y se muestra la confirmación.
@@ -96,6 +101,12 @@ export function HomePage() {
           tu inventario a CSV.
         </Feature>
       </FeatureList>
+      <p className="flex justify-center px-space-4 pb-space-6">
+        <Link to={PATHS.catalog} className="orki-link min-h-[44px]">
+          Explorar el catálogo
+          <Icon name="arrow-right" />
+        </Link>
+      </p>
     </>
   )
 }

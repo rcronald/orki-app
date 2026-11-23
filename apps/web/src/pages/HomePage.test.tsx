@@ -70,14 +70,25 @@ describe('HomePage', () => {
     expect(signIn).toHaveClass('orki-btn', 'orki-btn--secondary')
   })
 
-  it('no promete lo que la app no hace ni enlaza al catálogo', () => {
+  it('no promete lo que la app no hace', () => {
     const { container } = renderHome()
 
     const text = container.textContent ?? ''
     expect(text).not.toMatch(/floraci|historial|cuidado|fichas/i)
-    expect(
-      screen.queryByRole('link', { name: /catálogo/i }),
-    ).not.toBeInTheDocument()
+  })
+
+  it('«Explorar el catálogo» bajo las ventajas, como enlace de texto (#232)', () => {
+    const { container } = renderHome()
+
+    const link = screen.getByRole('link', { name: 'Explorar el catálogo' })
+    expect(link).toHaveAttribute('href', '/catalogo')
+    expect(link).toHaveClass('orki-link')
+    expect(link).not.toHaveClass('orki-btn')
+    // Después de la lista de ventajas.
+    const features = container.querySelector('.orki-features')
+    expect(features?.compareDocumentPosition(link) ?? 0).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
   })
 
   it('foto con texto alternativo, medidas, variantes AVIF y prioridad alta', () => {

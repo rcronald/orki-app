@@ -130,12 +130,15 @@ describe('barra de AppShell', () => {
     await expectNoAxeViolations()
   })
 
-  it('mientras Clerk carga: solo el logotipo', () => {
+  it('mientras Clerk carga: el logotipo y «Catálogo», sin acceso', () => {
     setFakeClerk({ status: 'loading' })
     renderShell('/privacidad')
 
     const banner = screen.getByRole('banner')
-    expect(within(banner).getAllByRole('link')).toHaveLength(1)
+    const links = within(banner).getAllByRole('link')
+    expect(links).toHaveLength(2)
+    expect(links[0]).toHaveAccessibleName('Inicio de orqui.app')
+    expect(links[1]).toHaveAccessibleName('Catálogo')
     expect(
       screen.queryByRole('button', { name: 'Tu cuenta' }),
     ).not.toBeInTheDocument()

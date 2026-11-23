@@ -97,6 +97,17 @@ test('a 360 px: una columna, sin desplazamiento horizontal y acciones de 44 px',
   const segunda = await ventajas.nth(1).boundingBox()
   expect(segunda?.y).toBeGreaterThan(primera?.y ?? 0)
 
+  // «Explorar el catálogo» (#232) bajo las ventajas, de 44 px; en la
+  // cabecera, a este ancho, no hay enlaces de sección.
+  const explorar = page
+    .getByRole('main')
+    .getByRole('link', { name: 'Explorar el catálogo' })
+  const cajaExplorar = await explorar.boundingBox()
+  expect(cajaExplorar?.height).toBeGreaterThanOrEqual(44)
+  const ultima = await ventajas.nth(2).boundingBox()
+  expect(cajaExplorar?.y).toBeGreaterThan(ultima?.y ?? 0)
+  await expect(cabecera.getByRole('link', { name: 'Catálogo' })).toBeHidden()
+
   // Pie: una fila por enlace, de 44 px, una debajo de otra.
   const pie = page.getByRole('contentinfo')
   await expect(
@@ -132,6 +143,12 @@ test('en escritorio: dos columnas, foto a toda la altura hasta el borde y ventaj
   ).toBeVisible()
   await expect(
     cabecera.getByRole('link', { name: 'Crear cuenta gratis' }),
+  ).toBeVisible()
+  // «Catálogo» (#232) en la cabecera, como enlace de sección.
+  await expect(
+    cabecera
+      .getByRole('navigation', { name: 'Secciones' })
+      .getByRole('link', { name: 'Catálogo' }),
   ).toBeVisible()
 
   const titulo = await page
@@ -260,6 +277,8 @@ test.describe('portada prerrenderada', () => {
             '.orki-hero__actions',
             'img.orki-hero__photo',
             '.orki-features',
+            '.orki-nav__links',
+            'main a[href="/catalogo"]',
             'footer',
           ].map((selector) => {
             const caja = document

@@ -5,6 +5,7 @@ import { AccountPiecesSection } from './AccountPiecesSection.tsx'
 import { AccountSection } from './AccountSection.tsx'
 import { BrandSection } from './BrandSection.tsx'
 import { CatalogAdminSection } from './CatalogAdminSection.tsx'
+import { CatalogPiecesSection } from './CatalogPiecesSection.tsx'
 import { CollectionPiecesSection } from './CollectionPiecesSection.tsx'
 import { ComponentSections } from './ComponentSections.tsx'
 import { DetailSection } from './DetailSection.tsx'
@@ -41,6 +42,7 @@ const SECTIONS = [
   { id: 'portada', label: 'Portada' },
   { id: 'coleccion-piezas', label: 'Mi colección: piezas' },
   { id: 'cuenta-piezas', label: 'Tu cuenta: piezas' },
+  { id: 'catalogo-piezas', label: 'Catálogo: piezas' },
   { id: 'inventario', label: 'Pantalla de inventario' },
   { id: 'registro-piezas', label: 'Registro: piezas' },
   { id: 'registro', label: 'Formulario de registro' },
@@ -102,6 +104,7 @@ export default function ShowcasePage() {
           <LandingSection />
           <CollectionPiecesSection />
           <AccountPiecesSection />
+          <CatalogPiecesSection />
           <InventorySection />
           <RegistrationPiecesSection />
           <RegistrationSection />

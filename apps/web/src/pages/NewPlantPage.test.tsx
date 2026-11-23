@@ -386,7 +386,13 @@ function LocationProbe() {
  */
 async function renderPage(
   plants: readonly CollectionPlant[] | null = [],
-  entry = '/coleccion/nueva',
+  entry:
+    | string
+    | {
+        pathname: string
+        search?: string
+        state?: unknown
+      } = '/coleccion/nueva',
 ) {
   const view = render(
     <MemoryRouter initialEntries={['/coleccion', entry]}>
@@ -803,6 +809,51 @@ describe('NewPlantPage', () => {
     expect(lastInsert()).toMatchObject({
       entered_name: 'La naranja del mercado',
     })
+  })
+
+  it('desde la ficha del catálogo (#232) empieza con la especie elegida', async () => {
+    const user = userEvent.setup()
+    const species = {
+      id: AMABILIS.id,
+      scientificName: 'Phalaenopsis amabilis',
+      genus: { id: GENERA.phalaenopsis.id, name: 'Phalaenopsis' },
+      type: 'species',
+    }
+    await renderPage([], {
+      pathname: '/coleccion/nueva',
+      search: '?nombre=Phalaenopsis+amabilis',
+      state: { catalogSpecies: species },
+    })
+
+    expect(nameInput()).toHaveValue('Phalaenopsis amabilis')
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-pressed', 'true')
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-disabled', 'true')
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'Phalaenopsis amabilis',
+      species_id: AMABILIS.id,
+      genus_id: GENERA.phalaenopsis.id,
+      type: 'species',
+    })
+  })
+
+  it('una especie en el estado con otro nombre que el de la dirección no se usa', async () => {
+    await renderPage([], {
+      pathname: '/coleccion/nueva',
+      search: '?nombre=Cattleya+maxima',
+      state: {
+        catalogSpecies: {
+          id: AMABILIS.id,
+          scientificName: 'Phalaenopsis amabilis',
+          genus: { id: GENERA.phalaenopsis.id, name: 'Phalaenopsis' },
+          type: 'species',
+        },
+      },
+    })
+    expect(nameInput()).toHaveValue('Cattleya maxima')
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
   })
 
   it('con un borrador guardado, gana el borrador; al descartarlo, el nombre de ?nombre=', async () => {

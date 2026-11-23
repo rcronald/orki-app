@@ -77,6 +77,7 @@ import {
   unlinksSpecies,
   validatePlantForm,
   type FormGenus,
+  type FormSpecies,
   type NewPlantInsert,
   type PlantFormField,
   type PlantFormValues,
@@ -192,6 +193,13 @@ interface PlantFormCommonProps {
    * empezar con este nombre. Al editar no se usa.
    */
   initialName?: string
+  /**
+   * Especie del catálogo con la que empieza el registro, ya elegida como si se
+   * hubiera escogido en el autocompletado: «Registrar esta especie» de la
+   * ficha del catálogo (#232). Gana a initialName y, como él, pierde ante un
+   * borrador guardado y vuelve al descartarlo. Al editar no se usa.
+   */
+  initialSpecies?: FormSpecies | null
   /** Dónde se guardan las fotos pendientes del borrador; por defecto, IndexedDB. */
   photoDraftBackend?: DraftPhotoBackend
   /**
@@ -246,6 +254,17 @@ const deviceNow = () => new Date()
 /** El formulario vacío con `name` ya escrito en el nombre (si lo hay). */
 function withName(values: PlantFormValues, name: string): PlantFormValues {
   return name === '' ? values : { ...values, name }
+}
+
+/** El formulario con la especie inicial elegida o, si no hay, con el nombre. */
+function withStart(
+  values: PlantFormValues,
+  name: string,
+  species: FormSpecies | null,
+): PlantFormValues {
+  return species === null
+    ? withName(values, name)
+    : plantFormReducer(values, { type: 'speciesSelected', species })
 }
 
 /** Si hay algo escrito dentro de "Más detalles". */
@@ -421,6 +440,7 @@ export function PlantForm(props: PlantFormProps) {
     knownPlants = null,
     draftUserId = null,
     initialName = '',
+    initialSpecies = null,
     photoDraftBackend = appDraftPhotoBackend(),
     now = deviceNow,
     camera = 'auto',
@@ -440,7 +460,7 @@ export function PlantForm(props: PlantFormProps) {
     }
     const fresh = initialPlantFormValues(localDateString(now()))
     const draft = draftUserId ? readPlantDraft(draftUserId, now()) : null
-    const prefilled = withName(fresh, initialName)
+    const prefilled = withStart(fresh, initialName, initialSpecies)
     return {
       fresh,
       draft,
@@ -1022,9 +1042,10 @@ export function PlantForm(props: PlantFormProps) {
     }
     dispatch({
       type: 'restored',
-      values: withName(
+      values: withStart(
         initialPlantFormValues(localDateString(now())),
         initialName,
+        initialSpecies,
       ),
     })
     photosTouched.current = false

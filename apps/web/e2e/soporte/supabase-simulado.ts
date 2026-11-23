@@ -39,11 +39,26 @@ import {
 // restricciones) y reordena con reorder_plant_photos, la función propuesta en
 // ese issue (aún sin migración).
 //
+// Catálogo público (#231, #232): las cuatro funciones que puede llamar anon
+// (search_public_species, list_public_genera, list_public_genus_species y
+// get_public_species) responden con o sin token, con sus topes y su
+// paginación, y cada llamada queda en `llamadasPublicas` con si llevaba el
+// token (la app no lo envía nunca). Como en la base desde el #231,
+// search_species y search_genera exigen sesión.
+//
 // Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
 // 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
 // pida algo nuevo no pasa desapercibido.
 
 export const ORIGEN_SUPABASE = 'https://supabase.orki.invalid'
+
+/** Funciones del catálogo público (#231): las puede llamar anon. */
+const FUNCIONES_PUBLICAS = new Set([
+  'search_public_species',
+  'list_public_genera',
+  'list_public_genus_species',
+  'get_public_species',
+])
 
 const FIXTURES = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -245,6 +260,11 @@ export class SupabaseSimulado {
   fotos: FotoDePlanta[] = []
   /** Peticiones que no se supo responder (la prueba falla si hay alguna). */
   readonly sinSimular: string[] = []
+  /**
+   * Llamadas a las funciones del catálogo público (#232), con si llevaban el
+   * token de una sesión: la app las hace siempre sin él.
+   */
+  readonly llamadasPublicas: { funcion: string; conToken: boolean }[] = []
   /** Subidas cuyo archivo no se pudo leer del cuerpo (se guardó uno de muestra). */
   subidasSinCuerpo = 0
   private reloj = Date.parse('2026-11-21T15:00:00.000Z')
@@ -1052,14 +1072,155 @@ export class SupabaseSimulado {
     return especie
   }
 
+  /**
+   * Catálogo público (#231, #232): las cuatro funciones que puede llamar
+   * anon, con sus topes y su paginación (desde 1; más allá de la última, la
+   * última), solo con las especies públicas (no las propuestas sin validar) y
+   * ordenadas por el nombre normalizado, como la migración
+   * 20261122150000_catalogo_publico.sql.
+   */
+  private catalogoPublico(
+    nombre: string,
+    argumentos: Record<string, unknown>,
+  ): Respuesta {
+    const publicas = this.datos.especies.filter(
+      (e) => e.source !== 'user_proposal' || e.status === 'validated',
+    )
+    const genero = (id: string) => this.datos.generos.find((g) => g.id === id)
+    const tope = (valor: unknown, porDefecto: number, maximo: number) => {
+      const n = Math.trunc(Number(valor))
+      return Number.isFinite(n) && n > 0 ? Math.min(n, maximo) : porDefecto
+    }
+    const pagina = (valor: unknown, paginas: number) => {
+      const n = Math.trunc(Number(valor))
+      return Math.min(Math.max(1, paginas), Number.isFinite(n) && n > 0 ? n : 1)
+    }
+    const porNombre = <T>(lista: T[], texto: (item: T) => string) =>
+      [...lista].sort((a, b) => {
+        const x = normalizar(texto(a))
+        const y = normalizar(texto(b))
+        return x < y ? -1 : x > y ? 1 : 0
+      })
+    switch (nombre) {
+      case 'search_public_species': {
+        const texto =
+          typeof argumentos.query === 'string' ? argumentos.query : ''
+        if (normalizar(texto).length < 2 || texto.length > 100) return json([])
+        const ids = new Set(publicas.map((e) => e.id))
+        return json(
+          this.buscarEspecies(texto)
+            .filter(({ especie }) => ids.has(especie.id))
+            .slice(0, tope(argumentos.max_results, 10, 15))
+            .map(({ especie, nombre: coincidencia, tipo }) => ({
+              id: especie.id,
+              scientific_name: especie.scientific_name,
+              genus_id: especie.genus_id,
+              genus_name: genero(especie.genus_id)?.name ?? '',
+              type: especie.type,
+              matched_name: coincidencia,
+              matched_name_type: tipo,
+            })),
+        )
+      }
+      case 'list_public_genera': {
+        const tamano = tope(argumentos.page_size, 100, 200)
+        const generos = porNombre(
+          this.datos.generos.filter((g) =>
+            publicas.some((e) => e.genus_id === g.id),
+          ),
+          (g) => g.name,
+        )
+        const actual = pagina(
+          argumentos.page_number,
+          Math.ceil(generos.length / tamano),
+        )
+        return json(
+          generos.slice((actual - 1) * tamano, actual * tamano).map((g) => ({
+            id: g.id,
+            name: g.name,
+            species_count: publicas.filter((e) => e.genus_id === g.id).length,
+            total_count: generos.length,
+            current_page: actual,
+          })),
+        )
+      }
+      case 'list_public_genus_species': {
+        const g = genero(String(argumentos.target_genus_id))
+        const tamano = tope(argumentos.page_size, 50, 100)
+        const especies = porNombre(
+          publicas.filter((e) => e.genus_id === g?.id),
+          (e) => e.scientific_name,
+        )
+        if (g === undefined || especies.length === 0) return json([])
+        const actual = pagina(
+          argumentos.page_number,
+          Math.ceil(especies.length / tamano),
+        )
+        return json(
+          especies.slice((actual - 1) * tamano, actual * tamano).map((e) => ({
+            id: e.id,
+            scientific_name: e.scientific_name,
+            type: e.type,
+            genus_id: g.id,
+            genus_name: g.name,
+            total_count: especies.length,
+            current_page: actual,
+          })),
+        )
+      }
+      case 'get_public_species': {
+        const especie = publicas.find(
+          (e) => e.id === argumentos.target_species_id,
+        )
+        if (especie === undefined) return json([])
+        const nombres = this.datos.nombres.filter(
+          (n) => n.species_id === especie.id,
+        )
+        const sinonimos = nombres.filter((n) => n.type === 'synonym')
+        const comunes = nombres.filter((n) => n.type === 'common')
+        return json([
+          {
+            id: especie.id,
+            scientific_name: especie.scientific_name,
+            genus_id: especie.genus_id,
+            genus_name: genero(especie.genus_id)?.name ?? '',
+            type: especie.type,
+            source: especie.source,
+            source_ref:
+              especie.source === 'col' || especie.source === 'gbif'
+                ? especie.source_ref
+                : null,
+            synonyms: sinonimos.slice(0, 100).map((n) => n.name),
+            synonym_count: sinonimos.length,
+            common_names: comunes
+              .slice(0, 100)
+              .map((n) => ({ name: n.name, language: n.language })),
+            common_name_count: comunes.length,
+          },
+        ])
+      }
+      default:
+        throw new Error(`función pública sin simular: ${nombre}`)
+    }
+  }
+
   private rpc(
     nombre: string,
     argumentos: Record<string, unknown>,
     yo: Identidad,
   ): Respuesta {
     const esAdmin = yo.rol === 'catalog_admin'
+    if (FUNCIONES_PUBLICAS.has(nombre)) {
+      this.llamadasPublicas.push({
+        funcion: nombre,
+        conToken: yo.usuario !== null,
+      })
+      return this.catalogoPublico(nombre, argumentos)
+    }
     switch (nombre) {
       case 'search_species': {
+        // Desde el #231, solo con sesión: sin ella, search_public_species.
+        if (yo.usuario === null) return sinPermiso()
         const maximo = Number(argumentos.max_results ?? 10)
         return json(
           this.buscarEspecies(String(argumentos.query))
@@ -1082,6 +1243,7 @@ export class SupabaseSimulado {
         )
       }
       case 'search_genera': {
+        if (yo.usuario === null) return sinPermiso()
         const texto = normalizar(String(argumentos.query))
         return json(
           this.datos.generos

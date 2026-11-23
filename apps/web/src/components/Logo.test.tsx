@@ -24,4 +24,17 @@ describe('Logo', () => {
       /orqui-apps-light-icon\.svg|^data:image\/svg\+xml/,
     )
   })
+
+  it('la variante compact es el logotipo y, hasta 720 px, la flor (una sola imagen)', () => {
+    const { container } = render(<Logo variant="compact" className="logo" />)
+    const logo = screen.getByRole('img', { name: 'orqui.app' })
+    expect(logo).toHaveAttribute('width', '384')
+    expect(logo).toHaveClass('logo')
+    const source = container.querySelector('picture > source')
+    expect(source).toHaveAttribute('media', '(max-width: 720px)')
+    expect(source).toHaveAttribute('width', '512')
+    expect(source?.getAttribute('srcset')).toMatch(
+      /orqui-apps-light-icon\.svg|^data:image\/svg\+xml/,
+    )
+  })
 })

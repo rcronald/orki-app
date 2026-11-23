@@ -446,7 +446,7 @@ describe('página de muestra', () => {
 })
 
 describe('navegación', () => {
-  it('barra de la app: solo «Mi colección»; marca la página actual y se usa con el teclado', async () => {
+  it('barra de la app: «Mi colección» y «Catálogo»; marca la página actual y se usa con el teclado', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true })
     renderAt('/cuenta')
@@ -457,7 +457,7 @@ describe('navegación', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Mi colección'])
+    ).toEqual(['Mi colección', 'Catálogo'])
 
     // Saltar al contenido, el logotipo y la pestaña «Mi colección»; después,
     // el botón del menú «Tu cuenta».
@@ -489,15 +489,15 @@ describe('navegación', () => {
     expect(await findHeading('Catálogo')).not.toHaveFocus()
   })
 
-  it('el catálogo sigue existiendo, sin enlace en la barra', async () => {
+  it('con sesión, el catálogo es una pestaña de la barra (#232)', async () => {
     setFakeClerk({ signedIn: true })
     renderAt('/catalogo')
 
     expect(await findHeading('Catálogo')).toBeInTheDocument()
     const banner = screen.getByRole('banner')
     expect(
-      within(banner).queryByRole('link', { name: 'Catálogo' }),
-    ).not.toBeInTheDocument()
+      within(banner).getByRole('link', { name: 'Catálogo' }),
+    ).toHaveAttribute('aria-current', 'page')
   })
 
   it('sin sesión, las páginas de la app llevan la barra pública', async () => {

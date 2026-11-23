@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getPublicSupabase,
   getSessionToken,
   getSupabase,
   initSupabase,
@@ -167,6 +168,48 @@ describe('token de sesión en las peticiones', () => {
     const request = supabase.rpc('requesting_user_id').throwOnError()
     await expect(request).rejects.toBeInstanceOf(SessionTokenError)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('cliente público del catálogo (#232)', () => {
+  beforeEach(() => {
+    initSupabase(CONFIG)
+  })
+
+  it('es otro cliente, único y compartido', async () => {
+    const [first, second] = await Promise.all([
+      getPublicSupabase(),
+      getPublicSupabase(),
+    ])
+    expect(first).toBe(second)
+    expect(first).not.toBe(await getSupabase())
+  })
+
+  it('con sesión, no envía el token: solo la clave publicable', async () => {
+    const source = vi.fn(() => Promise.resolve(TOKEN))
+    setSessionTokenSource(source)
+    const supabase = await getPublicSupabase()
+    const { error } = await supabase.rpc('requesting_user_id')
+
+    expect(error).toBeNull()
+    const [headers] = requestHeaders()
+    expect(headers?.get('apikey')).toBe(CONFIG.supabasePublishableKey)
+    expect(headers?.get('Authorization')).toBe(
+      `Bearer ${CONFIG.supabasePublishableKey}`,
+    )
+    expect(source).not.toHaveBeenCalled()
+  })
+
+  it('aunque el token de la sesión no se pueda obtener, la petición sale', async () => {
+    setSessionTokenSource(() =>
+      Promise.reject(new SessionTokenError('offline')),
+    )
+    const supabase = await getPublicSupabase()
+    const { data, error } = await supabase.rpc('requesting_user_id')
+
+    expect(error).toBeNull()
+    expect(data).toBe('user_prueba')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 

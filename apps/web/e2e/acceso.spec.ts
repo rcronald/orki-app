@@ -125,12 +125,16 @@ test('sin el rol de administrador no hay backoffice', async ({
   page,
   revisarAccesibilidad,
 }) => {
-  // Con sesión, el inicio lleva a la colección; la barra solo tiene «Mi
-  // colección» y el menú «Tu cuenta» no ofrece «Administración».
+  // Con sesión, el inicio lleva a la colección; la barra tiene «Mi
+  // colección» y «Catálogo» (#232), y el menú «Tu cuenta» no ofrece
+  // «Administración».
   await page.goto('/')
   await expect(page).toHaveURL(/\/coleccion$/)
   const navegacion = page.getByRole('navigation', { name: 'Principal' })
-  await expect(navegacion.getByRole('link')).toHaveText(['Mi colección'])
+  await expect(navegacion.getByRole('link')).toHaveText([
+    'Mi colección',
+    'Catálogo',
+  ])
   await expect(
     navegacion.getByRole('link', { name: 'Mi colección' }),
   ).toHaveAttribute('aria-current', 'page')

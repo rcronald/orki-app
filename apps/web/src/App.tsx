@@ -5,7 +5,6 @@ import { AuthProvider } from './auth/AuthProvider.tsx'
 import { AccountPage } from './pages/AccountPage.tsx'
 import { RequireAuth, RequireCatalogAdmin } from './auth/RouteGuards.tsx'
 import { AppShell } from './components/AppShell.tsx'
-import { CatalogPage } from './pages/CatalogPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
 import { HomeRoute } from './pages/HomeRoute.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
@@ -53,6 +52,16 @@ const CatalogAdminPage = lazy(() => import('./backoffice/CatalogAdminPage.tsx'))
 // precarga al chunk inicial. Probado con el build: diferida, el inicial crecía
 // unos 100 bytes; aquí, solo lo que ocupa su ruta en PATHS.
 
+// Catálogo público (#232), con o sin sesión: el buscador, los géneros, las
+// especies de un género y la ficha, en su propio chunk (catalog/).
+const CatalogRoutes = lazy(() => import('./catalog/CatalogRoutes.tsx'))
+
+const CATALOG_LOADING = (
+  <p role="status" className="text-md text-neutral-700">
+    Cargando el catálogo…
+  </p>
+)
+
 // Páginas de texto públicas, cada una en su propio chunk y sin Clerk:
 // privacidad (/privacidad, #111, #202) y créditos y fuentes (/creditos, #203).
 const PrivacyPage = lazy(() => import('./privacy/PrivacyPage.tsx'))
@@ -87,7 +96,14 @@ function App({ appEnv, clerkPublishableKey }: AppProps) {
             y, con sesión, lleva a la colección (#191). */}
         <Route index element={<HomeRoute />} />
         <Route element={<AppShell />}>
-          <Route path={PATHS.catalog} element={<CatalogPage />} />
+          <Route
+            path={`${PATHS.catalog}/*`}
+            element={
+              <Suspense fallback={CATALOG_LOADING}>
+                <CatalogRoutes />
+              </Suspense>
+            }
+          />
           <Route
             path={PATHS.privacy}
             element={
