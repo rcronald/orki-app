@@ -172,7 +172,7 @@ describe('OwnershipCheckPage', () => {
     renderAt()
     await resolveLast()
 
-    expect(document.title).toBe('¿Ya la tengo? · orqui.apps')
+    expect(document.title).toBe('¿Ya la tengo? · orqui.app')
     expect(
       screen.getByRole('heading', { level: 1, name: '¿Ya la tengo?' }),
     ).toBeInTheDocument()

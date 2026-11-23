@@ -62,7 +62,7 @@ afterAll(() => configure({ asyncUtilTimeout: defaultTimeout }))
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
-  document.title = 'Fusión de especies · orqui.apps'
+  document.title = 'Fusión de especies · orqui.app'
 })
 
 async function idOf(source: CatalogAdminSource, name: string) {

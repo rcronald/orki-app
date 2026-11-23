@@ -15,7 +15,7 @@ import { Logo } from './Logo.tsx'
 export function PublicHeader({ actions = true }: { actions?: boolean }) {
   return (
     <header className="orki-nav">
-      {/* Nombre accesible: «Inicio de orqui.apps» (el logotipo). */}
+      {/* Nombre accesible: «Inicio de orqui.app» (el logotipo). */}
       <Link
         to={PATHS.home}
         className="inline-flex min-h-[44px] items-center rounded-sm"

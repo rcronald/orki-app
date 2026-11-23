@@ -1,7 +1,7 @@
 import { Logo } from '../components/Logo.tsx'
 import { Example, Section } from './layout.tsx'
 
-// Logotipo de orqui.apps (#173), en sus dos variantes para fondo claro. Los
+// Logotipo de orqui.app (#173), en sus dos variantes para fondo claro. Los
 // colores son tokens: color-primary (pétalos), color-secondary (pétalo
 // central), color-neutral-0 (marca de verificación), color-neutral-900
 // («orqui»), color-neutral-700 («.apps») y color-primary-soft (fondo del
@@ -11,7 +11,7 @@ export function BrandSection() {
     <Section
       id="marca"
       title="Marca"
-      description="Componente Logo. Su nombre accesible es «orqui.apps»: no se repite el nombre en texto al lado."
+      description="Componente Logo. Su nombre accesible es «orqui.app»: no se repite el nombre en texto al lado."
     >
       <div className="grid gap-space-4 md:grid-cols-2">
         <Example

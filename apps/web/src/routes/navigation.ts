@@ -39,9 +39,9 @@ export function useFocusOnNavigation(ref: RefObject<HTMLElement | null>) {
   }, [initialKey, mounted, pathname, ref])
 }
 
-/** Título de la pestaña: "Página · orqui.apps", o "orqui.apps" a secas sin página. */
+/** Título de la pestaña: "Página · orqui.app", o "orqui.app" a secas sin página. */
 export function usePageTitle(title: string | null) {
   useEffect(() => {
-    document.title = title ? `${title} · orqui.apps` : 'orqui.apps'
+    document.title = title ? `${title} · orqui.app` : 'orqui.app'
   }, [title])
 }
