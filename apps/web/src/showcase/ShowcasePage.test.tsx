@@ -354,7 +354,7 @@ describe('ShowcasePage', () => {
     expect(
       screen.getByRole('listbox', { name: 'Lugar de compra' }),
     ).toBeVisible()
-    expect(screen.getByText('Riego')).toBeVisible()
+    expect(screen.getByText('Riego', { selector: 'dt' })).toBeVisible()
 
     await expectNoAxeViolations()
   })

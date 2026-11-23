@@ -25,12 +25,15 @@ beforeEach(() => {
 // Todas las frases del texto aprobado el 22 de noviembre de 2026 (#111),
 // tal como estaban antes del rediseño (#202), salvo la atribución del
 // catálogo, que pasó a «Créditos y fuentes» (CreditsPage.test.tsx), y con la
-// frase de la cola de propuestas puesta al día para varias fotos (#184). Si falta
-// una, la prueba falla: recortar el texto es una decisión del responsable.
+// frase de la cola de propuestas puesta al día para varias fotos (#184) y con
+// las notas y la bitácora (#267, aprobado el 23 de noviembre de 2026). Si
+// falta una, la prueba falla: recortar el texto es una decisión del
+// responsable.
 const APPROVED_TEXT = [
   'Tu cuenta: tu correo y, si entras con Google, los datos de tu perfil de Google que recibe el servicio de acceso (como tu nombre y tu foto). Además, orqui.app guarda un perfil con tu identificador de usuario y el idioma de la app.',
-  'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada).',
-  'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura.',
+  'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada). También las notas que escribas sobre ella.',
+  'La bitácora de tus plantas: los registros que añades a cada una: el tipo de actividad (riego, nutrición, mantenimiento preventivo o sanidad preventiva), el título, la fecha y la hora en que lo guardaste y, si los añades, una descripción, una foto y si observaste floración.',
+  'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura. Las fotos de la bitácora se preparan igual.',
   'Mediciones de uso y errores: lo explicamos en la sección siguiente.',
   'Los usamos para que la app funcione: que entres en tu cuenta y veas y gestiones tu colección. Las mediciones y los errores, además, para mejorarla.',
   'La app registra dos tipos de evento de uso:',
@@ -42,14 +45,14 @@ const APPROVED_TEXT = [
   'Sentry también recibe un aviso cada vez que abres la app, con la versión, tu navegador y tu identificador de usuario, para saber cuántas veces termina con un fallo.',
   'En orqui.app no hay publicidad ni otros servicios de analítica o de publicidad.',
   'Clerk gestiona el acceso: tu cuenta, tu correo, el acceso con Google y tu sesión.',
-  'Supabase guarda tu perfil, tus plantas, sus fotos y tus eventos de uso. Las fotos están en un almacenamiento privado: no tienen una dirección pública.',
+  'Supabase guarda tu perfil, tus plantas con sus notas y su bitácora, sus fotos y tus eventos de uso. Las fotos están en un almacenamiento privado: no tienen una dirección pública.',
   'Sentry recibe los informes de errores de la app.',
   'Vercel aloja la app y la entrega a tu navegador.',
   'El catálogo de especies que usa el buscador es común para todos y no contiene datos de quienes usan orqui.app. Las fotos de referencia de las especies muestran el nombre de su autor, como exige su licencia.',
-  'Tus plantas y sus fotos solo las ves tú. La base de datos solo entrega a cada cuenta sus propias plantas.',
+  'Tus plantas, sus notas, su bitácora y sus fotos solo las ves tú. La base de datos solo entrega a cada cuenta sus propias plantas.',
   'Las personas que administran el catálogo de especies tienen dos excepciones:',
   'Pueden ver cuántas plantas de todos los usuarios están enlazadas a cada especie: solo el número, sin saber de quién son.',
-  'Ven las plantas cuyo nombre está «por validar», para confirmar a qué especie corresponden. Las ven agrupadas con las de otros usuarios que escribieron el mismo nombre con el mismo género. De cada grupo ven el nombre tal como lo escribió la mayoría, el género, el tipo más frecuente, cuántas plantas hay y hasta seis fotos. Pueden abrir todas las fotos de esas plantas mientras el nombre está «por validar», no las de las demás. No reciben el origen, la ubicación, el apodo, las fechas ni las notas de las fotos, y la pantalla no les muestra de quién son.',
+  'Ven las plantas cuyo nombre está «por validar», para confirmar a qué especie corresponden. Las ven agrupadas con las de otros usuarios que escribieron el mismo nombre con el mismo género. De cada grupo ven el nombre tal como lo escribió la mayoría, el género, el tipo más frecuente, cuántas plantas hay y hasta seis fotos. Pueden abrir todas las fotos de esas plantas mientras el nombre está «por validar», no las de las demás. No reciben el origen, la ubicación, el apodo, las fechas, las notas de la planta ni las de las fotos, y la pantalla no les muestra de quién son. Tampoco ven la bitácora de esas plantas, ni sus registros ni sus fotos.',
   'Los cambios que hacen en el catálogo quedan registrados. Cuando resuelven un nombre «por validar», el registro guarda ese nombre, el género y cuántas plantas había, pero no de quién eran ni sus fotos.',
   'Ninguna cuenta de la app puede leer los eventos de uso, tampoco los tuyos: solo se consultan en la base de datos para calcular las mediciones.',
   'Una copia de tu inventario, para que puedas verlo y buscar en él sin conexión. Se borra al cerrar sesión.',
@@ -58,11 +61,13 @@ const APPROVED_TEXT = [
   'Tu identificador de usuario (no tu correo ni tu nombre), para mostrarte tu copia sin conexión. Se borra al cerrar sesión. Si cierras sesión sin conexión, se guarda hasta que la app pueda avisar al servicio de acceso.',
   'El borrador de la planta que estás registrando, con su foto si la elegiste, para no perderlo si se recarga la página. Se borra al guardarla o al descartarla, y caduca a las 24 horas.',
   'Cómo prefieres ver el inventario (lista o cuadrícula).',
+  'La bitácora no se guarda en tu dispositivo: para verla, añadir o eliminar registros hace falta conexión. Mientras la ves, sus fotos solo están en la memoria de la pestaña abierta.',
   'Los archivos de la propia app, para que abra sin conexión, y lo que el servicio de acceso necesita para mantener tu sesión.',
   'Cerrar sesión borra la copia, las miniaturas, los eventos pendientes y tu identificador, también sin conexión. Mientras no la cierres, quien tenga tu dispositivo desbloqueado puede ver la copia de tu inventario.',
-  'Desde la app, con la sesión iniciada: Tu cuenta, Eliminar mi cuenta. Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil, tus eventos de uso y tu cuenta de acceso. También lo que orqui.app guarda en ese dispositivo: la copia de tu inventario, las miniaturas, los eventos pendientes de enviar, tu identificador, el borrador y tus preferencias. No se puede deshacer.',
+  'Desde la app, con la sesión iniciada: Tu cuenta, Eliminar mi cuenta. Necesitas conexión. Se borran tus plantas con sus notas y su bitácora, sus fotos (también las de la bitácora), tu perfil, tus eventos de uso y tu cuenta de acceso. También lo que orqui.app guarda en ese dispositivo: la copia de tu inventario, las miniaturas, los eventos pendientes de enviar, tu identificador, el borrador y tus preferencias. No se puede deshacer.',
   'No se borran los informes de errores que ya se enviaron a Sentry (llevan tu identificador, no tu correo). Tampoco el registro de cambios del catálogo: si ya se resolvió un nombre que escribiste, ese nombre sigue ahí, sin decir de quién era.',
-  'Antes, o cuando quieras, puedes descargar tu inventario en un archivo CSV con «Exportar a CSV», al final de Mi colección. Incluye todas tus plantas, también las perdidas y regaladas, con todos sus datos y la fecha en que las registraste. No incluye las fotos.',
+  'Puedes eliminar un registro de la bitácora desde la ficha de su planta: se borra con su foto. Al eliminar una planta se borran también sus notas, toda su bitácora y todas sus fotos. Las dos cosas necesitan conexión y no se pueden deshacer.',
+  'Antes, o cuando quieras, puedes descargar tu inventario en un archivo CSV con «Exportar a CSV», al final de Mi colección. Incluye todas tus plantas, también las perdidas y regaladas, con todos sus datos, sus notas y la fecha en que las registraste. No incluye las fotos ni la bitácora.',
   `Para cualquier consulta sobre tus datos, escribe a ${PRIVACY_CONTACT}.`,
 ]
 
@@ -113,9 +118,9 @@ describe('PrivacyPage', () => {
         .getAllByRole('heading', { level: 2 })
         .map((heading) => heading.textContent),
     ).toEqual(['En esta página', ...TOC.map(([title]) => title), 'Contacto'])
-    expect(screen.getByText('22 de noviembre de 2026')).toHaveAttribute(
+    expect(screen.getByText('23 de noviembre de 2026')).toHaveAttribute(
       'datetime',
-      '2026-11-22',
+      '2026-11-23',
     )
     const toc = screen.getByRole('navigation', { name: 'En esta página' })
     expect(
@@ -163,7 +168,7 @@ describe('PrivacyPage', () => {
       'Tu colección es privada. Si el nombre de una planta queda por validar, el equipo del catálogo puede revisar el nombre y las fotos asociadas.',
     )
     expect(normalized(paragraphs[1]?.textContent)).toMatch(
-      /^Tus plantas y sus fotos solo las ves tú\./,
+      /^Tus plantas, sus notas, su bitácora y sus fotos solo las ves tú\./,
     )
 
     expect(section('Qué se guarda en tu dispositivo')).toHaveTextContent(
@@ -180,11 +185,10 @@ describe('PrivacyPage', () => {
       }),
     ).toHaveAttribute('href', '/cuenta')
     expect(
-      within(deletion).getByRole('heading', {
-        level: 3,
-        name: 'Descargar tu inventario',
-      }),
-    ).toBeInTheDocument()
+      within(deletion)
+        .getAllByRole('heading', { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(['Borrar un registro o una planta', 'Descargar tu inventario'])
     expect(
       within(deletion).getByRole('link', { name: 'Mi colección' }),
     ).toHaveAttribute('href', '/coleccion')
