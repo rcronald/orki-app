@@ -32,6 +32,17 @@ export const SPECIES_SOURCE_LABEL: Record<SpeciesSource, string> = {
   user_proposal: 'Propuesta de un usuario, validada por el administrador',
 }
 
+/** "1 ejemplar con ese nombre, pendiente de validar", en plural si son más. */
+function unlinkedSpecimens(count: number, allPending: boolean): string {
+  const one = count === 1
+  const state = allPending
+    ? one
+      ? 'pendiente de validar'
+      : 'pendientes de validar'
+    : 'sin validar'
+  return `${one ? '1 ejemplar' : `${count} ejemplares`} con ese nombre, ${state}`
+}
+
 export const CATALOG_TEXT = {
   title: 'Catálogo',
   lead: 'Busca una orquídea por su nombre científico, un sinónimo o su nombre común, o explóralas por género.',
@@ -98,7 +109,22 @@ export const CATALOG_TEXT = {
       ? '1 ejemplar en tu colección'
       : `${count} ejemplares en tu colección`,
   viewInCollection: 'Ver en mi colección',
+  /**
+   * Sin ejemplares enlazados, pero con alguno sin validar con su nombre
+   * (#296): puede ser esta especie. «pendiente de validar» si todos están por
+   * validar; «sin validar» si alguno es no identificable.
+   */
+  maybeOwned: 'Podrías tenerla',
+  unlinkedDetail: (count: number, allPending: boolean) =>
+    `Tienes ${unlinkedSpecimens(count, allPending)}.`,
+  unlinkedAlso: (count: number, allPending: boolean) =>
+    `Además, tienes ${unlinkedSpecimens(count, allPending)}.`,
+  unlinkedHint: 'Compruébalo antes de comprarla o de registrarla otra vez.',
+  viewSpecimen: 'Ver el ejemplar',
+  viewSpecimens: 'Ver los ejemplares',
   notOwned: 'Aún no la tienes',
+  /** Ninguno activo, pero sí perdidos o regalados (como «¿Ya la tengo?»). */
+  hadIt: 'No, pero la tuviste',
   checkingCollection: 'Comprobando tu colección…',
   register: 'Registrar esta especie',
   registerOffline:
