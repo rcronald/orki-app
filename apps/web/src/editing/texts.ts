@@ -35,9 +35,6 @@ export const EDIT_TEXT = {
     `${count(length, max)} caracteres`,
   notesTooLong: (max: number) =>
     `Las notas pueden tener hasta ${String(max)} caracteres.`,
-  notesLoading: 'Cargando las notas…',
-  notesLoadFailed: 'No se pudieron cargar las notas.',
-  notesLoadRetry: 'Volver a cargar las notas',
 
   photosTitle: 'Fotos',
   addPhotos: 'Añadir fotos',

@@ -104,7 +104,6 @@ import {
   type PhotoDetailsErrors,
   type PhotoDetailsText,
 } from './PhotoManager.tsx'
-import { PLANT_NOTES_MAX_LENGTH, type PlantExtrasLoad } from './plant-extras.ts'
 import { EDIT_TEXT } from './texts.ts'
 import { useLeaveGuard } from './useLeaveGuard.tsx'
 
@@ -125,9 +124,6 @@ export interface EditPlantFormProps {
   plant: CollectionPlant
   /** Dueño de la planta y de sus fotos (id de Clerk). */
   userId: string | null
-  /** El identificador y las notas, que se leen aparte (plant-extras.ts). */
-  extras: PlantExtrasLoad
-  onRetryExtras: () => void
   services: EditPlantServices
   /** Con conexión y la sesión confirmada; si no, el formulario se desactiva. */
   online: boolean
@@ -167,6 +163,9 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
   | { status: 'error'; error: PlantEditError }
+
+/** Tope de las notas (restricción plants_notes_valid). */
+const PLANT_NOTES_MAX_LENGTH = 2000
 
 /** Notas como se guardan: sin espacios a los lados; vacías, null. */
 function normalizeNotes(text: string): string | null {
@@ -248,8 +247,6 @@ function sessionEnded(error: PlantEditError): boolean {
 export function EditPlantForm({
   plant,
   userId,
-  extras,
-  onRetryExtras,
   services,
   online,
   knownPlants,
@@ -278,13 +275,14 @@ export function EditPlantForm({
   const today = localDateString(now())
 
   // Notas --------------------------------------------------------------------
-  const [notes, setNotes] = useState('')
+  // Las de la planta de la colección. Una copia sin conexión anterior al #265
+  // no las trae (null) y la lectura de la red puede llegar después: mientras
+  // la persona no las toque, el campo sigue a la planta, y solo se envían si
+  // las cambió (así no se pisan con null unas notas que sí están en la base).
+  const originalNotes = plant.notes
+  const [notes, setNotes] = useState(originalNotes ?? '')
   const notesTouched = useRef(false)
-  const notesLoaded = extras.status === 'ready'
-  const originalNotes = notesLoaded ? extras.extras.notes : undefined
   useEffect(() => {
-    if (originalNotes === undefined) return
-    savedNotes.current ??= originalNotes
     if (!notesTouched.current) setNotes(originalNotes ?? '')
   }, [originalNotes])
 
@@ -293,7 +291,8 @@ export function EditPlantForm({
     () =>
       initial.origin.trim() !== '' ||
       initial.nickname.trim() !== '' ||
-      initial.flowerColor !== null,
+      initial.flowerColor !== null ||
+      Boolean(originalNotes?.trim()),
   )
   const detailsToggled = useRef(false)
   useEffect(() => {
@@ -630,7 +629,10 @@ export function EditPlantForm({
     return {
       userId,
       plantId: plant.id,
-      patch: patchFor(savedValues.current, savedNotes.current),
+      patch: patchFor(
+        savedValues.current,
+        savedNotes.current === undefined ? originalNotes : savedNotes.current,
+      ),
       photos: planned,
       removed: removed.flatMap(({ entry }) =>
         entry.kind === 'stored' ? [entry.stored] : [],
@@ -1026,7 +1028,6 @@ export function EditPlantForm({
               className="orki-field__input"
               rows={4}
               value={notes}
-              disabled={!notesLoaded}
               autoCapitalize="sentences"
               aria-invalid={notesError ? true : undefined}
               aria-describedby={[notesError ? notesErrorId : '', notesHintId]
@@ -1044,22 +1045,11 @@ export function EditPlantForm({
               </span>
             )}
             <span className="orki-field__hint" id={notesHintId}>
-              {extras.status === 'loading'
-                ? EDIT_TEXT.notesLoading
-                : extras.status === 'error'
-                  ? EDIT_TEXT.notesLoadFailed
-                  : `${EDIT_TEXT.notesHint} ${EDIT_TEXT.notesCount(
-                      characters(notes.trim()),
-                      PLANT_NOTES_MAX_LENGTH,
-                    )}`}
+              {`${EDIT_TEXT.notesHint} ${EDIT_TEXT.notesCount(
+                characters(notes.trim()),
+                PLANT_NOTES_MAX_LENGTH,
+              )}`}
             </span>
-            {extras.status === 'error' && (
-              <div className="mt-space-2">
-                <Button onClick={onRetryExtras}>
-                  {EDIT_TEXT.notesLoadRetry}
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       </Collapsible>

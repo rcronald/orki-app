@@ -12,7 +12,6 @@ import {
   EditPlantForm,
   type EditPlantServices,
 } from '../editing/EditPlantForm.tsx'
-import { usePlantExtras } from '../editing/plant-extras.ts'
 import { EDIT_TEXT } from '../editing/texts.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
@@ -32,7 +31,7 @@ import { plantDetailPath } from '../routes/paths.ts'
 //
 // - La cabecera: «Volver a la ficha» (hace lo mismo que «Cancelar»: pregunta
 //   si hay cambios), «Editar planta» y el identificador (CAT-012), que no se
-//   edita y se lee aparte con las notas (editing/plant-extras.ts).
+//   edita (lo trae la planta de la colección, #265).
 // - Al terminar o cancelar se vuelve a la ficha: con «atrás» si se llegó
 //   desde ella, para no apilar otra entrada en el historial.
 
@@ -55,8 +54,6 @@ export default function EditPlantPage() {
   const fromDetail = cameFromDetail(location.state)
   const cancelRef = useRef<(() => void) | null>(null)
   const rows = usePlantPhotoRows()
-  const found = lookup.status === 'found' ? lookup.plant : null
-  const [extras, retryExtras] = usePlantExtras(found?.id ?? null, userId)
   const services = useMemo<EditPlantServices>(
     () => ({
       ...SEARCH,
@@ -96,7 +93,7 @@ export default function EditPlantPage() {
       )
     case 'found': {
       const { plant } = lookup
-      const code = extras.status === 'ready' ? extras.extras.code : null
+      const { code } = plant
       return (
         <Page
           title={EDIT_TEXT.title}
@@ -132,8 +129,6 @@ export default function EditPlantPage() {
             key={plant.id}
             plant={plant}
             userId={userId}
-            extras={extras}
-            onRetryExtras={retryExtras}
             services={services}
             online={online}
             knownPlants={status === 'loading' ? null : plants}

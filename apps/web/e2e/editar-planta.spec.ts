@@ -93,7 +93,7 @@ async function elegirFotos(page: Page, cuantas: number) {
 
 async function abrirEdicion(page: Page, id: string) {
   await page.goto(detalle(id))
-  await page.getByRole('link', { name: 'Editar', exact: true }).click()
+  await page.getByRole('link', { name: 'Editar planta' }).click()
   await expect(
     page.getByRole('heading', { name: 'Editar planta', level: 1 }),
   ).toBeVisible()
@@ -107,7 +107,7 @@ test(
     await page
       .getByRole('link', { name: 'Phalaenopsis amabilis', exact: true })
       .click()
-    await page.getByRole('link', { name: 'Editar', exact: true }).click()
+    await page.getByRole('link', { name: 'Editar planta' }).click()
     await expect(
       page.getByRole('heading', { name: 'Editar planta', level: 1 }),
     ).toBeVisible()
@@ -133,6 +133,37 @@ test(
       nickname: 'La reina',
       location: 'Invernadero',
       notes: 'Riego cada cinco días.',
+    })
+    // La ficha muestra las notas editadas en la edición...
+    const notasDeLaFicha = page.getByRole('region', { name: 'Notas' })
+    await expect(notasDeLaFicha).toContainText('Riego cada cinco días.')
+
+    // ...y la edición, las que se cambian en la ficha.
+    await notasDeLaFicha.getByRole('button', { name: 'Editar notas' }).click()
+    await notasDeLaFicha
+      .getByRole('textbox', { name: 'Notas' })
+      .fill('Abono cada quince días.')
+    await notasDeLaFicha.getByRole('button', { name: 'Guardar' }).click()
+    await expect(notasDeLaFicha.getByRole('status')).toHaveText(
+      'Guardaste las notas.',
+    )
+    await page.getByRole('link', { name: 'Editar planta' }).click()
+    await expect(
+      page.getByRole('heading', { name: 'Editar planta', level: 1 }),
+    ).toBeVisible()
+    await expect(page.getByLabel('Notas', { exact: true })).toHaveValue(
+      'Abono cada quince días.',
+    )
+    // Sin tocarlas, guardar otro cambio no las pisa.
+    await page.getByRole('textbox', { name: 'Apodo' }).fill('La reina blanca')
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.amabilis)}$`))
+    await expect(notasDeLaFicha).toContainText('Abono cada quince días.')
+    expect(
+      supabase.plantasDe(USUARIO).find((p) => p.id === PLANTAS.amabilis),
+    ).toMatchObject({
+      nickname: 'La reina blanca',
+      notes: 'Abono cada quince días.',
     })
   },
 )
@@ -165,8 +196,9 @@ test('Cancelar no cambia nada, tampoco tras quitar y añadir fotos', async ({
   supabase,
 }) => {
   conFotos(supabase, 2)
-  const antes = estado(supabase)
   await abrirEdicion(page, PLANTAS.maxima)
+  // Tras la primera lectura: el simulado da el identificador al leer.
+  const antes = estado(supabase)
   await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
     '2 de 6',
   )
@@ -297,7 +329,6 @@ test('si falla una subida, no se guarda nada y «Reintentar» no duplica archivo
   supabase,
 }) => {
   conFotos(supabase, 1)
-  const antes = estado(supabase)
   let fallos = 1
   await page.route(
     `${ORIGEN_SUPABASE}/storage/v1/object/plant-photos/**`,
@@ -316,6 +347,7 @@ test('si falla una subida, no se guarda nada y «Reintentar» no duplica archivo
     },
   )
   await abrirEdicion(page, PLANTAS.maxima)
+  const antes = estado(supabase)
   await elegirFotos(page, 2)
   await page.getByRole('textbox', { name: 'Apodo' }).fill('La morada')
   await page.getByRole('button', { name: 'Guardar cambios' }).click()

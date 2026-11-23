@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
@@ -17,7 +17,6 @@ import { plant } from '../test/collection.ts'
 import { processedPhoto, USER_ID } from '../test/photos.ts'
 import { fakeImageSource } from '../test/plant-routes.tsx'
 import { EditPlantForm, type EditPlantServices } from './EditPlantForm.tsx'
-import type { PlantExtrasLoad } from './plant-extras.ts'
 
 // jsdom no tiene canvas: la preparación de la foto es un doble.
 const processPhoto = vi.hoisted(() =>
@@ -33,8 +32,10 @@ vi.mock('../photos/load.ts', () => ({
 const PLANT_ID = '6f1c2a4e-8b3d-4e5f-9a7b-0c1d2e3f4a5b'
 const GENUS = { id: 'genero-cattleya', name: 'Cattleya' }
 
-function cattleya(): CollectionPlant {
+function cattleya(notes: string | null = null): CollectionPlant {
   return plant({
+    code: 'CAT-002',
+    notes,
     id: PLANT_ID,
     displayName: 'Cattleya maxima',
     displayNameIsScientific: false,
@@ -56,7 +57,7 @@ function cattleya(): CollectionPlant {
 function setup(photoCount: number, notes: string | null = null) {
   const rows = createMemoryPlantPhotoRows()
   const storage = createMemoryPhotoStorage()
-  const current = cattleya()
+  const current = cattleya(notes)
   rows.plants.set(PLANT_ID, { ...current, userId: USER_ID })
   for (let position = 0; position < photoCount; position += 1) {
     const id = `foto-${String(position)}`
@@ -98,24 +99,22 @@ function setup(photoCount: number, notes: string | null = null) {
   const onSaved = vi.fn()
   const onCancel = vi.fn()
   const onPlantStored = vi.fn()
-  const extras: PlantExtrasLoad = {
-    status: 'ready',
-    extras: { code: 'CAT-002', notes },
-  }
 
   function Location() {
     const location = useLocation()
     return <div data-testid="location">{location.pathname}</div>
   }
+  let setShown: (plant: CollectionPlant) => void = () => undefined
   function Harness() {
     const cancelRef = useRef<(() => void) | null>(null)
+    // La planta de la colección puede cambiar (llega la lectura de la red).
+    const [shown, setter] = useState(current)
+    setShown = setter
     return (
       <main>
         <EditPlantForm
-          plant={current}
+          plant={shown}
           userId={USER_ID}
-          extras={extras}
-          onRetryExtras={() => undefined}
           services={services}
           online
           knownPlants={[current]}
@@ -141,7 +140,18 @@ function setup(photoCount: number, notes: string | null = null) {
       </MemoryRouter>
     </PlantImagesContext>,
   )
-  return { rows, storage, updatePlant, onSaved, onCancel, onPlantStored, user }
+  return {
+    rows,
+    storage,
+    updatePlant,
+    onSaved,
+    onCancel,
+    onPlantStored,
+    user,
+    showPlant: (next: CollectionPlant) => {
+      act(() => setShown(next))
+    },
+  }
 }
 
 const gallery = () => screen.getByRole('region', { name: /^Fotos/ })
@@ -234,6 +244,35 @@ describe('EditPlantForm', () => {
       }),
     )
     expect(updatePlant).not.toHaveBeenCalled()
+  })
+
+  it('una copia sin notas no las pisa: si llegan después, el campo las muestra y no se envían', async () => {
+    const { user, updatePlant, onSaved, showPlant } = setup(0, null)
+    await loaded(0)
+    expect(screen.getByLabelText('Notas')).toHaveValue('')
+    showPlant(cattleya('Riego cada cinco días.'))
+    expect(screen.getByLabelText('Notas')).toHaveValue('Riego cada cinco días.')
+    await user.type(
+      screen.getByRole('combobox', { name: 'Ubicación' }),
+      ' alto',
+    )
+    await user.click(submit())
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(updatePlant).toHaveBeenCalledWith(PLANT_ID, {
+      location: 'Invernadero alto',
+    })
+  })
+
+  it('sin tocar las notas, guardar otro cambio no envía notes', async () => {
+    const { user, updatePlant, onSaved } = setup(0, null)
+    await loaded(0)
+    await user.type(
+      screen.getByRole('combobox', { name: 'Ubicación' }),
+      ' alto',
+    )
+    await user.click(submit())
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(updatePlant.mock.calls[0]?.[1]).not.toHaveProperty('notes')
   })
 
   it('vaciar las notas las guarda como null', async () => {
