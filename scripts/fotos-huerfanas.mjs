@@ -9,10 +9,12 @@
 //
 // Qué hace:
 //   1. Lista todos los objetos del bucket (recorriendo <usuario>/<planta>/).
-//   2. Lee photo_path y thumbnail_path de todas las plantas y de todas las
-//      filas de plant_photos (varias fotos por planta, #182 y #219). Si el
-//      proyecto aún no tiene esa tabla (la migración sin aplicar), sigue solo
-//      con plants y lo dice: sin la tabla no hay fotos secundarias.
+//   2. Lee photo_path y thumbnail_path de todas las plantas, de todas las
+//      filas de plant_photos (varias fotos por planta, #182 y #219) y de los
+//      registros de la bitácora con foto (plant_log_entries, #264, con las
+//      fotos en <usuario>/<planta>/log/). Si el proyecto aún no tiene alguna
+//      de esas tablas (la migración sin aplicar), sigue sin ella y lo dice:
+//      sin la tabla no hay fotos de ese tipo.
 //   3. Informa de:
 //      - los objetos que no cita ninguna planta ni ninguna fila de
 //        plant_photos (huérfanos: restos de subidas canceladas, reemplazos o
@@ -121,12 +123,15 @@ async function listarObjetos(bucket, carpeta = '') {
   }
 }
 
-/** Lee todas las filas de una tabla, de 1000 en 1000 por id. */
-async function leerTabla(supabase, tabla, columnas) {
+/**
+ * Lee todas las filas de una tabla, de 1000 en 1000 por id. `filtrar`, si se
+ * da, añade condiciones a cada consulta.
+ */
+async function leerTabla(supabase, tabla, columnas, filtrar = (c) => c) {
   const filas = []
   let ultimo = null
   for (;;) {
-    let consulta = supabase.from(tabla).select(columnas)
+    let consulta = filtrar(supabase.from(tabla).select(columnas))
     if (ultimo !== null) consulta = consulta.gt('id', ultimo)
     const { data, error } = await consulta
       .order('id', { ascending: true })
@@ -164,6 +169,24 @@ async function leerFotos(supabase) {
   }
 }
 
+/** Los registros de la bitácora con foto; sin la tabla, ninguno. */
+async function leerFotosDeBitacora(supabase) {
+  try {
+    return await leerTabla(
+      supabase,
+      'plant_log_entries',
+      'id, plant_id, photo_path, thumbnail_path',
+      (consulta) => consulta.not('photo_path', 'is', null),
+    )
+  } catch (error) {
+    if (!esTablaInexistente(error)) throw error
+    console.log(
+      'Aviso: el proyecto no tiene la tabla plant_log_entries; no hay fotos de bitácora que comparar.',
+    )
+    return []
+  }
+}
+
 async function main() {
   let argumentos
   try {
@@ -196,6 +219,7 @@ async function main() {
     listPlants: () =>
       leerTabla(supabase, 'plants', 'id, user_id, photo_path, thumbnail_path'),
     listPlantPhotos: () => leerFotos(supabase),
+    listLogPhotos: () => leerFotosDeBitacora(supabase),
     removeObjects: async (rutas) => {
       const { error } = await bucket.remove(rutas)
       if (error) throw new Error(error.message)

@@ -117,6 +117,57 @@ export type Database = {
           },
         ]
       }
+      plant_log_entries: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          idempotency_key: string | null
+          in_bloom: boolean | null
+          photo_path: string | null
+          plant_id: string
+          thumbnail_path: string | null
+          title: string
+          type: Database['public']['Enums']['plant_log_entry_type']
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          idempotency_key?: string | null
+          in_bloom?: boolean | null
+          photo_path?: string | null
+          plant_id: string
+          thumbnail_path?: string | null
+          title: string
+          type: Database['public']['Enums']['plant_log_entry_type']
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          idempotency_key?: string | null
+          in_bloom?: boolean | null
+          photo_path?: string | null
+          plant_id?: string
+          thumbnail_path?: string | null
+          title?: string
+          type?: Database['public']['Enums']['plant_log_entry_type']
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'plant_log_entries_plant_id_fkey'
+            columns: ['plant_id']
+            isOneToOne: false
+            referencedRelation: 'plants'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       plant_photos: {
         Row: {
           created_at: string
@@ -168,6 +219,9 @@ export type Database = {
       plants: {
         Row: {
           acquired_on: string
+          code: string | null
+          code_number: number
+          code_prefix: string
           created_at: string
           entered_name: string
           flower_color: Database['public']['Enums']['flower_color'] | null
@@ -175,6 +229,7 @@ export type Database = {
           id: string
           location: string | null
           nickname: string | null
+          notes: string | null
           origin: string | null
           photo_in_bloom: boolean
           photo_path: string | null
@@ -190,6 +245,9 @@ export type Database = {
         ComputedFields: 'photo_count'
         Insert: {
           acquired_on?: string
+          code?: never
+          code_number?: number
+          code_prefix?: string
           created_at?: string
           entered_name: string
           flower_color?: Database['public']['Enums']['flower_color'] | null
@@ -197,6 +255,7 @@ export type Database = {
           id?: string
           location?: string | null
           nickname?: string | null
+          notes?: string | null
           origin?: string | null
           photo_in_bloom?: boolean
           photo_path?: string | null
@@ -210,6 +269,9 @@ export type Database = {
         }
         Update: {
           acquired_on?: string
+          code?: never
+          code_number?: number
+          code_prefix?: string
           created_at?: string
           entered_name?: string
           flower_color?: Database['public']['Enums']['flower_color'] | null
@@ -217,6 +279,7 @@ export type Database = {
           id?: string
           location?: string | null
           nickname?: string | null
+          notes?: string | null
           origin?: string | null
           photo_in_bloom?: boolean
           photo_path?: string | null
@@ -580,6 +643,37 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      add_plant_log_entry: {
+        Args: {
+          description?: string
+          entry_type: Database['public']['Enums']['plant_log_entry_type']
+          idempotency_key?: string
+          in_bloom?: boolean
+          photo_path?: string
+          target_plant_id: string
+          thumbnail_path?: string
+          title: string
+        }
+        Returns: {
+          created_at: string
+          description: string | null
+          id: string
+          idempotency_key: string | null
+          in_bloom: boolean | null
+          photo_path: string | null
+          plant_id: string
+          thumbnail_path: string | null
+          title: string
+          type: Database['public']['Enums']['plant_log_entry_type']
+          user_id: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'plant_log_entries'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       add_species_name: {
         Args: {
           new_language?: string
@@ -779,6 +873,34 @@ export type Database = {
           type: Database['public']['Enums']['species_type']
           updated_at: string
         }[]
+      }
+      list_plant_log_entries: {
+        Args: {
+          before_created_at?: string
+          before_id?: string
+          entry_type?: Database['public']['Enums']['plant_log_entry_type']
+          page_size?: number
+          target_plant_id: string
+        }
+        Returns: {
+          created_at: string
+          description: string | null
+          id: string
+          idempotency_key: string | null
+          in_bloom: boolean | null
+          photo_path: string | null
+          plant_id: string
+          thumbnail_path: string | null
+          title: string
+          type: Database['public']['Enums']['plant_log_entry_type']
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'plant_log_entries'
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       list_proposal_groups: {
         Args: { page_offset?: number; page_size?: number }
@@ -1087,6 +1209,11 @@ export type Database = {
     Enums: {
       flower_color:
         'white' | 'pink' | 'purple' | 'yellow' | 'orange' | 'bicolor'
+      plant_log_entry_type:
+        | 'watering'
+        | 'nutrition'
+        | 'preventive_maintenance'
+        | 'preventive_health'
       plant_status: 'active' | 'lost' | 'gifted'
       plant_type: 'species' | 'hybrid' | 'unknown'
       plant_validation: 'pending' | 'validated' | 'unidentifiable'
@@ -1223,6 +1350,12 @@ export const Constants = {
   public: {
     Enums: {
       flower_color: ['white', 'pink', 'purple', 'yellow', 'orange', 'bicolor'],
+      plant_log_entry_type: [
+        'watering',
+        'nutrition',
+        'preventive_maintenance',
+        'preventive_health',
+      ],
       plant_status: ['active', 'lost', 'gifted'],
       plant_type: ['species', 'hybrid', 'unknown'],
       plant_validation: ['pending', 'validated', 'unidentifiable'],

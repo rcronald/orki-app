@@ -4,13 +4,13 @@
 -- orden sobre una base vacía. Estas pruebas comprueban además que el resultado tiene las
 -- piezas que el resto de pruebas y la app dan por hechas.
 
--- prueba: existen las doce tablas del esquema en public
+-- prueba: existen las trece tablas del esquema en public
 select pruebas.iguales(
   'tablas de public',
   (select string_agg(c.relname, ', ' order by c.relname)
      from pg_class c
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')),
-  'catalog_audit_log, genera, genus_abbreviations, plant_photos, plants, product_events, profiles, species, species_merge_keys, '
+  'catalog_audit_log, genera, genus_abbreviations, plant_log_entries, plant_photos, plants, product_events, profiles, species, species_merge_keys, '
     || 'species_names, species_photo_rejections, species_photos'
 );
 
@@ -31,6 +31,11 @@ select pruebas.iguales(
 );
 select pruebas.iguales('product_event_type', enum_range(null::public.product_event_type)::text, '{plant_registered,have_it_search}');
 select pruebas.iguales('product_event_result', enum_range(null::public.product_event_result)::text, '{owned,not_owned,similar}');
+select pruebas.iguales(
+  'plant_log_entry_type',
+  enum_range(null::public.plant_log_entry_type)::text,
+  '{watering,nutrition,preventive_maintenance,preventive_health}'
+);
 
 -- prueba: pg_trgm y unaccent están instaladas en el esquema extensions, no en public
 select pruebas.iguales(
@@ -48,10 +53,10 @@ select pruebas.iguales(
      from pg_trigger t join pg_class c on c.oid = t.tgrelid
      where c.relnamespace = 'public'::regnamespace and not t.tgisinternal),
   'catalog_audit_log.fill_species_id:O, genera.audit_change:O, genera.set_updated_at:O, genus_abbreviations.audit_change:O, '
-    || 'genus_abbreviations.set_updated_at:O, plant_photos.check_plant:O, plant_photos.sync_plant:O, '
-    || 'plants.check_photos_owner:O, plants.copy_photo_to_photos:O, plants.copy_photo_to_photos_on_update:O, '
-    || 'plants.remove_main_photo:O, plants.set_updated_at:O, '
-    || 'plants.sync_with_species:O, profiles.delete_product_events:O, profiles.set_updated_at:O, species.audit_change:O, '
+    || 'genus_abbreviations.set_updated_at:O, plant_log_entries.check_plant:O, plant_photos.check_plant:O, plant_photos.sync_plant:O, '
+    || 'plants.check_log_owner:O, plants.check_photos_owner:O, plants.copy_photo_to_photos:O, plants.copy_photo_to_photos_on_update:O, '
+    || 'plants.keep_code:O, plants.remove_main_photo:O, plants.set_updated_at:O, '
+    || 'plants.sync_with_species:O, plants.tag_code:O, profiles.delete_plant_code_counters:O, profiles.delete_product_events:O, profiles.set_updated_at:O, species.audit_change:O, '
     || 'species.propagate_to_plants:O, species.set_updated_at:O, '
     || 'species.validate_edited_imported:O, species_names.audit_change:O, '
     || 'species_names.set_updated_at:O, species_photos.check_not_rejected:O, species_photos.set_updated_at:O'
@@ -63,10 +68,14 @@ select pruebas.iguales(
   (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || array_to_string(p.proconfig, ','), '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'private'::regnamespace),
-  'audit_catalog_change definer=true search_path=""; '
+  'assign_plant_code definer=true search_path=""; '
+    || 'audit_catalog_change definer=true search_path=""; '
+    || 'backfill_plant_codes definer=false search_path=""; '
     || 'check_abbreviation_free definer=false search_path=""; '
     || 'check_alternative_name definer=false search_path=""; '
     || 'check_genus_name_free definer=false search_path=""; '
+    || 'check_plant_log_entry definer=true search_path=""; '
+    || 'check_plant_log_owner_change definer=true search_path=""; '
     || 'check_plant_owner_change definer=true search_path=""; '
     || 'check_plant_photo definer=true search_path=""; '
     || 'check_species_name_free definer=false search_path=""; '
@@ -80,7 +89,10 @@ select pruebas.iguales(
     || 'copy_plant_photo_to_photos definer=true search_path=""; '
     || 'current_catalog_action_id definer=false search_path=""; '
     || 'delete_profile_events definer=true search_path=""; '
+    || 'delete_profile_plant_codes definer=true search_path=""; '
+    || 'keep_plant_code definer=true search_path=""; '
     || 'log_catalog_action definer=false search_path=""; '
+    || 'plant_code_prefix definer=false search_path=""; '
     || 'propagate_species_to_plants definer=true search_path=""; '
     || 'raise_catalog_error definer=false search_path=""; '
     || 'remove_main_photo_from_plant definer=true search_path=""; '
