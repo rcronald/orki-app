@@ -339,11 +339,14 @@ describe('InventoryView', () => {
     expect(place?.querySelector('svg')).not.toBeNull()
     expect(withLocation.querySelector('.orki-card__common')).toBeNull()
 
-    // Sin apodo ni ubicación: solo el nombre. Ya no se repite el género.
+    // Sin apodo ni ubicación: el nombre y el identificador (#292). Ya no se
+    // repite el género.
     const plain = screen.getByRole('article', { name: 'Cattleya maxima' })
     expect(plain.querySelector('.orki-card__common')).toBeNull()
     expect(plain.querySelector('.orki-card__place')).toBeNull()
-    expect(plain.querySelector('.orki-card__meta')).toBeNull()
+    expect(plain.querySelector('.orki-card__meta')).toHaveTextContent(
+      `Identificador ${maxima.code ?? ''}.`,
+    )
 
     // El nombre es el enlace al detalle y cubre la tarjeta.
     const link = within(plain).getByRole('link', { name: 'Cattleya maxima' })

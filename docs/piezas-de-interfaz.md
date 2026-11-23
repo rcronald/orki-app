@@ -301,6 +301,7 @@ type CollectionCardProps = ArticleProps & {
   nickname?: ReactNode // segunda línea (apodo)
   badge?: ReactNode // insignia, solo si aplica: <StatusBadge status="pending" />
   location?: ReactNode // fila con map-pin («Ubicación:» para el lector)
+  code?: string // identificador bajo el nombre: «PHA-001» (#292)
   photo?: { src: string; alt: string } // sin foto, el marcador sin-foto.svg
   photoCount?: number // con más de 1, el número de fotos sobre la foto
   headingLevel?: 2 | 3 | 4 // h3 por defecto
@@ -314,7 +315,16 @@ Borde `color-neutral-200` sobre `color-neutral-0`, `radius-lg`, sin sombra; foto
 toda la tarjeta (también la foto) y pinta el anillo de foco por dentro.
 Marcado: `article.orki-card.orki-card--outline[.orki-card--row]` >
 `img.orki-card__photo` + `div.orki-card__body` > `hN.orki-card__name` +
-`p.orki-card__common` + insignia + `p.orki-card__place`.
+`p.orki-card__meta` (identificador) + `p.orki-card__common` + insignia +
+`p.orki-card__place`.
+
+Identificador (`code`, #292): justo bajo el nombre, en `orki-card__meta` (12 px,
+`color-neutral-700`; la clase que antes llevaba el género) con `mt-[0]`, sin
+CSS nuevo. Distingue las tarjetas de varias plantas de la misma especie. El
+lector lo lee en la descripción de la tarjeta («Identificador PHA-001.», con
+el rótulo `sr-only`), antes de «3 fotos» si las hay; el nombre accesible sigue
+siendo el del encabezado. Sin `code` (una copia sin conexión anterior al
+#265), ni línea ni descripción.
 
 Número de fotos (`photoCount > 1`, #181): la píldora `orki-count` (la de
 `FiltersButton`, `color-secondary-strong` con el número en `color-neutral-0`)
@@ -335,6 +345,7 @@ accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
   nameStyle={plant.displayNameIsScientific ? 'scientific' : 'plain'}
   nickname={plant.nickname ?? undefined}
   location={plant.location ?? undefined}
+  code={plant.code ?? undefined}
   badge={
     status !== 'validated' ? <StatusBadge status={status} /> : undefined
   }

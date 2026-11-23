@@ -13,6 +13,27 @@ const tarjetas = (page: Page) => page.getByRole('main').getByRole('article')
 const buscador = (page: Page) =>
   page.getByRole('searchbox', { name: 'Buscar en mi colección' })
 
+test('el identificador en la tarjeta, en cuadrícula y en lista', async ({
+  page,
+}) => {
+  await page.goto('/coleccion')
+  const vista = page.getByRole('group', { name: 'Vista' })
+  for (const nombre of ['Cuadrícula', 'Lista']) {
+    await vista.getByRole('button', { name: nombre }).click()
+    // El nombre de la tarjeta sigue siendo el del encabezado; el
+    // identificador va en su descripción.
+    const amabilis = page.getByRole('article', {
+      name: 'Phalaenopsis amabilis',
+      exact: true,
+    })
+    await expect(amabilis).toContainText('PHA-001')
+    await expect(amabilis).toHaveAccessibleDescription('Identificador PHA-001.')
+    await expect(
+      page.getByRole('article', { name: 'Cattleya maxima', exact: true }),
+    ).toContainText('CAT-002')
+  }
+})
+
 test('buscar por identificador y por ubicación', async ({
   page,
   revisarAccesibilidad,

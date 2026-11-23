@@ -86,6 +86,45 @@ describe('CollectionCard', () => {
     await expectNoAxeViolations()
   })
 
+  describe('identificador', () => {
+    it.each(['grid', 'list'] as const)(
+      '%s: bajo el nombre, discreto, y en la descripción',
+      async (layout) => {
+        render(
+          <main>
+            <CollectionCard
+              scientificName="Phalaenopsis amabilis"
+              layout={layout}
+              code="PHA-001"
+              photoCount={2}
+            />
+          </main>,
+        )
+
+        const card = screen.getByRole('article', {
+          name: 'Phalaenopsis amabilis',
+          description: 'Identificador PHA-001. 2 fotos',
+        })
+        const code = screen.getByText('PHA-001')
+        expect(code).toHaveClass('orki-card__meta')
+        // Justo después del nombre.
+        expect(card.querySelector('.orki-card__name')?.nextElementSibling).toBe(
+          code,
+        )
+        await expectNoAxeViolations()
+      },
+    )
+
+    it('sin identificador, ni línea ni descripción', () => {
+      render(<CollectionCard scientificName="Phalaenopsis amabilis" />)
+      const card = screen.getByRole('article', {
+        name: 'Phalaenopsis amabilis',
+      })
+      expect(card.querySelector('.orki-card__meta')).toBeNull()
+      expect(card).not.toHaveAttribute('aria-describedby')
+    })
+  })
+
   describe('número de fotos', () => {
     const PHOTO = { src: '/foto.jpg', alt: 'Cattleya trianae en flor' }
 

@@ -430,9 +430,12 @@ for (const ancho of [360, 1440]) {
             .getByRole('button', { name: vista }),
         ).toHaveAttribute('aria-pressed', 'true')
 
-        // Con tres fotos: el número sobre la foto y «3 fotos» para el lector;
-        // el nombre de la tarjeta sigue siendo el de la planta.
-        await expect(maxima).toHaveAccessibleDescription('3 fotos')
+        // Con tres fotos: el número sobre la foto y «3 fotos» para el lector,
+        // tras el identificador (#292); el nombre de la tarjeta sigue siendo
+        // el de la planta.
+        await expect(maxima).toHaveAccessibleDescription(
+          'Identificador CAT-002. 3 fotos',
+        )
         const numero = maxima.locator('.orki-count')
         await expect(numero).toBeVisible()
         await expect(numero.locator('span[aria-hidden="true"]')).toHaveText('3')
@@ -453,9 +456,11 @@ for (const ancho of [360, 1440]) {
           )
         }
 
-        // Con una foto (o ninguna), nada.
+        // Con una foto (o ninguna), nada: solo el identificador.
         await expect(amabilis.locator('.orki-count')).toHaveCount(0)
-        await expect(amabilis).toHaveAccessibleDescription('')
+        await expect(amabilis).toHaveAccessibleDescription(
+          'Identificador PHA-001.',
+        )
 
         await sinDesplazamientoHorizontal(page)
         await revisarAccesibilidad(`número de fotos en ${vista.toLowerCase()}`)
