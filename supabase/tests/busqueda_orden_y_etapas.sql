@@ -311,10 +311,10 @@ create temp table recorridos_antes as
   select c.relname::text as indice, pg_stat_get_xact_numscans(c.oid) as recorridos
   from pg_class c
   where c.relname in ('species_scientific_name_prefix_idx', 'species_names_name_trgm_idx', 'species_scientific_name_trgm_idx');
-grant select on recorridos_antes to anon;
+grant select on recorridos_antes to authenticated;
 set local enable_seqscan = off;
-set local role anon;
-select pruebas.iguales('dendrob como anon', pg_temp.nombres('dendrob', 3), 'Dendrobium aberrans, Dendrobium acerosum, Dendrobium aciculare');
+set local role authenticated;
+select pruebas.iguales('dendrob como authenticated', pg_temp.nombres('dendrob', 3), 'Dendrobium aberrans, Dendrobium acerosum, Dendrobium aciculare');
 set local role postgres;
 select pruebas.iguales(
   'índices recorridos por dendrob',
@@ -326,10 +326,10 @@ create temp table recorridos_despues as
   select c.relname::text as indice, pg_stat_get_xact_numscans(c.oid) as recorridos
   from pg_class c
   where c.relname in ('species_scientific_name_prefix_idx', 'species_names_name_trgm_idx', 'species_scientific_name_trgm_idx');
-grant select on recorridos_despues to anon;
-set local role anon;
+grant select on recorridos_despues to authenticated;
+set local role authenticated;
 select pruebas.iguales(
-  'doritis pulcherima como anon',
+  'doritis pulcherima como authenticated',
   pg_temp.especies('doritis pulcherima', 1),
   'Phalaenopsis pulcherrima [Doritis pulcherrima:synonym]'
 );
@@ -413,10 +413,10 @@ create temp table recorridos_generos as
   select c.relname::text as indice, pg_stat_get_xact_numscans(c.oid) as recorridos
   from pg_class c
   where c.relname in ('genera_name_trgm_idx', 'genus_abbreviations_search_key');
-grant select on recorridos_generos to anon;
+grant select on recorridos_generos to authenticated;
 set local enable_seqscan = off;
-set local role anon;
-select pruebas.iguales('ang como anon', pg_temp.generos('ang', 1), 'Anguloa (Ang.)');
+set local role authenticated;
+select pruebas.iguales('ang como authenticated', pg_temp.generos('ang', 1), 'Anguloa (Ang.)');
 set local role postgres;
 select pruebas.iguales(
   'índices recorridos por search_genera',

@@ -15,14 +15,14 @@ insert into public.profiles (id) values ('user_a');
 insert into public.plants (user_id, entered_name, species_id)
 values ('user_a', 'Mi labiata', pruebas.especie('Cattleya labiata'));
 
--- prueba: sin sesión, el catálogo se sigue leyendo
+-- prueba: sin sesión, el catálogo se lee con las funciones del catálogo público, no de las tablas
 set local role anon;
 set local request.jwt.claims = '{"role": "anon"}';
+select pruebas.debe_fallar('anon lee species', 'select * from public.species', '42501');
 select pruebas.iguales(
-  'filas visibles de genera, genus_abbreviations, species y species_names',
-  (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
-              (select count(*) from public.species), (select count(*) from public.species_names))::text),
-  '(43,43,1,1)'
+  'ficha de Cattleya labiata sin sesión',
+  (select scientific_name from public.get_public_species(pruebas.especie('Cattleya labiata'))),
+  'Cattleya labiata'
 );
 select pruebas.iguales('is_catalog_admin() sin sesión', public.is_catalog_admin(), false);
 reset request.jwt.claims;
@@ -242,7 +242,7 @@ select pruebas.iguales(
   0::bigint
 );
 
--- prueba: privilegios sobre el catálogo: anon solo lee y authenticated lee y escribe, sin vaciar
+-- prueba: privilegios sobre el catálogo: anon nada y authenticated lee y escribe, sin vaciar
 select pruebas.iguales(
   'privilegios de anon y authenticated sobre las tablas del catálogo',
   (select string_agg(distinct x.privilegios, ', ' order by x.privilegios)
@@ -256,7 +256,7 @@ select pruebas.iguales(
          case when has_table_privilege(r.rol, 'public.' || t.tabla, 'delete') then 'd' end,
          case when has_table_privilege(r.rol, 'public.' || t.tabla, 'truncate') then 'D' end) as privilegios
      ) x),
-  'anon:r, authenticated:rawd'
+  'anon:, authenticated:rawd'
 );
 
 -- prueba: cada tabla del catálogo tiene sus políticas de escritura solo para authenticated y con is_catalog_admin()
