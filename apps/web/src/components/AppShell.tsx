@@ -94,8 +94,9 @@ function UnavailableHeader({ reason }: { reason: 'offline' | 'failed' }) {
 
 // A dónde ofrecen volver la privacidad y los créditos abiertos desde el pie
 // (#202): desde las pantallas con sesión (la colección, la cuenta, la
-// administración), a «Mi colección»; desde las propias páginas de texto, al
-// mismo sitio que ya ofrecían; desde el resto, al inicio.
+// administración), a «Mi colección»; desde el catálogo (#232), al catálogo;
+// desde las propias páginas de texto, al mismo sitio que ya ofrecían; desde
+// el resto, al inicio.
 const SIGNED_IN_AREAS = [
   PATHS.collection,
   PATHS.ownershipCheck,
@@ -106,6 +107,9 @@ const SIGNED_IN_AREAS = [
 function footerOrigin(pathname: string, state: unknown): TextPageOrigin {
   if (pathname === PATHS.privacy || pathname === PATHS.credits) {
     return textPageOrigin(state) ?? 'inicio'
+  }
+  if (pathname === PATHS.catalog || pathname.startsWith(`${PATHS.catalog}/`)) {
+    return 'catalogo'
   }
   return SIGNED_IN_AREAS.some(
     (area) => pathname === area || pathname.startsWith(`${area}/`),

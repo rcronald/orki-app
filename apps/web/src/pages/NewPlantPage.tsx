@@ -1,4 +1,4 @@
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useCollection } from '../collection/useCollection.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
@@ -10,7 +10,10 @@ import {
   PlantForm,
   type PlantFormServices,
 } from '../registration/PlantForm.tsx'
-import { prefilledName } from '../registration/prefill-name.ts'
+import {
+  prefilledName,
+  prefilledSpecies,
+} from '../registration/prefill-name.ts'
 import { loadQuickAccessGenera } from '../registration/quick-genera.ts'
 import { insertPlant } from '../registration/save-plant.ts'
 import { PLANT_FORM_TEXT } from '../registration/texts.ts'
@@ -20,7 +23,9 @@ import { useRegistrationEvent } from '../telemetry/useRegistrationEvent.ts'
 // Registro de una planta (#85, con galería desde el #221), en
 // /coleccion/nueva. Exige sesión. Va en su propio chunk (App.tsx lo carga de
 // forma diferida). Con ?nombre= (#123, desde "Aún no la tienes"), con ese
-// nombre ya escrito. Al terminar, el evento de producto "registro completado"
+// nombre ya escrito; si además el estado de la navegación trae la especie
+// del catálogo con ese nombre (#232, «Registrar esta especie»), con ella ya
+// elegida. Al terminar, el evento de producto "registro completado"
 // (#146, useRegistrationEvent). La antigua entrada "desde la cámara"
 // (?foto=1) ya no existe: la dirección sigue abriendo el registro y el
 // parámetro se ignora.
@@ -53,6 +58,8 @@ export default function NewPlantPage() {
   // desactiva con su aviso de sin conexión.
   const online = useReadOnly() === null
   const [search] = useSearchParams()
+  const location = useLocation()
+  const initialName = prefilledName(search)
   const registration = useRegistrationEvent({ offline: !online })
 
   return (
@@ -78,7 +85,8 @@ export default function NewPlantPage() {
         online={online}
         knownPlants={knownPlants}
         draftUserId={userId}
-        initialName={prefilledName(search)}
+        initialName={initialName}
+        initialSpecies={prefilledSpecies(location.state, initialName)}
         // En cuanto la planta existe (y otra vez al cambiar su principal), a
         // la colección: si una foto falla o se sale a mitad, ya está en el
         // inventario.

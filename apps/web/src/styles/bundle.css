@@ -241,6 +241,14 @@
 .orki-action__title { font-weight: 600; }
 .orki-action__desc { font: 400 14px/20px var(--font-body); color: var(--color-neutral-700); }
 
+.orki-letters { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.orki-letters__link { justify-content: center; min-width: 44px; min-height: 44px; padding: var(--space-2) var(--space-3); text-decoration: none; }
+
+.orki-pager { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.orki-pager__prev { grid-column: 1; justify-self: start; }
+.orki-pager__status { grid-column: 2; margin: 0; font: 600 16px/24px var(--font-body); color: var(--color-neutral-700); text-align: center; }
+.orki-pager__next { grid-column: 3; justify-self: end; }
+
 .orki-match { display: inline-flex; align-items: center; align-self: flex-start; gap: var(--space-1); padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--color-secondary-soft); color: var(--color-secondary-strong); font: 600 14px/20px var(--font-body); }
 .orki-match svg { width: 16px; height: 16px; flex: none; }
 
@@ -300,6 +308,14 @@
   .orki-answer__body { grid-template-columns: minmax(0, 1fr); }
   .orki-answer__action { grid-column: 1; grid-row: auto; justify-self: start; margin-top: var(--space-2); }
   .orki-panel { padding: var(--space-4); }
+  .orki-letters { flex-wrap: nowrap; margin: calc(var(--space-1) * -1); padding: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .orki-letters::-webkit-scrollbar { display: none; }
+  .orki-letters > li { flex: none; }
+  .orki-pager { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .orki-pager__status { grid-column: 1 / -1; grid-row: 1; }
+  .orki-pager__prev { grid-row: 2; }
+  .orki-pager__next { grid-column: 2; grid-row: 2; }
+  .orki-pager .orki-btn { padding-right: var(--space-3); padding-left: var(--space-3); }
   .orki-profile > .orki-btn { width: 100%; }
   .orki-profile__text { flex-basis: 8em; }
   .orki-avatar--lg { width: 72px; height: 72px; font-size: 24px; line-height: 32px; }

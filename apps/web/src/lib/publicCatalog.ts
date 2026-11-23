@@ -286,9 +286,7 @@ function commonNamesOf(value: unknown): PublicCommonName[] {
     if (typeof item !== 'object' || item === null) return []
     const { name, language } = item as Record<string, unknown>
     if (typeof name !== 'string') return []
-    return [
-      { name, language: typeof language === 'string' ? language : null },
-    ]
+    return [{ name, language: typeof language === 'string' ? language : null }]
   })
 }
 

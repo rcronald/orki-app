@@ -15,6 +15,7 @@ const ORIGINS = {
   registro: { to: PATHS.signUp, label: 'Volver al registro' },
   coleccion: { to: PATHS.collection, label: 'Volver a Mi colección' },
   cuenta: { to: PATHS.account, label: 'Volver a Tu cuenta' },
+  catalogo: { to: PATHS.catalog, label: 'Volver al catálogo' },
 } as const
 
 export type TextPageOrigin = keyof typeof ORIGINS

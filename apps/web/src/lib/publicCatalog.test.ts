@@ -170,7 +170,7 @@ describe('listAllPublicGenera', () => {
   it('pide la primera página y, con el total, las demás a la vez', async () => {
     const total = PUBLIC_GENERA_PAGE_SIZE * 3 + 5
     fetchMock.mockImplementation((_input, init) => {
-      const { page_number: page } = JSON.parse(String(init?.body)) as {
+      const { page_number: page } = JSON.parse(init?.body as string) as {
         page_number: number
       }
       const start = (page - 1) * PUBLIC_GENERA_PAGE_SIZE
