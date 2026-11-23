@@ -422,18 +422,34 @@ test.describe('portada prerrenderada', () => {
       expect(pedidas).toEqual([])
     })
   })
-})
 
-test.describe('con sesión', () => {
-  test.use({ sesion: { usuario: 'user_prueba_e2e' } })
+  // Sin usuario recordado (una visita nueva, o con el almacenamiento borrado)
+  // la portada se pinta al momento, sin esperar a Clerk; si resulta haber
+  // sesión, la app pasa a la colección en cuanto Clerk lo confirma
+  // (HomeRoute). Es lo previsto: la contrapartida de la prueba anterior.
+  test.describe('con sesión, pero sin usuario recordado', () => {
+    test.use({ sesion: { usuario: 'user_prueba_e2e' } })
 
-  test('el inicio lleva a la colección sin pintar la portada', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    await expect(page).toHaveURL(/\/coleccion$/)
-    await expect(
-      page.getByRole('heading', { name: 'Mi colección', level: 1 }),
-    ).toBeVisible()
+    test('se pinta y `/` lleva después a la colección', async ({ page }) => {
+      await page.addInitScript((titulo) => {
+        const w = window as unknown as { portadaPintada?: boolean }
+        new MutationObserver(() => {
+          for (const h1 of document.querySelectorAll('h1')) {
+            if (h1.textContent?.includes(titulo)) w.portadaPintada = true
+          }
+        }).observe(document, { childList: true, subtree: true })
+      }, TITULO)
+      await page.goto('/')
+      await expect(page).toHaveURL(/\/coleccion$/)
+      await expect(
+        page.getByRole('heading', { name: 'Mi colección', level: 1 }),
+      ).toBeVisible()
+      expect(
+        await page.evaluate(
+          () =>
+            (window as unknown as { portadaPintada?: boolean }).portadaPintada,
+        ),
+      ).toBe(true)
+    })
   })
 })
