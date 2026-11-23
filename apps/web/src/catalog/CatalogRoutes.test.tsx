@@ -540,6 +540,10 @@ describe('ficha de la especie', () => {
     })
 
     async function resolveCollection(plants: readonly CollectionPlant[]) {
+      // La colección se pide después de leer la copia local, que es
+      // asíncrona: la ficha puede pintarse antes. Sin esta espera la prueba
+      // fallaba de vez en cuando con «No se ha pedido la colección».
+      await waitFor(() => source.last())
       await act(async () => {
         source.last().resolve(plants)
         await Promise.resolve()
