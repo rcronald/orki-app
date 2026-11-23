@@ -115,8 +115,10 @@ jobs:
 
       # Copia del esquema previo (solo estructura: ni filas ni roles), por si hay que revisar
       # cómo estaba la base antes de una migración. Solo si hay algo que aplicar (o si la
-      # simulación no se entendió). Si la copia falla, no se aplica nada. Se comprueba que no
-      # lleva ninguna de las credenciales del job antes de subirla como artefacto.
+      # simulación no se entendió). Es una ayuda, no una condición: el esquema ya está en las
+      # migraciones del repositorio, así que si la copia no se puede hacer (la orden necesita
+      # Docker en el ejecutor y no se ha probado aún) se avisa y se sigue. Lo que sí detiene
+      # todo es que la copia contenga una credencial del job.
       - name: Copiar el esquema previo
         id: copia
         if: steps.simulacion.outputs.pendientes != 'no'
@@ -128,11 +130,14 @@ jobs:
         run: |
           mkdir -p "$CARPETA"
           archivo="${CARPETA}/esquema-previo-${AMBIENTE}-$(date -u +%Y%m%dT%H%M%SZ).sql"
-          node scripts/supabase-db.mjs esquema "$archivo"
-          if [[ ! -s "$archivo" ]]; then
-            echo "::error::La copia del esquema salió vacía: no se aplica ninguna migración."
-            exit 1
+          if ! node scripts/supabase-db.mjs esquema "$archivo" || [[ ! -s "$archivo" ]]; then
+            rm -f "$archivo"
+            echo "::warning::No se pudo copiar el esquema previo: se sigue sin copia (el esquema está en las migraciones del repositorio)."
+            printf '## Copia del esquema previo\n\nNo se pudo hacer; se siguió sin ella.\n\n' >> "$GITHUB_STEP_SUMMARY"
+            echo "hecha=no" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "hecha=si" >> "$GITHUB_OUTPUT"
           if grep -qF -- "$SUPABASE_DB_PASSWORD" "$archivo" || grep -qF -- "$SUPABASE_ACCESS_TOKEN" "$archivo"; then
             rm -f "$archivo"
             echo "::error::La copia del esquema contiene una de las credenciales del job: se ha borrado y no se aplica ninguna migración."
@@ -146,7 +151,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Subir la copia del esquema
-        if: steps.copia.outcome == 'success'
+        if: steps.copia.outputs.hecha == 'si'
         uses: actions/upload-artifact@v7
         with:
           name: esquema-previo-${{ env.AMBIENTE }}-${{ github.run_id }}-${{ github.run_attempt }}
