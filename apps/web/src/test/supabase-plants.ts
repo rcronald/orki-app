@@ -80,6 +80,8 @@ export function rowOf(plant: CollectionPlant): CollectionPlantRow {
     photo_path: plant.photoPath,
     thumbnail_path: plant.thumbnailPath,
     photo_count: plant.photoCount,
+    code: plant.code,
+    notes: plant.notes,
     created_at: plant.createdAt,
     updated_at: plant.updatedAt,
     species: plant.species
