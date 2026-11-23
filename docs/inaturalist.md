@@ -192,6 +192,8 @@ De las 520: 141 por defecto, 223 del taxón y 156 de observaciones. Las observac
 
 `orki-catalogo emparejar-inaturalist`, en `scripts/catalog-import` (detalle en [su README](../scripts/catalog-import/README.md#emparejamiento-con-inaturalist)). Lee los taxones de iNaturalist por la API con caché, los empareja con el catálogo usando la normalización del importador y los sinónimos, clasifica la licencia de la foto, busca alternativas y escribe un reporte CSV y un resumen. No descarga imágenes ni se conecta a ninguna base.
 
+Por qué casi la mitad de las especies de la primera carga quedan sin taxón (ausencia real en iNaturalist, no un fallo del emparejamiento) está medido en [inaturalist-emparejamiento.md](inaturalist-emparejamiento.md).
+
 La carga de las fotos (#234) es `orki-catalogo cargar-fotos-inaturalist`, en el mismo paquete ([su README](../scripts/catalog-import/README.md#fotos-de-referencia)): empareja el catálogo de la base con el mismo código y la misma caché, elige la foto con las cuatro licencias aceptadas, la descarga del bucket abierto, la convierte a WebP sin metadatos, la sube a Storage y escribe las filas en una transacción.
 
 ## Riesgos y decisiones pendientes
