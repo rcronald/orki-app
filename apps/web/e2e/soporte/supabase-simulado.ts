@@ -60,6 +60,17 @@ import {
 // escribe con la restricción plants_notes_valid (23514 si está en blanco o
 // pasa de 2000 caracteres).
 //
+// Bitácora (#267): plant_log_entries con las reglas de la migración
+// 20261124120000 que importan a la app: add_plant_log_entry con su clave de
+// reintento (la misma clave en la misma planta devuelve el registro que
+// existía; en otra, 22023), list_plant_log_entries del más reciente al más
+// antiguo con filtro por tipo y cursor (created_at con microsegundos, que se
+// compara como texto), el borrado de lo propio y la cascada al borrar la
+// planta. Las fotos van en <usuario>/<planta>/log/. `fallosDeBitacora` hace
+// fallar la próxima llamada de una operación, antes o después de aplicarla
+// (la respuesta perdida). El listado de Storage devuelve, como el real, solo
+// el primer nivel de una carpeta y las subcarpetas sin id.
+//
 // Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
 // 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
 // pida algo nuevo no pasa desapercibido.
@@ -167,6 +178,41 @@ const MAXIMO_DE_FOTOS = 6
 /** ¿Está la ruta dentro de <usuario>/<planta>/ y con un solo nombre de archivo? */
 function rutaDeLaPlanta(ruta: unknown, usuario: string, planta: string) {
   const carpeta = `${usuario}/${planta}/`
+  return (
+    typeof ruta === 'string' &&
+    ruta.length <= 1024 &&
+    ruta.startsWith(carpeta) &&
+    ruta.length > carpeta.length &&
+    !ruta.slice(carpeta.length).includes('/')
+  )
+}
+
+/** Una fila de plant_log_entries. */
+export interface RegistroDeBitacora {
+  id: string
+  plant_id: string
+  user_id: string
+  type: string
+  title: string
+  description: string | null
+  photo_path: string | null
+  thumbnail_path: string | null
+  in_bloom: boolean | null
+  idempotency_key: string | null
+  created_at: string
+}
+
+/** Un fallo preparado de la bitácora: antes de aplicar o con la respuesta perdida. */
+export interface FalloDeBitacora {
+  operacion: 'alta' | 'lista' | 'borrado'
+  cuando: 'antes' | 'despues'
+  /** Estado HTTP de la respuesta; 503 si no se indica. */
+  status?: number
+}
+
+/** ¿Está la ruta en <usuario>/<planta>/log/ con un solo nombre de archivo? */
+function rutaDeBitacora(ruta: unknown, usuario: string, planta: string) {
+  const carpeta = `${usuario}/${planta}/log/`
   return (
     typeof ruta === 'string' &&
     ruta.length <= 1024 &&
@@ -321,6 +367,10 @@ export class SupabaseSimulado {
   readonly eventos: EventoDeProducto[] = []
   /** Filas de plant_photos. */
   fotos: FotoDePlanta[] = []
+  /** Filas de plant_log_entries (#267). */
+  registros: RegistroDeBitacora[] = []
+  /** Fallos preparados de la bitácora; cada uno se usa una vez. */
+  readonly fallosDeBitacora: FalloDeBitacora[] = []
   /** Peticiones que no se supo responder (la prueba falla si hay alguna). */
   readonly sinSimular: string[] = []
   /**
@@ -354,6 +404,16 @@ export class SupabaseSimulado {
     return this.fotos
       .filter((foto) => foto.plant_id === plantaId)
       .sort((a, b) => a.position - b.position)
+  }
+
+  /** Registros de una planta, del más reciente al más antiguo. */
+  registrosDe(plantaId: string): RegistroDeBitacora[] {
+    return this.registros
+      .filter((registro) => registro.plant_id === plantaId)
+      .sort(
+        (a, b) =>
+          b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
+      )
   }
 
   async responder(route: Route): Promise<void> {
@@ -600,6 +660,8 @@ export class SupabaseSimulado {
       case 'PATCH plant_photos':
       case 'DELETE plant_photos':
         return this.fotosDePlantas(metodo, coincide, cabeceras, request, yo)
+      case 'DELETE plant_log_entries':
+        return this.borrarRegistros(coincide, cabeceras, yo)
       default:
         throw new Error('tabla sin simular')
     }
@@ -734,6 +796,10 @@ export class SupabaseSimulado {
     this.datos.plantas = this.datos.plantas.filter((p) => !mias.includes(p))
     this.fotos = this.fotos.filter(
       (foto) => !mias.some((planta) => planta.id === foto.plant_id),
+    )
+    // Y sus registros de bitácora (#267).
+    this.registros = this.registros.filter(
+      (registro) => !mias.some((planta) => planta.id === registro.plant_id),
     )
     return filas(
       mias.map((p) => ({ id: p.id })),
@@ -1433,6 +1499,10 @@ export class SupabaseSimulado {
       }
       case 'reorder_plant_photos':
         return this.reordenarFotos(argumentos, yo)
+      case 'add_plant_log_entry':
+        return this.anadirRegistro(argumentos, yo)
+      case 'list_plant_log_entries':
+        return this.listarRegistros(argumentos, yo)
       default:
         break
     }
@@ -1688,6 +1758,148 @@ export class SupabaseSimulado {
     ])
   }
 
+  // Bitácora (plant_log_entries, #267) -----------------------------------------
+
+  /** El próximo fallo preparado de esa operación, si lo hay (se consume). */
+  private falloDeBitacora(operacion: FalloDeBitacora['operacion']) {
+    const indice = this.fallosDeBitacora.findIndex(
+      (fallo) => fallo.operacion === operacion,
+    )
+    if (indice === -1) return null
+    const [fallo] = this.fallosDeBitacora.splice(indice, 1)
+    return fallo ?? null
+  }
+
+  private respuestaDeFallo(fallo: FalloDeBitacora) {
+    return errorPostgrest(fallo.status ?? 503, 'XX000', 'fallo simulado')
+  }
+
+  private anadirRegistro(
+    argumentos: Record<string, unknown>,
+    yo: Identidad,
+  ): Respuesta {
+    if (yo.usuario === null) return sinPermiso()
+    const fallo = this.falloDeBitacora('alta')
+    if (fallo?.cuando === 'antes') return this.respuestaDeFallo(fallo)
+    const planta = String(argumentos.target_plant_id)
+    const clave =
+      typeof argumentos.idempotency_key === 'string'
+        ? argumentos.idempotency_key
+        : null
+    const existente =
+      clave === null
+        ? undefined
+        : this.registros.find(
+            (r) => r.user_id === yo.usuario && r.idempotency_key === clave,
+          )
+    let registro: RegistroDeBitacora
+    if (existente) {
+      if (existente.plant_id !== planta) {
+        return errorPostgrest(400, '22023', 'clave usada en otra planta')
+      }
+      registro = existente
+    } else {
+      const propia = this.datos.plantas.some(
+        (p) => p.id === planta && p.user_id === yo.usuario,
+      )
+      if (!propia) {
+        return errorPostgrest(403, '42501', 'row-level security (simulado)')
+      }
+      const titulo = argumentos.title
+      const descripcion = argumentos.description ?? null
+      const foto = argumentos.photo_path ?? null
+      const miniatura = argumentos.thumbnail_path ?? null
+      const valido =
+        typeof titulo === 'string' &&
+        /\S/.test(titulo) &&
+        [...titulo].length <= 120 &&
+        (descripcion === null ||
+          (typeof descripcion === 'string' &&
+            /\S/.test(descripcion) &&
+            [...descripcion].length <= 2000)) &&
+        (foto === null) === (miniatura === null) &&
+        (foto === null || rutaDeBitacora(foto, yo.usuario, planta)) &&
+        (miniatura === null || rutaDeBitacora(miniatura, yo.usuario, planta))
+      if (!valido || typeof titulo !== 'string') {
+        return errorPostgrest(
+          400,
+          '23514',
+          'violates check constraint (simulado)',
+        )
+      }
+      registro = {
+        id: crypto.randomUUID(),
+        plant_id: planta,
+        user_id: yo.usuario,
+        type: String(argumentos.entry_type),
+        title: titulo,
+        description: descripcion,
+        photo_path: foto as string | null,
+        thumbnail_path: miniatura as string | null,
+        in_bloom: (argumentos.in_bloom ?? null) as boolean | null,
+        idempotency_key: clave,
+        // Como la base: con microsegundos.
+        created_at: this.ahora().replace('Z', '456+00:00'),
+      }
+      this.registros.push(registro)
+    }
+    if (fallo?.cuando === 'despues') return this.respuestaDeFallo(fallo)
+    return json(registro)
+  }
+
+  private listarRegistros(
+    argumentos: Record<string, unknown>,
+    yo: Identidad,
+  ): Respuesta {
+    if (yo.usuario === null) return sinPermiso()
+    const fallo = this.falloDeBitacora('lista')
+    if (fallo) return this.respuestaDeFallo(fallo)
+    const tipo = argumentos.entry_type ?? null
+    const texto = (valor: unknown) => (typeof valor === 'string' ? valor : null)
+    const antesDe = texto(argumentos.before_created_at)
+    const antesId = texto(argumentos.before_id)
+    if ((antesDe === null) !== (antesId === null)) {
+      return errorPostgrest(400, '22023', 'cursor incompleto')
+    }
+    const tamano = Math.min(
+      Math.max(Number(argumentos.page_size ?? 20), 1),
+      100,
+    )
+    return json(
+      this.registrosDe(String(argumentos.target_plant_id))
+        .filter((r) => r.user_id === yo.usuario)
+        .filter((r) => tipo === null || r.type === tipo)
+        .filter(
+          (r) =>
+            antesDe === null ||
+            antesId === null ||
+            r.created_at < antesDe ||
+            (r.created_at === antesDe && r.id < antesId),
+        )
+        .slice(0, tamano),
+    )
+  }
+
+  private borrarRegistros(
+    coincide: (fila: Record<string, unknown>) => boolean,
+    cabeceras: Record<string, string>,
+    yo: Identidad,
+  ): Respuesta {
+    if (yo.usuario === null) {
+      return errorPostgrest(401, 'PGRST301', 'JWT required (simulado)')
+    }
+    const fallo = this.falloDeBitacora('borrado')
+    if (fallo?.cuando === 'antes') return this.respuestaDeFallo(fallo)
+    const borrados = this.registros.filter(
+      (r) =>
+        r.user_id === yo.usuario &&
+        coincide(r as unknown as Record<string, unknown>),
+    )
+    this.registros = this.registros.filter((r) => !borrados.includes(r))
+    if (fallo?.cuando === 'despues') return this.respuestaDeFallo(fallo)
+    return filas(borrados, cabeceras)
+  }
+
   // Storage ---------------------------------------------------------------------
 
   private storage(
@@ -1755,13 +1967,17 @@ export class SupabaseSimulado {
       }
       const carpeta = prefix.endsWith('/') ? prefix : `${prefix}/`
       if (!propia(carpeta)) return json([])
+      // Como Storage: el primer nivel; una subcarpeta sale una vez, sin id.
+      const entradas = new Map<string, string | null>()
+      for (const archivo of this.archivos.keys()) {
+        if (!archivo.startsWith(carpeta)) continue
+        const [nombre, ...resto] = archivo.slice(carpeta.length).split('/')
+        entradas.set(nombre, resto.length > 0 ? null : archivo)
+      }
       return json(
-        [...this.archivos.keys()]
-          .filter((archivo) => archivo.startsWith(carpeta))
-          .map((archivo) => ({
-            name: archivo.slice(carpeta.length),
-            id: archivo,
-          })),
+        [...entradas]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([name, id]) => ({ name, id })),
       )
     }
 

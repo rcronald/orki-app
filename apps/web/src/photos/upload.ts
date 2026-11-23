@@ -1,5 +1,6 @@
 import {
   newPhotoVersion,
+  type LOG_SUBFOLDER,
   plantPhotoPaths,
   type PlantPhotoPaths,
   type PlantPhotoType,
@@ -111,6 +112,8 @@ export interface UploadPhotoFilesOptions {
   onProgress?: (progress: UploadProgress) => void
   /** Versión de las rutas; por defecto, photoVersionFor(files). */
   version?: string
+  /** 'log': la foto de un registro de la bitácora (#267), en <planta>/log/. */
+  subfolder?: typeof LOG_SUBFOLDER
 }
 
 /**
@@ -128,6 +131,7 @@ export async function uploadPhotoFiles(
     signal,
     onProgress,
     version = photoVersionFor(files),
+    subfolder,
   }: UploadPhotoFilesOptions,
 ): Promise<PlantPhotoPaths> {
   throwIfAborted(signal)
@@ -137,6 +141,7 @@ export async function uploadPhotoFiles(
     version,
     photoType: files.photo.type,
     thumbnailType: files.thumbnail.type,
+    subfolder,
   })
   const parts = [
     { path: paths.photoPath, ...files.photo },

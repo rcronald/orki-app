@@ -30,6 +30,11 @@ import {
 // Con el #184 (varias fotos por planta) cambió lo que ve el equipo del
 // catálogo de las plantas por validar: hasta seis fotos y todas las de esas
 // plantas, no solo la principal.
+// Con el #267 (aprobado por el responsable el 23 de noviembre de 2026) se
+// añadieron las notas de cada planta (#265) y la bitácora: qué se guarda,
+// dónde, que solo las ve su dueño (tampoco el equipo del catálogo), que la
+// bitácora no se guarda en el dispositivo, que no va en el CSV y cómo se
+// borran (el registro, la planta o la cuenta).
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
 // aprobado.
 //
@@ -37,8 +42,8 @@ import {
 // El enlace de volver lo pone TextPage según de dónde se vino.
 
 /** Fecha de la última actualización del texto, en el formato que se muestra. */
-const PRIVACY_LAST_UPDATED = '22 de noviembre de 2026'
-const PRIVACY_LAST_UPDATED_ISO = '2026-11-22'
+const PRIVACY_LAST_UPDATED = '23 de noviembre de 2026'
+const PRIVACY_LAST_UPDATED_ISO = '2026-11-23'
 
 function sections(state: unknown): TextPageSection[] {
   return [
@@ -46,7 +51,7 @@ function sections(state: unknown): TextPageSection[] {
       id: 'privacidad-datos',
       title: 'Qué datos guardamos',
       summary:
-        'Los datos de tu cuenta, las plantas que registras y las fotos que decides añadir, además de algunas mediciones de uso y errores.',
+        'Los datos de tu cuenta, las plantas que registras con sus notas y su bitácora, y las fotos que decides añadir, además de algunas mediciones de uso y errores.',
       children: (
         <>
           <ul>
@@ -60,13 +65,21 @@ function sections(state: unknown): TextPageSection[] {
               <strong>Tus plantas:</strong> lo que registras de cada una: el
               nombre, el género, el tipo, la fecha de adquisición, el origen y,
               si los añades, la ubicación, el apodo, el color de la flor y su
-              estado (activa, perdida o regalada).
+              estado (activa, perdida o regalada). También las notas que
+              escribas sobre ella.
+            </li>
+            <li>
+              <strong>La bitácora de tus plantas:</strong> los registros que
+              añades a cada una: el tipo de actividad (riego, nutrición,
+              mantenimiento preventivo o sanidad preventiva), el título, la
+              fecha y la hora en que lo guardaste y, si los añades, una
+              descripción, una foto y si observaste floración.
             </li>
             <li>
               <strong>Las fotos de tus plantas:</strong> antes de subirlas, la
               app las reduce en tu dispositivo y les quita los metadatos que
               guarda la cámara, incluida la ubicación. Se guardan la foto y una
-              miniatura.
+              miniatura. Las fotos de la bitácora se preparan igual.
             </li>
             <li>
               <strong>Mediciones de uso y errores:</strong> lo explicamos en la
@@ -134,9 +147,10 @@ function sections(state: unknown): TextPageSection[] {
               el acceso con Google y tu sesión.
             </li>
             <li>
-              <strong>Supabase</strong> guarda tu perfil, tus plantas, sus fotos
-              y tus eventos de uso. Las fotos están en un almacenamiento
-              privado: no tienen una dirección pública.
+              <strong>Supabase</strong> guarda tu perfil, tus plantas con sus
+              notas y su bitácora, sus fotos y tus eventos de uso. Las fotos
+              están en un almacenamiento privado: no tienen una dirección
+              pública.
             </li>
             <li>
               <strong>Sentry</strong> recibe los informes de errores de la app.
@@ -166,8 +180,8 @@ function sections(state: unknown): TextPageSection[] {
       children: (
         <>
           <p>
-            Tus plantas y sus fotos solo las ves tú. La base de datos solo
-            entrega a cada cuenta sus propias plantas.
+            Tus plantas, sus notas, su bitácora y sus fotos solo las ves tú. La
+            base de datos solo entrega a cada cuenta sus propias plantas.
           </p>
           <p>
             Las personas que administran el catálogo de especies tienen dos
@@ -186,8 +200,10 @@ function sections(state: unknown): TextPageSection[] {
               género, el tipo más frecuente, cuántas plantas hay y hasta seis
               fotos. Pueden abrir todas las fotos de esas plantas mientras el
               nombre está «por validar», no las de las demás. No reciben el
-              origen, la ubicación, el apodo, las fechas ni las notas de las
-              fotos, y la pantalla no les muestra de quién son.
+              origen, la ubicación, el apodo, las fechas, las notas de la planta
+              ni las de las fotos, y la pantalla no les muestra de quién son.
+              Tampoco ven la bitácora de esas plantas, ni sus registros ni sus
+              fotos.
             </li>
           </ul>
           <p>
@@ -237,6 +253,11 @@ function sections(state: unknown): TextPageSection[] {
             </li>
             <li>Cómo prefieres ver el inventario (lista o cuadrícula).</li>
             <li>
+              La bitácora no se guarda en tu dispositivo: para verla, añadir o
+              eliminar registros hace falta conexión. Mientras la ves, sus fotos
+              solo están en la memoria de la pestaña abierta.
+            </li>
+            <li>
               Los archivos de la propia app, para que abra sin conexión, y lo
               que el servicio de acceso necesita para mantener tu sesión.
             </li>
@@ -264,7 +285,8 @@ function sections(state: unknown): TextPageSection[] {
           <p>
             Desde la app, con la sesión iniciada:{' '}
             <Link to={PATHS.account}>Tu cuenta, Eliminar mi cuenta</Link>.
-            Necesitas conexión. Se borran tus plantas, sus fotos, tu perfil, tus
+            Necesitas conexión. Se borran tus plantas con sus notas y su
+            bitácora, sus fotos (también las de la bitácora), tu perfil, tus
             eventos de uso y tu cuenta de acceso. También lo que orqui.app
             guarda en ese dispositivo: la copia de tu inventario, las
             miniaturas, los eventos pendientes de enviar, tu identificador, el
@@ -276,13 +298,23 @@ function sections(state: unknown): TextPageSection[] {
             cambios del catálogo: si ya se resolvió un nombre que escribiste,
             ese nombre sigue ahí, sin decir de quién era.
           </p>
+          <h3 className="orki-textpage__subheading">
+            Borrar un registro o una planta
+          </h3>
+          <p>
+            Puedes eliminar un registro de la bitácora desde la ficha de su
+            planta: se borra con su foto. Al eliminar una planta se borran
+            también sus notas, toda su bitácora y todas sus fotos. Las dos cosas
+            necesitan conexión y no se pueden deshacer.
+          </p>
           <h3 className="orki-textpage__subheading">Descargar tu inventario</h3>
           <p>
             Antes, o cuando quieras, puedes descargar tu inventario en un
             archivo CSV con «Exportar a CSV», al final de{' '}
             <Link to={PATHS.collection}>Mi colección</Link>. Incluye todas tus
-            plantas, también las perdidas y regaladas, con todos sus datos y la
-            fecha en que las registraste. No incluye las fotos.
+            plantas, también las perdidas y regaladas, con todos sus datos, sus
+            notas y la fecha en que las registraste. No incluye las fotos ni la
+            bitácora.
           </p>
         </>
       ),

@@ -15,10 +15,15 @@ import {
   PlantName,
 } from '../detail/PlantDetailView.tsx'
 import { PlantGallery } from '../detail/PlantGallery.tsx'
+import { PlantLogSection } from '../detail/PlantLogSection.tsx'
 import { PlantNotes } from '../detail/PlantNotes.tsx'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantGallery } from '../detail/usePlantGallery.ts'
+import { PlantLogError } from '../log/entries.ts'
+import { createMemoryPlantLogEntries } from '../log/memory-entries.ts'
+import { PlantLogServicesContext } from '../log/services.ts'
 import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
+import { createMemoryPhotoStorage } from '../photos/memory-storage.ts'
 import { createMemoryPlantPhotoRows } from '../photos/memory-photo-rows.ts'
 import type { PlantImageSource } from '../photos/read.ts'
 import { PlantImagesContext } from '../photos/usePlantImage.ts'
@@ -36,6 +41,9 @@ import { Example, Section } from './layout.tsx'
 // y nota), la no identificable una; sin conexión se prueba con el modo avión
 // del navegador. Las notas (#265) se editan en memoria; con «Fallar al
 // guardar las notas» el guardado falla para ver el error y el reintento.
+// La bitácora (#267) lee y escribe en memoria (registros y fotos): la
+// validada tiene tres registros; con «Fallar al guardar registros» el alta
+// falla para ver el error y el reintento.
 
 const wait = () => new Promise((resolve) => setTimeout(resolve, 600))
 
@@ -77,6 +85,60 @@ function seedPhotos(plant: CollectionPlant, count: number) {
       note: position === 2 ? 'Primera vara floral del año.' : null,
       position,
       createdAt: '2026-11-22T12:00:00.000Z',
+    })
+  }
+}
+
+/** Bitácora de la muestra, en memoria, con un retraso para ver «Guardando…». */
+const sampleLog = createMemoryPlantLogEntries({
+  userId: SAMPLE_USER,
+  delayMs: 600,
+  start: Date.parse('2026-11-20T12:00:00.000Z'),
+})
+let logFails = false
+sampleLog.fail = (operation) =>
+  operation === 'add' && logFails
+    ? {
+        when: 'before',
+        error: new PlantLogError('failed'),
+      }
+    : null
+const sampleLogServices = {
+  entries: sampleLog,
+  storage: createMemoryPhotoStorage(300),
+}
+
+function seedLog(plant: CollectionPlant, withEntries: boolean) {
+  if (sampleLog.plants.has(plant.id)) return
+  sampleLog.plants.set(plant.id, SAMPLE_USER)
+  if (!withEntries) return
+  const entries = [
+    {
+      type: 'nutrition',
+      title: 'Abono equilibrado',
+      description: 'Media dosis, disuelto en el agua de riego.',
+      inBloom: null,
+    },
+    {
+      type: 'preventive_health',
+      title: 'Revisión de hojas',
+      description: null,
+      inBloom: false,
+    },
+    {
+      type: 'watering',
+      title: 'Riego por inmersión',
+      description: 'Diez minutos en agua de lluvia y escurrido completo.',
+      inBloom: null,
+    },
+  ] as const
+  for (const [index, entry] of entries.entries()) {
+    void sampleLog.add({
+      plantId: plant.id,
+      ...entry,
+      photoPath: null,
+      thumbnailPath: null,
+      idempotencyKey: `${plant.id}-registro-${String(index)}`,
     })
   }
 }
@@ -155,6 +217,7 @@ export function DetailSection() {
   const [changed, setChanged] = useState<Record<string, CollectionPlant>>({})
   const [result, setResult] = useState<string | null>(null)
   const [notesFail, setNotesFail] = useState(false)
+  const [logFail, setLogFail] = useState(false)
   const scenario =
     SCENARIOS.find((item) => item.id === scenarioId) ?? SCENARIOS[0]
   const base: CollectionPlant | undefined =
@@ -168,12 +231,13 @@ export function DetailSection() {
   // Con la baja, la reactivación o la principal que se cambió en la muestra.
   const plant = base && (changed[base.id] ?? base)
   if (plant) seedPhotos(plant, scenario.withPhoto)
+  if (plant) seedLog(plant, scenario.withPhoto > 0)
 
   return (
     <Section
       id="detalle"
       title="Detalle del ejemplar"
-      description="La ficha de /coleccion/:plantId (#265, maqueta «Ficha de la planta» del #263) con plantas de la colección de ejemplo: el nombre con la línea de datos (PlantMeta: insignia, identificador, tipo y estado, separados por una raya fina), la galería (PlantGallery: «1 de 3» sobre la esquina con orki-gallery__count, «Foto anterior» y «Foto siguiente» sobre la foto, miniaturas, «Editar fecha y nota» y «Ordenar fotos», que despliega «Hacer principal», «Mover antes» y «Mover después»; sin fotos, un estado vacío compacto), «Datos de la planta» en dos columnas con «Ver la especie en el catálogo» y «Completar datos», «Notas» editables en el sitio (PlantNotes) y «Gestionar planta» plegado (Collapsible con borde) con dar de baja y eliminar. En escritorio, dos columnas (orki-detail, la de la galería algo más ancha); hasta 720 px, una. La foto grande y las miniaturas son miniaturas; la foto completa solo se pide al abrir el visor (flechas, deslizar, Escape). Todo se guarda en memoria; no se escribe nada."
+      description="La ficha de /coleccion/:plantId (#265, maqueta «Ficha de la planta» del #263) con plantas de la colección de ejemplo: el nombre con la línea de datos (PlantMeta: insignia, identificador, tipo y estado, separados por una raya fina), la galería (PlantGallery: «1 de 3» sobre la esquina con orki-gallery__count, «Foto anterior» y «Foto siguiente» sobre la foto, miniaturas, «Editar fecha y nota» y «Ordenar fotos», que despliega «Hacer principal», «Mover antes» y «Mover después»; sin fotos, un estado vacío compacto), «Datos de la planta» en dos columnas con «Ver la especie en el catálogo» y «Completar datos», «Notas» editables en el sitio (PlantNotes), la «Bitácora» (PlantLogSection, #267: «Añadir registro», el filtro «Todas las actividades», los registros con su tipo, fecha y hora, eliminar con confirmación y el diálogo «Nuevo registro de bitácora», a pantalla completa hasta 720 px) y «Gestionar planta» plegado (Collapsible con borde) con dar de baja y eliminar. En escritorio, dos columnas (orki-detail, la de la galería algo más ancha); hasta 720 px, una. La foto grande y las miniaturas son miniaturas; la foto completa solo se pide al abrir el visor (flechas, deslizar, Escape). Todo se guarda en memoria; no se escribe nada."
     >
       <Collapsible title="Ver el detalle" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -194,6 +258,15 @@ export function DetailSection() {
           <div>
             <Chip selected={notesFail} onClick={() => setNotesFail((v) => !v)}>
               Fallar al guardar las notas
+            </Chip>
+            <Chip
+              selected={logFail}
+              onClick={() => {
+                logFails = !logFail
+                setLogFail(!logFail)
+              }}
+            >
+              Fallar al guardar registros
             </Chip>
           </div>
           {plant && (
@@ -246,6 +319,15 @@ export function DetailSection() {
                           }))
                         }
                       />
+                    }
+                    log={
+                      <PlantLogServicesContext value={sampleLogServices}>
+                        <PlantLogSection
+                          plant={plant}
+                          readOnly={null}
+                          userId={SAMPLE_USER}
+                        />
+                      </PlantLogServicesContext>
                     }
                     manage={
                       <Collapsible

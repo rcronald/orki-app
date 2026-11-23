@@ -7,7 +7,13 @@ import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import type { CollectionPlant } from '../collection/model.ts'
 import { CollectionPage } from '../pages/CollectionPage.tsx'
 import { forgetPlantGalleries } from '../detail/usePlantGallery.ts'
+import { createMemoryPlantLogEntries } from '../log/memory-entries.ts'
+import {
+  PlantLogServicesContext,
+  type PlantLogServices,
+} from '../log/services.ts'
 import PlantDetailPage from '../pages/PlantDetailPage.tsx'
+import { createMemoryPhotoStorage } from '../photos/memory-storage.ts'
 import {
   createMemoryPlantPhotoRows,
   type MemoryPlantPhotoRows,
@@ -112,6 +118,21 @@ export interface PlantRoutesOptions {
    * user_prueba. null usa las de la app (Supabase, con fetch simulado).
    */
   photoRows?: PlantPhotoRows | null
+  /** Bitácora (#267); por defecto, vacía y en memoria. */
+  log?: PlantLogServices
+}
+
+/** Bitácora vacía en memoria con las plantas dadas, de `userId`. */
+export function memoryLogFor(
+  plants: readonly CollectionPlant[],
+  userId = 'user_prueba',
+): PlantLogServices & {
+  entries: ReturnType<typeof createMemoryPlantLogEntries>
+  storage: ReturnType<typeof createMemoryPhotoStorage>
+} {
+  const entries = createMemoryPlantLogEntries({ userId })
+  for (const plant of plants) entries.plants.set(plant.id, userId)
+  return { entries, storage: createMemoryPhotoStorage() }
 }
 
 export async function renderPlantRoutes({
@@ -121,6 +142,7 @@ export async function renderPlantRoutes({
   images = fakeImageSource().source,
   extraRoutes,
   photoRows = memoryRowsFor(plants ?? [], 'user_prueba'),
+  log = memoryLogFor(plants ?? []),
 }: PlantRoutesOptions) {
   forgetPlantGalleries()
   const view = render(
@@ -129,21 +151,23 @@ export async function renderPlantRoutes({
         <CollectionProvider source={source}>
           <PlantImagesContext value={images}>
             <PlantPhotoRowsContext value={photoRows}>
-              <main>
-                <Suspense fallback={null}>
-                  <Routes>
-                    <Route
-                      path={PATHS.collection}
-                      element={<CollectionPage />}
-                    />
-                    <Route
-                      path={PATHS.plantDetail}
-                      element={<PlantDetailPage />}
-                    />
-                    {extraRoutes}
-                  </Routes>
-                </Suspense>
-              </main>
+              <PlantLogServicesContext value={log}>
+                <main>
+                  <Suspense fallback={null}>
+                    <Routes>
+                      <Route
+                        path={PATHS.collection}
+                        element={<CollectionPage />}
+                      />
+                      <Route
+                        path={PATHS.plantDetail}
+                        element={<PlantDetailPage />}
+                      />
+                      {extraRoutes}
+                    </Routes>
+                  </Suspense>
+                </main>
+              </PlantLogServicesContext>
             </PlantPhotoRowsContext>
             <LocationProbe />
           </PlantImagesContext>
