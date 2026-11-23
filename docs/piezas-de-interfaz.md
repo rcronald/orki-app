@@ -861,8 +861,8 @@ con las piezas de siempre y utilidades.
   la planta» (`Panel` con un `dl` en rejilla `auto | 1fr`: término en
   `text-sm color-neutral-700`, valor en negrita; solo los datos opcionales
   con valor) y «Notas» (`detail/PlantNotes.tsx`). Debajo, a todo el ancho,
-  la bitácora (`detail/PlantLogSection.tsx`, hoy un punto de montaje que no
-  pinta nada; la construye el #267) y «Gestionar planta».
+  la bitácora (`detail/PlantLogSection.tsx`, #267, ver abajo) y «Gestionar
+  planta».
 - **Enlaces discretos** al pie de «Datos de la planta»: «Ver la especie en el
   catálogo» (`book-open`) si tiene especie y «Completar datos» (`pencil`,
   `font-normal`) si falta algún dato opcional y hay conexión. Los dos con
@@ -883,6 +883,59 @@ con las piezas de siempre y utilidades.
 - **Sin conexión**: un solo motivo arriba (`role="status"`, `cloud-off`, sobre
   `color-neutral-50`) al que remiten por `aria-describedby` «Editar planta»,
   las notas, la galería (prop `reasonId`) y las acciones (prop `reasonId`).
+
+### Bitácora del ejemplar (#267)
+
+Maquetas «Ficha de la planta» (la sección) y «Nuevo registro de bitácora»
+(el diálogo) del #263. **No añade CSS al sistema**: piezas de siempre y
+utilidades. En `/muestra`, dentro de «Detalle del ejemplar».
+
+- **Sección** (`detail/PlantLogSection.tsx`): `section` con una raya arriba
+  (`border-t color-neutral-200`), el título «Bitácora» (`h2.orki-panel__title`)
+  y «Añadir registro» (`Button variant="primary" icon="plus"`, la acción
+  principal de la sección) en una fila; debajo, el filtro: un `select` con
+  `orki-field__input`, `appearance-none` y el icono `chevron-down` encima
+  (Safari ignora el alto de un `select` nativo y lo dejaba en 26 px), de
+  48 px de alto, con la etiqueta «Filtrar por actividad» solo para el lector.
+- **Registro** (`log/LogEntryItem.tsx`): `li > article` (con `tabIndex=-1`
+  para recibir el foco tras borrar otro) con borde `color-neutral-200` y
+  `radius-lg`, en rejilla: el icono del tipo en un círculo de 48 px
+  (`color-secondary-soft`), el tipo (`text-sm` semibold
+  `color-secondary-strong`), el título (`h3`) y, solo si existen, la
+  descripción, «Floración observada» (icono `flower`) y la miniatura
+  (`orki-viewer__thumb` de 72 px, abre `PhotoLightbox`); la fecha
+  (`calendar` y `time`) a la derecha en escritorio y bajo el texto hasta
+  720 px; la papelera (`trash-2`, 44 × 44, nombre «Eliminar el registro
+  «…»»).
+- **Estados:** vacío y filtro sin resultados en un recuadro discontinuo;
+  error y fallo de «Cargar más» con `orki-viewer__notice` y «Reintentar»;
+  sin conexión, el motivo con `cloud-off` sobre `color-neutral-50`, al que
+  remiten «Añadir registro» y las papeleras. Los anuncios van a una región
+  `role="status"` oculta.
+- **Diálogo** (`log/AddLogEntryDialog.tsx`, sobre `Modal`): en escritorio,
+  caja de 560 px como mucho con «Cerrar» (`x`, 44 px) arriba a la derecha;
+  hasta 720 px, a pantalla completa (sin margen ni radio) con «Volver a la
+  ficha» (`orki-link` con `arrow-left`) arriba. El título (`h2`,
+  `font-display`) lleva encima el nombre en cursiva y el identificador
+  («Cattleya adelinae · CAT-012»), dentro del mismo título accesible.
+- **Grupos de opción única** del diálogo: radios nativos ocultos (`sr-only`)
+  dentro de `label` con aspecto de tarjeta (borde de 1,5 px
+  `color-neutral-200`, `radius-md`), con el anillo de foco por
+  `has-[:focus-visible]`. Tipo de actividad: dos columnas de 56 px, con el
+  icono del tipo; la elegida en `color-secondary-soft`, con borde
+  `color-secondary-strong` y `circle-check`. Floración observada: tres
+  columnas de 48 px, con un círculo de radio dibujado; la elegida rellena en
+  `color-secondary-strong` con el texto claro.
+- Iconos nuevos en el subconjunto (`components/ui/icons.ts`), los de la
+  maqueta: `flask-conical` (nutrición), `scissors` (mantenimiento) y `clock`
+  (la nota de la fecha). Riego usa `droplets` y sanidad, `shield`.
+- Las acciones van al final del formulario, sin barras fijas: con el
+  teclado del celular abierto se llega a ellas desplazando el diálogo. Al
+  recibir el foco, cada campo se lleva a la vista dentro del diálogo
+  (`log/reveal.ts`): entero si cabe, su parte de arriba si no, medido contra
+  el área que de verdad se ve (`visualViewport`), también cuando el teclado
+  la encoge. No todos los motores lo hacen solos: el WebKit de Linux dejaba
+  un campo que ya asomaba visible al 40 %.
 
 ### Diseño del detalle: `orki-detail`
 

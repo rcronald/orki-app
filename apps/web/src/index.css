@@ -17,6 +17,13 @@
  */
 @custom-variant publico-estrecho (@media (max-width: 720px));
 
+/*
+ * Palabras del código que no son clases: Tailwind las encuentra al escanear y
+ * generaría su utilidad. «resize» es el evento de visualViewport que escucha
+ * el formulario de la bitácora (#267); la app no usa la utilidad resize.
+ */
+@source not inline('resize');
+
 @layer base {
   html {
     background-color: var(--color-neutral-0);

@@ -38,10 +38,15 @@ export function createMemoryPhotoStorage(delayMs = 0): MemoryPhotoStorage {
       await wait(storage.delayMs)
       for (const path of paths) objects.delete(path)
     },
+    // Como Storage: solo el primer nivel de la carpeta (los archivos de una
+    // subcarpeta, como log/, no salen; ver storage.ts).
     async list(folder) {
       await wait(storage.delayMs)
       const prefix = folder.endsWith('/') ? folder : `${folder}/`
-      return [...objects.keys()].filter((path) => path.startsWith(prefix))
+      return [...objects.keys()].filter(
+        (path) =>
+          path.startsWith(prefix) && !path.slice(prefix.length).includes('/'),
+      )
     },
     async download(path, options = {}) {
       await wait(storage.delayMs)
