@@ -34,7 +34,7 @@ select pruebas.debe_fallar(
 select pruebas.debe_fallar('anon actualiza plants', $$update public.plants set nickname = 'x'$$, '42501');
 select pruebas.debe_fallar('anon borra plants', 'delete from public.plants', '42501');
 
--- prueba: privilegios de authenticated: todo sobre profiles, y sobre plants todo menos escribir validation y vaciar
+-- prueba: privilegios de authenticated: todo sobre profiles, y sobre plants todo menos escribir validation, el identificador y vaciar
 select pruebas.iguales(
   'privilegios de tabla de authenticated',
   (select string_agg(t.tabla || ':' || p.priv || ':' || has_table_privilege('authenticated', 'public.' || t.tabla, p.priv), ', '
@@ -51,7 +51,7 @@ select pruebas.iguales(
      where a.attrelid = 'public.plants'::regclass and a.attnum > 0 and not a.attisdropped
        and not (has_column_privilege('authenticated', 'public.plants', a.attname, 'insert')
                 and has_column_privilege('authenticated', 'public.plants', a.attname, 'update'))),
-  'validation'
+  'code, code_number, code_prefix, validation'
 );
 select pruebas.iguales(
   'privilegios de anon sobre profiles y plants',

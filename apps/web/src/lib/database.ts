@@ -79,9 +79,15 @@ export type SpeciesPhotoRejection = Omit<
   'reason'
 > & { reason: SpeciesPhotoRejectionReason }
 
-export type Plant = Tables<'plants'>
-export type PlantInsert = TablesInsert<'plants'>
-export type PlantUpdate = TablesUpdate<'plants'>
+// El identificador del ejemplar (#264): code ('CAT-012') es una columna generada a partir de
+// code_prefix y code_number, que pone la base al insertar y no cambian. Los tipos generados
+// dan code como nullable (lo hacen con toda columna generada), pero nunca es null. Ni Insert ni
+// Update lo llevan: la API rechaza escribirlo. Ver «Identificador del ejemplar» en
+// supabase/README.md.
+type PlantCodeColumns = 'code' | 'code_prefix' | 'code_number'
+export type Plant = Omit<Tables<'plants'>, 'code'> & { code: string }
+export type PlantInsert = Omit<TablesInsert<'plants'>, PlantCodeColumns>
+export type PlantUpdate = Omit<TablesUpdate<'plants'>, PlantCodeColumns>
 
 // Fotos de una planta (de 0 a 6; la principal es la de position más baja). La API solo deja
 // cambiar photo_path, thumbnail_path, in_bloom, taken_at, note y position: una foto no cambia
@@ -97,6 +103,18 @@ export type PlantPhotoUpdate = Pick<
   | 'note'
   | 'position'
 >
+
+// Bitácora de una planta (#264): se crea con add_plant_log_entry (con idempotency_key para
+// reintentar sin duplicar) y se lee con list_plant_log_entries (de la más reciente a la más
+// antigua, con filtro por tipo y cursor). No se edita; el dueño puede borrar. Ver «Bitácora»
+// en supabase/README.md.
+export type PlantLogEntry = Tables<'plant_log_entries'>
+/** Parámetros de add_plant_log_entry: photo_path y thumbnail_path en <usuario>/<planta>/log/. */
+export type AddPlantLogEntryArgs =
+  Database['public']['Functions']['add_plant_log_entry']['Args']
+/** Parámetros de list_plant_log_entries: el cursor es created_at e id del último leído, o ninguno. */
+export type ListPlantLogEntriesArgs =
+  Database['public']['Functions']['list_plant_log_entries']['Args']
 
 // Eventos de producto: solo se insertan, con la función record_product_events (no hay
 // Update, y la API no deja leer la tabla). user_id y received_at los pone la base.
@@ -211,6 +229,8 @@ export type PlantType = Enums<'plant_type'>
 export type PlantStatus = Enums<'plant_status'>
 export type PlantValidation = Enums<'plant_validation'>
 export type FlowerColor = Enums<'flower_color'>
+/** Tipo de registro de bitácora: riego, nutrición, mantenimiento o sanidad preventivos. */
+export type PlantLogEntryType = Enums<'plant_log_entry_type'>
 /** Tipo de evento de producto: registro completado o búsqueda "¿Ya la tengo?". */
 export type ProductEventType = Enums<'product_event_type'>
 /** Resultado de una búsqueda "¿Ya la tengo?": la tengo, no la tengo o parecidas. */

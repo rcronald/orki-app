@@ -5,7 +5,9 @@ import {
   parseCleanupArguments,
   runOrphanCleanup,
   type BucketObject,
+  isLogPhotoPath,
   type GalleryPhotoRow,
+  type LogPhotoRow,
   type PlantPhotoRow,
 } from './orphans.ts'
 
@@ -179,6 +181,7 @@ describe('findOrphans con plant_photos', () => {
         listObjects: () => Promise.resolve(galleryObjects),
         listPlants: () => Promise.resolve([galleryPlant]),
         listPlantPhotos: () => Promise.resolve(galleryPhotos),
+        listLogPhotos: () => Promise.resolve([]),
         removeObjects,
         log,
         now: NOW,
@@ -191,11 +194,126 @@ describe('findOrphans con plant_photos', () => {
     ])
     expect(result.deleted).toBe(2)
     expect(log).toHaveBeenCalledWith(
-      'Objetos: 8. Plantas: 1. Fotos (plant_photos): 4. En uso: 6.',
+      'Objetos: 8. Plantas: 1. Fotos (plant_photos): 4. Registros de bitácora con foto: 0. En uso: 6.',
     )
     expect(log).toHaveBeenCalledWith(
       `  planta ${P3}, foto foto-d, photo_path: ${USER}/${P3}/photo-d.webp`,
     )
+  })
+})
+
+describe('findOrphans con la bitácora', () => {
+  const P4 = '44444444-4444-4444-8444-444444444444'
+  const logObjects: BucketObject[] = [
+    { name: `${USER}/${P4}/photo-a.webp`, createdAt: old },
+    { name: `${USER}/${P4}/thumb-a.webp`, createdAt: old },
+    // Foto de un registro vigente.
+    { name: `${USER}/${P4}/log/photo-r1.webp`, createdAt: old },
+    { name: `${USER}/${P4}/log/thumb-r1.webp`, createdAt: old },
+    // Restos de un registro que no llegó a guardarse.
+    { name: `${USER}/${P4}/log/photo-r2.webp`, createdAt: old },
+    { name: `${USER}/${P4}/log/thumb-r2.webp`, createdAt: fresh },
+  ]
+  const logPlant: PlantPhotoRow = {
+    id: P4,
+    user_id: USER,
+    photo_path: `${USER}/${P4}/photo-a.webp`,
+    thumbnail_path: `${USER}/${P4}/thumb-a.webp`,
+  }
+  const logPhotos: LogPhotoRow[] = [
+    {
+      id: 'registro-1',
+      plant_id: P4,
+      photo_path: `${USER}/${P4}/log/photo-r1.webp`,
+      thumbnail_path: `${USER}/${P4}/log/thumb-r1.webp`,
+    },
+    {
+      // Su foto no está en el bucket.
+      id: 'registro-3',
+      plant_id: P4,
+      photo_path: `${USER}/${P4}/log/photo-r3.webp`,
+      thumbnail_path: `${USER}/${P4}/log/thumb-r1.webp`,
+    },
+  ]
+
+  it('las fotos de registros vigentes están en uso; las sueltas de log/ son huérfanas sin registro', () => {
+    const report = findOrphans({
+      objects: logObjects,
+      plants: [logPlant],
+      logPhotos,
+      now: NOW,
+      minAgeMs: 24 * HOUR,
+    })
+    expect(report.referenced).toBe(4)
+    expect(report.orphans).toEqual([
+      {
+        name: `${USER}/${P4}/log/photo-r2.webp`,
+        createdAt: old,
+        reason: 'sin-registro',
+      },
+    ])
+    expect(report.recent).toEqual([
+      {
+        name: `${USER}/${P4}/log/thumb-r2.webp`,
+        createdAt: fresh,
+        reason: 'sin-registro',
+      },
+    ])
+    expect(report.missing).toEqual([
+      {
+        plantId: P4,
+        column: 'photo_path',
+        path: `${USER}/${P4}/log/photo-r3.webp`,
+        logEntryId: 'registro-3',
+      },
+    ])
+  })
+
+  it('sin leer la bitácora, sus fotos parecerían huérfanas (lo que evita el script)', () => {
+    const report = findOrphans({
+      objects: logObjects,
+      plants: [logPlant],
+      now: NOW,
+      minAgeMs: 24 * HOUR,
+    })
+    expect(report.orphans.map((orphan) => orphan.name)).toContain(
+      `${USER}/${P4}/log/photo-r1.webp`,
+    )
+  })
+
+  it('--borrar no se lleva las fotos de la bitácora en uso', async () => {
+    const removeObjects = vi.fn((paths: string[]) => {
+      void paths
+      return Promise.resolve()
+    })
+    const log = vi.fn()
+    await runOrphanCleanup(
+      { borrar: true, antiguedadMinimaHoras: 24 },
+      {
+        listObjects: () => Promise.resolve(logObjects),
+        listPlants: () => Promise.resolve([logPlant]),
+        listPlantPhotos: () => Promise.resolve([]),
+        listLogPhotos: () => Promise.resolve(logPhotos),
+        removeObjects,
+        log,
+        now: NOW,
+      },
+    )
+    expect(removeObjects).toHaveBeenCalledTimes(1)
+    expect(removeObjects).toHaveBeenCalledWith([
+      `${USER}/${P4}/log/photo-r2.webp`,
+    ])
+    expect(log).toHaveBeenCalledWith(
+      `  planta ${P4}, registro registro-3, photo_path: ${USER}/${P4}/log/photo-r3.webp`,
+    )
+  })
+
+  it('reconoce la ruta de la carpeta log', () => {
+    expect(isLogPhotoPath(`${USER}/${P4}/log/photo-r1.webp`)).toBe(true)
+    expect(isLogPhotoPath(`${USER}/${P4}/photo-r1.webp`)).toBe(false)
+    expect(isLogPhotoPath(`${USER}/${P4}/log/`)).toBe(false)
+    expect(isLogPhotoPath(`${USER}/${P4}/log/x/photo.webp`)).toBe(false)
+    expect(isLogPhotoPath(`${USER}/no-es-uuid/log/photo.webp`)).toBe(false)
   })
 })
 
@@ -245,6 +363,7 @@ describe('runOrphanCleanup', () => {
       listObjects: () => Promise.resolve(objects),
       listPlants: () => Promise.resolve(plants),
       listPlantPhotos: () => Promise.resolve([] as GalleryPhotoRow[]),
+      listLogPhotos: () => Promise.resolve([] as LogPhotoRow[]),
       removeObjects: vi.fn(() => Promise.resolve()),
       log: vi.fn(),
       now: NOW,

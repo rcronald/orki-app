@@ -227,6 +227,129 @@ const consultasFotos = [
   },
 ]
 
+// Ficha y bitácora (#264), como authenticated con el token de perf_user, sobre un inventario
+// sintético (inventarioSintetico, abajo): 500 plantas de perf_user (una de ellas con 2000
+// registros de bitácora y las demás con 20) y 5000 plantas de otros 100 usuarios con 10
+// registros cada una. Se mide la lectura de la colección con el identificador y las notas, el
+// alta de una planta (el disparador que le da el identificador), y la bitácora: la primera
+// página, con filtro por tipo, una página profunda con cursor, el alta y el reintento.
+const usuarioInventario = 'perf_user'
+const claimsInventario = JSON.stringify({
+  sub: usuarioInventario,
+  role: 'authenticated',
+})
+const indiceBitacora = 'plant_log_entries_plant_id_created_at_idx'
+const indiceCodigo = 'plants_user_id_code_key'
+const columnasColeccion =
+  'p.id, p.entered_name, p.type, p.validation, p.status, p.acquired_on, p.origin, p.location, ' +
+  'p.nickname, p.flower_color, p.photo_in_bloom, p.photo_path, p.thumbnail_path, ' +
+  'public.photo_count(p), p.created_at, p.updated_at, p.code, p.notes, ' +
+  's.scientific_name, g.name'
+// count(*) no usa las columnas: Postgres dejaría de calcularlas (photo_count incluido). Por
+// eso la fila entera se pasa a un filtro.
+const coleccion = (orden) =>
+  `(select c.fila from (select row(${columnasColeccion}) as fila from public.plants p ` +
+  'left join public.species s on s.id = p.species_id join public.genera g on g.id = p.genus_id' +
+  `${orden}) c where c.fila::text <> '') as q`
+const consultasBitacora = [
+  {
+    descripcion: 'Colección con identificador y notas',
+    texto: '500 plantas, como COLLECTION_PLANT_SELECT',
+    llamada: coleccion(''),
+    indices: [],
+  },
+  {
+    descripcion: 'Colección por identificador',
+    texto: 'order by code_prefix, code_number',
+    llamada: coleccion(' order by p.code_prefix, p.code_number'),
+    indices: [],
+  },
+  {
+    descripcion: 'Alta de una planta',
+    texto: 'disparador del identificador',
+    llamada: '(select * from pg_temp.perf_alta_planta()) as q',
+    indices: [indiceCodigo],
+  },
+  {
+    descripcion: 'Bitácora, primera página',
+    texto: '20 de 2000',
+    clave: 'planta_grande',
+    llamada: '(select * from public.list_plant_log_entries(objetivo)) as q',
+    indices: [indiceBitacora],
+  },
+  {
+    descripcion: 'Bitácora, solo riego',
+    texto: '20 de 500',
+    clave: 'planta_grande',
+    llamada:
+      "(select * from public.list_plant_log_entries(objetivo, 'watering')) as q",
+    indices: [indiceBitacora],
+  },
+  {
+    descripcion: 'Bitácora, página con cursor',
+    texto: 'tras 1500 registros',
+    clave: 'planta_grande',
+    llamada:
+      '(select * from public.list_plant_log_entries(objetivo, null, (select c.created_at from pg_temp.perf_cursor c), (select c.id from pg_temp.perf_cursor c))) as q',
+    indices: [indiceBitacora],
+  },
+  {
+    descripcion: 'Bitácora, alta',
+    texto: 'add_plant_log_entry sin clave',
+    clave: 'planta_grande',
+    llamada:
+      "(select * from public.add_plant_log_entry(objetivo, 'watering', 'Riego medido')) as q",
+    indices: ['plants_pkey'],
+  },
+  {
+    descripcion: 'Bitácora, reintento',
+    texto: 'add_plant_log_entry con clave ya usada',
+    clave: 'planta_grande',
+    llamada:
+      "(select * from public.add_plant_log_entry(objetivo, 'watering', 'Riego', null, null, null, null, 'eeeeeeee-0000-4000-8000-000000000001')) as q",
+    indices: ['plant_log_entries_user_id_idempotency_key_key'],
+  },
+]
+
+// El inventario sintético, como postgres. Los identificadores los pone el disparador.
+const inventarioSintetico = `
+with generos as (
+  select array_agg(x.id order by x.name) as ids from (select id, name from public.genera order by name limit 50) x
+)
+insert into public.plants (id, user_id, entered_name, genus_id, type, notes, created_at)
+select case when i = 1 then '00000000-0000-4000-8000-00000000beef'::uuid else gen_random_uuid() end,
+       case when i <= 500 then '${usuarioInventario}' else 'otro_' || (i % 100) end,
+       'Planta ' || i, g.ids[1 + i % 50], 'unknown',
+       case when i % 4 = 0 then 'Notas de la planta ' || i end,
+       now() - make_interval(days => i % 700)
+from generate_series(1, 5500) i, generos g;
+insert into public.plant_log_entries (plant_id, user_id, type, title, created_at)
+select p.id, p.user_id, (enum_range(null::public.plant_log_entry_type))[1 + n % 4], 'Registro ' || n,
+       now() - make_interval(hours => n)
+from public.plants p
+cross join lateral generate_series(1, case
+  when p.id = '00000000-0000-4000-8000-00000000beef' then 2000
+  when p.user_id = '${usuarioInventario}' then 20
+  else 10 end) n;
+insert into public.plant_log_entries (plant_id, user_id, type, title, idempotency_key)
+values ('00000000-0000-4000-8000-00000000beef', '${usuarioInventario}', 'watering', 'Riego',
+        'eeeeeeee-0000-4000-8000-000000000001');`
+
+// Lo que necesitan las consultas de la bitácora en cada sesión: el cursor de la página
+// profunda (calculado como dueño) y la función temporal que da de alta una planta como
+// authenticated, con RLS y el disparador del identificador.
+const preparacionBitacora = `insert into pg_temp.perf_ids values ('planta_grande', '00000000-0000-4000-8000-00000000beef');
+create temp table perf_cursor as
+  select e.created_at, e.id from public.plant_log_entries e
+  where e.plant_id = '00000000-0000-4000-8000-00000000beef'
+  order by e.created_at desc, e.id desc offset 1499 limit 1;
+grant select on pg_temp.perf_cursor to authenticated;
+create function pg_temp.perf_alta_planta() returns setof uuid language sql as $alta$
+  insert into public.plants (entered_name, genus_id, type)
+  select 'Medida', g.id, 'unknown' from public.genera g order by g.name limit 1
+  returning id
+$alta$;`
+
 // Una foto de referencia sintética en una de cada tres especies, como la escribiría la carga.
 const fotosSinteticas = `insert into public.species_photos (
   species_id, medium_path, medium_width, medium_height, thumbnail_path, thumbnail_width,
@@ -289,6 +412,12 @@ const medidas = [
     grupo: 'fotos',
     rol: 'authenticated',
   })),
+  ...consultasBitacora.map((consulta) => ({
+    ...consulta,
+    grupo: 'bitacora',
+    rol: 'authenticated',
+    claims: claimsInventario,
+  })),
 ]
 const indicesContados = [
   ...new Set([
@@ -299,9 +428,12 @@ const indicesContados = [
     indiceFotos,
     'species_genus_id_idx',
     'species_genus_id_name_idx',
+    ...consultasBitacora.flatMap((consulta) => consulta.indices),
   ]),
 ]
 const tablasRecorridas = ['species', 'species_names', 'species_photos']
+// Recorridos secuenciales de las tablas del inventario, para las consultas de la bitácora.
+const tablasInventario = ['plants', 'plant_log_entries']
 const tablasCatalogo = [
   'genera',
   'genus_abbreviations',
@@ -401,6 +533,7 @@ function scriptDeMedicion({ repeticiones, contarRecorridos }) {
     'grant insert on perf_tiempos to anon, authenticated;',
     idsDeLasConsultas,
     'grant select on pg_temp.perf_ids to authenticated;',
+    preparacionBitacora,
   ]
   if (contarRecorridos) lineas.push('set stats_fetch_consistency = none;')
   const volcarEstadisticas =
@@ -415,7 +548,7 @@ from (
   union all
   select relname::text, seq_scan
   from pg_catalog.pg_stat_user_tables
-  where schemaname = 'public' and relname in (${lista(tablasRecorridas)})
+  where schemaname = 'public' and relname in (${lista([...tablasRecorridas, ...tablasInventario])})
 ) as r;`
   medidas.forEach((consulta, indice) => {
     if (contarRecorridos) {
@@ -423,6 +556,9 @@ from (
     }
     lineas.push(
       `set role ${consulta.rol};`,
+      consulta.claims
+        ? `set request.jwt.claims = ${literal(consulta.claims)};`
+        : 'reset request.jwt.claims;',
       `do $medir$
 declare
   inicio timestamptz;
@@ -489,6 +625,7 @@ function scriptDePlanes() {
     'set auto_explain.log_level = notice;',
     idsDeLasConsultas,
     'grant select on pg_temp.perf_ids to authenticated;',
+    preparacionBitacora,
   ]
   medidas.forEach((consulta, indice) => {
     // Las del catálogo público tardan menos de 1 ms: se registran todas sus sentencias. Son
@@ -504,6 +641,9 @@ function scriptDePlanes() {
       'reset role;',
       `set auto_explain.log_min_duration = ${minimo};`,
       `set role ${consulta.rol};`,
+      consulta.claims
+        ? `set request.jwt.claims = ${literal(consulta.claims)};`
+        : 'reset request.jwt.claims;',
       'set client_min_messages = warning;',
       ...Array.from(
         { length: calentamiento },
@@ -706,13 +846,26 @@ async function principal() {
         ]),
         'falló vacuum analyze',
       )
+      exigir(
+        ejecutarPsql(['-c', inventarioSintetico]),
+        'no se pudo cargar el inventario sintético',
+      )
+      exigir(
+        ejecutarPsql([
+          '-c',
+          'vacuum analyze public.plants, public.plant_log_entries',
+        ]),
+        'falló vacuum analyze del inventario',
+      )
       const [cargado] = consultar(
         `select (select count(*) from public.genera) || ' géneros, ' ||
            (select count(*) from public.species) || ' especies (' ||
            (select count(*) from public.species where type = 'hybrid') || ' híbridos), ' ||
            (select count(*) from public.species_names where type = 'synonym') || ' sinónimos, ' ||
            (select count(*) from public.species_names where type = 'common') || ' nombres comunes, ' ||
-           (select count(*) from public.species_photos) || ' fotos de referencia'`,
+           (select count(*) from public.species_photos) || ' fotos de referencia; ' ||
+           (select count(*) from public.plants) || ' plantas y ' ||
+           (select count(*) from public.plant_log_entries) || ' registros de bitácora'`,
       )
       console.log(
         `  ${cargado} (${((Date.now() - inicioCarga) / 1000).toFixed(1)} s, con vacuum analyze)`,
@@ -731,8 +884,9 @@ async function principal() {
       }
       console.log(
         `\nMidiendo ${consultas.length} consultas de search_species() como authenticated y ` +
-          `${consultasPublicas.length} del catálogo público como anon y ${consultasFotos.length} de fotos ` +
-          `de referencia como authenticated: ${calentamiento} ejecuciones ` +
+          `${consultasPublicas.length} del catálogo público como anon, ${consultasFotos.length} de fotos ` +
+          `de referencia y ${consultasBitacora.length} de la ficha y la bitácora como authenticated: ` +
+          `${calentamiento} ejecuciones ` +
           `de calentamiento y ${opciones.repeticiones} medidas cada una`,
       )
       const medicion = exigir(
@@ -744,18 +898,31 @@ async function principal() {
       const resultados = JSON.parse(medicion.stdout.trim())
 
       const fallos = []
-      const filasPorGrupo = { busqueda: [], publico: [], fotos: [] }
+      const filasPorGrupo = {
+        busqueda: [],
+        publico: [],
+        fotos: [],
+        bitacora: [],
+      }
       for (const resultado of resultados) {
         const consulta = medidas[resultado.consulta]
         const nombre = `${consulta.descripcion}: "${consulta.texto}"`
         const recorridosDe = (objeto) => resultado.recorridos?.[objeto] ?? 0
         const usosIndice = consulta.indices.map(recorridosDe)
+        const esBitacora = consulta.grupo === 'bitacora'
+        // La colección lee todas las plantas del usuario: no se le exige índice. La bitácora
+        // nunca puede recorrer plant_log_entries entera.
         const usaIndices =
           !contarRecorridos ||
-          (usosIndice.some((uso) => uso > 0) &&
-            recorridosDe('species_names') === 0 &&
-            recorridosDe('species_photos') === 0 &&
-            (!consulta.sinSecuencialEnSpecies || recorridosDe('species') === 0))
+          (esBitacora
+            ? (consulta.indices.length === 0 ||
+                usosIndice.some((uso) => uso > 0)) &&
+              recorridosDe('plant_log_entries') === 0
+            : usosIndice.some((uso) => uso > 0) &&
+              recorridosDe('species_names') === 0 &&
+              recorridosDe('species_photos') === 0 &&
+              (!consulta.sinSecuencialEnSpecies ||
+                recorridosDe('species') === 0))
         const cumple = resultado.p95 <= opciones.umbralMs
         if (!cumple) {
           fallos.push(
@@ -780,7 +947,10 @@ async function principal() {
             : `${resultado.filas_min}-${resultado.filas_max}`,
           contarRecorridos ? usosIndice.map(recorridos).join(' / ') : '?',
           contarRecorridos
-            ? tablasRecorridas.map(recorridosDe).map(recorridos).join(' / ')
+            ? (esBitacora ? tablasInventario : tablasRecorridas)
+                .map(recorridosDe)
+                .map(recorridos)
+                .join(' / ')
             : '?',
           cumple && usaIndices ? 'ok' : 'FALLO',
         ])
@@ -840,6 +1010,28 @@ async function principal() {
           filasPorGrupo.fotos,
           new Set([2, 3, 4, 5]),
         ),
+      )
+      console.log(
+        `\nFicha y bitácora (#264), como authenticated (${usuarioInventario})`,
+      )
+      console.log(
+        tabla(
+          [
+            ...cabecera('Índices esperados').slice(0, 7),
+            'Seq plantas/bitácora',
+            '',
+          ],
+          filasPorGrupo.bitacora,
+          new Set([2, 3, 4, 5]),
+        ),
+      )
+      console.log(
+        '\n  Índices esperados: en el alta de una planta, plants_user_id_code_key (el máximo del\n' +
+          '  prefijo); en las lecturas de la bitácora, plant_log_entries_plant_id_created_at_idx; en\n' +
+          '  el alta de un registro, plants_pkey (la planta, para el dueño y la clave foránea); en el\n' +
+          '  reintento, el índice único de la clave. La colección lee todas las plantas del usuario.\n' +
+          '  Seq plantas/bitácora: recorridos secuenciales por llamada de plants y\n' +
+          '  plant_log_entries; en plant_log_entries debe ser 0.',
       )
 
       const tamanos = consultar(

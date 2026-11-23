@@ -4,7 +4,9 @@ import { parsePhotoPath } from './paths.ts'
 // #83): compara los objetos del bucket con las rutas que guardan las plantas.
 // Desde el #219, un archivo está en uso si lo cita una fila de plant_photos
 // (cualquiera de las hasta 6 fotos de una planta) o las columnas de plants (la
-// copia de la principal, que también escribe la app antigua).
+// copia de la principal, que también escribe la app antigua). Desde el #264,
+// también si lo cita un registro de la bitácora (plant_log_entries), cuyas
+// fotos van en <usuario>/<planta>/log/<archivo>.
 // Vive aquí, en TypeScript con sintaxis borrable, para probarla con Vitest;
 // el script la importa con Node, que quita los tipos al cargarla.
 
@@ -32,9 +34,22 @@ export interface GalleryPhotoRow {
   thumbnail_path: string
 }
 
+/**
+ * Lo que el script lee de cada registro de la bitácora con foto (#264). Los
+ * registros sin foto no se leen: no citan ningún archivo.
+ */
+export interface LogPhotoRow {
+  id: string
+  plant_id: string
+  photo_path: string
+  thumbnail_path: string
+}
+
 export type OrphanReason =
   /** Sigue la convención, pero ninguna planta ni ninguna foto apunta a él. */
   | 'sin-planta'
+  /** Está en la carpeta log/ de una planta, pero ningún registro lo cita. */
+  | 'sin-registro'
   /** No sigue la convención de rutas (ni es de ninguna planta). */
   | 'fuera-de-convencion'
 
@@ -48,6 +63,8 @@ export interface MissingFile {
   path: string
   /** Id de la fila de plant_photos, si la ruta sale de ahí y no de plants. */
   photoId?: string
+  /** Id del registro de la bitácora, si la ruta sale de plant_log_entries. */
+  logEntryId?: string
 }
 
 export interface OrphanReport {
@@ -72,20 +89,40 @@ export interface FindOrphansInput {
   plants: readonly PlantPhotoRow[]
   /** Filas de plant_photos; vacío si la tabla no existe todavía. */
   photos?: readonly GalleryPhotoRow[]
+  /** Registros de la bitácora con foto; vacío si la tabla no existe todavía. */
+  logPhotos?: readonly LogPhotoRow[]
   /** Momento de referencia (Date.now()). */
   now: number
   /** Antigüedad mínima para dar un huérfano por borrable, en milisegundos. */
   minAgeMs: number
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
 /**
- * Clasifica los objetos del bucket frente a las rutas de las plantas y de
- * plant_photos.
+ * ¿Es una ruta de foto de la bitácora (<usuario>/<planta>/log/<archivo>)? La
+ * misma forma que exige la restricción plant_log_entries_photo_path_valid.
+ */
+export function isLogPhotoPath(path: string): boolean {
+  const segments = path.split('/')
+  return (
+    segments.length === 4 &&
+    segments[0] !== '' &&
+    UUID.test(segments[1] ?? '') &&
+    segments[2] === 'log' &&
+    segments[3] !== ''
+  )
+}
+
+/**
+ * Clasifica los objetos del bucket frente a las rutas de las plantas, de
+ * plant_photos y de la bitácora.
  */
 export function findOrphans({
   objects,
   plants,
   photos = [],
+  logPhotos = [],
   now,
   minAgeMs,
 }: FindOrphansInput): OrphanReport {
@@ -97,6 +134,10 @@ export function findOrphans({
   for (const photo of photos) {
     referenced.add(photo.photo_path)
     referenced.add(photo.thumbnail_path)
+  }
+  for (const entry of logPhotos) {
+    referenced.add(entry.photo_path)
+    referenced.add(entry.thumbnail_path)
   }
   const existing = new Set(objects.map((object) => object.name))
 
@@ -110,8 +151,9 @@ export function findOrphans({
     }
     const orphan: Orphan = {
       ...object,
-      reason:
-        parsePhotoPath(object.name) === null
+      reason: isLogPhotoPath(object.name)
+        ? 'sin-registro'
+        : parsePhotoPath(object.name) === null
           ? 'fuera-de-convencion'
           : 'sin-planta',
     }
@@ -146,6 +188,20 @@ export function findOrphans({
           column,
           path,
           photoId: photo.id,
+        })
+      }
+    }
+  }
+  for (const entry of logPhotos) {
+    for (const column of ['photo_path', 'thumbnail_path'] as const) {
+      const path = entry[column]
+      if (!existing.has(path) && !reported.has(path)) {
+        reported.add(path)
+        missing.push({
+          plantId: entry.plant_id,
+          column,
+          path,
+          logEntryId: entry.id,
         })
       }
     }
@@ -241,6 +297,8 @@ export interface OrphanCleanupIo {
   listPlants: () => Promise<PlantPhotoRow[]>
   /** Filas de plant_photos (vacío si la tabla no existe en ese proyecto). */
   listPlantPhotos: () => Promise<GalleryPhotoRow[]>
+  /** Registros de la bitácora con foto (vacío si la tabla no existe). */
+  listLogPhotos: () => Promise<LogPhotoRow[]>
   /** Borra un lote de rutas; rechaza si falla. */
   removeObjects: (paths: string[]) => Promise<void>
   log: (line: string) => void
@@ -266,20 +324,23 @@ export async function runOrphanCleanup(
   }: Pick<CleanupArguments, 'borrar' | 'antiguedadMinimaHoras'>,
   io: OrphanCleanupIo,
 ): Promise<OrphanCleanupResult> {
-  const [objects, plants, photos] = await Promise.all([
+  const [objects, plants, photos, logPhotos] = await Promise.all([
     io.listObjects(),
     io.listPlants(),
     io.listPlantPhotos(),
+    io.listLogPhotos(),
   ])
   const report = findOrphans({
     objects,
     plants,
     photos,
+    logPhotos,
     now: io.now,
     minAgeMs: antiguedadMinimaHoras * 3600 * 1000,
   })
   io.log(
-    `Objetos: ${objects.length}. Plantas: ${plants.length}. Fotos (plant_photos): ${photos.length}. En uso: ${report.referenced}.`,
+    `Objetos: ${objects.length}. Plantas: ${plants.length}. Fotos (plant_photos): ${photos.length}. ` +
+      `Registros de bitácora con foto: ${logPhotos.length}. En uso: ${report.referenced}.`,
   )
   io.log(
     `Huérfanos con más de ${antiguedadMinimaHoras} h: ${report.orphans.length}.`,
@@ -299,7 +360,11 @@ export async function runOrphanCleanup(
     `Plantas o fotos que apuntan a un archivo que no existe: ${report.missing.length}.`,
   )
   for (const missing of report.missing) {
-    const photo = missing.photoId ? `, foto ${missing.photoId}` : ''
+    const photo = missing.photoId
+      ? `, foto ${missing.photoId}`
+      : missing.logEntryId
+        ? `, registro ${missing.logEntryId}`
+        : ''
     io.log(
       `  planta ${missing.plantId}${photo}, ${missing.column}: ${missing.path}`,
     )
