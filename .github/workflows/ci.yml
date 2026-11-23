@@ -73,7 +73,7 @@ jobs:
   extremo-a-extremo:
     name: Pruebas de extremo a extremo (${{ matrix.perfil }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       # Que un navegador falle no cancela los demás: interesa verlos todos.
       fail-fast: false
@@ -116,15 +116,51 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ matrix.navegador }}
 
+      # Las dos instalaciones bajan paquetes del sistema con apt. El espejo de Ubuntu de los
+      # ejecutores a veces va muy lento o deja una descarga parada sin fallar (una fuente de
+      # 5 MB tardó 106 s; el paso entero, de 14 s a más de 4 minutos): tres veces en una
+      # tarde el job se canceló a los 10 minutos en este paso, sin llegar a ejecutar ninguna
+      # prueba. Con esta configuración apt corta la conexión que no avanza en 20 s y la
+      # reintenta; lo ya descargado se conserva. Y el job tiene 20 minutos, para que un
+      # espejo lento no lo cancele.
+      - name: Configurar apt para no esperar a una descarga parada
+        run: |
+          printf '%s\n' 'Acquire::Retries "6";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' |
+            sudo tee /etc/apt/apt.conf.d/80-descargas-paradas
+
+      # Si aun así apt termina con error, se repite hasta tres veces (no vuelve a bajar lo
+      # que ya tiene). No se pone límite de tiempo a cada intento: cortar el proceso deja a
+      # apt-get vivo con el bloqueo de dpkg y los reintentos fallan al instante (pasó al
+      # probar este cambio). El límite es el del job.
       - name: Instalar el navegador y sus dependencias del sistema
         if: steps.cache-navegadores.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps ${{ matrix.navegador }}
+        env:
+          NAVEGADOR: ${{ matrix.navegador }}
+        run: |
+          for intento in 1 2 3; do
+            if npx playwright install --with-deps "$NAVEGADOR"; then exit 0; fi
+            echo "::warning::La instalación del navegador falló (intento ${intento} de 3)."
+            sudo dpkg --configure -a || true
+            sleep 10
+          done
+          echo "::error::No se pudo instalar el navegador tras tres intentos."
+          exit 1
         working-directory: apps/web
 
       # Con el navegador en caché solo faltan las bibliotecas del sistema.
       - name: Instalar las dependencias del sistema del navegador
         if: steps.cache-navegadores.outputs.cache-hit == 'true'
-        run: npx playwright install-deps ${{ matrix.navegador }}
+        env:
+          NAVEGADOR: ${{ matrix.navegador }}
+        run: |
+          for intento in 1 2 3; do
+            if npx playwright install-deps "$NAVEGADOR"; then exit 0; fi
+            echo "::warning::La instalación de las dependencias falló (intento ${intento} de 3)."
+            sudo dpkg --configure -a || true
+            sleep 10
+          done
+          echo "::error::No se pudieron instalar las dependencias del navegador tras tres intentos."
+          exit 1
         working-directory: apps/web
 
       - name: Build de las pruebas
