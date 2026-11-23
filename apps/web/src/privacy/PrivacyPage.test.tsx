@@ -45,7 +45,7 @@ const APPROVED_TEXT = [
   'Supabase guarda tu perfil, tus plantas, sus fotos y tus eventos de uso. Las fotos están en un almacenamiento privado: no tienen una dirección pública.',
   'Sentry recibe los informes de errores de la app.',
   'Vercel aloja la app y la entrega a tu navegador.',
-  'El catálogo de especies que usa el buscador es común para todos y no contiene datos personales.',
+  'El catálogo de especies que usa el buscador es común para todos y no contiene datos de quienes usan orqui.app. Las fotos de referencia de las especies muestran el nombre de su autor, como exige su licencia.',
   'Tus plantas y sus fotos solo las ves tú. La base de datos solo entrega a cada cuenta sus propias plantas.',
   'Las personas que administran el catálogo de especies tienen dos excepciones:',
   'Pueden ver cuántas plantas de todos los usuarios están enlazadas a cada especie: solo el número, sin saber de quién son.',
