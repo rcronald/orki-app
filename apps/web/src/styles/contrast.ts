@@ -101,6 +101,15 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   // color-danger sobre color-danger-soft. El icono de «Guardada» va en
   // color-success sobre color-neutral-0. El borde de las miniaturas y del
   // recuadro vacío (color-neutral-200) es decorativo: sin par.
+  // Galería del detalle (#183): miniatura elegida con borde
+  // color-secondary-strong sobre color-neutral-0 (ya listado). Visor a
+  // pantalla completa sobre color-neutral-900: título, contador, nota y
+  // fecha en color-neutral-0, y el anillo de foco en color-neutral-0; los
+  // botones, icono color-neutral-900 sobre color-neutral-0 (ya listado) y,
+  // en un extremo, color-neutral-0 sobre color-neutral-700.
+  text('color-neutral-0', 'color-neutral-900'),
+  ui('color-neutral-0', 'color-neutral-900'),
+  ui('color-neutral-0', 'color-neutral-700'),
 ]
 
 function relativeLuminance(hex: string): number {
