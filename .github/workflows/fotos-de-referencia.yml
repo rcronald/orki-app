@@ -1,0 +1,303 @@
+name: Fotos de referencia
+
+# Carga en el proyecto de Supabase de un ambiente las fotos de referencia de las especies,
+# sacadas de iNaturalist (`orki-catalogo cargar-fotos-inaturalist`, #234 y #180), y, si se
+# pide, lista o borra después los archivos del bucket que ya no cita ninguna fila
+# (`orki-catalogo limpiar-fotos-referencia`). Solo se lanza a mano, desde la pestaña Actions o
+# con `gh workflow run`: nunca por push, pull request ni calendario. Por defecto es una
+# simulación (no sube nada y la transacción se revierte); escribir es una elección explícita.
+# Producción solo desde main y con el environment `prod` de GitHub, del que hereda sus reglas
+# de aprobación. Guía completa: scripts/catalog-import/README.md, «Con el workflow» en
+# «Fotos de referencia».
+run-name: Fotos de referencia (${{ inputs.ambiente }}, ${{ inputs.modo }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente donde cargar las fotos
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+      modo:
+        description: simular (no sube ni escribe nada) o escribir (sube los archivos y confirma las filas)
+        type: choice
+        options:
+          - simular
+          - escribir
+        default: simular
+      generos:
+        description: Solo estos géneros, separados por comas (por ejemplo Phalaenopsis,Masdevallia). Vacío, el alcance por defecto de la orden
+        type: string
+        required: false
+        default: ''
+      max_especies:
+        description: Como mucho este número de especies del alcance (primero las que tienen más plantas). Vacío, sin tope
+        type: string
+        required: false
+        default: ''
+      todo_el_catalogo:
+        description: Todas las especies del catálogo (lee la familia entera de iNaturalist; no se combina con géneros)
+        type: boolean
+        default: false
+      alternativas:
+        description: Dónde buscar otra foto si la del taxón no vale (observaciones hace una petición por taxón)
+        type: choice
+        options:
+          - ninguna
+          - taxon
+          - observaciones
+        default: taxon
+      limpiar:
+        description: Después de cargar, listar o borrar (solo al escribir) los archivos del bucket que ya no cita ninguna fila
+        type: choice
+        options:
+          - 'no'
+          - listar
+          - borrar
+        default: 'no'
+
+permissions:
+  contents: read
+
+# Una sola carga a la vez por ambiente; la siguiente espera, no se cancela la que está en
+# curso (cortarla a mitad solo obligaría a repetirla).
+concurrency:
+  group: fotos-de-referencia-${{ inputs.ambiente }}
+  cancel-in-progress: false
+
+jobs:
+  cargar:
+    name: Fotos de referencia (${{ inputs.ambiente }}, ${{ inputs.modo }})
+    runs-on: ubuntu-latest
+    # A una petición por segundo y con /v1/taxa tardando unos 5 s por respuesta, el alcance por
+    # defecto tarda unos 15 minutos la primera vez (unos 40 con observaciones) y todo el
+    # catálogo unas 2 h 15 min (con observaciones no cabe en un día: el tope de 9 000
+    # peticiones lo corta y se reanuda al día siguiente). El paso de la carga tiene su propio
+    # límite, menor, para que después se guarde siempre la caché y se escriba el resumen.
+    # Cuentas en scripts/catalog-import/README.md, «Duración».
+    timeout-minutes: ${{ inputs.todo_el_catalogo && 355 || 150 }}
+    environment: ${{ inputs.ambiente }}
+    defaults:
+      run:
+        # Con «shell: bash» explícito, GitHub ejecuta bash con -e y -o pipefail. Nunca se usa
+        # set -x: imprimiría la URL de la base.
+        shell: bash
+        working-directory: scripts/catalog-import
+    # Las entradas llegan a los scripts solo por variables de entorno, nunca interpoladas en
+    # el texto de «run», y scripts/fotos-de-referencia/entradas.mjs las valida antes de usarlas,
+    # para que no se puedan inyectar órdenes.
+    env:
+      AMBIENTE: ${{ inputs.ambiente }}
+      MODO: ${{ inputs.modo }}
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Comprobar que producción solo se carga desde main
+        if: inputs.ambiente == 'prod' && github.ref != 'refs/heads/main'
+        working-directory: .
+        env:
+          RAMA: ${{ github.ref_name }}
+        run: |
+          echo "::error::Las fotos de referencia de producción solo se cargan desde main (se lanzó desde ${RAMA})."
+          exit 1
+
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node desde .nvmrc
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # Valida todas las entradas (listas cerradas, géneros solo con letras y guiones, número
+      # entero), las variables del environment y la rama, y escribe los argumentos de las dos
+      # órdenes, uno por línea. La confirmación de producción es la variable
+      # SUPABASE_PROJECT_REF del environment `prod`; la CLI la compara además con el
+      # identificador de producción fijado en su código.
+      - name: Comprobar las entradas
+        id: entradas
+        working-directory: .
+        env:
+          GENEROS: ${{ inputs.generos }}
+          MAX_ESPECIES: ${{ inputs.max_especies }}
+          TODO_EL_CATALOGO: ${{ inputs.todo_el_catalogo }}
+          ALTERNATIVAS: ${{ inputs.alternativas }}
+          LIMPIAR: ${{ inputs.limpiar }}
+          REF_GIT: ${{ github.ref }}
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
+          ARGUMENTOS_CARGA: ${{ runner.temp }}/argumentos/carga.txt
+          ARGUMENTOS_LIMPIEZA: ${{ runner.temp }}/argumentos/limpieza.txt
+        run: |
+          mkdir -p "$(dirname "$ARGUMENTOS_CARGA")"
+          node scripts/fotos-de-referencia/entradas.mjs
+
+      # Las cachés de la API y de las imágenes (datos públicos de iNaturalist) pasan de una
+      # ejecución a la siguiente: así una carga cortada sigue donde se quedó, una repetida no
+      # vuelve a pedir nada y el tope diario de peticiones (contado en la caché, en UTC) vale
+      # para todas las ejecuciones del día. Como una entrada de la caché de Actions no se puede
+      # sobrescribir, cada ejecución guarda la suya y la siguiente restaura la más reciente.
+      - name: Restaurar la caché de iNaturalist
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/inaturalist
+          key: fotos-inaturalist-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fotos-inaturalist-
+
+      # uv toma su versión de required-version en pyproject.toml e instala el Python de
+      # .python-version, como el job de Python del CI. La caché depende de uv.lock.
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: scripts/catalog-import
+          cache-dependency-glob: uv.lock
+
+      - name: Instalar Python y dependencias
+        run: uv sync --locked --no-dev
+
+      # Los ejecutores de GitHub no tienen IPv6 de salida y la conexión directa de Supabase solo
+      # funciona por IPv6, así que se usa el pooler en modo sesión, como en «Importar
+      # catálogo». La URL se compone aquí, en el mismo paso que la usa, con la contraseña
+      # codificada para URL y enmascarada; no se escribe en ningún archivo ni en GITHUB_ENV.
+      # La clave secreta de Storage solo llega a este paso al escribir; la CLI no la imprime.
+      # Al escribir, la carga deja su fila en la auditoría del catálogo con el identificador
+      # github-actions:<GITHUB_RUN_ID>:<GITHUB_RUN_ATTEMPT>.
+      - name: Cargar las fotos de referencia
+        id: carga
+        timeout-minutes: ${{ inputs.todo_el_catalogo && 320 || 110 }}
+        env:
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_SECRET_KEY: ${{ inputs.modo == 'escribir' && secrets.SUPABASE_SECRET_KEY || '' }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          ARGUMENTOS_CARGA: ${{ runner.temp }}/argumentos/carga.txt
+          CACHE_API: ${{ runner.temp }}/inaturalist/api
+          CACHE_IMAGENES: ${{ runner.temp }}/inaturalist/imagenes
+          REPORTE_DIR: ${{ runner.temp }}/reporte
+        run: |
+          if [[ -z "$DB_PASSWORD" ]]; then
+            echo "::error::Falta el secreto SUPABASE_DB_PASSWORD del environment ${AMBIENTE}. No se ha conectado a nada."
+            echo "codigo=1" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          if [[ "$MODO" == escribir && -z "$SUPABASE_SECRET_KEY" ]]; then
+            echo "::error::Falta el secreto SUPABASE_SECRET_KEY del environment ${AMBIENTE} (la clave secreta del proyecto, sb_secret_...). Hace falta para escribir. No se ha conectado a nada."
+            echo "codigo=1" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          clave_url="$(uv run --no-sync python -I -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
+          echo "::add-mask::${clave_url}"
+          ORKI_CATALOG_DB_URL="postgresql://postgres.${REF_PROYECTO}:${clave_url}@${POOLER_HOST}:5432/postgres?sslmode=require"
+          echo "::add-mask::${ORKI_CATALOG_DB_URL}"
+          export ORKI_CATALOG_DB_URL
+          unset DB_PASSWORD clave_url
+
+          mkdir -p "$REPORTE_DIR" "$CACHE_API" "$CACHE_IMAGENES"
+          if [[ "$MODO" == escribir ]]; then sufijo=escritura; else sufijo=simulacion; fi
+          base="${REPORTE_DIR}/reporte-carga-fotos-${AMBIENTE}-${sufijo}-$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "resumen_json=${base}.json" >> "$GITHUB_OUTPUT"
+
+          mapfile -t argumentos < "$ARGUMENTOS_CARGA"
+          argumentos+=(--cache "$CACHE_API" --cache-imagenes "$CACHE_IMAGENES" --reporte "${base}.csv" --resumen-json "${base}.json")
+          set +e
+          uv run --no-sync orki-catalogo cargar-fotos-inaturalist "${argumentos[@]}" 2>&1 | tee "${REPORTE_DIR}/salida-carga.txt"
+          codigo="${PIPESTATUS[0]}"
+          set -e
+          echo "codigo=${codigo}" >> "$GITHUB_OUTPUT"
+          if [[ "$codigo" == 3 ]]; then
+            echo "::error::La carga se detuvo antes de escribir ninguna fila (iNaturalist o Storage siguieron fallando, o se llegó al tope de peticiones del día). Lo leído y descargado se guarda en la caché: basta con volver a lanzar el workflow con las mismas entradas (si fue el tope diario, al día siguiente en UTC)."
+          elif [[ "$codigo" != 0 ]]; then
+            echo "::error::La carga falló con el código ${codigo}. No se ha escrito ninguna fila; el motivo está en la salida de arriba."
+          fi
+          exit "$codigo"
+
+      # Se guarda también si la carga falló o se cortó por tiempo: es lo que permite reanudarla.
+      - name: Guardar la caché de iNaturalist
+        if: ${{ always() && steps.carga.outcome != 'skipped' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/inaturalist
+          key: fotos-inaturalist-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Solo si la carga terminó bien. Listar no cambia nada; borrar (solo con modo escribir)
+      # se lleva los archivos sin citar con al menos 24 horas, así que nunca los de esta carga.
+      - name: Limpiar el bucket (${{ inputs.limpiar }})
+        id: limpieza
+        if: steps.entradas.outputs.limpiar != 'no'
+        env:
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          POOLER_HOST: ${{ vars.SUPABASE_POOLER_HOST }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          ARGUMENTOS_LIMPIEZA: ${{ runner.temp }}/argumentos/limpieza.txt
+          REPORTE_DIR: ${{ runner.temp }}/reporte
+        run: |
+          if [[ -z "$SUPABASE_SECRET_KEY" ]]; then
+            echo "::error::Falta el secreto SUPABASE_SECRET_KEY del environment ${AMBIENTE}. Hace falta para listar y borrar en el bucket."
+            exit 1
+          fi
+          clave_url="$(uv run --no-sync python -I -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
+          echo "::add-mask::${clave_url}"
+          ORKI_CATALOG_DB_URL="postgresql://postgres.${REF_PROYECTO}:${clave_url}@${POOLER_HOST}:5432/postgres?sslmode=require"
+          echo "::add-mask::${ORKI_CATALOG_DB_URL}"
+          export ORKI_CATALOG_DB_URL
+          unset DB_PASSWORD clave_url
+
+          mapfile -t argumentos < "$ARGUMENTOS_LIMPIEZA"
+          uv run --no-sync orki-catalogo limpiar-fotos-referencia "${argumentos[@]}" 2>&1 | tee "${REPORTE_DIR}/salida-limpieza.txt"
+
+      - name: Resumen de la ejecución
+        if: ${{ always() && steps.carga.outcome != 'skipped' }}
+        working-directory: .
+        env:
+          ALCANCE: ${{ steps.entradas.outputs.alcance }}
+          CODIGO: ${{ steps.carga.outputs.codigo }}
+          RESUMEN_JSON: ${{ steps.carga.outputs.resumen_json }}
+          LIMPIEZA: ${{ steps.entradas.outputs.limpiar }}
+          RESULTADO_LIMPIEZA: ${{ steps.limpieza.outcome }}
+          REPORTE_DIR: ${{ runner.temp }}/reporte
+        run: |
+          {
+            node scripts/fotos-de-referencia/resumen.mjs
+            if [[ -s "${REPORTE_DIR}/salida-carga.txt" ]]; then
+              echo
+              echo '<details><summary>Salida de la carga</summary>'
+              echo
+              echo '```'
+              cat "${REPORTE_DIR}/salida-carga.txt"
+              echo '```'
+              echo '</details>'
+            fi
+            if [[ "$LIMPIEZA" != no && -n "$LIMPIEZA" ]]; then
+              echo
+              echo "### Limpieza del bucket (${LIMPIEZA})"
+              echo
+              if [[ -z "$RESULTADO_LIMPIEZA" || "$RESULTADO_LIMPIEZA" == skipped ]]; then
+                echo 'No se ejecutó: solo se limpia cuando la carga termina bien.'
+              else
+                echo "Resultado del paso: **${RESULTADO_LIMPIEZA}**."
+              fi
+              if [[ -s "${REPORTE_DIR}/salida-limpieza.txt" ]]; then
+                echo
+                echo '```'
+                cat "${REPORTE_DIR}/salida-limpieza.txt"
+                echo '```'
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir el reporte
+        if: ${{ always() && steps.carga.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: reporte-fotos-referencia-${{ inputs.ambiente }}-${{ inputs.modo }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/reporte/
+          if-no-files-found: warn
+          retention-days: 30

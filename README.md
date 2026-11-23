@@ -90,6 +90,8 @@ npm run icons --workspace=apps/web
 orki-app/
 ├── .github/workflows/
 │   ├── ci.yml                 Integración continua
+│   ├── fotos-de-referencia.yml  Carga manual de las fotos de referencia de iNaturalist
+│   ├── importar-catalogo.yml  Importación manual del catálogo
 │   └── migraciones.yml        Aplicación de migraciones en Supabase
 ├── apps/
 │   └── web/                   App web (React, Vite, TypeScript, Tailwind CSS, PWA)
@@ -1105,9 +1107,15 @@ Las credenciales están registradas en GitHub (Settings > Secrets and variables 
 - `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
 - `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
 
+Los workflows manuales de carga usan además `SUPABASE_POOLER_HOST` (variable de cada environment, «Importar catálogo» y «Fotos de referencia») y `SUPABASE_SECRET_KEY` (secreto de cada environment, solo «Fotos de referencia»); ver sus secciones abajo.
+
 ### Importación del catálogo
 
 El catálogo de especies (Catalogue of Life) se carga con `orki-catalogo cargar` de `scripts/catalog-import/`, después de aplicar las migraciones. En desarrollo se puede cargar desde tu máquina o con el workflow; en producción, solo con el workflow manual `.github/workflows/importar-catalogo.yml` (Actions > Importar catálogo), que simula por defecto, exige escribir el identificador del proyecto para escribir en producción y deja el reporte como artefacto. Usa `SUPABASE_DB_PASSWORD` y `SUPABASE_PROJECT_REF` del environment y además la variable `SUPABASE_POOLER_HOST`, que hay que crear en cada environment. La guía completa (pasos por ambiente, cómo leer el reporte y qué hacer con una versión nueva de la fuente) está en [Ejecución por ambiente](scripts/catalog-import/README.md#ejecución-por-ambiente).
+
+### Fotos de referencia
+
+Las fotos de referencia de las especies (iNaturalist, #234) se cargan con `orki-catalogo cargar-fotos-inaturalist`. En producción, solo con el workflow manual `.github/workflows/fotos-de-referencia.yml` (Actions > Fotos de referencia), desde `main` y con el environment `prod`: simula por defecto, elige el alcance (por defecto el de la orden, unos géneros, un tope de especies o todo el catálogo), puede listar o borrar después los archivos que sobran en el bucket, guarda entre ejecuciones la caché de iNaturalist para reanudar una carga cortada y deja el reporte como artefacto. Usa los mismos `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF` y `SUPABASE_POOLER_HOST` que la importación y además el secreto `SUPABASE_SECRET_KEY` de cada environment (la clave secreta de cada proyecto), que hay que crear. La guía (entradas, duración por alcance, cómo reanudar) está en [Con el workflow](scripts/catalog-import/README.md#con-el-workflow).
 
 ## Despliegue en Vercel
 

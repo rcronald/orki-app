@@ -214,7 +214,7 @@ export function CollectionPiecesSection() {
             action={
               <Link
                 to={PATHS.showcase}
-                className="orki-link orki-answer__action"
+                className="orki-link orki-answer__action min-h-[44px] publico-estrecho:-mt-[2px] publico-estrecho:-mb-[10px]"
               >
                 Ver en mi colección
                 <Icon name="arrow-right" />

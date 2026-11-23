@@ -45,7 +45,10 @@ export function CheckAnswer({
   const past = pastSpecimensText(lost, gifted, ownedNow)
   const action =
     collectionLink === null ? undefined : (
-      <Link to={collectionLink} className="orki-link orki-answer__action">
+      <Link
+        to={collectionLink}
+        className="orki-link orki-answer__action min-h-[44px] publico-estrecho:-mt-[2px] publico-estrecho:-mb-[10px]"
+      >
         {CHECK_TEXT.seeInCollection}
         <Icon name="arrow-right" />
       </Link>

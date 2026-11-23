@@ -647,7 +647,87 @@ Cómo revisar el resultado:
 - **La app:** la ficha pública de una de esas especies (`get_public_species()` ya devuelve `reference_photo`).
 - **Repetirla** con el mismo alcance tiene que dar todo `sin_cambios`, sin descargas ni subidas.
 
-Después, para seguir, se sube `--max-especies` o se quita. Producción no se carga desde una máquina (ver [Ejecución por ambiente](#ejecución-por-ambiente)); para ella hace falta un workflow con la clave de servicio, que no existe todavía.
+Después, para seguir, se sube `--max-especies` o se quita. Producción no se carga desde una máquina (ver [Ejecución por ambiente](#ejecución-por-ambiente)): solo con el workflow de abajo.
+
+### Con el workflow
+
+El workflow **Fotos de referencia** (`.github/workflows/fotos-de-referencia.yml`) ejecuta `cargar-fotos-inaturalist` y, si se pide, `limpiar-fotos-referencia` en el proyecto de un ambiente. Solo se lanza a mano: Actions > Fotos de referencia > Run workflow, o `gh workflow run fotos-de-referencia.yml`. Sus entradas:
+
+| Entrada            | Valores                                                           | Qué hace                                                                                                                                                                                                 |
+| ------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ambiente`         | `dev` (por defecto) o `prod`                                      | Environment de GitHub del que toma los secretos y base de destino. `prod` solo desde `main` y con las reglas de aprobación que tenga el environment `prod`.                                              |
+| `modo`             | `simular` (por defecto) o `escribir`                              | `simular` lee la base e iNaturalist y descarga las imágenes a la caché, pero no sube nada y revierte la transacción; solo el valor exacto `escribir` añade `--escribir`.                                 |
+| `generos`          | texto, vacío por defecto                                          | Géneros separados por comas (`Phalaenopsis,Masdevallia`); cada uno, una `--genero`. Solo letras y guiones; los espacios alrededor de las comas se quitan. Vacío: el alcance por defecto de la orden.     |
+| `max_especies`     | texto, vacío por defecto                                          | Un entero de 1 a 1 000 000 para `--max-especies`. Vacío: sin tope.                                                                                                                                       |
+| `todo_el_catalogo` | casilla, desmarcada por defecto                                   | `--todo-el-catalogo`. No se combina con `generos`.                                                                                                                                                       |
+| `alternativas`     | `ninguna`, `taxon` (por defecto, como la orden) u `observaciones` | `--alternativas`.                                                                                                                                                                                        |
+| `limpiar`          | `no` (por defecto), `listar` o `borrar`                           | Si la carga terminó bien, ejecuta después `limpiar-fotos-referencia`: `listar` solo lista, `borrar` añade `--borrar` (solo con `modo = escribir`; se lleva los archivos sin citar de al menos 24 horas). |
+
+**Para escribir en producción no se escribe la confirmación:** el workflow pasa a `--confirmar-produccion` la variable `SUPABASE_PROJECT_REF` del environment `prod`, y la CLI la compara con el identificador de producción fijado en su código. La protección son la rama `main`, el environment `prod` (con sus revisores, si los tiene) y el modo `escribir`, que hay que elegir a propósito.
+
+**Orden recomendado:** primero `dev` y después `prod`; en cada uno, primero `simular`, revisar el resumen y el CSV (ver [Primera carga en desarrollo](#primera-carga-en-desarrollo)) y después `escribir` con las mismas entradas. Por ejemplo:
+
+```sh
+gh workflow run fotos-de-referencia.yml -R rcronald/orki-app --ref main -f ambiente=dev -f modo=simular -f max_especies=20
+gh workflow run fotos-de-referencia.yml -R rcronald/orki-app --ref main -f ambiente=dev -f modo=escribir -f max_especies=20 -f limpiar=listar
+gh workflow run fotos-de-referencia.yml -R rcronald/orki-app --ref main -f ambiente=prod -f modo=simular
+gh workflow run fotos-de-referencia.yml -R rcronald/orki-app --ref main -f ambiente=prod -f modo=escribir
+gh run watch -R rcronald/orki-app        # elige la ejecución y espera a que termine
+gh run download <id> -R rcronald/orki-app  # el reporte CSV, el resumen JSON y la salida
+```
+
+Antes, el ambiente tiene que tener aplicada la migración de las fotos de referencia (`20261124110000_fotos_de_referencia.sql`, ver [Antes de cargar: las migraciones](#antes-de-cargar-las-migraciones)).
+
+Qué hace, en orden:
+
+1. Comprueba las entradas con `scripts/fotos-de-referencia/entradas.mjs` antes de conectarse a nada: listas cerradas, géneros solo con letras y guiones, número entero, producción solo desde `main`, las variables del environment y que `borrar` vaya con `escribir`. Las entradas llegan solo por variables de entorno y los argumentos pasan a la CLI como un arreglo, así que no se pueden inyectar órdenes.
+2. Restaura la **caché de iNaturalist** (respuestas de la API e imágenes descargadas) de la ejecución anterior, con `actions/cache`.
+3. Instala Python y las dependencias con `uv sync --locked --no-dev` (la versión de uv y de Python, como el job de Python del CI).
+4. Compone la URL del pooler con los secretos del environment, igual que «Importar catálogo», y ejecuta la carga con `--ambiente` igual al environment. La clave secreta de Storage solo llega a ese paso con `modo = escribir`.
+5. Guarda la caché, también si la carga falló o se cortó.
+6. Con `limpiar`, ejecuta la limpieza.
+7. Escribe el resumen en la página de la ejecución (especies en el alcance, con foto, por licencia, resultado por especie, candidatas descartadas por motivo, archivos subidos y filas escritas o simuladas, más la salida de la CLI) y sube como artefacto `reporte-fotos-referencia-<ambiente>-<modo>-<id de ejecución>` el CSV, el resumen JSON y la salida, con 30 días de retención. Nada de eso lleva credenciales: nombres del catálogo, datos de las fotos y el identificador del proyecto, que no es secreto.
+
+**Si la carga sale con el código 3** (iNaturalist o Storage siguieron fallando tras los reintentos, o se llegó al tope de peticiones del día), el job falla con un error que dice que **basta con volver a lanzarlo** con las mismas entradas: no se escribió ninguna fila, la caché quedó guardada y la siguiente ejecución sigue desde ahí (si fue el tope diario, al día siguiente en UTC). Lo mismo si se agota el tiempo del paso de la carga. Otro código distinto de 0 es un fallo de verdad (credenciales, esquema, base): el motivo está en la salida.
+
+Las ejecuciones de un mismo ambiente no se solapan (la segunda espera; no se cancela la que está en curso). Entre ambientes sí pueden coincidir: no lances una carga grande en `dev` y otra en `prod` a la vez, porque las dos parten de la misma caché y el tope diario de peticiones, que se cuenta en ella, no vería las de la otra.
+
+#### Duración
+
+La API va a una petición por segundo como mucho y `/v1/taxa/{ids}` tarda unos 5 s por respuesta; las imágenes, a una por segundo (cifras de [docs/inaturalist.md](../../docs/inaturalist.md#estimación-de-almacenamiento-y-de-tiempo)). Primera ejecución, con la caché vacía:
+
+| Alcance                                          | Peticiones a la API                                   | Descargas  | Duración estimada                                                 |
+| ------------------------------------------------ | ----------------------------------------------------- | ---------- | ----------------------------------------------------------------- |
+| Por defecto, `alternativas = taxon`              | unas 80 (géneros, taxones y fotos en lotes de 30)     | unas 400   | unos 15 min                                                       |
+| Por defecto, `alternativas = observaciones`      | unas 1 200 (1 094 de observaciones, medido en 21 min) | unas 550   | unos 40 min                                                       |
+| Todo el catálogo, `alternativas = taxon`         | unas 730 (medido: 1 h 15 min con 210 repetidas)       | unas 3 400 | unas 2 h 15 min                                                   |
+| Todo el catálogo, `alternativas = observaciones` | unas 10 800 (estimado)                                | unas 4 500 | unas 5 h 30 min, en **dos ejecuciones de días distintos** (abajo) |
+
+Las descargas son las fotos usables medidas con CC0 y CC BY (364 y 520 en los ocho géneros, 3 372 y unas 4 500 en la familia); con CC BY-SA y dominio público serán algo más. El alcance por defecto incluye además las especies de otros géneros que ya están en alguna colección, que no se pudieron medir. Una repetición con la caché llena tarda unos minutos (no pide nada ni descarga nada que ya tenga). El paso de la carga se corta a los 110 minutos (320 con `todo_el_catalogo`) y el job a los 150 (355): así siempre quedan tiempo para guardar la caché y escribir el resumen, por debajo del máximo de 6 horas de un job de GitHub.
+
+**Todo el catálogo con observaciones no cabe en un día:** pasa del tope de 9 000 peticiones diarias de la CLI. La primera ejecución lee los taxones, sus fotos y unas 8 000 observaciones (unas 3 h 40 min) y sale con el código 3; al día siguiente (UTC), volver a lanzarla con las mismas entradas pide las que faltan (unos 35 min) y descarga las imágenes (1 h 15 min). También se puede trocear a mano por géneros (`generos`, unos cuantos por ejecución): cada trozo es más corto y lo ya leído queda en la caché para los siguientes.
+
+**La caché de Actions.** Se guarda una entrada nueva por ejecución (`fotos-inaturalist-<id>-<intento>`; una entrada no se puede sobrescribir) y se restaura la más reciente. Para todo el catálogo ocupa unos 500 MB, dentro de los 10 GB por repositorio; GitHub borra primero las más antiguas y las que llevan 7 días sin usarse. Si se pierde, la siguiente ejecución vuelve a pedirlo todo (y el tope diario empieza de cero). Una ejecución lanzada desde una rama lee la caché de `main`, pero guarda la suya en la rama: las ejecuciones de `main` (todas las de producción) no la ven. Para empezar de cero, borra las entradas `fotos-inaturalist-` en Actions > Caches.
+
+#### Credenciales del workflow de fotos
+
+Del environment elegido (`dev` o `prod`), en Settings > Environments:
+
+| Nombre                 | Tipo     | Para qué                                                                                               | Estado                                                                                                                                                        |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_DB_PASSWORD` | Secreto  | Contraseña de la base, para componer `ORKI_CATALOG_DB_URL`                                             | Ya existe en `dev` y en `prod`                                                                                                                                |
+| `SUPABASE_PROJECT_REF` | Variable | Usuario del pooler (`postgres.<ref>`), comprobación de la clave y confirmación de producción           | Ya existe en `dev` y en `prod`                                                                                                                                |
+| `SUPABASE_POOLER_HOST` | Variable | Host del pooler, como en «Importar catálogo»                                                           | La misma de [Importar catálogo](#credenciales-que-usa-el-workflow); si no se creó, hay que crearla en los dos                                                 |
+| `SUPABASE_SECRET_KEY`  | Secreto  | Clave secreta del proyecto (`sb_secret_...`): subir al bucket `species-photos` (al escribir) y limpiar | **Hay que crearla** en los dos, cada una con la clave de su proyecto (Project Settings > API Keys del proyecto de desarrollo y del de producción en Supabase) |
+
+Crear `SUPABASE_SECRET_KEY` (una vez por environment), pegando la clave cuando la pida, sin que quede en el historial:
+
+```sh
+gh secret set SUPABASE_SECRET_KEY --env dev  -R rcronald/orki-app   # la clave del proyecto de desarrollo
+gh secret set SUPABASE_SECRET_KEY --env prod -R rcronald/orki-app   # la clave del proyecto de producción
+```
+
+Conviene crear para esto una clave secreta propia en cada proyecto (Supabase permite varias y revocarlas por separado), en vez de reutilizar la de las máquinas. **Riesgo:** se salta RLS y puede leer y borrar todo el proyecto. Por eso solo llega, como variable de entorno, a los dos pasos que la usan (la carga solo al escribir), la CLI no la imprime nunca y rechaza una clave publicable o de otro proyecto antes de conectar. Con `modo = simular` y `limpiar = no` no se usa.
 
 ### Pruebas
 
@@ -655,11 +735,11 @@ Sin red y sin Storage reales. `tests/test_reference_photos.py` prueba la elecci�
 
 ## Ejecución por ambiente
 
-| Ambiente   | Dónde se ejecuta                                                        | Credenciales                                                                |
-| ---------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Local      | Tu máquina, contra un Postgres desechable                               | Las del contenedor, que no son secretas                                     |
-| Desarrollo | Tu máquina o el workflow, contra el proyecto de desarrollo              | La contraseña de la base de desarrollo, solo en la variable de entorno      |
-| Producción | **Solo** el workflow `importar-catalogo.yml`, con el environment `prod` | Secretos y variables del environment `prod` de GitHub; nunca en una máquina |
+| Ambiente   | Dónde se ejecuta                                                                                                                                                      | Credenciales                                                                |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Local      | Tu máquina, contra un Postgres desechable                                                                                                                             | Las del contenedor, que no son secretas                                     |
+| Desarrollo | Tu máquina o el workflow, contra el proyecto de desarrollo                                                                                                            | La contraseña de la base de desarrollo, solo en la variable de entorno      |
+| Producción | **Solo** el workflow `importar-catalogo.yml`, con el environment `prod` (las fotos de referencia, `fotos-de-referencia.yml`, ver [Con el workflow](#con-el-workflow)) | Secretos y variables del environment `prod` de GitHub; nunca en una máquina |
 
 ### Antes de cargar: las migraciones
 
