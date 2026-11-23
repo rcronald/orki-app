@@ -22,6 +22,7 @@ import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { PATHS } from '../routes/paths.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import CatalogAdminPage from './CatalogAdminPage.tsx'
+import { findAnnouncement } from '../test/announcement.ts'
 
 // Escrituras del backoffice del catálogo (#106) con la API de Supabase
 // simulada (fetch): alta, edición con aviso de propagación, baja, cambio de
@@ -330,7 +331,7 @@ describe('Backoffice: escritura de especies', () => {
       new_status: 'validated',
     })
     expect(
-      await screen.findByText(
+      await findAnnouncement(
         'Se dio de alta «Vanda tricolor» (especie, validada).',
       ),
     ).toBeInTheDocument()
@@ -455,7 +456,7 @@ describe('Backoffice: escritura de especies', () => {
       new_status: 'imported',
     })
     expect(
-      await screen.findByText(/Pasó a «Validada» porque era importada/),
+      await findAnnouncement(/Pasó a «Validada» porque era importada/),
     ).toBeInTheDocument()
     // El detalle vuelve a leerse y sale de la edición.
     await waitFor(() => expect(requestsTo('species').length).toBeGreaterThan(1))
@@ -482,7 +483,7 @@ describe('Backoffice: escritura de especies', () => {
       within(form).getByRole('button', { name: 'Guardar cambios' }),
     )
     expect(
-      await screen.findByText('«Phalaenopsis especie001» pasó a «Observada».'),
+      await findAnnouncement('«Phalaenopsis especie001» pasó a «Observada».'),
     ).toBeInTheDocument()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(requestsTo('rpc/update_catalog_species')[0]?.body).toMatchObject({
@@ -535,7 +536,7 @@ describe('Backoffice: escritura de especies', () => {
       within(dialog).getByRole('button', { name: 'Borrar del catálogo' }),
     )
     expect(
-      await screen.findByText(
+      await findAnnouncement(
         'Se borró «Phalaenopsis especie001» del catálogo.',
       ),
     ).toBeInTheDocument()
@@ -608,7 +609,7 @@ describe('Backoffice: escritura de especies', () => {
       within(dialog).getByRole('button', { name: 'Cambiar a «Validada»' }),
     )
     expect(
-      await screen.findByText('1 especie pasó a «Validada». 1 ya lo estaba.'),
+      await findAnnouncement('1 especie pasó a «Validada». 1 ya lo estaba.'),
     ).toBeInTheDocument()
     expect(requestsTo('rpc/set_catalog_species_status')[0]?.body).toEqual({
       target_species_ids: [speciesId(1), speciesId(2)],

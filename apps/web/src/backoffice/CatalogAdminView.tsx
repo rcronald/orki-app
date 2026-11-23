@@ -1,5 +1,4 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react'
-import { Icon } from '../components/ui/Icon.tsx'
 import { GeneraTab } from './GeneraTab.tsx'
 import { ProposalsTab } from './ProposalsTab.tsx'
 import type { CatalogAdminSource } from './source.ts'
@@ -40,7 +39,7 @@ const TABS: readonly { id: CatalogAdminTab; label: string }[] = [
  * Tras cada escritura, `revision` sube: el resumen, la tabla y el detalle se
  * vuelven a leer sin perder la búsqueda, los filtros ni la página (están en
  * el estado), mostrando lo de antes hasta que llega lo nuevo, y el resultado
- * se anuncia en una región de estado.
+ * se anuncia en una región de estado (y se ve junto a la acción, #257).
  */
 export function CatalogAdminView({
   state,
@@ -110,20 +109,10 @@ export function CatalogAdminView({
         cambios que se guardan aquí llegan al momento al buscador de todos los
         usuarios.
       </p>
-      <p
-        role="status"
-        className={
-          announcement === ''
-            ? 'sr-only'
-            : 'flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-md text-neutral-900'
-        }
-      >
-        {announcement !== '' && (
-          <Icon
-            name="circle-check"
-            className="mt-space-1 size-[16px] flex-none text-success"
-          />
-        )}
+      {/* El resultado de cada escritura se anuncia aquí, una vez. Lo que se
+          ve es una copia junto a donde se hizo (ResultNotice, en cada
+          pestaña), con aria-hidden. */}
+      <p role="status" className="sr-only">
         {announcement}
       </p>
       <SummaryPanel summary={summary} />

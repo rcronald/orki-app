@@ -51,6 +51,20 @@ export function GenusPicker({
     focusAfterChange.current = false
     document.getElementById(id)?.focus()
   }, [value, id])
+  // Si la lista de géneros se abre por debajo del borde de la ventana (el
+  // campo cerca del pie, en un celular), se desplaza lo justo para verla
+  // entera (#257). Sin animación: es un ajuste pequeño mientras se escribe.
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const popup = listRef.current?.querySelector<HTMLElement>(
+      '.orki-autocomplete__popup',
+    )
+    if (!popup || popup.hidden || typeof popup.scrollIntoView !== 'function')
+      return
+    if (popup.getBoundingClientRect().bottom > window.innerHeight) {
+      popup.scrollIntoView({ block: 'nearest' })
+    }
+  }, [search.results, search.status])
   const describedBy =
     [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(' ') ||
     undefined
@@ -99,8 +113,13 @@ export function GenusPicker({
     )
   }
 
+  // La lista de géneros, más corta que la del sistema (50dvh): se abre dentro
+  // del panel del formulario sin salirse de él ni tapar el pie (#257).
   return (
-    <div className="flex flex-col gap-space-1">
+    <div
+      ref={listRef}
+      className="flex flex-col gap-space-1 [&_.orki-autocomplete__popup]:max-h-[min(50dvh,264px)]"
+    >
       <Autocomplete
         id={id}
         label="Género"

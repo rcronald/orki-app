@@ -22,6 +22,7 @@ import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { PATHS } from '../routes/paths.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import CatalogAdminPage from './CatalogAdminPage.tsx'
+import { findAnnouncement } from '../test/announcement.ts'
 
 // Sinónimos, nombres comunes, géneros y abreviaturas en el backoffice (#107)
 // con la API de Supabase simulada (fetch): qué se envía, errores junto al
@@ -291,7 +292,7 @@ describe('Backoffice: nombres de una especie', () => {
     await user.type(field, '  Phalaenopsis   grandiflora ')
     await user.click(within(form).getByRole('button', { name: 'Guardar' }))
     expect(
-      await screen.findByText(
+      await findAnnouncement(
         'Se añadió el sinónimo «Phalaenopsis grandiflora» a «Phalaenopsis amabilis».',
       ),
     ).toBeInTheDocument()
@@ -393,7 +394,7 @@ describe('Backoffice: nombres de una especie', () => {
     )
     await user.click(within(form).getByRole('button', { name: 'Guardar' }))
     expect(
-      await screen.findByText('Se guardó el nombre «Doritis pulcherrima».'),
+      await findAnnouncement('Se guardó el nombre «Doritis pulcherrima».'),
     ).toBeInTheDocument()
     expect(requestsTo('rpc/update_species_name')[1]?.body).toEqual({
       target_name_id: 'n1',
@@ -420,7 +421,7 @@ describe('Backoffice: nombres de una especie', () => {
     await expectNoAxeViolations()
     await user.click(within(dialog).getByRole('button', { name: 'Quitar' }))
     expect(
-      await screen.findByText(
+      await findAnnouncement(
         'Se quitó el nombre común «orquídea mariposa» de «Phalaenopsis amabilis».',
       ),
     ).toBeInTheDocument()
@@ -466,9 +467,7 @@ describe('Backoffice: géneros y abreviaturas', () => {
       within(form).getByRole('button', { name: 'Crear el género' }),
     )
     expect(
-      await screen.findByText(
-        'Se creó el género «× Mokara», de acceso rápido.',
-      ),
+      await findAnnouncement('Se creó el género «× Mokara», de acceso rápido.'),
     ).toBeInTheDocument()
     expect(requestsTo('rpc/create_catalog_genus')[0]?.body).toEqual({
       new_name: '× Mokara',
@@ -523,7 +522,7 @@ describe('Backoffice: géneros y abreviaturas', () => {
       within(dialog).getByRole('button', { name: 'Quitar del acceso rápido' }),
     )
     expect(
-      await screen.findByText(
+      await findAnnouncement(
         '«Phalaenopsis» ya no sale como chip de acceso rápido en el registro.',
       ),
     ).toBeInTheDocument()
@@ -592,7 +591,7 @@ describe('Backoffice: géneros y abreviaturas', () => {
     await user.type(field, 'Mok')
     await user.click(within(form).getByRole('button', { name: 'Guardar' }))
     expect(
-      await screen.findByText('Se añadió la abreviatura «Mok.» a × Mokara.'),
+      await findAnnouncement('Se añadió la abreviatura «Mok.» a × Mokara.'),
     ).toBeInTheDocument()
 
     await user.click(
@@ -605,7 +604,7 @@ describe('Backoffice: géneros y abreviaturas', () => {
     })
     await user.click(within(dialog).getByRole('button', { name: 'Quitar' }))
     expect(
-      await screen.findByText('Se quitó la abreviatura «Mkra.» de × Mokara.'),
+      await findAnnouncement('Se quitó la abreviatura «Mkra.» de × Mokara.'),
     ).toBeInTheDocument()
     expect(requestsTo('rpc/delete_genus_abbreviation')[0]?.body).toEqual({
       target_abbreviation_id: 'a2',
@@ -629,7 +628,7 @@ describe('Backoffice: géneros y abreviaturas', () => {
       within(dialog).getByRole('button', { name: 'Borrar del catálogo' }),
     )
     expect(
-      await screen.findByText('Se borró el género «× Mokara» del catálogo.'),
+      await findAnnouncement('Se borró el género «× Mokara» del catálogo.'),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('region', { name: 'Género × Mokara' }),

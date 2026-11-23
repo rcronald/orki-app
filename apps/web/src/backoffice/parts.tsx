@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useId,
   useRef,
   type ChangeEvent,
@@ -10,6 +11,7 @@ import { Button } from '../components/ui/Button.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import type { SpeciesStatus } from '../lib/database.ts'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
+import { scrollBehavior } from './side-panel.ts'
 import { LOAD_ERROR_TITLE, STATUS_LABEL } from './texts.ts'
 import type { RemoteFailure } from './useRemoteData.ts'
 
@@ -292,5 +294,40 @@ export function SelectField<T extends string>({
         </span>
       )}
     </div>
+  )
+}
+
+/**
+ * Copia visible del aviso de resultado de una escritura («1 especie pasó a
+ * Observada»), junto a donde se hizo: arriba de la tabla o en el panel. El
+ * lector de pantalla lo oye por la región de estado de la pantalla
+ * (CatalogAdminView); esta copia va con aria-hidden para no repetirlo. Al
+ * aparecer, si queda fuera de la vista, se desplaza lo justo para verla.
+ */
+export function ResultNotice({ message }: { message: string }) {
+  const ref = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    const element = ref.current
+    if (!element || typeof element.scrollIntoView !== 'function') return
+    const { top, bottom } = element.getBoundingClientRect()
+    if (top < 0 || bottom > window.innerHeight) {
+      element.scrollIntoView({
+        block: 'nearest',
+        behavior: scrollBehavior(),
+      })
+    }
+  }, [])
+  return (
+    <p
+      ref={ref}
+      aria-hidden="true"
+      className="flex items-start gap-space-2 rounded-lg border-[1.5px] border-success bg-neutral-0 p-space-3 text-md text-neutral-900"
+    >
+      <Icon
+        name="circle-check"
+        className="mt-space-1 size-[16px] flex-none text-success"
+      />
+      {message}
+    </p>
   )
 }

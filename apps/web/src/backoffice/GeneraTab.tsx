@@ -11,7 +11,14 @@ import {
 import { cleanGenusName } from '../lib/catalogWrites.ts'
 import { GenusPanel } from './GenusPanel.tsx'
 import { InlineForm } from './InlineForm.tsx'
-import { LoadError, Notice, Pagination, SearchField } from './parts.tsx'
+import {
+  LoadError,
+  Notice,
+  Pagination,
+  ResultNotice,
+  SearchField,
+} from './parts.tsx'
+import { WITH_SIDE_PANEL, type PlacedNotice } from './side-panel.ts'
 import type { CatalogAdminSource } from './source.ts'
 import { formatCount, genusCountText, pageText } from './texts.ts'
 import {
@@ -73,6 +80,18 @@ export function GeneraTab({
     setOpenId(id)
     setFocusRequest((value) => value + 1)
   }
+  // Aviso visible del resultado de la última escritura: en el panel del
+  // género al que se refiere o, tras una baja, arriba de la tabla. El anuncio
+  // al lector de pantalla lo hace la pantalla (onCatalogChanged).
+  const [notice, setNotice] = useState<PlacedNotice<string | null> | null>(null)
+  const changed = (message: string, genusId: string | null) => {
+    setNotice((current) => ({
+      id: (current?.id ?? 0) + 1,
+      message,
+      place: genusId,
+    }))
+    onCatalogChanged(message)
+  }
   const settledQuery = useDebouncedValue(state.query)
   const typing = settledQuery !== state.query
   const query = settledQuery.trim()
@@ -118,7 +137,9 @@ export function GeneraTab({
 
   const th =
     'border-b-2 border-secondary px-space-3 py-space-2 text-left text-sm font-semibold whitespace-nowrap text-neutral-900'
-  const td = 'border-b border-neutral-50 px-space-3 py-space-2 align-top'
+  // Celdas centradas en vertical: el botón «Editar» (44 px de alto) queda
+  // alineado con el texto de la fila (#257).
+  const td = 'border-b border-neutral-50 px-space-3 py-space-2 align-middle'
 
   return (
     <div className="flex flex-col gap-space-4">
@@ -179,8 +200,9 @@ export function GeneraTab({
               })
               setCreating(false)
               open(written.id)
-              onCatalogChanged(
+              changed(
                 `Se creó el género «${written.name}»${written.isQuickAccess ? ', de acceso rápido' : ''}.`,
+                written.id,
               )
             }}
             extra={() => (
@@ -228,9 +250,11 @@ export function GeneraTab({
         )}
       </div>
 
-      <div
-        className={`grid gap-space-4 ${openId ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]' : ''}`}
-      >
+      {notice !== null && notice.place === null && (
+        <ResultNotice key={notice.id} message={notice.message} />
+      )}
+
+      <div className={`grid gap-space-4 ${openId ? WITH_SIDE_PANEL : ''}`}>
         <div className="flex min-w-[0] flex-col gap-space-4">
           {genera.status === 'error' && !typing ? (
             <LoadError
@@ -407,11 +431,16 @@ export function GeneraTab({
               returnFocusTo.current = editButtonId(openId)
               setOpenId(null)
             }}
-            onChanged={onCatalogChanged}
+            notice={
+              notice !== null && notice.place === openId ? (
+                <ResultNotice key={notice.id} message={notice.message} />
+              ) : null
+            }
+            onChanged={(message) => changed(message, openId)}
             onDeleted={(message) => {
               returnFocusTo.current = editButtonId(openId)
               setOpenId(null)
-              onCatalogChanged(message)
+              changed(message, null)
             }}
           />
         )}

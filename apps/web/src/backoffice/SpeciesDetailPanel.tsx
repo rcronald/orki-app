@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/Button.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import type { CatalogSpeciesDetail } from '../lib/catalogAdmin.ts'
@@ -9,6 +9,7 @@ import {
 import { catalogueOfLifeTaxonUrl } from './attribution.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { LoadError, SpeciesStatusBadge } from './parts.tsx'
+import { revealPanel, SIDE_PANEL } from './side-panel.ts'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesForm } from './SpeciesForm.tsx'
 import { SpeciesHistory } from './SpeciesHistory.tsx'
@@ -48,10 +49,12 @@ export interface SpeciesDetailPanelProps {
   onMerged: (keptId: string, message: string) => void
   /** Cambia tras cada escritura: el historial se vuelve a leer. */
   revision?: number
+  /** Aviso del resultado de la última escritura (ResultNotice), bajo el título. */
+  notice?: ReactNode
 }
 
-// Detalle de una especie, en un panel junto a la tabla (debajo en pantallas
-// estrechas): nombres alternativos, referencia de la fuente con enlace a la
+// Detalle de una especie, en un panel junto a la tabla que se queda a la vista
+// al desplazar (debajo en pantallas estrechas; ver SIDE_PANEL): nombres alternativos, referencia de la fuente con enlace a la
 // ficha del Catalogue of Life, fechas y número de plantas enlazadas. Desde
 // aquí se edita (nombre, género, tipo y estado), se borra si no tiene plantas
 // enlazadas, se fusiona con otra (SpeciesMergeDialog) y se editan sus
@@ -67,15 +70,18 @@ export function SpeciesDetailPanel({
   onDeleted,
   onMerged,
   revision = 0,
+  notice,
 }: SpeciesDetailPanelProps) {
   const headingId = useId()
+  const panelRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const ready = detail.status !== 'loading'
   const [editing, setEditing] = useState(false)
   const [localFocus, setLocalFocus] = useState(0)
 
   useEffect(() => {
-    if (focusRequest > 0 && ready) headingRef.current?.focus()
+    if (focusRequest > 0 && ready)
+      revealPanel(panelRef.current, headingRef.current)
   }, [focusRequest, ready])
   useEffect(() => {
     if (localFocus > 0) headingRef.current?.focus()
@@ -92,9 +98,10 @@ export function SpeciesDetailPanel({
 
   return (
     <section
+      ref={panelRef}
       aria-labelledby={headingId}
       aria-busy={!ready}
-      className="flex flex-col gap-space-3 self-start rounded-lg bg-neutral-50 p-space-4"
+      className={`${SIDE_PANEL} gap-space-3`}
     >
       <div className="flex items-start justify-between gap-space-3">
         <h2
@@ -118,6 +125,7 @@ export function SpeciesDetailPanel({
           Cerrar
         </Button>
       </div>
+      {notice}
 
       {detail.status === 'loading' || detail.status === 'idle' ? (
         <>

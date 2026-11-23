@@ -19,7 +19,8 @@ import type { SpeciesType } from '../lib/database.ts'
 import { PlantImagesContext, usePlantImage } from '../photos/usePlantImage.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { ModalDialog } from './ModalDialog.tsx'
-import { LoadError, Notice, Pagination } from './parts.tsx'
+import { LoadError, Notice, Pagination, ResultNotice } from './parts.tsx'
+import { type PlacedNotice } from './side-panel.ts'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesForm } from './SpeciesForm.tsx'
 import {
@@ -83,6 +84,9 @@ export function ProposalsTab({
   const [action, setAction] = useState<Action | null>(null)
   // Grupos ya resueltos que se ocultan mientras llega la lista nueva.
   const [hidden, setHidden] = useState<readonly string[]>([])
+  // Aviso visible de la última resolución, bajo el título (adonde vuelve el
+  // foco); el anuncio lo hace la pantalla (onCatalogChanged).
+  const [notice, setNotice] = useState<PlacedNotice<null> | null>(null)
 
   const list = useRemoteData(
     `propuestas:${state.page}`,
@@ -110,6 +114,11 @@ export function ProposalsTab({
   const finish = (group: ProposalGroup, message: string) => {
     setHidden([proposalGroupId(group)])
     setAction(null)
+    setNotice((current) => ({
+      id: (current?.id ?? 0) + 1,
+      message,
+      place: null,
+    }))
     onCatalogChanged(message)
   }
 
@@ -152,6 +161,9 @@ export function ProposalsTab({
             muestra quién las registró.
           </p>
         </div>
+        {notice !== null && (
+          <ResultNotice key={notice.id} message={notice.message} />
+        )}
 
         {list.status === 'error' ? (
           <LoadError

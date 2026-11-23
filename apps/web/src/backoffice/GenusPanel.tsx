@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { Button } from '../components/ui/Button.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
@@ -12,6 +19,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { InlineForm } from './InlineForm.tsx'
 import { LoadError } from './parts.tsx'
+import { revealPanel, SIDE_PANEL } from './side-panel.ts'
 import type { CatalogAdminSource } from './source.ts'
 import { speciesCountText } from './texts.ts'
 import { useRemoteData } from './useRemoteData.ts'
@@ -35,6 +43,8 @@ export interface GenusPanelProps {
   onClose: () => void
   onChanged: (message: string) => void
   onDeleted: (message: string) => void
+  /** Aviso del resultado de la última escritura (ResultNotice), bajo el título. */
+  notice?: ReactNode
 }
 
 export function GenusPanel({
@@ -45,8 +55,10 @@ export function GenusPanel({
   onClose,
   onChanged,
   onDeleted,
+  notice,
 }: GenusPanelProps) {
   const headingId = useId()
+  const panelRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const detail = useRemoteData(
     genusId,
@@ -55,15 +67,17 @@ export function GenusPanel({
   )
   const ready = detail.status !== 'loading' && detail.status !== 'idle'
   useEffect(() => {
-    if (focusRequest > 0 && ready) headingRef.current?.focus()
+    if (focusRequest > 0 && ready)
+      revealPanel(panelRef.current, headingRef.current)
   }, [focusRequest, ready])
   const genus = detail.status === 'success' ? detail.data : null
 
   return (
     <section
+      ref={panelRef}
       aria-labelledby={headingId}
       aria-busy={!ready}
-      className="flex flex-col gap-space-4 self-start rounded-lg bg-neutral-50 p-space-4"
+      className={`${SIDE_PANEL} gap-space-4`}
     >
       <div className="flex items-start justify-between gap-space-3">
         <h2
@@ -78,6 +92,7 @@ export function GenusPanel({
           Cerrar
         </Button>
       </div>
+      {notice}
       {!ready ? (
         <p role="status" className="text-sm text-neutral-700">
           Cargando el género…
