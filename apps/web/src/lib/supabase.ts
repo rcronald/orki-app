@@ -23,11 +23,21 @@ import type { Database } from './database.ts'
 //
 // Cómo llega el token: este módulo va en el chunk inicial y Clerk, en el chunk
 // diferido de la app (ver routes/AppRouter.tsx). Para no meter Clerk aquí ni
-// crear un segundo cliente, el token se pide a una fuente registrable: el
-// árbol de Clerk (auth/SupabaseSessionBridge.tsx) registra una con
-// setSessionTokenSource() mientras hay sesión y la quita al cerrarla o al
-// desmontarse. Sin fuente registrada (sin sesión, Clerk sin cargar o fuera de
+// crear un segundo cliente con sesión, el token se pide a una fuente
+// registrable: el árbol de Clerk (auth/SupabaseSessionBridge.tsx) registra
+// una con setSessionTokenSource() mientras hay sesión y la quita al cerrarla o
+// al desmontarse. Sin fuente registrada (sin sesión, Clerk sin cargar o fuera de
 // Clerk, como en /muestra), las peticiones van como anon.
+//
+// Cliente público (#232): el catálogo público (las cuatro funciones de
+// "Catálogo público" en supabase/README.md) se lee con un segundo cliente,
+// getPublicSupabase(), que nunca envía token: solo la clave publicable, como
+// anon. Esas funciones no miran quién llama, así que con sesión dan lo mismo,
+// y así el catálogo no depende de Clerk: se consulta mientras Clerk carga, si
+// no llega a cargar y aunque el token de una sesión iniciada no se pueda
+// obtener (sin conexión, sesión caducada). Comparte la carga diferida de
+// supabase-js con el cliente con sesión y no usa Supabase Auth (accessToken),
+// así que no hay dos clientes de autenticación compitiendo.
 
 export type OrkiSupabaseClient = ReturnType<typeof createClient<Database>>
 
@@ -142,9 +152,14 @@ export async function getSessionToken(): Promise<string | null> {
 
 let config: AppConfig | undefined
 let client: Promise<OrkiSupabaseClient> | undefined
+let publicClient: Promise<OrkiSupabaseClient> | undefined
+
+/** Sin token: la petición del cliente público va solo con la clave publicable. */
+const noToken = (): Promise<null> => Promise.resolve(null)
 
 async function createSupabase(
   appConfig: AppConfig,
+  accessToken: () => Promise<string | null>,
 ): Promise<OrkiSupabaseClient> {
   const { createClient } = await import('@supabase/supabase-js')
   return createClient<Database>(
@@ -153,7 +168,7 @@ async function createSupabase(
     {
       // Con accessToken, supabase-js no usa Supabase Auth (supabase.auth no
       // está disponible) ni guarda sesión propia.
-      accessToken: getSessionToken,
+      accessToken,
     },
   )
 }
@@ -179,17 +194,37 @@ export function isSupabaseConfigured(): boolean {
  * chunk no llega), la siguiente llamada lo vuelve a intentar.
  */
 export function getSupabase(): Promise<OrkiSupabaseClient> {
-  if (config === undefined) {
-    return Promise.reject(
-      new Error('El cliente de Supabase no se ha inicializado.'),
-    )
-  }
+  if (config === undefined) return notInitialized()
   if (client === undefined) {
-    const pending = createSupabase(config)
+    const pending = createSupabase(config, getSessionToken)
     client = pending
     pending.catch(() => {
       if (client === pending) client = undefined
     })
   }
   return client
+}
+
+/**
+ * Cliente para el catálogo público (#232): como getSupabase(), pero sin token
+ * nunca, con o sin sesión. Solo para las funciones que puede llamar anon
+ * (search_public_species, list_public_genera, list_public_genus_species y
+ * get_public_species); cualquier otra lectura, con getSupabase().
+ */
+export function getPublicSupabase(): Promise<OrkiSupabaseClient> {
+  if (config === undefined) return notInitialized()
+  if (publicClient === undefined) {
+    const pending = createSupabase(config, noToken)
+    publicClient = pending
+    pending.catch(() => {
+      if (publicClient === pending) publicClient = undefined
+    })
+  }
+  return publicClient
+}
+
+function notInitialized(): Promise<never> {
+  return Promise.reject(
+    new Error('El cliente de Supabase no se ha inicializado.'),
+  )
 }

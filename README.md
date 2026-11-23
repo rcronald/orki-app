@@ -291,7 +291,7 @@ Al arrancar, la app comprueba que la URL es una URL `https` válida, que la clav
 
 Fuera de producción, la app muestra en la esquina inferior izquierda una etiqueta pequeña con el ambiente ("Desarrollo"), para comprobar a simple vista a qué ambiente apunta una vista previa o el servidor local. Con `VITE_APP_ENV=prod` no aparece.
 
-El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada, y se carga de forma diferida (ver [Identidad: de Clerk a Postgres](#identidad-de-clerk-a-postgres)). No usa Supabase Auth: la sesión es de Clerk y el cliente envía su token de sesión en cada petición.
+El cliente de Supabase se crea una sola vez, en `apps/web/src/lib/supabase.ts`, a partir de la configuración validada, y se carga de forma diferida (ver [Identidad: de Clerk a Postgres](#identidad-de-clerk-a-postgres)). No usa Supabase Auth: la sesión es de Clerk y el cliente envía su token de sesión en cada petición. El catálogo público (#232) usa un segundo cliente, `getPublicSupabase()`, que no envía nunca el token: solo la clave publicable, como `anon`, con o sin sesión. Así la consulta del catálogo no depende de que Clerk cargue ni de que el token de una sesión se pueda obtener (ver [Catálogo público](#catálogo-público)).
 
 Las pruebas no leen estas variables (la validación se prueba con objetos de entorno de ejemplo), así que `npm test` y `npm run build` funcionan sin ningún `.env`, también en la integración continua.
 
