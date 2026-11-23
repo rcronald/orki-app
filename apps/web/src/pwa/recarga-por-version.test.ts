@@ -5,8 +5,11 @@ import {
   recargaEnCurso,
   recargarPorVersion,
   reiniciarRecargaPorVersion,
+  SALIDA_MS,
   VENTANA_MS,
   vigilarFallosDeCarga,
+  seEstaYendo,
+  vigilarSalida,
   type DependenciasDeRecarga,
 } from './recarga-por-version.ts'
 
@@ -34,6 +37,8 @@ function dependencias(
     almacen: () => almacen,
     ahora: () => 1_000_000,
     recargar: vi.fn(),
+    saliendo: () => false,
+    programar: vi.fn(),
     ...cambios,
   } as DependenciasDeRecarga & { recargar: ReturnType<typeof vi.fn> }
 }
@@ -134,6 +139,60 @@ describe('recargarPorVersion', () => {
 
     expect(recargarPorVersion(new Error('Componente roto'), deps)).toBe(false)
     expect(deps.recargar).not.toHaveBeenCalled()
+  })
+})
+
+describe('con la página yéndose (Safari cancela los import() al navegar)', () => {
+  it('no recarga, no deja ver la pantalla de fallo ni lo envía, y no deja marca', () => {
+    const almacen = almacenEnMemoria()
+    const programar = vi.fn()
+    const deps = dependencias({
+      saliendo: () => true,
+      almacen: () => almacen,
+      programar,
+    })
+
+    expect(
+      recargarPorVersion(
+        new TypeError('Importing a module script failed.'),
+        deps,
+      ),
+    ).toBe(true)
+    expect(deps.recargar).not.toHaveBeenCalled()
+    expect(recargaEnCurso()).toBe(true)
+    expect(almacen.datos.has(MARCA_DE_RECARGA)).toBe(false)
+    expect(programar).toHaveBeenCalledWith(expect.any(Function), SALIDA_MS)
+  })
+
+  it('si la página sigue aquí pasado el plazo (navegación cancelada), recarga con su marca', () => {
+    const almacen = almacenEnMemoria()
+    let tarea: (() => void) | undefined
+    const deps = dependencias({
+      saliendo: () => true,
+      almacen: () => almacen,
+      programar: (t) => {
+        tarea = t
+      },
+    })
+    recargarPorVersion(CHROME, deps)
+
+    tarea?.()
+
+    expect(deps.recargar).toHaveBeenCalledTimes(1)
+    expect(almacen.datos.get(MARCA_DE_RECARGA)).toBe('1000000')
+  })
+
+  it('vigilarSalida anota beforeunload, lo olvida con pageshow y caduca', () => {
+    const objetivo = new EventTarget()
+    vigilarSalida(objetivo)
+    expect(seEstaYendo()).toBe(false)
+
+    objetivo.dispatchEvent(new Event('beforeunload'))
+    expect(seEstaYendo()).toBe(true)
+    expect(seEstaYendo(Date.now() + SALIDA_MS)).toBe(false)
+
+    objetivo.dispatchEvent(new Event('pageshow'))
+    expect(seEstaYendo()).toBe(false)
   })
 })
 

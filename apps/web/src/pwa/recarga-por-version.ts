@@ -49,12 +49,22 @@ export function esFalloDeCargaDeChunk(error: unknown): boolean {
   )
 }
 
+/**
+ * Tiempo desde beforeunload en el que se considera que la página se está
+ * yendo, y lo que se espera antes de recargar igualmente si sigue aquí.
+ */
+export const SALIDA_MS = 10_000
+
 export interface DependenciasDeRecarga {
   enLinea: () => boolean
   /** sessionStorage, o null si no se puede usar. */
   almacen: () => Pick<Storage, 'getItem' | 'setItem'> | null
   ahora: () => number
   recargar: () => void
+  /** Si la página empezó a irse (beforeunload) hace menos de SALIDA_MS. */
+  saliendo: () => boolean
+  /** setTimeout. */
+  programar: (tarea: () => void, ms: number) => void
 }
 
 function almacenDeSesion(): Storage | null {
@@ -65,11 +75,42 @@ function almacenDeSesion(): Storage | null {
   }
 }
 
+let salidaDesde: number | null = null
+
 const DEPENDENCIAS: DependenciasDeRecarga = {
   enLinea: () => navigator.onLine !== false,
   almacen: almacenDeSesion,
   ahora: () => Date.now(),
   recargar: () => window.location.reload(),
+  saliendo: () => seEstaYendo(),
+  programar: (tarea, ms) => {
+    setTimeout(tarea, ms)
+  },
+}
+
+/** La página empezó a irse (beforeunload) hace menos de SALIDA_MS. */
+export function seEstaYendo(ahora = Date.now()): boolean {
+  return salidaDesde !== null && ahora - salidaDesde < SALIDA_MS
+}
+
+/**
+ * Anota cuándo empieza a irse la página (beforeunload, solo escuchado: no
+ * pregunta nada). Safari cancela los import() en curso al empezar una
+ * navegación a otra página, antes de que la página se vaya: sin esto, ese
+ * fallo recargaba la página actual y la recarga interrumpía la navegación
+ * (visto en las pruebas de WebKit: ir de la portada a /catalogo mientras
+ * llegaba el chunk de la app terminaba otra vez en la portada). Se llama una
+ * vez desde main.tsx.
+ */
+export function vigilarSalida(
+  objetivo: Pick<Window, 'addEventListener'> = window,
+): void {
+  objetivo.addEventListener('beforeunload', () => {
+    salidaDesde = Date.now()
+  })
+  objetivo.addEventListener('pageshow', () => {
+    salidaDesde = null
+  })
 }
 
 let recargando = false
@@ -86,6 +127,12 @@ export function recargaEnCurso(): boolean {
  * Si el error es un chunk que no llegó con conexión y no se recargó hace
  * poco, recarga la página y devuelve true; si no, false (el error sigue su
  * camino: pantalla de fallo y Sentry).
+ *
+ * Si la página se está yendo (vigilarSalida), el fallo es la navegación que
+ * cancela la carga, no un despliegue: no se recarga, ni se muestra la
+ * pantalla de fallo, ni se envía a Sentry (devuelve true). Si la navegación
+ * no llega a ocurrir (por ejemplo, se canceló el aviso de cambios sin
+ * guardar), se recarga pasado SALIDA_MS, para no dejar la pantalla a medias.
  */
 export function recargarPorVersion(
   error: unknown,
@@ -93,6 +140,14 @@ export function recargarPorVersion(
 ): boolean {
   if (!esFalloDeCargaDeChunk(error)) return false
   if (recargando) return true
+  if (deps.saliendo()) {
+    recargando = true
+    deps.programar(() => {
+      marcar(deps)
+      deps.recargar()
+    }, SALIDA_MS)
+    return true
+  }
   if (!deps.enLinea()) return false
   const almacen = deps.almacen()
   if (almacen === null) return false
@@ -109,9 +164,18 @@ export function recargarPorVersion(
   return true
 }
 
+function marcar(deps: DependenciasDeRecarga): void {
+  try {
+    deps.almacen()?.setItem(MARCA_DE_RECARGA, String(deps.ahora()))
+  } catch {
+    // Sin almacenamiento, sin marca.
+  }
+}
+
 /** Solo para pruebas: olvida que hay una recarga en curso. */
 export function reiniciarRecargaPorVersion(): void {
   recargando = false
+  salidaDesde = null
 }
 
 /**

@@ -77,6 +77,33 @@ test.describe('con el service worker', () => {
   test.describe('sin sesión', () => {
     test.use({ sesion: { usuario: null } })
 
+    test('la primera visita no recarga la página al instalarse el service worker', async ({
+      page,
+    }) => {
+      let cargas = 0
+      page.on('load', () => {
+        cargas += 1
+      })
+      await page.goto('/')
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await page.evaluate(() => {
+        document.documentElement.dataset.sinRecargar = 'sí'
+      })
+      // clientsClaim: toma el control de esta pestaña (controllerchange).
+      await esperarControl(page)
+      await page.evaluate(() => navigator.serviceWorker.ready)
+      expect(
+        await page.evaluate(() => document.documentElement.dataset.sinRecargar),
+      ).toBe('sí')
+      expect(cargas).toBe(1)
+      expect(
+        await page.evaluate(() =>
+          sessionStorage.getItem('orki:recarga-por-version'),
+        ),
+      ).toBeNull()
+      await expect(page.getByText(AVISO)).toHaveCount(0)
+    })
+
     test('la pestaña vieja sigue cargando sus rutas y «Actualizar» trae la versión nueva', async ({
       page,
       servidor,
@@ -186,16 +213,61 @@ test.describe('con el service worker', () => {
 test.describe('sin service worker', () => {
   test.use({ sesion: { usuario: null } })
 
+  // Safari cancela los import() en curso al empezar una navegación a otra
+  // página, antes de irse. Ese fallo no es un despliegue: recargar la página
+  // de antes interrumpía la navegación (#278, visto en WebKit con
+  // objetivos-tactiles.spec.ts). Sin etiqueta: es justo lo que cambia con el
+  // motor.
+  test('ir a otra página mientras llega el chunk de la app no recarga la de antes', async ({
+    page,
+  }) => {
+    let soltar = () => {}
+    const retenido = new Promise<void>((resolver) => {
+      soltar = resolver
+    })
+    let primera = true
+    await page.route(/\/assets\/App-[^/]+\.js$/, async (ruta) => {
+      if (primera) {
+        primera = false
+        await retenido
+      }
+      await ruta.continue().catch(() => undefined)
+    })
+    const pedido = page.waitForRequest(/\/assets\/App-[^/]+\.js$/)
+    // Sin esperar a «load»: en WebKit el chunk retenido puede retrasarlo.
+    await page.goto('/', { waitUntil: 'commit' })
+    await pedido
+    // El chunk de la app está a medio llegar cuando se va a otra página.
+    const navegacion = page.goto('/catalogo')
+    soltar()
+    await navegacion
+    await expect(
+      page.getByRole('heading', { name: 'Catálogo', level: 1 }),
+    ).toBeVisible()
+    await expect(page).toHaveURL(/\/catalogo$/)
+    expect(
+      await page.evaluate(() =>
+        sessionStorage.getItem('orki:recarga-por-version'),
+      ),
+    ).toBeNull()
+  })
+
   test(
     'una ruta diferida que ya no existe recarga una vez con la versión nueva',
     { tag: '@logica' },
     async ({ page, servidor }) => {
       // Una página de la app ya pintada por React (en la portada, un clic
       // antes de que la app sustituya la prerrenderada cargaría B entera).
+      // Se espera también al chunk de Sentry, que llega tras el primer
+      // pintado: si se pidiera ya con B servido, daría 404 y la recarga
+      // (correcta) se llevaría el clic en «Créditos y fuentes».
+      const sentry = page.waitForResponse(/\/assets\/sentry-[^/]+\.js$/)
       await page.goto('/privacidad')
       await expect(
         page.getByRole('heading', { level: 1, name: /privacidad/i }),
       ).toBeVisible()
+      await sentry
+      await page.waitForLoadState('networkidle')
 
       // Sin service worker (primera visita, o un navegador sin él), el
       // código de A pide sus chunks al servidor, que ya sirve B.

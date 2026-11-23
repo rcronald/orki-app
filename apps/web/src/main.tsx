@@ -12,11 +12,16 @@ import {
 } from './prerender/portada-previa.ts'
 import { ErrorBoundary } from './observability/ErrorBoundary.tsx'
 import { errorReporter, readRelease } from './observability/reporter.ts'
+import { vigilarSalida } from './pwa/recarga-por-version.ts'
 import { AppRouter } from './routes/AppRouter.tsx'
 
 // Un enlace de la portada prerrenderada pulsado mientras la app la sustituye
 // no pierde el clic (#204; ver portada-previa.ts).
 seguirPulsacionesEnPortadaPrevia()
+
+// Un chunk que no llega mientras la página ya se va no es un despliegue
+// (#278; ver pwa/recarga-por-version.ts).
+vigilarSalida()
 
 const env = parseEnv(import.meta.env)
 const root = createRoot(document.getElementById('root')!)
