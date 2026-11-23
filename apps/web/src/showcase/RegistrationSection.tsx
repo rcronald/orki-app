@@ -251,6 +251,7 @@ function samplePlant(insert: NewPlantInsert): CollectionPlant {
     photoInBloom: insert.photo_in_bloom ?? false,
     photoPath: null,
     thumbnailPath: null,
+    photoCount: 0,
   }
 }
 

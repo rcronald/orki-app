@@ -30,6 +30,8 @@ import { groupByGenus } from './selectors.ts'
 //   "-la pequeña" se exporta como "'-la pequeña" (sin el apóstrofo, Excel
 //   lo tomaría por una fórmula y mostraría un error). Las fechas y los textos
 //   fijos de la app nunca empiezan por esos caracteres.
+// - Fotos: el archivo no lleva fotos ni rutas, solo "Foto en floración" (de la
+//   principal) y "Número de fotos" (#184), la última columna.
 
 /** Marca de orden de bytes de UTF-8, al principio del archivo. */
 export const BOM = '﻿'
@@ -75,6 +77,12 @@ export const CSV_COLUMNS: readonly Column[] = [
   {
     header: 'Fecha de registro',
     value: (plant) => registeredOn(plant.createdAt),
+  },
+  {
+    // #184: de 0 a 6. Al final, para no mover las columnas de antes: una hoja
+    // o una fórmula hecha con un archivo anterior sigue cuadrando.
+    header: 'Número de fotos',
+    value: (plant) => String(plant.photoCount),
   },
 ]
 
