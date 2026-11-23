@@ -208,6 +208,8 @@ function createdRow(body: Record<string, unknown>): CollectionPlantRow {
     thumbnail_path: null,
     created_at: '2026-11-21T15:00:00+00:00',
     updated_at: '2026-11-21T15:00:00+00:00',
+    code: 'CAT-001',
+    notes: null,
     species: species
       ? {
           id: species.id,

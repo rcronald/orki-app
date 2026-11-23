@@ -19,6 +19,8 @@ import type { OwnershipExtras, SpeciesExtraName } from './ownership.ts'
 //   guardada antes no lo trae; al leerla se deduce de la principal
 //   (photoCountOf: 1 si hay foto, 0 si no) en lugar de descartarla, así quien
 //   abre la app sin conexión tras actualizar sigue viendo su colección.
+//   Lo mismo con code y notes (#265): una copia anterior no los trae y quedan
+//   en null (sin identificador ni notas) hasta la siguiente lectura.
 // - Todo con try/catch: sin IndexedDB (algunos modos privados) o con un
 //   fallo (sin espacio), no se guarda nada y la app funciona como sin caché.
 
@@ -92,7 +94,7 @@ export function fromStoredCopy(
   return {
     userId,
     savedAt: stored.savedAt,
-    plants: stored.plants.map(withPhotoCount),
+    plants: stored.plants.map(withNewFields),
     extras: {
       speciesNames: new Map(stored.speciesNames),
       genusAbbreviations: new Map(stored.genusAbbreviations),
@@ -100,11 +102,20 @@ export function fromStoredCopy(
   }
 }
 
-/** La planta guardada, con photoCount aunque la copia sea anterior al #184. */
-function withPhotoCount(plant: CollectionPlant): CollectionPlant {
+/**
+ * La planta guardada, con los campos añadidos sin cambiar el formato aunque
+ * la copia sea anterior: photoCount (#184), code y notes (#265).
+ */
+function withNewFields(plant: CollectionPlant): CollectionPlant {
   const stored = plant as Partial<CollectionPlant>
   const photoCount = photoCountOf(stored.photoCount, plant.photoPath ?? null)
-  return stored.photoCount === photoCount ? plant : { ...plant, photoCount }
+  const code = typeof stored.code === 'string' ? stored.code : null
+  const notes = typeof stored.notes === 'string' ? stored.notes : null
+  return stored.photoCount === photoCount &&
+    stored.code === code &&
+    stored.notes === notes
+    ? plant
+    : { ...plant, photoCount, code, notes }
 }
 
 // IndexedDB -------------------------------------------------------------------

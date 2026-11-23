@@ -55,6 +55,11 @@ import {
 // responde sin token con dos ilustraciones WebP locales (e2e/soporte), y
 // cada descarga queda en `descargasDeReferencia`.
 //
+// Identificador y notas (#264): cada planta recibe su `code` como lo haría el
+// disparador tag_code (asignarCodigos), no se puede cambiar, y `notes` se
+// escribe con la restricción plants_notes_valid (23514 si está en blanco o
+// pasa de 2000 caracteres).
+//
 // Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
 // 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
 // pida algo nuevo no pasa desapercibido.
@@ -334,9 +339,12 @@ export class SupabaseSimulado {
   /** Subidas cuyo archivo no se pudo leer del cuerpo (se guardó uno de muestra). */
   subidasSinCuerpo = 0
   private reloj = Date.parse('2026-11-21T15:00:00.000Z')
+  /** Último número de identificador por usuario y prefijo (#264). */
+  private readonly contadoresDeCodigo = new Map<string, number>()
 
   /** Plantas de una persona, para comprobar lo que guardó la app. */
   plantasDe(usuario: string): Planta[] {
+    this.asignarCodigos()
     return this.datos.plantas.filter((planta) => planta.user_id === usuario)
   }
 
@@ -381,6 +389,7 @@ export class SupabaseSimulado {
     const yo = identidadDe(cabeceras)
     const ruta = url.pathname
     this.copiarFotosAntiguas()
+    this.asignarCodigos()
 
     if (ruta.startsWith('/rest/v1/rpc/')) {
       const argumentos = (request.postDataJSON() ?? {}) as Record<
@@ -430,14 +439,13 @@ export class SupabaseSimulado {
       photo_in_bloom: planta.photo_in_bloom,
       photo_path: planta.photo_path,
       thumbnail_path: planta.thumbnail_path,
-      // Identificador y notas (#264): code lo pone la base y no cambia.
-      code: this.codigoDe(planta),
-      notes: planta.notes ?? null,
       // Campo calculado photo_count (#184): las filas de plant_photos.
       photo_count: this.fotos.filter((foto) => foto.plant_id === planta.id)
         .length,
       created_at: planta.created_at,
       updated_at: planta.updated_at,
+      code: planta.code ?? null,
+      notes: planta.notes ?? null,
       species: especie
         ? {
             id: especie.id,
@@ -451,40 +459,32 @@ export class SupabaseSimulado {
   }
 
   /**
-   * Como el disparador tag_code (#264): tres letras del género con el que se
-   * dio de alta y el correlativo por persona y prefijo, por orden de alta. El
-   * prefijo se recuerda al calcularlo la primera vez: cambiar el género
-   * después no lo cambia.
+   * Como el disparador tag_code y el relleno de la migración (#264): cada
+   * planta sin identificador recibe las tres letras de su género (sin tildes
+   * ni «×», completadas con X) y el siguiente número de su dueño con ese
+   * prefijo, por orden de alta. Los números no se reutilizan.
    */
-  private readonly prefijos = new Map<string, string>()
-  private codigoDe(planta: Planta): string {
-    const prefijoDe = (otra: Planta) => {
-      let prefijo = this.prefijos.get(otra.id)
-      if (prefijo === undefined) {
-        const genero = this.datos.generos.find((g) => g.id === otra.genus_id)
-        prefijo = normalizar(genero?.name ?? '')
-          .replace(/[^a-z]/g, '')
-          .slice(0, 3)
-          .toUpperCase()
-          .padEnd(3, 'X')
-        this.prefijos.set(otra.id, prefijo)
-      }
-      return prefijo
+  private asignarCodigos() {
+    const sinCodigo = this.datos.plantas
+      .filter((planta) => planta.code === undefined)
+      .sort(
+        (a, b) =>
+          a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
+      )
+    for (const planta of sinCodigo) {
+      const genero = this.datos.generos.find((g) => g.id === planta.genus_id)
+      const prefijo = (genero?.name ?? '')
+        .normalize('NFD')
+        .toLowerCase()
+        .replace(/[^a-z]/g, '')
+        .slice(0, 3)
+        .padEnd(3, 'x')
+        .toUpperCase()
+      const clave = `${planta.user_id}/${prefijo}`
+      const numero = (this.contadoresDeCodigo.get(clave) ?? 0) + 1
+      this.contadoresDeCodigo.set(clave, numero)
+      planta.code = `${prefijo}-${String(numero).padStart(3, '0')}`
     }
-    const prefijo = prefijoDe(planta)
-    const numero =
-      this.datos.plantas
-        .filter(
-          (otra) =>
-            otra.user_id === planta.user_id && prefijoDe(otra) === prefijo,
-        )
-        .sort(
-          (a, b) =>
-            a.created_at.localeCompare(b.created_at) ||
-            a.id.localeCompare(b.id),
-        )
-        .findIndex((otra) => otra.id === planta.id) + 1
-    return `${prefijo}-${String(numero).padStart(3, '0')}`
   }
 
   /** Lo que hace el disparador de plants al insertar o cambiar la especie. */
@@ -678,13 +678,34 @@ export class SupabaseSimulado {
         thumbnail_path: null,
         created_at: momento,
         updated_at: momento,
+        notes: cuerpo.notes ?? null,
       }
       this.aplicarEspecie(nueva, false)
       this.datos.plantas.push(nueva)
+      this.asignarCodigos()
       return filas([this.filaDePlanta(nueva)], cabeceras, 201)
     }
     if (metodo === 'PATCH') {
       const cambios = request.postDataJSON() as Partial<Planta>
+      // El identificador no se escribe por la API (#264).
+      if ('code' in cambios) {
+        return errorPostgrest(
+          403,
+          '42501',
+          'permission denied for table plants (simulado)',
+        )
+      }
+      // plants_notes_valid: null, o con algo más que espacios y hasta 2000.
+      if (
+        typeof cambios.notes === 'string' &&
+        (!/\S/.test(cambios.notes) || [...cambios.notes].length > 2000)
+      ) {
+        return errorPostgrest(
+          400,
+          '23514',
+          'violates check constraint "plants_notes_valid" (simulado)',
+        )
+      }
       const cambiaRutas = 'photo_path' in cambios || 'thumbnail_path' in cambios
       for (const planta of mias) {
         const despues = { ...planta, ...cambios }

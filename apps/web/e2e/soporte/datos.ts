@@ -56,10 +56,15 @@ export interface Planta {
   photo_in_bloom: boolean
   photo_path: string | null
   thumbnail_path: string | null
-  /** Notas libres (#264); sin la clave, null. */
-  notes?: string | null
   created_at: string
   updated_at: string
+  /**
+   * Identificador (#264): lo pone el simulado al leer o insertar, como el
+   * disparador tag_code (tres letras del género y un correlativo).
+   */
+  code?: string
+  /** Notas de la planta (#264); sin el campo, null. */
+  notes?: string | null
 }
 
 /** Una fila de species_photos (#234), con las columnas que lee la app. */

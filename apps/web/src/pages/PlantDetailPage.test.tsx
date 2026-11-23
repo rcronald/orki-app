@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CollectionLoadError } from '../collection/source.ts'
-import { DETAIL_TEXT, GALLERY_TEXT } from '../detail/texts.ts'
+import { DETAIL_TEXT, GALLERY_TEXT, NOTES_TEXT } from '../detail/texts.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { CATTLEYA, plant } from '../test/collection.ts'
@@ -23,6 +23,8 @@ const AMABILIS = plant({
   photoPath: 'user_prueba/6f1c2a4e/photo-v1.webp',
   thumbnailPath: 'user_prueba/6f1c2a4e/thumb-v1.webp',
   createdAt: '2026-11-02T10:00:00+00:00',
+  code: 'PHA-012',
+  notes: 'Llegó sin flor.\nRiego cada 5 días.',
 })
 
 const PENDING = plant({
@@ -95,10 +97,17 @@ describe('PlantDetailPage', () => {
     )
     expect(screen.getByText('En flor')).toBeVisible()
 
+    // Bajo el nombre (#265): validación, identificador, tipo y estado.
     expect(datum(DETAIL_TEXT.validation)).toHaveTextContent('Validada')
+    expect(datum(DETAIL_TEXT.code)).toHaveTextContent('PHA-012')
+    expect(datum(DETAIL_TEXT.typeShort)).toHaveTextContent('Especie')
+    expect(datum(DETAIL_TEXT.status)).toHaveTextContent('Activa')
+    expect(
+      screen.getByRole('link', { name: DETAIL_TEXT.edit }),
+    ).toHaveAttribute('href', `/coleccion/${AMABILIS.id}/editar`)
+    // Datos de la planta.
     expect(datum(DETAIL_TEXT.genus)).toHaveTextContent('Phalaenopsis')
     expect(datum(DETAIL_TEXT.type)).toHaveTextContent('Especie')
-    expect(datum(DETAIL_TEXT.status)).toHaveTextContent('Activa')
     expect(datum(DETAIL_TEXT.acquiredOn)).toHaveTextContent(
       '1 de noviembre de 2026',
     )
@@ -108,12 +117,56 @@ describe('PlantDetailPage', () => {
     expect(datum(DETAIL_TEXT.flowerColor)).toHaveTextContent('Blanco')
     // El nombre ingresado solo difiere en mayúsculas: no se repite.
     expect(screen.queryByText(DETAIL_TEXT.enteredName)).toBeNull()
-    // Las acciones están a la vista.
+    // La especie en el catálogo; con todos los datos, nada que completar.
+    expect(
+      screen.getByRole('link', { name: DETAIL_TEXT.catalog }),
+    ).toHaveAttribute('href', '/catalogo/especie/species-amabilis')
+    expect(
+      screen.queryByRole('link', { name: DETAIL_TEXT.complete }),
+    ).toBeNull()
+    // Las notas, con sus saltos de línea.
+    const notes = screen.getByRole('region', { name: NOTES_TEXT.title })
+    expect(within(notes).getByText(/Llegó sin flor\./)).toHaveClass(
+      'whitespace-pre-line',
+    )
+    // «Gestionar planta», plegado al final: las acciones no se ven hasta
+    // abrirlo.
+    const manage = screen.getByRole('button', {
+      name: DETAIL_TEXT.actionsLabel,
+    })
+    expect(manage).toHaveAttribute('aria-expanded', 'false')
+    expect(
+      screen.queryByRole('region', { name: DETAIL_TEXT.actionsLabel }),
+    ).toBeNull()
+    await expectNoAxeViolations()
+    await user.click(manage)
     const actions = screen.getByRole('region', {
       name: DETAIL_TEXT.actionsLabel,
     })
-    expect(within(actions).getAllByRole('button').length).toBeGreaterThan(0)
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual([DETAIL_TEXT.retire, DETAIL_TEXT.delete])
     await expectNoAxeViolations()
+  })
+
+  it('el orden de los encabezados sigue el de la ficha (#265)', async () => {
+    await renderPlantRoutes({
+      entries: [`/coleccion/${AMABILIS.id}`],
+      plants: [AMABILIS],
+    })
+    expect(
+      screen
+        .getAllByRole('heading')
+        .map((h) => `${h.tagName} ${h.textContent}`),
+    ).toEqual([
+      'H1 Phalaenopsis amabilis',
+      `H2 ${GALLERY_TEXT.title}`,
+      `H2 ${DETAIL_TEXT.dataLabel}`,
+      `H2 ${NOTES_TEXT.title}`,
+      `H2 ${DETAIL_TEXT.actionsLabel}`,
+    ])
   })
 
   it('al volver, el inventario conserva la búsqueda, los filtros y la posición', async () => {
@@ -152,13 +205,24 @@ describe('PlantDetailPage', () => {
     // Volver queda justo antes del título; después vienen las acciones.
     await user.tab({ shift: true })
     expect(screen.getByRole('link', { name: DETAIL_TEXT.back })).toHaveFocus()
-    // Sin fotos, primero la galería («Añadir fotos») y luego las acciones.
+    // Después, «Editar planta»; sin fotos, la galería («Añadir fotos»), los
+    // datos, las notas y «Gestionar planta», en ese orden.
+    await user.tab()
+    expect(screen.getByRole('link', { name: DETAIL_TEXT.edit })).toHaveFocus()
     await user.tab()
     expect(
       screen.getByRole('link', { name: GALLERY_TEXT.addPhotos }),
     ).toHaveFocus()
     await user.tab()
-    expect(screen.getByRole('link', { name: DETAIL_TEXT.edit })).toHaveFocus()
+    expect(
+      screen.getByRole('link', { name: DETAIL_TEXT.complete }),
+    ).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: NOTES_TEXT.add })).toHaveFocus()
+    await user.tab()
+    expect(
+      screen.getByRole('button', { name: DETAIL_TEXT.actionsLabel }),
+    ).toHaveFocus()
   })
 
   it('al abrir la dirección directamente espera a la colección', async () => {
@@ -241,6 +305,7 @@ describe('PlantDetailPage', () => {
   })
 
   it('un nombre por validar va sin cursiva, y sin foto muestra el marcador', async () => {
+    // Sin especie no hay enlace al catálogo; faltan datos: «Completar datos».
     await renderPlantRoutes({
       entries: [`/coleccion/${PENDING.id}`],
       plants: [PENDING],
@@ -251,10 +316,20 @@ describe('PlantDetailPage', () => {
       'Nombre por validar',
     )
     expect(datum(DETAIL_TEXT.type)).toHaveTextContent('Sin determinar')
-    expect(datum(DETAIL_TEXT.origin)).toHaveTextContent(DETAIL_TEXT.missing)
+    // Los datos opcionales que faltan no se listan.
+    expect(
+      screen.queryByText(DETAIL_TEXT.origin, { selector: 'dt' }),
+    ).toBeNull()
+    expect(screen.queryByRole('link', { name: DETAIL_TEXT.catalog })).toBeNull()
+    expect(
+      screen.getByRole('link', { name: DETAIL_TEXT.complete }),
+    ).toHaveAttribute('href', `/coleccion/${PENDING.id}/editar`)
     expect(
       screen.getByRole('img', { name: GALLERY_TEXT.noPhoto }),
     ).toBeVisible()
+    expect(screen.getByText(GALLERY_TEXT.empty)).toBeVisible()
+    // Sin notas: el estado vacío y «Añadir notas».
+    expect(screen.getByText(NOTES_TEXT.empty)).toBeVisible()
     // Sin foto no se dice si es en floración.
     expect(screen.queryByText(GALLERY_TEXT.inBloom)).toBeNull()
     await expectNoAxeViolations()
@@ -275,7 +350,12 @@ describe('PlantDetailPage', () => {
     const value = datum(DETAIL_TEXT.validation)
     expect(value).toHaveTextContent('No identificable')
     expect(value).not.toHaveTextContent('Nombre por validar')
-    expect(value).toHaveTextContent(DETAIL_TEXT.unidentifiable)
+    // La explicación, en «Datos de la planta».
+    expect(
+      within(
+        screen.getByRole('region', { name: DETAIL_TEXT.dataLabel }),
+      ).getByText(DETAIL_TEXT.unidentifiable),
+    ).toBeVisible()
     expect(DETAIL_TEXT.unidentifiable).toContain('sigue en tu colección')
   })
 

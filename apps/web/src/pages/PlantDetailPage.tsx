@@ -1,13 +1,16 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { useEffect, useId, useState, type ReactNode } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { PLANT_STATUS_LABEL } from '../collection/labels.ts'
 import type { CollectionPlant } from '../collection/model.ts'
 import { useReadOnly, type ReadOnlyReason } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
+import { Button } from '../components/ui/Button.tsx'
+import { Collapsible } from '../components/ui/Collapsible.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { ActionNotice } from '../detail/ActionNotice.tsx'
 import { BackToCollection } from '../detail/BackToCollection.tsx'
-import { cameFromInventory } from '../detail/navigation.ts'
+import { cameFromInventory, FROM_DETAIL } from '../detail/navigation.ts'
+import { updatePlantNotes } from '../detail/notes.ts'
 import {
   clearPlantNotice,
   leavePlantNotice,
@@ -17,11 +20,17 @@ import {
   PlantActions,
   type PlantActionServices,
 } from '../detail/PlantActions.tsx'
-import { PlantDetailView, PlantName } from '../detail/PlantDetailView.tsx'
+import {
+  PlantDetailView,
+  PlantMeta,
+  PlantName,
+} from '../detail/PlantDetailView.tsx'
 import {
   PlantGallery,
   type PlantGalleryServices,
 } from '../detail/PlantGallery.tsx'
+import { PlantLogSection } from '../detail/PlantLogSection.tsx'
+import { PlantNotes } from '../detail/PlantNotes.tsx'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantGallery } from '../detail/usePlantGallery.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
@@ -31,7 +40,7 @@ import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
 import { useReferencePhoto } from '../lib/useReferencePhoto.ts'
 import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
 import { updatePlant } from '../registration/save-plant.ts'
-import { PATHS } from '../routes/paths.ts'
+import { PATHS, plantEditPath } from '../routes/paths.ts'
 
 // Detalle de un ejemplar (#16), en /coleccion/:plantId. Exige sesión y va en
 // su propio chunk (App.tsx lo carga de forma diferida). Los datos salen de la
@@ -40,9 +49,17 @@ import { PATHS } from '../routes/paths.ts'
 // sin conexión; sin fotos propias, la foto de referencia de su especie
 // (useReferencePhoto, #234).
 //
-// Diseño (#183): la cabecera de pantalla (PageHeader) con «Volver a Mi
-// colección», el nombre como título y el apodo debajo; la galería a la
-// izquierda y los datos y las acciones a la derecha (PlantDetailView).
+// Diseño (#265, maqueta «Ficha de la planta» del #263): la cabecera de
+// pantalla (PageHeader) con «Mi colección» de regreso, el nombre como título,
+// debajo la insignia de validación, el identificador, el tipo y el estado
+// (PlantMeta) y «Editar planta» a la derecha (a todo el ancho hasta 720 px).
+// Luego PlantDetailView: la galería a la izquierda; «Datos de la planta» y
+// «Notas» (PlantNotes, editables aquí) a la derecha; la bitácora
+// (PlantLogSection, la monta el #267) y «Gestionar planta» al final, plegado,
+// con dar de baja y eliminar (PlantActions).
+//
+// Sin conexión o sin la sesión confirmada, un solo motivo arriba (región
+// role="status"), al que remiten «Editar planta», las notas y las acciones.
 //
 // Siempre se pinta una sola <Page>: al pasar de "cargando" a la planta, el h1
 // es el mismo elemento y conserva el foco que le dio la navegación.
@@ -66,13 +83,43 @@ function savedNoticeFor(plantId: string | undefined) {
   return notice?.kind === 'saved' && notice.plantId === plantId ? notice : null
 }
 
-/** «Volver a Mi colección»: el de la cabecera, de 44 px de alto (#174). */
+/**
+ * «Mi colección» de regreso (#265), de 44 px de alto (#174). Para el lector,
+ * «Volver a Mi colección»: el nombre contiene el texto visible.
+ */
 function Back() {
   return (
     <BackToCollection className="orki-link orki-pagehead__back">
       <Icon name="arrow-left" />
-      {DETAIL_TEXT.back}
+      {/* El espacio va fuera: en un contenedor flex no se pinta, pero separa
+          las dos palabras en el nombre accesible. */}
+      <span className="sr-only">{DETAIL_TEXT.backPrefix}</span>{' '}
+      {DETAIL_TEXT.backShort}
     </BackToCollection>
+  )
+}
+
+/** «Editar planta», junto al nombre; sin conexión, desactivado con el motivo. */
+function EditPlant({
+  plantId,
+  reasonId,
+}: {
+  plantId: string
+  reasonId: string | null
+}) {
+  return reasonId === null ? (
+    <Link
+      to={plantEditPath(plantId)}
+      state={FROM_DETAIL}
+      className="orki-btn orki-btn--secondary"
+    >
+      <Icon name="pencil" />
+      {DETAIL_TEXT.edit}
+    </Link>
+  ) : (
+    <Button icon="pencil" aria-disabled aria-describedby={reasonId}>
+      {DETAIL_TEXT.edit}
+    </Button>
   )
 }
 
@@ -82,6 +129,8 @@ export default function PlantDetailPage() {
   const { userId, upsertPlant, removePlant } = collection
   // Sin conexión o sin poder confirmar la sesión (#18): solo lectura.
   const readOnly = useReadOnly()
+  const reasonId = useId()
+  const writable = readOnly === null
   const navigate = useNavigate()
   const location = useLocation()
   // "Guardaste los cambios" al volver de la edición: se lee al montarse y se
@@ -114,7 +163,7 @@ export default function PlantDetailPage() {
   }
 
   const shown = lookup.status === 'found' ? lookup.plant : departed
-  const header = (meta?: string) => ({ art: false, meta, back: <Back /> })
+  const header = (meta?: ReactNode) => ({ art: false, meta, back: <Back /> })
 
   if (shown !== null) {
     const plant = shown
@@ -131,15 +180,41 @@ export default function PlantDetailPage() {
         title={plant.displayName}
         heading={<PlantName plant={plant} />}
         width="wide"
-        header={header(plant.nickname ?? undefined)}
+        header={{
+          ...header(<PlantMeta plant={plant} />),
+          actions: (
+            <EditPlant
+              plantId={plant.id}
+              reasonId={writable ? null : reasonId}
+            />
+          ),
+        }}
       >
         <PlantDetailContent
           plant={plant}
           userId={userId}
           readOnly={readOnly}
+          reasonId={writable ? undefined : reasonId}
           onPlantUpdated={upsertPlant}
           notice={
             <>
+              {/* Región siempre presente: así se anuncia al perder la conexión. */}
+              <div role="status" className="empty:-mb-space-5">
+                {!writable && (
+                  <p
+                    id={reasonId}
+                    className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-md text-neutral-900"
+                  >
+                    <Icon
+                      name="cloud-off"
+                      className="mt-[2px] size-[20px] flex-none"
+                    />
+                    {readOnly === 'unverified'
+                      ? DETAIL_TEXT.unverified
+                      : DETAIL_TEXT.offline}
+                  </p>
+                )}
+              </div>
               {noticeText && (
                 <ActionNotice key={noticeKey} onDismiss={() => setNotice(null)}>
                   {noticeText}
@@ -155,12 +230,8 @@ export default function PlantDetailPage() {
           actions={
             <PlantActions
               plant={plant}
-              online={readOnly === null}
-              offlineText={
-                readOnly === 'unverified'
-                  ? DETAIL_TEXT.unverified
-                  : DETAIL_TEXT.offline
-              }
+              online={writable}
+              reasonId={writable ? undefined : reasonId}
               services={services}
               onStatusChanged={(updated) => {
                 upsertPlant(updated)
@@ -222,16 +293,22 @@ interface PlantDetailContentProps {
   plant: CollectionPlant
   userId: string | null
   readOnly: ReadOnlyReason | null
+  /** id del motivo de arriba si no se puede escribir. */
+  reasonId?: string
   onPlantUpdated: (plant: CollectionPlant) => void
   notice: ReactNode
   actions: ReactNode
 }
 
-/** Galería, datos y acciones de la planta, con las fotos de plant_photos. */
+/**
+ * Galería, datos, notas, bitácora y «Gestionar planta», con las fotos de
+ * plant_photos.
+ */
 function PlantDetailContent({
   plant,
   userId,
   readOnly,
+  reasonId,
   onPlantUpdated,
   notice,
   actions,
@@ -273,7 +350,32 @@ function PlantDetailContent({
   return (
     <PlantDetailView
       plant={plant}
+      canEdit={readOnly === null}
       notice={notice}
+      notes={
+        <PlantNotes
+          plant={plant}
+          canEdit={readOnly === null}
+          reasonId={reasonId}
+          onSave={(notes) => updatePlantNotes(plant.id, owner, notes)}
+          onSaved={onPlantUpdated}
+        />
+      }
+      log={<PlantLogSection plant={plant} readOnly={readOnly} />}
+      manage={
+        <Collapsible
+          headingLevel={2}
+          className="rounded-lg border border-neutral-200"
+          title={
+            <span className="flex items-center gap-space-3">
+              <Icon name="settings" className="size-[24px] flex-none" />
+              {DETAIL_TEXT.actionsLabel}
+            </span>
+          }
+        >
+          {actions}
+        </Collapsible>
+      }
       gallery={
         <PlantGallery
           key={plant.id}
@@ -283,9 +385,9 @@ function PlantDetailContent({
           services={services}
           onPlantUpdated={onPlantUpdated}
           reference={reference}
+          reasonId={reasonId}
         />
       }
-      actions={actions}
     />
   )
 }

@@ -832,15 +832,65 @@ una consulta por especie, recordada en memoria; ninguna sin conexión.
 ## Galería del detalle y visor (#183)
 
 Para el detalle de una planta (`/coleccion/:id`). En `/muestra`, sección
-«Detalle del ejemplar» (abre «Ver el detalle»): galería con tres fotos en
-memoria, visor, fecha y nota, principal y orden.
+«Detalle del ejemplar» (abre «Ver el detalle»): la ficha entera del #265 con
+la galería de tres fotos en memoria, visor, fecha y nota, principal y orden,
+notas editables (con un chip para simular un fallo) y «Gestionar planta».
+
+### Ficha del ejemplar (#265)
+
+Maqueta «Ficha de la planta» del #263. **No añade CSS al sistema**: se compone
+con las piezas de siempre y utilidades.
+
+- **Cabecera** (`Page` con `header`): `back` es «Mi colección» (para el
+  lector, «Volver a Mi colección»: un `span.sr-only` «Volver a» y un espacio
+  fuera, que en el `inline-flex` no se pinta pero separa las palabras del
+  nombre accesible); el nombre en el `h1`; `meta` es `PlantMeta`
+  (`detail/PlantDetailView.tsx`) y `actions`, «Editar planta»
+  (`orki-btn--secondary`, a todo el ancho hasta 720 px por `orki-pagehead`).
+- **`PlantMeta`**: un `dl` en fila con los términos en `sr-only` («Nombre»,
+  «Identificador», «Tipo de planta», «Estado») y, como valores,
+  `StatusBadge`, el identificador en negrita (`CAT-012`), el tipo y el
+  estado. Cada dato lleva una raya `border-l color-neutral-200` y
+  `px-space-3`; la lista se corre `-(space-3 + 1px)` dentro de un contenedor
+  `overflow-hidden`, así el primero de cada línea (también al partirse a
+  360 px) va sin raya. `PageHeader` pinta `meta` en un `p` si es texto y en un
+  `div` (misma clase `orki-pagehead__meta`) si es un elemento.
+- **Dos columnas** (`orki-detail`), la de la galería algo más ancha
+  (`min-[721px]:grid-cols-[minmax(0,7fr)_minmax(0,6fr)]`, solo por encima de
+  720 px para no pisar la columna única del sistema). A la derecha, «Datos de
+  la planta» (`Panel` con un `dl` en rejilla `auto | 1fr`: término en
+  `text-sm color-neutral-700`, valor en negrita; solo los datos opcionales
+  con valor) y «Notas» (`detail/PlantNotes.tsx`). Debajo, a todo el ancho,
+  la bitácora (`detail/PlantLogSection.tsx`, hoy un punto de montaje que no
+  pinta nada; la construye el #267) y «Gestionar planta».
+- **Enlaces discretos** al pie de «Datos de la planta»: «Ver la especie en el
+  catálogo» (`book-open`) si tiene especie y «Completar datos» (`pencil`,
+  `font-normal`) si falta algún dato opcional y hay conexión. Los dos con
+  `orki-link -my-[10px] min-h-[44px]`.
+- **Notas** (`PlantNotes`): `section.orki-panel` compuesta a mano (el título
+  lleva su acción al lado). «Editar» (para el lector, «Editar notas») o
+  «Añadir notas», `orki-link` con icono; al pulsarlo, un
+  `textarea.orki-field__input` (6 filas, etiquetado por el título) con
+  contador «N de 2000 caracteres» en `orki-field__hint`, error en
+  `orki-field__error`, fallo del guardado en `orki-viewer__error` y
+  «Cancelar» y «Guardar» con `orki-viewer__formactions`. Escape cancela; el
+  foco vuelve a «Editar». El texto se pinta con `whitespace-pre-line`.
+- **Gestionar planta**: `Collapsible` con `headingLevel={2}`, borde
+  (`rounded-lg border border-neutral-200`) y el icono `settings` en el título;
+  plegado al entrar. Dentro, `PlantActions`: cada acción con su frase en
+  `text-sm color-neutral-700`, «Dar de baja» (o «Reactivar») secundario y
+  «Eliminar planta» `danger-outline`, separados por una raya.
+- **Sin conexión**: un solo motivo arriba (`role="status"`, `cloud-off`, sobre
+  `color-neutral-50`) al que remiten por `aria-describedby` «Editar planta»,
+  las notas, la galería (prop `reasonId`) y las acciones (prop `reasonId`).
 
 ### Diseño del detalle: `orki-detail`
 
 `div.orki-detail` > `div.orki-detail__media` (galería) + `div.orki-detail__info`
-(`Panel` de datos y acciones). En escritorio, dos columnas iguales alineadas
-arriba; hasta 720 px, una columna en el orden del documento. Lo pinta
-`PlantDetailView` (prop `gallery`).
+(`Panel` de datos y notas). En escritorio, dos columnas alineadas arriba (en la
+ficha, la de la galería algo más ancha); hasta 720 px, una columna en el orden
+del documento. Lo pinta `PlantDetailView` (props `gallery`, `notes`, `log` y
+`manage`).
 
 ### Galería: `orki-viewer`
 
@@ -849,28 +899,51 @@ arriba; hasta 720 px, una columna en el orden del documento. Lo pinta
 
 ```html
 <section class="orki-viewer" aria-labelledby="…">
-  <div class="orki-viewer__head">
-    <h2 class="orki-viewer__title">Fotos</h2>
-    <span class="orki-gallery__count">4 de 6</span>
+  <h2 class="sr-only">Fotos</h2>
+  <div class="relative">
+    <button class="orki-viewer__main aspect-[3/2] publico-estrecho:max-h-[240px]" aria-label="Ver en grande: Foto principal de …">
+      <img class="orki-viewer__photo" alt="Foto principal de …" />
+    </button>
+    <span class="orki-gallery__count pointer-events-none absolute right-space-3 top-space-3"><span class="sr-only">Foto </span>1 de 3</span>
+    <button aria-label="Foto anterior" aria-disabled="true">…</button>
+    <button aria-label="Foto siguiente">…</button>
   </div>
-  <button class="orki-viewer__main" aria-label="Ver en grande: Foto principal de …">
-    <img class="orki-viewer__photo" alt="Foto principal de …" />
-  </button>
-  <ul class="orki-viewer__thumbs" aria-label="Elegir la foto que se ve">
-    <li><button class="orki-viewer__thumb" aria-pressed="true" aria-label="Foto principal"><img alt="" /></button></li>
-  </ul>
+  <div class="flex flex-wrap items-center">
+    <ul class="orki-viewer__thumbs flex flex-wrap" aria-label="Elegir la foto que se ve">
+      <li class="w-[64px] publico-estrecho:w-[48px]"><button class="orki-viewer__thumb" aria-pressed="true" aria-label="Foto principal"><img alt="" /></button></li>
+    </ul>
+    <button class="orki-link ml-auto">Editar fecha y nota</button>
+  </div>
   <div class="orki-viewer__facts">
     <p class="orki-viewer__meta">Foto del 5 de octubre de 2026 <span class="orki-match">En flor</span></p>
     <p class="orki-viewer__note">…</p>
   </div>
-  <div class="orki-viewer__tools">…botones secundarios…</div>
+  <div class="flex flex-wrap items-center">
+    <a class="orki-link">Añadir o quitar fotos</a>
+    <button class="orki-link" aria-expanded="false" aria-controls="…">Ordenar fotos</button>
+  </div>
+  <div class="orki-viewer__tools" id="…">Hacer principal, Mover antes, Mover después</div>
   <p class="orki-viewer__hint" id="…">motivo de los deshabilitados</p>
   <p class="orki-viewer__status" role="status"></p>
-  <a class="orki-btn orki-btn--secondary orki-viewer__manage">Añadir o quitar fotos</a>
 </section>
 ```
 
-- Foto grande 4:3 sobre `color-neutral-50`, `radius-lg`, entera
+- Ficha (#265): el título «Fotos» solo para el lector; la foto en 3:2 (hasta
+  720 px, como mucho 240 px de alto); con más de una foto, la posición
+  («1 de 3», la píldora `orki-gallery__count`) sobre la esquina y las flechas
+  «Foto anterior» y «Foto siguiente» sobre los lados (44 px, `rounded-pill`,
+  `color-neutral-0` con borde; en los extremos `aria-disabled` sobre
+  `color-neutral-50`, sin dar la vuelta, como el visor). «Editar fecha y nota»
+  junto a las miniaturas; «Hacer principal», «Mover antes» y «Mover después»
+  dentro de «Ordenar fotos» (un botón de despliegue con `aria-expanded`),
+  junto a «Añadir o quitar fotos». Con una sola foto no hay posición,
+  flechas, miniaturas ni orden.
+- Sin fotos, un estado vacío compacto: `ReferencePhoto variant="compact"`
+  («Así es su especie») si su especie tiene foto de referencia, o el marcador
+  `sin-foto.svg` de 64 px con «Aún no tienes fotos de esta planta.», y
+  «Añadir fotos» (`orki-btn--secondary`).
+
+- Foto grande 4:3 (3:2 en la ficha) sobre `color-neutral-50`, `radius-lg`, entera
   (`object-fit: contain`); sin foto, `orki-viewer__photo--empty` con el
   marcador `sin-foto.svg`. Es siempre el mismo botón (el foco vuelve a él al
   cerrar el visor).
@@ -951,7 +1024,9 @@ w-full justify-center px-space-3`, la celda sin relleno), así la fila no
 su índice, una letra, una búsqueda, un género y una ficha), créditos,
 privacidad, las pantallas de acceso, «Mi colección» en cuadrícula y en lista
 con los filtros abiertos, el menú «Tu cuenta», el registro, la edición,
-«¿Ya la tengo?», el detalle con galería y el visor, «Tu cuenta» y el
+«¿Ya la tengo?», el detalle con galería y el visor (y, desde el #265, la ficha
+con «Ordenar fotos», las notas en edición y «Gestionar planta» abiertos),
+«Tu cuenta» y el
 backoffice (especies, detalle y propuestas), y las barras a 360, 390 y
 1440 px. Falla con la lista de los controles de menos de 44 px que no sean
 una de estas **excepciones** (`EXCEPCIONES` en la prueba):

@@ -16,6 +16,15 @@ const DENDROBIUM = genus('muestra-den', 'Dendrobium')
 
 let nextId = 1
 
+/** Las tres primeras letras del género, sin «×» ni tildes, en mayúsculas. */
+function codePrefix(genus: string): string {
+  const letters = genus
+    .normalize('NFD')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '')
+  return letters.slice(0, 3).padEnd(3, 'x').toUpperCase()
+}
+
 function samplePlant(
   data: Pick<CollectionPlant, 'displayName' | 'genus' | 'createdAt'> &
     Partial<CollectionPlant>,
@@ -47,6 +56,9 @@ function samplePlant(
     photoPath: null,
     thumbnailPath: null,
     photoCount: (data.photoPath ?? null) === null ? 0 : 1,
+    // Como el de la base (#264): tres letras del género y un correlativo.
+    code: `${codePrefix(data.genus.name)}-${String(nextId).padStart(3, '0')}`,
+    notes: null,
     ...data,
   }
 }

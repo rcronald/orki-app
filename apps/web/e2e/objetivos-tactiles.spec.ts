@@ -359,6 +359,15 @@ test.describe('con sesión', () => {
         .locator('li'),
     ).toHaveCount(4)
     await medir(page, 'detalle')
+    // La ficha (#265): el orden de las fotos, las notas en edición y
+    // «Gestionar planta» abierto.
+    await galeria.getByRole('button', { name: 'Ordenar fotos' }).click()
+    await page.getByRole('button', { name: 'Añadir notas' }).click()
+    await page.getByRole('button', { name: 'Gestionar planta' }).click()
+    await expect(
+      page.getByRole('button', { name: 'Eliminar planta' }),
+    ).toBeVisible()
+    await medir(page, 'ficha: orden, notas y gestionar planta')
     await galeria.getByRole('button', { name: /^Ver en grande: / }).click()
     const visor = page.getByRole('dialog', { name: 'Fotos de Cattleya maxima' })
     await expect(visor.getByText('Foto 1 de 4')).toBeVisible()

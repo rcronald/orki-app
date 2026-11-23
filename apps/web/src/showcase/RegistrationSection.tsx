@@ -268,6 +268,9 @@ function samplePlant(insert: NewPlantInsert): CollectionPlant {
     photoPath: null,
     thumbnailPath: null,
     photoCount: 0,
+    // Lo pondría la base (#264); la muestra no lo inventa.
+    code: null,
+    notes: null,
   }
 }
 

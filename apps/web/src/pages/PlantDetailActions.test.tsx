@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
-import { DELETE_ERROR_TEXT, DETAIL_TEXT } from '../detail/texts.ts'
+import { DELETE_ERROR_TEXT, DETAIL_TEXT, NOTES_TEXT } from '../detail/texts.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -18,7 +18,8 @@ import {
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
-// Baja, reactivación y eliminación definitiva desde el detalle (#16), con la
+// Baja, reactivación y eliminación definitiva desde el detalle (#16), dentro
+// de «Gestionar planta» desde el #265, y las notas de la ficha (#265), con la
 // app real hasta supabase-js y PostgREST y Storage en memoria.
 
 const USER = 'user_prueba'
@@ -65,8 +66,22 @@ afterEach(() => {
   setSessionTokenSource(null)
 })
 
-/** Inventario → detalle de la primera planta, como al navegar. */
-async function openDetail(plants: readonly CollectionPlant[]) {
+/** Abre «Gestionar planta» (#265), plegado al entrar. */
+async function openManage(user: ReturnType<typeof userEvent.setup>) {
+  const toggle = screen.getByRole('button', { name: DETAIL_TEXT.actionsLabel })
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await user.click(toggle)
+  expect(toggle).toHaveAttribute('aria-expanded', 'true')
+}
+
+/**
+ * Inventario → detalle de la primera planta, como al navegar, con
+ * «Gestionar planta» abierto (salvo `manage: false`).
+ */
+async function openDetail(
+  plants: readonly CollectionPlant[],
+  { manage = true }: { manage?: boolean } = {},
+) {
   supabase = fakeSupabase(plants)
   vi.stubGlobal('fetch', supabase.fetch)
   const user = userEvent.setup()
@@ -74,6 +89,7 @@ async function openDetail(plants: readonly CollectionPlant[]) {
   const first = plants[0]
   if (!first) throw new Error('Sin plantas.')
   await user.click(screen.getByRole('link', { name: first.displayName }))
+  if (manage) await openManage(user)
   return { ...view, user }
 }
 
@@ -166,6 +182,10 @@ describe('dar de baja y reactivar', () => {
       plants: [lost],
     })
     expect(datum(DETAIL_TEXT.status)).toHaveTextContent('Perdida')
+    expect(
+      screen.getByText(/Puedes reactivarla en «Gestionar planta»/),
+    ).toBeVisible()
+    await openManage(user)
     await user.click(
       screen.getByRole('button', { name: DETAIL_TEXT.reactivate }),
     )
@@ -208,6 +228,10 @@ describe('eliminación definitiva', () => {
 
     expect(dialog()).toHaveAccessibleName(DETAIL_TEXT.deleteTitle)
     expect(dialog()).toHaveAccessibleDescription(/No se puede deshacer/)
+    // Dice qué pasa con las fotos y con la bitácora (#265).
+    expect(dialog()).toHaveAccessibleDescription(
+      /todas sus fotos y todos los registros de su bitácora/,
+    )
     const cancel = within(dialog()).getByRole('button', { name: 'Cancelar' })
     const confirm = within(dialog()).getByRole('button', {
       name: DETAIL_TEXT.deleteConfirm,
@@ -304,6 +328,7 @@ describe('eliminación definitiva', () => {
       entries: [`/coleccion/${AMABILIS_ID}`],
       plants: [amabilis()],
     })
+    await openManage(user)
     await user.click(screen.getByRole('button', { name: DETAIL_TEXT.delete }))
     await user.click(
       within(dialog()).getByRole('button', { name: DETAIL_TEXT.deleteConfirm }),
@@ -318,6 +343,7 @@ describe('sin conexión', () => {
     const { user } = await openDetail([amabilis()])
     for (const name of [
       DETAIL_TEXT.edit,
+      NOTES_TEXT.add,
       DETAIL_TEXT.retire,
       DETAIL_TEXT.delete,
     ]) {
@@ -328,5 +354,127 @@ describe('sin conexión', () => {
     await user.click(screen.getByRole('button', { name: DETAIL_TEXT.delete }))
     expect(screen.queryByRole('dialog')).toBeNull()
     await expectNoAxeViolations()
+  })
+})
+
+describe('notas de la planta (#265)', () => {
+  const notesPanel = () =>
+    screen.getByRole('region', { name: NOTES_TEXT.title })
+  const field = () => within(notesPanel()).getByRole('textbox')
+  const save = () =>
+    within(notesPanel()).getByRole('button', { name: NOTES_TEXT.save })
+
+  it('añadir: el área de texto con su contador; guarda sin los espacios de los extremos', async () => {
+    const { user } = await openDetail([amabilis()], { manage: false })
+    expect(within(notesPanel()).getByText(NOTES_TEXT.empty)).toBeVisible()
+    const add = within(notesPanel()).getByRole('button', {
+      name: NOTES_TEXT.add,
+    })
+    await user.click(add)
+
+    expect(field()).toHaveFocus()
+    expect(field()).toHaveAccessibleName(NOTES_TEXT.title)
+    expect(field()).toHaveAccessibleDescription('0 de 2000 caracteres')
+    await expectNoAxeViolations()
+    await user.type(field(), '  Llegó sin flor.{Enter}Riego cada 5 días.  ')
+    expect(field()).toHaveAccessibleDescription('34 de 2000 caracteres')
+    await user.click(save())
+
+    await waitFor(() =>
+      expect(supabase.patches()).toEqual([
+        { notes: 'Llegó sin flor.\nRiego cada 5 días.' },
+      ]),
+    )
+    expect(await within(notesPanel()).findByRole('status')).toHaveTextContent(
+      NOTES_TEXT.saved,
+    )
+    expect(within(notesPanel()).queryByRole('textbox')).toBeNull()
+    expect(
+      within(notesPanel()).getByText(/Llegó sin flor\./),
+    ).toHaveTextContent('Llegó sin flor. Riego cada 5 días.')
+    // El foco vuelve a «Editar» (ya hay notas).
+    expect(
+      within(notesPanel()).getByRole('button', { name: 'Editar notas' }),
+    ).toHaveFocus()
+  })
+
+  it('editar y vaciar: vacío es «sin notas» (null); sin cambios no envía nada', async () => {
+    const { user } = await openDetail([amabilis({ notes: 'Riego.' })], {
+      manage: false,
+    })
+    const edit = () =>
+      within(notesPanel()).getByRole('button', { name: 'Editar notas' })
+
+    // Sin cambios: se cierra sin escribir.
+    await user.click(edit())
+    expect(field()).toHaveValue('Riego.')
+    await user.click(save())
+    expect(supabase.patches()).toEqual([])
+    expect(edit()).toHaveFocus()
+
+    // Escape cancela y no guarda.
+    await user.click(edit())
+    await user.clear(field())
+    await user.type(field(), 'Otra cosa')
+    await user.keyboard('{Escape}')
+    expect(within(notesPanel()).getByText('Riego.')).toBeVisible()
+    expect(edit()).toHaveFocus()
+
+    // Vaciar: solo espacios es lo mismo que nada.
+    await user.click(edit())
+    await user.clear(field())
+    await user.type(field(), '   ')
+    await user.click(save())
+    await waitFor(() => expect(supabase.patches()).toEqual([{ notes: null }]))
+    expect(await within(notesPanel()).findByRole('status')).toHaveTextContent(
+      NOTES_TEXT.removed,
+    )
+    expect(within(notesPanel()).getByText(NOTES_TEXT.empty)).toBeVisible()
+    expect(
+      within(notesPanel()).getByRole('button', { name: NOTES_TEXT.add }),
+    ).toHaveFocus()
+  })
+
+  it('si falla, lo dice, conserva lo escrito y se puede reintentar', async () => {
+    const { user } = await openDetail([amabilis()], { manage: false })
+    supabase.patchResponder = () => json({ message: 'Error' }, 500)
+    await user.click(
+      within(notesPanel()).getByRole('button', { name: NOTES_TEXT.add }),
+    )
+    await user.type(field(), 'Abono cada 15 días')
+    await user.click(save())
+    expect(await within(notesPanel()).findByRole('alert')).toHaveTextContent(
+      'No se pudieron guardar los cambios',
+    )
+    expect(field()).toHaveValue('Abono cada 15 días')
+    await expectNoAxeViolations()
+
+    supabase.patchResponder = null
+    await user.click(save())
+    await waitFor(() =>
+      expect(within(notesPanel()).queryByRole('textbox')).toBeNull(),
+    )
+    expect(within(notesPanel()).getByText('Abono cada 15 días')).toBeVisible()
+    expect(supabase.patches()).toEqual([
+      { notes: 'Abono cada 15 días' },
+      { notes: 'Abono cada 15 días' },
+    ])
+  })
+
+  it('más de 2000 caracteres: lo dice y no envía nada', async () => {
+    const { user } = await openDetail([amabilis()], { manage: false })
+    await user.click(
+      within(notesPanel()).getByRole('button', { name: NOTES_TEXT.add }),
+    )
+    // Pegado, no tecleado: 2001 caracteres (con una tilde, un carácter).
+    field().focus()
+    await user.paste(`á${'a'.repeat(2000)}`)
+    await user.click(save())
+    expect(field()).toHaveAttribute('aria-invalid', 'true')
+    expect(field()).toHaveAccessibleDescription(
+      `${NOTES_TEXT.tooLong(2000)} 2001 de 2000 caracteres`,
+    )
+    expect(field()).toHaveFocus()
+    expect(supabase.patches()).toEqual([])
   })
 })

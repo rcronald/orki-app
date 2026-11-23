@@ -11,7 +11,7 @@ import {
 } from './export-csv.ts'
 
 const HEADER =
-  'Nombre científico,Nombre ingresado,Género,Tipo,Estado,Validación,Fecha de adquisición,Origen,Ubicación,Apodo,Color de flor,Foto en floración,Fecha de registro,Número de fotos'
+  'Nombre científico,Nombre ingresado,Género,Tipo,Estado,Validación,Fecha de adquisición,Origen,Ubicación,Apodo,Color de flor,Foto en floración,Fecha de registro,Número de fotos,Identificador,Notas'
 
 // Filas del archivo sin la marca de orden de bytes ni la línea final vacía.
 function rows(csv: string): string[] {
@@ -40,9 +40,9 @@ describe('inventoryCsv', () => {
     expect(csv.charCodeAt(0)).toBe(0xfeff)
     expect(rows(csv)).toEqual([
       HEADER,
-      'Phalaenopsis amabilis,phalaenopsis amabilis,Phalaenopsis,Especie,Activa,Validada,2026-11-01,Vivero Los Andes,Ventana de la sala,La blanca,Blanco,Sí,2026-11-01,1',
+      'Phalaenopsis amabilis,phalaenopsis amabilis,Phalaenopsis,Especie,Activa,Validada,2026-11-01,Vivero Los Andes,Ventana de la sala,La blanca,Blanco,Sí,2026-11-01,1,PHA-001,',
     ])
-    expect(CSV_COLUMNS).toHaveLength(14)
+    expect(CSV_COLUMNS).toHaveLength(16)
   })
 
   it('al codificarse en UTF-8 la marca son los bytes EF BB BF y las tildes, la ñ y el "×" se conservan', async () => {
@@ -77,7 +77,7 @@ describe('inventoryCsv', () => {
       createdAt: '2026-10-05T12:00:00+00:00',
     })
     expect(rows(inventoryCsv([pending]))[1]).toBe(
-      ',la naranja del mercado,Phalaenopsis,No sé,Activa,Por validar,2026-10-05,,,,,,2026-10-05,0',
+      ',la naranja del mercado,Phalaenopsis,No sé,Activa,Por validar,2026-10-05,,,,,,2026-10-05,0,PHA-001,',
     )
   })
 
@@ -119,10 +119,33 @@ describe('inventoryCsv', () => {
       plant({ photoPath: null, photoCount: 0, displayName: 'C' }),
     ])
     const [header, ...lines] = rows(csv)
-    expect(header?.split(',').at(-1)).toBe('Número de fotos')
+    expect(header?.split(',')[13]).toBe('Número de fotos')
     expect(header?.split(',')[12]).toBe('Fecha de registro')
-    expect(lines.map((row) => row.split(',').at(-1))).toEqual(['6', '1', '0'])
+    expect(lines.map((row) => row.split(',')[13])).toEqual(['6', '1', '0'])
     expect(csv).not.toContain('u/a.webp')
+  })
+
+  it('identificador y notas (#265): al final, sin mover las columnas de antes', () => {
+    const csv = inventoryCsv([
+      plant({
+        displayName: 'A',
+        code: 'CAT-012',
+        notes: 'Llegó sin flor.\nRiego cada 5 días, con agua "de lluvia".',
+      }),
+      // Copia del dispositivo anterior al #265: sin identificador ni notas.
+      plant({ displayName: 'B', code: null, notes: null }),
+      // Notas que una hoja tomaría por fórmula.
+      plant({ displayName: 'C', code: 'PHA-001', notes: '=1+1' }),
+    ])
+    const [header, ...lines] = parseCsv(csv.slice(BOM.length))
+    expect(header?.slice(0, 14)).toEqual(HEADER.split(',').slice(0, 14))
+    expect(header?.slice(-2)).toEqual(['Identificador', 'Notas'])
+    expect(lines.map((line) => line.slice(-2))).toEqual([
+      ['CAT-012', 'Llegó sin flor.\nRiego cada 5 días, con agua "de lluvia".'],
+      ['', ''],
+      ['PHA-001', "'=1+1"],
+    ])
+    expect(lines.every((line) => line.length === 16)).toBe(true)
   })
 
   it('ordena por género y por nombre, sin tener en cuenta el "×" ni las tildes', () => {
@@ -161,7 +184,7 @@ describe('inventoryCsv', () => {
     expect(row).toContain('"Vivero, Lima"')
     expect(row).toContain('"Sala\nventana norte"')
     expect(row).toContain('"La ""reina"", de casa"')
-    expect(parseCsv(csv.slice(BOM.length))[1]).toHaveLength(14)
+    expect(parseCsv(csv.slice(BOM.length))[1]).toHaveLength(16)
     expect(parseCsv(csv.slice(BOM.length))[1]?.[9]).toBe('La "reina", de casa')
   })
 

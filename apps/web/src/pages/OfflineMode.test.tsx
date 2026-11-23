@@ -17,7 +17,7 @@ import { createCachedCollectionSource } from '../collection/cached-source.ts'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { createMemoryCopyStorage } from '../collection/local-copy.ts'
 import type { CollectionPlant } from '../collection/model.ts'
-import { DETAIL_TEXT } from '../detail/texts.ts'
+import { DETAIL_TEXT, NOTES_TEXT } from '../detail/texts.ts'
 import { THUMBNAIL_CACHE_PREFIX } from '../photos/read.ts'
 import { PlantImagesContext } from '../photos/usePlantImage.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -182,24 +182,38 @@ describe('sin conexión, abriendo la app desde cero', () => {
     expect(check).not.toHaveAttribute('aria-disabled')
   })
 
-  it('el detalle se ve, con editar, dar de baja y eliminar desactivados', async () => {
+  it('el detalle se ve, con editar, las notas, dar de baja y eliminar desactivados', async () => {
+    const user = userEvent.setup()
     renderApp(`/coleccion/${AMABILIS.id}`)
     await settle()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'Phalaenopsis amabilis',
     )
+    // Un solo motivo, arriba, al que remiten todas (#265).
+    expect(
+      screen
+        .getAllByRole('status')
+        .filter((status) => status.textContent.includes(DETAIL_TEXT.offline)),
+    ).toHaveLength(1)
+    const edit = screen.getByRole('button', { name: DETAIL_TEXT.edit })
+    const notes = screen.getByRole('button', { name: NOTES_TEXT.add })
+    await user.click(
+      screen.getByRole('button', { name: DETAIL_TEXT.actionsLabel }),
+    )
     const actions = screen.getByRole('region', {
       name: DETAIL_TEXT.actionsLabel,
     })
-    for (const name of [
-      DETAIL_TEXT.edit,
-      DETAIL_TEXT.retire,
-      DETAIL_TEXT.delete,
+    for (const button of [
+      edit,
+      notes,
+      within(actions).getByRole('button', { name: DETAIL_TEXT.retire }),
+      within(actions).getByRole('button', { name: DETAIL_TEXT.delete }),
     ]) {
-      const button = within(actions).getByRole('button', { name })
       expect(button).toHaveAttribute('aria-disabled', 'true')
       expect(button).toHaveAccessibleDescription(DETAIL_TEXT.offline)
     }
+    await user.click(notes)
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('cerrar sesión sin conexión borra la copia, el usuario recordado y las miniaturas', async () => {
