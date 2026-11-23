@@ -85,4 +85,88 @@ describe('CollectionCard', () => {
     ).toContainElement(link)
     await expectNoAxeViolations()
   })
+
+  describe('número de fotos', () => {
+    const PHOTO = { src: '/foto.jpg', alt: 'Cattleya trianae en flor' }
+
+    it.each([undefined, 0, 1])(
+      'con %s fotos no se muestra nada ni hay descripción',
+      (photoCount) => {
+        render(
+          <CollectionCard
+            scientificName="Cattleya trianae"
+            photo={PHOTO}
+            photoCount={photoCount}
+          />,
+        )
+
+        const card = screen.getByRole('article', { name: 'Cattleya trianae' })
+        expect(card.querySelector('.orki-count')).toBeNull()
+        expect(card).not.toHaveAttribute('aria-describedby')
+        expect(card).not.toHaveTextContent('fotos')
+      },
+    )
+
+    it.each([
+      ['grid', 'right-space-2'],
+      ['list', 'left-space-2'],
+    ] as const)(
+      '%s: con 2 fotos, la píldora sobre la foto y «2 fotos» como descripción',
+      async (layout, corner) => {
+        render(
+          <main>
+            <CollectionCard
+              scientificName="Cattleya trianae"
+              layout={layout}
+              photo={PHOTO}
+              photoCount={2}
+              renderName={(name) => (
+                <a className="orki-card__link" href="/coleccion/1">
+                  {name}
+                </a>
+              )}
+            />
+          </main>,
+        )
+
+        // El nombre no cambia: es el del encabezado.
+        const card = screen.getByRole('article', {
+          name: 'Cattleya trianae',
+          description: '2 fotos',
+        })
+        expect(
+          screen.getByRole('link', { name: 'Cattleya trianae' }),
+        ).toBeInTheDocument()
+        const count = card.querySelector('.orki-count')
+        expect(count).toHaveClass('absolute', 'top-space-2', corner)
+        expect(count).toHaveClass('pointer-events-none')
+        expect(count?.querySelector('svg')).toHaveClass('lucide-image')
+        expect(count?.querySelector('svg')).toHaveAttribute(
+          'aria-hidden',
+          'true',
+        )
+        // El número visible no se lee suelto: se lee «2 fotos».
+        expect(
+          count?.querySelector('[aria-hidden="true"]:not(svg)'),
+        ).toHaveTextContent(/^2$/)
+        expect(screen.getByText('2 fotos')).toHaveClass('sr-only')
+        await expectNoAxeViolations()
+      },
+    )
+
+    it('con 6 fotos, «6»; también sin foto principal cargada', async () => {
+      render(
+        <main>
+          <CollectionCard scientificName="Vanda coerulea" photoCount={6} />
+        </main>,
+      )
+
+      const card = screen.getByRole('article', {
+        name: 'Vanda coerulea',
+        description: '6 fotos',
+      })
+      expect(card.querySelector('.orki-count')).toHaveTextContent('6')
+      await expectNoAxeViolations()
+    })
+  })
 })

@@ -19,6 +19,7 @@ interface PlantCardProps {
 // marcador sin foto, nombre (en cursiva si es del catálogo; el ingresado, sin
 // cursiva, si está por validar), apodo y ubicación si los hay, e insignia solo
 // cuando el nombre pide atención: «Nombre por validar» o «No identificable».
+// Con más de una foto, el número sobre la esquina de la foto (#181).
 // Las validadas no llevan insignia: es lo normal. La miniatura se pide solo
 // cuando la tarjeta está cerca de la pantalla (usePlantThumbnail).
 //
@@ -52,6 +53,7 @@ export const PlantCard = memo(function PlantCard({
         status === 'validated' ? undefined : <StatusBadge status={status} />
       }
       photo={photo}
+      photoCount={plant.photoCount}
       renderName={(name: ReactNode) => (
         <Link
           to={plantDetailPath(plant.id)}

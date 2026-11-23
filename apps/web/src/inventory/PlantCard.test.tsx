@@ -88,6 +88,28 @@ describe('enlace al detalle', () => {
   })
 })
 
+describe('número de fotos', () => {
+  it('con más de una foto, «3 fotos» describe la tarjeta sin cambiar su nombre', async () => {
+    const { source } = fakeSource()
+    renderCard(source, { ...withPhoto(), photoCount: 3 })
+    const card = screen.getByRole('article', {
+      name: 'Cattleya labiata',
+      description: '3 fotos',
+    })
+    expect(card.querySelector('.orki-count')).toHaveTextContent('3')
+    expect(
+      screen.getByRole('link', { name: 'Cattleya labiata' }),
+    ).toBeInTheDocument()
+    await expectNoAxeViolations()
+  })
+
+  it('con una sola foto, sin indicador', () => {
+    const { source } = fakeSource()
+    renderCard(source, { ...withPhoto(), photoCount: 1 })
+    expect(document.querySelector('.orki-count')).toBeNull()
+  })
+})
+
 describe('miniatura de la tarjeta', () => {
   it('no pide nada hasta que la tarjeta está cerca de la pantalla', async () => {
     const { source, acquire } = fakeSource()

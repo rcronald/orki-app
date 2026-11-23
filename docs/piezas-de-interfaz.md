@@ -302,6 +302,7 @@ type CollectionCardProps = ArticleProps & {
   badge?: ReactNode // insignia, solo si aplica: <StatusBadge status="pending" />
   location?: ReactNode // fila con map-pin («Ubicación:» para el lector)
   photo?: { src: string; alt: string } // sin foto, el marcador sin-foto.svg
+  photoCount?: number // con más de 1, el número de fotos sobre la foto
   headingLevel?: 2 | 3 | 4 // h3 por defecto
   layout?: 'grid' | 'list' // list: miniatura de 96 px a la izquierda
   renderName?: (name: ReactNode) => ReactNode // el enlace al detalle
@@ -315,6 +316,18 @@ Marcado: `article.orki-card.orki-card--outline[.orki-card--row]` >
 `img.orki-card__photo` + `div.orki-card__body` > `hN.orki-card__name` +
 `p.orki-card__common` + insignia + `p.orki-card__place`.
 
+Número de fotos (`photoCount > 1`, #181): la píldora `orki-count` (la de
+`FiltersButton`, `color-secondary-strong` con el número en `color-neutral-0`)
+con el icono `image` de 14 px y el número, sobre la esquina de la foto: arriba a
+la derecha en la cuadrícula y arriba a la izquierda de la miniatura en la lista.
+No añade CSS al sistema: la colocan utilidades de Tailwind (`absolute
+top-space-2 right-space-2`/`left-space-2`, `grid-flow-col gap-space-1
+px-space-2`), con un anillo de 2 px en `color-neutral-0` que la separa de
+cualquier foto, y `pointer-events-none` para que el toque siga llegando al
+enlace. Lo visible es `aria-hidden`; el lector lee «3 fotos» (texto `sr-only`),
+que es también la descripción de la tarjeta (`aria-describedby`). El nombre
+accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
+
 ```tsx
 <CollectionCard
   ref={ref} // para usePlantThumbnail
@@ -326,6 +339,7 @@ Marcado: `article.orki-card.orki-card--outline[.orki-card--row]` >
     status !== 'validated' ? <StatusBadge status={status} /> : undefined
   }
   photo={photo}
+  photoCount={plant.photoCount}
   layout={view === 'list' ? 'list' : 'grid'}
   headingLevel={2}
   renderName={(name) => (
