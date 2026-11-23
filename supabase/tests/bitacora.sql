@@ -482,7 +482,7 @@ select pruebas.iguales(
 -- prueba: add_plant_log_entry y list_plant_log_entries: security invoker, search_path fijo y solo para authenticated
 select pruebas.iguales(
   'propiedades',
-  (select string_agg(p.proname || ' definer=' || p.prosecdef || ' ' || p.provolatile || ' ' || array_to_string(p.proconfig, ','),
+  (select string_agg(p.proname || ' definer=' || p.prosecdef::text || ' ' || p.provolatile::text || ' ' || array_to_string(p.proconfig, ','),
                      '; ' order by p.proname)
      from pg_proc p
      where p.pronamespace = 'public'::regnamespace and p.proname in ('add_plant_log_entry', 'list_plant_log_entries')),
