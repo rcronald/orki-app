@@ -31,7 +31,12 @@ import { groupByGenus } from './selectors.ts'
 //   lo tomaría por una fórmula y mostraría un error). Las fechas y los textos
 //   fijos de la app nunca empiezan por esos caracteres.
 // - Fotos: el archivo no lleva fotos ni rutas, solo "Foto en floración" (de la
-//   principal) y "Número de fotos" (#184), la última columna.
+//   principal) y "Número de fotos" (#184).
+// - Columnas añadidas, siempre al final para no mover las de antes (una hoja
+//   o una fórmula hecha con un archivo anterior sigue cuadrando): "Número de
+//   fotos" (#184) y, desde el #265, "Identificador" ("CAT-012") y "Notas"
+//   (con sus saltos de línea, entre comillas). El identificador iría mejor al
+//   principio, pero moverlo descuadraría los archivos de quien ya exporta.
 
 /** Marca de orden de bytes de UTF-8, al principio del archivo. */
 export const BOM = '﻿'
@@ -84,6 +89,10 @@ export const CSV_COLUMNS: readonly Column[] = [
     header: 'Número de fotos',
     value: (plant) => String(plant.photoCount),
   },
+  // #265: al final, por lo mismo. Vacío si no se conoce (una copia del
+  // dispositivo anterior al #265) o si no hay notas.
+  { header: 'Identificador', value: (plant) => text(plant.code) },
+  { header: 'Notas', value: (plant) => text(plant.notes) },
 ]
 
 // La fecha de alta es un instante con zona: se exporta el día que veía el

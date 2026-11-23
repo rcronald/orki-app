@@ -200,6 +200,35 @@ describe('formato de la copia', () => {
     expect(await keysRaw(name)).toEqual(['user_a'])
   })
 
+  it('guarda el identificador y las notas (#265) y los lee igual', async () => {
+    const storage = createIndexedDbCopyStorage(freshDbName())
+    const withNotes = plant({ code: 'CAT-012', notes: 'Riego cada 5 días.' })
+    await storage.write(copyFor('user_a', { plants: [withNotes] }))
+    const copy = await storage.read('user_a')
+    expect(copy?.plants).toEqual([withNotes])
+  })
+
+  it('una copia anterior al #265 se conserva, sin identificador ni notas', async () => {
+    const name = freshDbName()
+    const saved = plant({ code: 'CAT-012', notes: 'Riego.' })
+    const old = toStoredCopy(copyFor('user_a', { plants: [saved] }))
+    // Como la guardaba la app antes del #265: sin code ni notes, mismo formato.
+    const legacy = {
+      ...old,
+      plants: old.plants.map((stored) => {
+        const copy: Partial<typeof stored> = { ...stored }
+        delete copy.code
+        delete copy.notes
+        return copy
+      }),
+    }
+    await putRaw(name, legacy)
+
+    const copy = await createIndexedDbCopyStorage(name).read('user_a')
+    expect(copy?.plants).toEqual([{ ...saved, code: null, notes: null }])
+    expect(await keysRaw(name)).toEqual(['user_a'])
+  })
+
   it('una copia sin extras se guarda con listas vacías', () => {
     const stored = toStoredCopy(copyFor('user_a', { extras: {} }))
     expect(stored.speciesNames).toEqual([])

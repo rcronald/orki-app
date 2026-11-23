@@ -5,7 +5,10 @@ import art480 from '../../assets/ilustraciones/cabecera-480.webp'
 export interface PageHeaderProps {
   /** Contenido del h1: «Mi colección». */
   title: ReactNode
-  /** Línea bajo el título: el contador o la frase de apoyo. */
+  /**
+   * Línea bajo el título: el contador o la frase de apoyo. Un texto va en un
+   * <p>; un elemento (una lista, por ejemplo), en un <div>.
+   */
   meta?: ReactNode
   /**
    * Hasta dos acciones (la principal primero): a la derecha en escritorio y
@@ -91,7 +94,14 @@ export function PageHeader({
         >
           {title}
         </Heading>
-        {meta != null && <p className="orki-pagehead__meta">{meta}</p>}
+        {meta != null &&
+          // Un texto va en un párrafo; algo con estructura (la lista de
+          // datos de la ficha, #265), en un div con la misma clase.
+          (typeof meta === 'string' || typeof meta === 'number' ? (
+            <p className="orki-pagehead__meta">{meta}</p>
+          ) : (
+            <div className="orki-pagehead__meta">{meta}</div>
+          ))}
       </div>
       {actions != null && variant === 'default' && (
         <div className="orki-pagehead__actions">{actions}</div>

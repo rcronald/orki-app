@@ -34,9 +34,13 @@ import type {
  *
  * photo_count es un campo calculado (public.photo_count(plants), #184): el
  * número de filas de plant_photos de la planta, de 0 a 6.
+ *
+ * code y notes (#264, #265): el identificador que pone la base al dar de alta
+ * la planta («CAT-012», no cambia) y sus notas libres (hasta 2000 caracteres,
+ * null si no tiene). Van al final para que el cambio se lea solo.
  */
 export const COLLECTION_PLANT_SELECT =
-  'id, entered_name, type, validation, status, acquired_on, origin, location, nickname, flower_color, photo_in_bloom, photo_path, thumbnail_path, photo_count, created_at, updated_at, species:species_id (id, scientific_name, type, status), genus:genus_id (id, name)'
+  'id, entered_name, type, validation, status, acquired_on, origin, location, nickname, flower_color, photo_in_bloom, photo_path, thumbnail_path, photo_count, created_at, updated_at, species:species_id (id, scientific_name, type, status), genus:genus_id (id, name), code, notes'
 
 /** Fila tal como la devuelve la consulta de COLLECTION_PLANT_SELECT. */
 export type CollectionPlantRow = Pick<
@@ -56,7 +60,13 @@ export type CollectionPlantRow = Pick<
   | 'thumbnail_path'
   | 'created_at'
   | 'updated_at'
+  | 'notes'
 > & {
+  /**
+   * Identificador (#264). Nunca es null en la base, pero los tipos generados
+   * dan nullable toda columna generada y supabase-js lo infiere así.
+   */
+  code: string | null
   /**
    * Número de fotos (campo calculado). Opcional en el tipo: una fila sin él
    * (una respuesta simulada antigua, por ejemplo) se trata con photoCountOf().
@@ -121,6 +131,15 @@ export interface CollectionPlant {
    * photoCountOf() (1 si hay principal, 0 si no) hasta la siguiente lectura.
    */
   photoCount: number
+  /**
+   * Identificador del ejemplar (#264): «CAT-012», tres letras del género con
+   * el que se dio de alta y un correlativo. Lo pone la base y no cambia. null
+   * solo en una copia sin conexión guardada antes del #265, hasta la
+   * siguiente lectura (fromStoredCopy).
+   */
+  code: string | null
+  /** Notas libres de la persona (#264), hasta 2000 caracteres; null si no hay. */
+  notes: string | null
 }
 
 /**
@@ -171,5 +190,7 @@ export function toCollectionPlant(row: CollectionPlantRow): CollectionPlant {
     photoPath: row.photo_path,
     thumbnailPath: row.thumbnail_path,
     photoCount: photoCountOf(row.photo_count, row.photo_path),
+    code: row.code,
+    notes: row.notes,
   }
 }

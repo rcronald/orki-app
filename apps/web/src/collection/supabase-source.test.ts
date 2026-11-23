@@ -132,7 +132,24 @@ describe('lectura de la colección desde Supabase', () => {
         photoPath: 'user_prueba/planta-1.webp',
         thumbnailPath: 'user_prueba/planta-1-mini.webp',
         photoCount: 1,
+        code: 'PHA-001',
+        notes: null,
       },
+    ])
+  })
+
+  it('pide el identificador y las notas (#265) y los pasa al modelo', async () => {
+    expect(COLLECTION_PLANT_SELECT.split(', ')).toEqual(
+      expect.arrayContaining(['code', 'notes']),
+    )
+    table = [
+      plantRow({ id: 'p1', code: 'CAT-012', notes: 'Primera vara.\nRiego.' }),
+      plantRow({ id: 'p2', code: 'PHA-001', notes: null }),
+    ]
+
+    expect((await load()).map(({ code, notes }) => ({ code, notes }))).toEqual([
+      { code: 'CAT-012', notes: 'Primera vara.\nRiego.' },
+      { code: 'PHA-001', notes: null },
     ])
   })
 

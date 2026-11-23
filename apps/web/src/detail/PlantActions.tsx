@@ -1,5 +1,4 @@
 import { useId, useState } from 'react'
-import { Link } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
@@ -7,8 +6,6 @@ import { Icon } from '../components/ui/Icon.tsx'
 import type { PlantStatus } from '../lib/database.ts'
 import { PhotoStorageError } from '../photos/storage.ts'
 import { plantSaveErrorFrom } from '../registration/save-plant.ts'
-import { plantEditPath } from '../routes/paths.ts'
-import { FROM_DETAIL } from './navigation.ts'
 import { DELETE_ERROR_TEXT, DETAIL_TEXT } from './texts.ts'
 
 /** Lo que hacen las acciones en la base; la página pasa los de Supabase. */
@@ -31,6 +28,11 @@ interface PlantActionsProps {
   online: boolean
   /** Motivo cuando no se puede; por defecto, el de sin conexión. */
   offlineText?: string
+  /**
+   * id de un motivo que la página ya muestra (la ficha lo pone arriba, #265):
+   * si se pasa, las acciones lo citan y no repiten el texto.
+   */
+  reasonId?: string
   services: PlantActionServices
   /** El estado cambió en la base (baja o reactivación). */
   onStatusChanged: (plant: CollectionPlant) => void
@@ -51,7 +53,9 @@ function deleteErrorText(error: unknown): string {
 }
 
 /**
- * Acciones del detalle (#16): editar, dar de baja (o reactivar) y eliminar.
+ * Acciones del detalle (#16): dar de baja (o reactivar) y eliminar. En la
+ * ficha del #265 van dentro de «Gestionar planta», plegado al final, cada
+ * una con una frase que dice qué hace; «Editar planta» pasó a la cabecera.
  *
  * - Dar de baja pide el motivo (perdida o regalada, el enumerado
  *   plant_status) en un diálogo: la planta se conserva y deja de contar como
@@ -60,13 +64,13 @@ function deleteErrorText(error: unknown): string {
  * - Eliminar es para registros creados por error: el diálogo dice que no se
  *   puede deshacer, el foco empieza en "Cancelar" y la confirmación va en la
  *   variante danger. Si falla, no se borró nada y se puede reintentar.
- * - Sin conexión, todas quedan desactivadas con el motivo (editar también:
- *   el formulario lo necesitaría igualmente).
+ * - Sin conexión, todas quedan desactivadas con el motivo.
  */
 export function PlantActions({
   plant,
   online,
   offlineText = DETAIL_TEXT.offline,
+  reasonId,
   services,
   onStatusChanged,
   onDeleted,
@@ -78,7 +82,7 @@ export function PlantActions({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const active = plant.status === 'active'
-  const offlineHint = online ? undefined : offlineId
+  const offlineHint = online ? undefined : (reasonId ?? offlineId)
 
   const open = (next: Dialog) => {
     if (!online || busy) return
@@ -148,33 +152,24 @@ export function PlantActions({
   return (
     <section
       aria-label={DETAIL_TEXT.actionsLabel}
-      className="flex flex-col gap-space-3"
+      className="flex flex-col gap-space-4"
     >
       {/* Región siempre presente: así se anuncia al perder la conexión. */}
-      <div role="status">
-        {!online && (
-          <p id={offlineId} className="text-sm text-neutral-700">
-            {offlineText}
-          </p>
-        )}
-      </div>
+      {reasonId === undefined && (
+        <div role="status">
+          {!online && (
+            <p id={offlineId} className="text-sm text-neutral-700">
+              {offlineText}
+            </p>
+          )}
+        </div>
+      )}
       {/* Errores de reactivar, que no tiene diálogo. */}
       {dialog === null && errorBox}
-      <div className="flex flex-wrap gap-space-3">
-        {online ? (
-          <Link
-            to={plantEditPath(plant.id)}
-            state={FROM_DETAIL}
-            className="orki-btn orki-btn--secondary"
-          >
-            <Icon name="pencil" />
-            {DETAIL_TEXT.edit}
-          </Link>
-        ) : (
-          <Button icon="pencil" aria-disabled aria-describedby={offlineHint}>
-            {DETAIL_TEXT.edit}
-          </Button>
-        )}
+      <div className="flex flex-col items-start gap-space-2">
+        <p className="text-sm text-neutral-700">
+          {active ? DETAIL_TEXT.retireHint : DETAIL_TEXT.reactivateHint}
+        </p>
         {active ? (
           <Button
             aria-disabled={!online || undefined}
@@ -195,7 +190,11 @@ export function PlantActions({
               : DETAIL_TEXT.reactivate}
           </Button>
         )}
+      </div>
+      <div className="flex flex-col items-start gap-space-2 border-t border-neutral-200 pt-space-4">
+        <p className="text-sm text-neutral-700">{DETAIL_TEXT.deleteHint}</p>
         <Button
+          variant="danger-outline"
           icon="trash-2"
           aria-disabled={!online || undefined}
           aria-describedby={offlineHint}
