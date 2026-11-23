@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CollectionLoadError } from '../collection/source.ts'
-import { DETAIL_TEXT } from '../detail/texts.ts'
+import { DETAIL_TEXT, GALLERY_TEXT } from '../detail/texts.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { CATTLEYA, plant } from '../test/collection.ts'
@@ -82,16 +82,18 @@ describe('PlantDetailPage', () => {
     expect(heading()).toHaveFocus()
     expect(document.title).toBe('Phalaenopsis amabilis · orqui.app')
 
-    // La foto grande, solo aquí.
+    // La foto principal en grande, con su miniatura: la foto completa solo
+    // se descarga al abrir el visor (#183).
     const photo = await screen.findByRole('img', {
-      name: 'Foto de Phalaenopsis amabilis',
+      name: 'Foto principal de Phalaenopsis amabilis, en flor',
     })
-    expect(photo).toHaveAttribute('src', `blob:${AMABILIS.photoPath}`)
-    expect(images.acquire).toHaveBeenCalledWith(
+    expect(photo).toHaveAttribute('src', `blob:${AMABILIS.thumbnailPath}`)
+    expect(images.acquire).not.toHaveBeenCalledWith(
       AMABILIS.photoPath,
       'photo',
       expect.anything(),
     )
+    expect(screen.getByText('En flor')).toBeVisible()
 
     expect(datum(DETAIL_TEXT.validation)).toHaveTextContent('Validada')
     expect(datum(DETAIL_TEXT.genus)).toHaveTextContent('Phalaenopsis')
@@ -104,7 +106,6 @@ describe('PlantDetailPage', () => {
     expect(datum(DETAIL_TEXT.location)).toHaveTextContent('Ventana de la sala')
     expect(datum(DETAIL_TEXT.nickname)).toHaveTextContent('La blanca')
     expect(datum(DETAIL_TEXT.flowerColor)).toHaveTextContent('Blanco')
-    expect(datum(DETAIL_TEXT.photoInBloom)).toHaveTextContent('Sí')
     // El nombre ingresado solo difiere en mayúsculas: no se repite.
     expect(screen.queryByText(DETAIL_TEXT.enteredName)).toBeNull()
     // Las acciones están a la vista.
@@ -151,6 +152,11 @@ describe('PlantDetailPage', () => {
     // Volver queda justo antes del título; después vienen las acciones.
     await user.tab({ shift: true })
     expect(screen.getByRole('link', { name: DETAIL_TEXT.back })).toHaveFocus()
+    // Sin fotos, primero la galería («Añadir fotos») y luego las acciones.
+    await user.tab()
+    expect(
+      screen.getByRole('link', { name: GALLERY_TEXT.addPhotos }),
+    ).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('link', { name: DETAIL_TEXT.edit })).toHaveFocus()
   })
@@ -246,9 +252,11 @@ describe('PlantDetailPage', () => {
     )
     expect(datum(DETAIL_TEXT.type)).toHaveTextContent('Sin determinar')
     expect(datum(DETAIL_TEXT.origin)).toHaveTextContent(DETAIL_TEXT.missing)
-    expect(screen.getByRole('img', { name: DETAIL_TEXT.noPhoto })).toBeVisible()
+    expect(
+      screen.getByRole('img', { name: GALLERY_TEXT.noPhoto }),
+    ).toBeVisible()
     // Sin foto no se dice si es en floración.
-    expect(screen.queryByText(DETAIL_TEXT.photoInBloom)).toBeNull()
+    expect(screen.queryByText(GALLERY_TEXT.inBloom)).toBeNull()
     await expectNoAxeViolations()
   })
 
@@ -283,21 +291,33 @@ describe('PlantDetailPage', () => {
 })
 
 describe('PlantDetailPage sin conexión (#18)', () => {
-  it('si la foto grande no se puede cargar, muestra la miniatura guardada', async () => {
+  it('si la foto completa no se puede cargar, el visor muestra la miniatura guardada', async () => {
     const images = fakeImageSource()
     images.acquire.mockImplementation((path, kind) =>
       kind === 'photo'
         ? Promise.reject(new Error('sin red'))
         : Promise.resolve(`blob:${path}`),
     )
+    const user = userEvent.setup()
     await renderPlantRoutes({
       entries: [`/coleccion/${AMABILIS.id}`],
       plants: [AMABILIS],
       images: images.source,
     })
-    const photo = await screen.findByRole('img', {
-      name: 'Foto de Phalaenopsis amabilis',
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Ver en grande: Foto principal de Phalaenopsis amabilis, en flor',
+      }),
+    )
+    const viewer = screen.getByRole('dialog', {
+      name: 'Fotos de Phalaenopsis amabilis',
+    })
+    const photo = await within(viewer).findByRole('img', {
+      name: 'Foto principal de Phalaenopsis amabilis, en flor',
     })
     expect(photo).toHaveAttribute('src', `blob:${AMABILIS.thumbnailPath}`)
+    expect(
+      await within(viewer).findByText(GALLERY_TEXT.viewerThumbnailFailed),
+    ).toBeVisible()
   })
 })

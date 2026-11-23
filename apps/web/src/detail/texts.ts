@@ -3,7 +3,7 @@ import type { PlantType } from '../lib/database.ts'
 // Textos del detalle de un ejemplar (#16), en un solo sitio.
 
 export const DETAIL_TEXT = {
-  back: 'Volver a mi colección',
+  back: 'Volver a Mi colección',
   loadingTitle: 'Cargando la planta…',
   loading: 'Cargando los datos de la planta…',
   errorTitle: 'No se pudo cargar la planta',
@@ -21,17 +21,10 @@ export const DETAIL_TEXT = {
   location: 'Ubicación',
   nickname: 'Apodo',
   flowerColor: 'Color de la flor',
-  photoInBloom: 'Foto en floración',
-  yes: 'Sí',
-  no: 'No',
   missing: 'Sin indicar',
   /** Explica la etiqueta "No identificable". */
   unidentifiable:
     'Revisamos el nombre y no pudimos identificarlo en el catálogo. La planta sigue en tu colección con el nombre que escribiste y la puedes editar como cualquier otra.',
-  photoAlt: (name: string) => `Foto de ${name}`,
-  photoLoading: (name: string) => `Foto de ${name}: cargando`,
-  photoFailed: (name: string) => `Foto de ${name}: no se pudo cargar`,
-  noPhoto: 'Sin foto',
   actionsLabel: 'Acciones',
   edit: 'Editar',
   saved: 'Guardaste los cambios.',
@@ -64,6 +57,77 @@ export const DETAIL_TEXT = {
   deleted: 'Eliminaste de tu colección',
   deletedPhotosLeft:
     'Su foto no se pudo borrar ahora; se limpiará más adelante.',
+} as const
+
+/** Galería del detalle (#183): fotos, visor, fecha y nota, y orden. */
+export const GALLERY_TEXT = {
+  title: 'Fotos',
+  count: (count: number, max: number) => `${String(count)} de ${String(max)}`,
+  choose: 'Elegir la foto que se ve',
+  /** Texto alternativo: «Foto principal de Phalaenopsis amabilis, en flor». */
+  alt: (label: string, name: string, inBloom: boolean) =>
+    `${label} de ${name}${inBloom ? ', en flor' : ''}`,
+  open: (alt: string) => `Ver en grande: ${alt}`,
+  viewerTitle: (name: string) => `Fotos de ${name}`,
+  unavailable: 'Disponible con conexión',
+  failed: 'No se pudo cargar la foto',
+  loading: 'Cargando la foto…',
+  viewerThumbnail:
+    'Sin conexión: ves la miniatura. La foto completa se verá con conexión.',
+  viewerThumbnailFailed:
+    'No se pudo cargar la foto completa: ves la miniatura.',
+  onlyMain:
+    'Sin conexión: solo está disponible la foto principal. Las demás fotos se verán con conexión.',
+  loadFailed: 'No se pudieron cargar las demás fotos.',
+  retry: 'Reintentar',
+  inBloom: 'En flor',
+  takenAt: (date: string) => `Foto del ${date}`,
+  manage: 'Añadir o quitar fotos',
+  addPhotos: 'Añadir fotos',
+  noPhoto: 'Sin foto',
+  offline:
+    'Sin conexión: cambiar la fecha, la nota o el orden necesita conexión.',
+  unverified:
+    'No se pudo confirmar tu sesión: cambiar las fotos necesita confirmarla con conexión.',
+  editDetails: 'Editar fecha y nota',
+  makeMain: 'Hacer principal',
+  alreadyMain: 'Ya es la foto principal.',
+  moveEarlier: 'Mover antes',
+  moveLater: 'Mover después',
+  firstAlready: 'Ya es la primera.',
+  lastAlready: 'Ya es la última.',
+  orderBusy: 'Guardando el orden…',
+  madeMain: 'Ahora es la foto principal. Tu colección ya la muestra.',
+  moved: (place: number, count: number) =>
+    `Foto movida al lugar ${String(place)} de ${String(count)}.`,
+  formTitle: 'Fecha y nota de la foto',
+  dateLabel: 'Fecha de la foto (opcional)',
+  noteLabel: 'Nota (opcional)',
+  noteCount: (length: number, max: number) =>
+    `${String(length)} de ${String(max)} caracteres`,
+  inBloomLabel: 'En flor',
+  save: 'Guardar',
+  saving: 'Guardando…',
+  cancel: 'Cancelar',
+  saved: 'Guardaste la fecha y la nota de la foto.',
+  dateFuture: 'La fecha no puede ser posterior a hoy.',
+  dateInvalid: 'Escribe una fecha válida.',
+  noteTooLong: (max: number) =>
+    `La nota puede tener hasta ${String(max)} caracteres.`,
+} as const
+
+/** Por qué no se pudo guardar un cambio de la galería; no se cambió nada. */
+export const GALLERY_ERROR_TEXT = {
+  offline:
+    'Sin conexión: no se guardó el cambio. Vuelve a intentarlo cuando tengas conexión.',
+  'session-ended':
+    'Tu sesión terminó: no se guardó el cambio. Vuelve a iniciar sesión e inténtalo de nuevo.',
+  'not-found':
+    'Esta foto ya no está en la planta. Volvimos a cargar sus fotos.',
+  changed:
+    'Las fotos de la planta cambiaron en otro dispositivo. Volvimos a cargarlas: inténtalo de nuevo.',
+  failed:
+    'No se pudo guardar el cambio por un error del servidor. Vuelve a intentarlo en unos momentos.',
 } as const
 
 /** Por qué no se pudo eliminar la planta; nada se borró. */

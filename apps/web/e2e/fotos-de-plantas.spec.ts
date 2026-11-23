@@ -223,7 +223,7 @@ test('eliminar una planta con varias fotos borra todas sus filas y sus archivos'
   await page.goto(`/coleccion/${PLANTA}`)
   // El detalle muestra la principal, que la base copió a plants.
   await expect(
-    page.getByRole('img', { name: 'Foto de Cattleya maxima' }),
+    page.getByRole('img', { name: /^Foto principal de Cattleya maxima/ }),
   ).toBeVisible()
   await page
     .getByRole('region', { name: 'Acciones' })

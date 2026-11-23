@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { FLOWER_COLOR_LABEL, PLANT_STATUS_LABEL } from '../collection/labels.ts'
 import type { CollectionPlant } from '../collection/model.ts'
+import { Panel } from '../components/ui/Panel.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { StatusBadge } from '../components/ui/StatusBadge.tsx'
 import { plantValidationStatus } from '../inventory/plant-display.ts'
 import { formatCalendarDate } from './format.ts'
-import { PlantPhoto } from './PlantPhoto.tsx'
 import { DETAIL_TEXT, DETAIL_TYPE_LABEL } from './texts.ts'
 
 /**
@@ -49,14 +49,21 @@ interface PlantDetailViewProps {
   plant: CollectionPlant
   /** Aviso de lo último que se hizo (guardar, dar de baja…), arriba. */
   notice?: ReactNode
-  /** Acciones (editar, dar de baja, eliminar), al final. */
+  /** Galería de fotos (PlantGallery, #183): a la izquierda en escritorio. */
+  gallery?: ReactNode
+  /** Acciones (editar, dar de baja, eliminar), bajo los datos. */
   actions?: ReactNode
 }
 
 /**
- * Detalle de un ejemplar (#16) sin la carga de datos: la foto completa y todos
- * sus datos. El nombre va en el h1 de la página (PlantName). Lo usan
- * PlantDetailPage con la colección y la página de muestra con datos fijos.
+ * Detalle de un ejemplar (#16) sin la carga de datos: la galería, todos sus
+ * datos en un panel y las acciones. El nombre va en el h1 de la página
+ * (PlantName). Lo usan PlantDetailPage con la colección y la página de
+ * muestra con datos fijos.
+ *
+ * Diseño (#183): en escritorio, dos columnas (orki-detail), la galería a la
+ * izquierda y los datos con las acciones a la derecha; hasta 720 px, una
+ * columna en el orden del documento: galería, datos y acciones.
  *
  * Una planta "no identificable" (la cola de propuestas no pudo identificar
  * su nombre, #141) lleva su propia etiqueta y una frase que explica qué
@@ -65,50 +72,61 @@ interface PlantDetailViewProps {
 export function PlantDetailView({
   plant,
   notice,
+  gallery,
   actions,
 }: PlantDetailViewProps) {
   return (
     <div className="flex flex-col gap-space-4">
       {notice}
-      <PlantPhoto plant={plant} />
-      <h2 className="sr-only">{DETAIL_TEXT.dataLabel}</h2>
-      <dl className="flex flex-col gap-space-3">
-        {enteredNameDiffers(plant) && (
-          <Row label={DETAIL_TEXT.enteredName}>{plant.enteredName}</Row>
-        )}
-        <Row label={DETAIL_TEXT.validation}>
-          <span className="flex flex-col items-start gap-space-1">
-            <StatusBadge status={plantValidationStatus(plant)} />
-            {plant.validation === 'unidentifiable' && (
-              <span className="text-sm text-neutral-700">
-                {DETAIL_TEXT.unidentifiable}
-              </span>
-            )}
-          </span>
-        </Row>
-        <Row label={DETAIL_TEXT.genus}>{plant.genus.name}</Row>
-        <Row label={DETAIL_TEXT.type}>{DETAIL_TYPE_LABEL[plant.type]}</Row>
-        <Row label={DETAIL_TEXT.status}>{PLANT_STATUS_LABEL[plant.status]}</Row>
-        <Row label={DETAIL_TEXT.acquiredOn}>
-          {formatCalendarDate(plant.acquiredOn)}
-        </Row>
-        <Row label={DETAIL_TEXT.origin}>{plant.origin ?? <Missing />}</Row>
-        <Row label={DETAIL_TEXT.location}>{plant.location ?? <Missing />}</Row>
-        <Row label={DETAIL_TEXT.nickname}>{plant.nickname ?? <Missing />}</Row>
-        <Row label={DETAIL_TEXT.flowerColor}>
-          {plant.flowerColor ? (
-            FLOWER_COLOR_LABEL[plant.flowerColor]
-          ) : (
-            <Missing />
-          )}
-        </Row>
-        {plant.photoPath !== null && (
-          <Row label={DETAIL_TEXT.photoInBloom}>
-            {plant.photoInBloom ? DETAIL_TEXT.yes : DETAIL_TEXT.no}
-          </Row>
-        )}
-      </dl>
-      {actions}
+      <div className="orki-detail">
+        <div className="orki-detail__media">{gallery}</div>
+        <div className="orki-detail__info">
+          <Panel title={DETAIL_TEXT.dataLabel}>
+            <dl className="flex flex-col gap-space-3">
+              {enteredNameDiffers(plant) && (
+                <Row label={DETAIL_TEXT.enteredName}>{plant.enteredName}</Row>
+              )}
+              <Row label={DETAIL_TEXT.validation}>
+                <span className="flex flex-col items-start gap-space-1">
+                  <StatusBadge status={plantValidationStatus(plant)} />
+                  {plant.validation === 'unidentifiable' && (
+                    <span className="text-sm text-neutral-700">
+                      {DETAIL_TEXT.unidentifiable}
+                    </span>
+                  )}
+                </span>
+              </Row>
+              <Row label={DETAIL_TEXT.genus}>{plant.genus.name}</Row>
+              <Row label={DETAIL_TEXT.type}>
+                {DETAIL_TYPE_LABEL[plant.type]}
+              </Row>
+              <Row label={DETAIL_TEXT.status}>
+                {PLANT_STATUS_LABEL[plant.status]}
+              </Row>
+              <Row label={DETAIL_TEXT.acquiredOn}>
+                {formatCalendarDate(plant.acquiredOn)}
+              </Row>
+              <Row label={DETAIL_TEXT.origin}>
+                {plant.origin ?? <Missing />}
+              </Row>
+              <Row label={DETAIL_TEXT.location}>
+                {plant.location ?? <Missing />}
+              </Row>
+              <Row label={DETAIL_TEXT.nickname}>
+                {plant.nickname ?? <Missing />}
+              </Row>
+              <Row label={DETAIL_TEXT.flowerColor}>
+                {plant.flowerColor ? (
+                  FLOWER_COLOR_LABEL[plant.flowerColor]
+                ) : (
+                  <Missing />
+                )}
+              </Row>
+            </dl>
+          </Panel>
+          {actions}
+        </div>
+      </div>
     </div>
   )
 }
