@@ -83,7 +83,8 @@ test('registrar una especie del catálogo sin foto', async ({
     genero.getByRole('button', { name: 'Phalaenopsis' }),
   ).toBeDisabled()
   await expect(page.getByText(/Ya tienes 1 ejemplar de/)).toBeVisible()
-  await revisarAccesibilidad('registro con especie elegida')
+  // axe con la especie elegida: fotos-de-referencia.spec.ts, en la misma
+  // pantalla.
 
   await page
     .getByRole('combobox', { name: 'Origen' })

@@ -308,11 +308,15 @@ for (const ancho of [360, 1440]) {
     await expect(tarjetas(page)).toHaveCount(5)
     await sinDesplazamientoHorizontal(page)
 
-    const main = page.getByRole('main')
-    await objetivosDe44(main.locator('.orki-pagehead__actions > *'))
-    await objetivosDe44(page.getByRole('search').getByRole('button'))
-    await objetivosDe44(generos(page).getByRole('button'))
-    await objetivosDe44(page.getByRole('button', { name: 'Exportar a CSV' }))
+    // A 360 px, los 44 px los mide objetivos-tactiles.spec.ts (todos los
+    // controles visibles); a 1440, solo aquí.
+    if (ancho === 1440) {
+      const main = page.getByRole('main')
+      await objetivosDe44(main.locator('.orki-pagehead__actions > *'))
+      await objetivosDe44(page.getByRole('search').getByRole('button'))
+      await objetivosDe44(generos(page).getByRole('button'))
+      await objetivosDe44(page.getByRole('button', { name: 'Exportar a CSV' }))
+    }
 
     // Acciones de la cabecera: a la derecha del título en escritorio; en el
     // celular, apiladas a todo el ancho, «¿Ya la tengo?» debajo.

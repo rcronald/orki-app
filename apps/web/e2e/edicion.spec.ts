@@ -5,8 +5,8 @@ import { PLANTAS, USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 
 // Detalle, edición y baja de un ejemplar (#16): editar los datos y las fotos
-// (#221), dar de baja y reactivar, y eliminar para siempre (con su foto y su
-// miniatura).
+// (#221), dar de baja y reactivar, y eliminar para siempre (con todas sus
+// fotos y miniaturas, #219).
 
 const FIXTURES = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -26,7 +26,7 @@ test('editar los datos de una planta', async ({
   await expect(
     page.getByRole('heading', { name: 'Phalaenopsis amabilis', level: 1 }),
   ).toBeVisible()
-  await revisarAccesibilidad('detalle')
+  // axe del detalle: fotos-de-referencia.spec.ts, en la misma pantalla.
 
   await page.getByRole('link', { name: 'Editar' }).click()
   await expect(
@@ -163,22 +163,42 @@ test('dar de baja y reactivar', async ({
   ).toBe('active')
 })
 
-test('eliminar una planta con foto', async ({
+test('eliminar una planta con varias fotos: todas sus filas y sus archivos', async ({
   page,
   supabase,
   revisarAccesibilidad,
 }) => {
-  // Cattleya maxima con foto y miniatura en el bucket.
+  // Cattleya maxima con tres fotos en la galería, con sus archivos en el
+  // bucket, y un archivo de otra planta que no se debe tocar.
   const carpeta = `${USUARIO}/${PLANTAS.maxima}`
-  const foto = `${carpeta}/photo-11111111-1111-4111-8111-111111111111.webp`
-  const miniatura = `${carpeta}/thumb-11111111-1111-4111-8111-111111111111.webp`
-  for (const archivo of [foto, miniatura]) {
-    supabase.archivos.set(archivo, { tipo: 'image/webp', bytes: FOTO_WEBP })
+  for (const version of ['a', 'b', 'c']) {
+    for (const archivo of [
+      `${carpeta}/photo-${version}.webp`,
+      `${carpeta}/thumb-${version}.webp`,
+    ]) {
+      supabase.archivos.set(archivo, { tipo: 'image/webp', bytes: FOTO_WEBP })
+    }
   }
   Object.assign(
     supabase.datos.plantas.find((p) => p.id === PLANTAS.maxima) ?? {},
-    { photo_path: foto, thumbnail_path: miniatura },
+    {
+      photo_path: `${carpeta}/photo-a.webp`,
+      thumbnail_path: `${carpeta}/thumb-a.webp`,
+    },
   )
+  // La copia de la migración crea la principal; las otras dos, detrás.
+  expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(1)
+  for (const [i, version] of ['b', 'c'].entries()) {
+    supabase.fotos.push({
+      ...supabase.fotosDe(PLANTAS.maxima)[0],
+      id: `9999999${String(i)}-9999-4999-8999-999999999999`,
+      photo_path: `${carpeta}/photo-${version}.webp`,
+      thumbnail_path: `${carpeta}/thumb-${version}.webp`,
+      position: i + 1,
+    })
+  }
+  const ajena = `${USUARIO}/${PLANTAS.amabilis}/photo-z.webp`
+  supabase.archivos.set(ajena, { tipo: 'image/webp', bytes: FOTO_WEBP })
 
   await page.goto(detalle(PLANTAS.maxima))
   await expect(
@@ -205,6 +225,13 @@ test('eliminar una planta con foto', async ({
   expect(supabase.plantasDe(USUARIO).some((p) => p.id === PLANTAS.maxima)).toBe(
     false,
   )
-  await expect.poll(() => supabase.archivos.has(foto)).toBe(false)
-  expect(supabase.archivos.has(miniatura)).toBe(false)
+  expect(supabase.fotosDe(PLANTAS.maxima)).toEqual([])
+  await expect
+    .poll(() =>
+      [...supabase.archivos.keys()].filter((archivo) =>
+        archivo.startsWith(`${carpeta}/`),
+      ),
+    )
+    .toEqual([])
+  expect(supabase.archivos.has(ajena)).toBe(true)
 })

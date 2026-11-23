@@ -58,10 +58,7 @@ for (const ancho of [1440, 360]) {
         Math.round((antes?.x ?? 0) + (antes?.width ?? 0)),
       ).toBeLessThanOrEqual(Math.round(enOrden[i]?.x ?? 0))
     }
-    for (const control of [pestana, catalogo, cuenta]) {
-      const caja = await control.boundingBox()
-      expect(caja?.height ?? 0).toBeGreaterThanOrEqual(44)
-    }
+    // Los 44 px de estos controles los mide objetivos-tactiles.spec.ts.
 
     await cuenta.click()
     await expect(cuenta).toHaveAttribute('aria-expanded', 'true')
