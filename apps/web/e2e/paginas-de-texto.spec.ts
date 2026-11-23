@@ -137,7 +137,13 @@ for (const [nombre, ancho, alto] of [
       page
         .getByRole('navigation', { name: 'En esta página' })
         .getByRole('link'),
-    ).toHaveText(['Catálogo de especies', 'Imágenes', 'Tipografías', 'Iconos'])
+    ).toHaveText([
+      'Catálogo de especies',
+      'Fotos de referencia',
+      'Imágenes',
+      'Tipografías',
+      'Iconos',
+    ])
     await revisarAccesibilidad(`créditos ${nombre}`)
     await page.getByRole('link', { name: 'Volver al inicio' }).click()
     await expect(page).toHaveURL(/\/$/)
