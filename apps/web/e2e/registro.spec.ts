@@ -246,6 +246,45 @@ test('registrar un nombre por validar con seis fotos, recargando a mitad', async
   await revisarAccesibilidad('inventario tras registrar')
 })
 
+test('en celular, el aviso de registro no se aplasta con un nombre largo', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 780 })
+  await page.goto('/coleccion/nueva')
+  const largo = 'Eplc Golden Sunburst Exotic Orchids AM/AOS'
+  await page.getByRole('combobox', { name: 'Nombre' }).fill(largo)
+  await page
+    .getByRole('option', {
+      name: `No la encuentro: guardarla como «${largo}»`,
+    })
+    .click()
+  await page
+    .getByRole('group', { name: 'Género' })
+    .getByRole('button', { name: 'Vanda' })
+    .click()
+  await elegirTipo(page, 'Híbrido')
+  await page.getByRole('button', { name: 'Registrar orquídea' }).click()
+
+  await expect(page).toHaveURL(/\/coleccion$/)
+  const aviso = page.getByRole('status').filter({ hasText: 'Registraste' })
+  await expect(aviso).toContainText(`Registraste ${largo} en tu colección.`)
+  // El texto ocupa el ancho del aviso y las acciones van debajo, no al lado.
+  const texto = await aviso.locator('p').boundingBox()
+  const otra = await aviso
+    .getByRole('link', { name: 'Registrar otra' })
+    .boundingBox()
+  expect(texto?.width).toBeGreaterThanOrEqual(240)
+  expect(otra?.y).toBeGreaterThanOrEqual((texto?.y ?? 0) + (texto?.height ?? 0))
+  // La insignia de estado, en una sola línea.
+  const insignia = await aviso.getByText('Nombre por validar').boundingBox()
+  expect(insignia?.height).toBeLessThan(40)
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true)
+})
+
 test(
   'registrar un nombre por validar sin fotos y con «Otro»',
   { tag: '@logica' },
