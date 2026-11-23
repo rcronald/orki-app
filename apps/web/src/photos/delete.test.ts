@@ -41,6 +41,35 @@ describe('deletePlantPhotoFolder', () => {
       `${USER_ID}/${OTHER_PLANT}/photo-v1.webp`,
     ])
   })
+
+  it('borra también las fotos de la bitácora, en la subcarpeta log/ (#267)', async () => {
+    const storage = storageWithFolder()
+    const log = [
+      `${USER_ID}/${PLANT_ID}/log/photo-r1.webp`,
+      `${USER_ID}/${PLANT_ID}/log/thumb-r1.webp`,
+    ]
+    for (const path of [
+      ...log,
+      `${USER_ID}/${OTHER_PLANT}/log/photo-r2.webp`,
+    ]) {
+      storage.objects.set(path, { blob: new Blob(), contentType: 'image/webp' })
+    }
+    // Como Storage, listar la carpeta de la planta no devuelve lo de log/.
+    expect(await storage.list(`${USER_ID}/${PLANT_ID}/`)).toHaveLength(3)
+
+    const deleted = await deletePlantPhotoFolder({
+      userId: USER_ID,
+      plantId: PLANT_ID,
+      storage,
+    })
+
+    expect(deleted).toHaveLength(5)
+    expect(deleted).toEqual(expect.arrayContaining(log))
+    expect([...storage.objects.keys()].sort()).toEqual([
+      `${USER_ID}/${OTHER_PLANT}/log/photo-r2.webp`,
+      `${USER_ID}/${OTHER_PLANT}/photo-v1.webp`,
+    ])
+  })
 })
 
 describe('deletePlantWithPhotos', () => {
