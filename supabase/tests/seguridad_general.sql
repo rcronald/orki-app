@@ -86,14 +86,17 @@ select pruebas.iguales(
 
 -- prueba: ningún bucket de Storage es público salvo los declarados aquí
 -- Un bucket público sirve sus archivos a cualquiera que tenga la URL, sin pasar por las
--- políticas. Hoy no hay ninguno declarado; un bucket público nuevo (por ejemplo, el de fotos
--- de género del #13) tiene que añadirse a esta lista en el mismo pull request.
+-- políticas. Un bucket público nuevo (por ejemplo, el de fotos de género del #13) tiene que
+-- añadirse a esta lista en el mismo pull request. Declarados:
+--   - species-photos (#234): fotos de referencia de las especies, con licencia abierta, para
+--     visitantes sin sesión; sin políticas, así que nadie lo lista ni escribe salvo la clave de
+--     servicio (ver «Fotos de referencia» en supabase/README.md).
 select pruebas.iguales(
   'buckets públicos no declarados',
   (select coalesce(string_agg(b.id, ', ' order by b.id), 'ninguno')
      from storage.buckets b
      where b.public
-       and b.id <> all (array[]::text[])),
+       and b.id <> all (array['species-photos']::text[])),
   'ninguno'
 );
 

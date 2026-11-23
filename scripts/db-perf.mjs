@@ -5,7 +5,10 @@
 // misma que usan las pruebas), carga un catálogo sintético del tamaño del real
 // (scripts/db-perf/catalogo-sintetico.sql), hace vacuum analyze y ejecuta un conjunto de
 // consultas típicas contra public.search_species() como authenticated y contra las cuatro
-// funciones del catálogo público (#231) como anon, cada una varias veces. Reporta por consulta
+// funciones del catálogo público (#231) como anon, y las lecturas de fotos de referencia
+// (#234) como authenticated, cada una varias veces. Antes de medir añade una foto de referencia
+// sintética a una de cada tres especies (la cobertura medida en iNaturalist ronda el 10-30 %,
+// ver docs/inaturalist.md). Reporta por consulta
 // la mediana y el p95 del tiempo dentro de la base de datos, las filas devueltas y los
 // recorridos de los índices que debe usar y secuenciales de species y species_names
 // (diferencia de pg_stat_user_indexes y pg_stat_user_tables, desde PostgreSQL 15), y el
@@ -114,6 +117,9 @@ const indicesBusqueda = [
 const indiceEspeciesPublicas = 'species_public_genus_name_idx'
 const indiceGenerosPublicos = 'species_public_genus_idx'
 const indicesFicha = ['species_pkey', 'species_names_species_id_name_key']
+// Fotos de referencia (#234): las funciones públicas y las lecturas con sesión buscan la foto
+// de cada especie por la restricción única de species_photos.
+const indiceFotos = 'species_photos_species_id_key'
 const consultasPublicas = [
   ...[
     'ph',
@@ -188,7 +194,50 @@ const consultasPublicas = [
     indices: indicesFicha,
     sinSecuencialEnSpecies: true,
   },
+  {
+    descripcion: 'Ficha con foto de referencia',
+    texto: 'una especie con foto',
+    clave: 'especie_con_foto',
+    llamada: 'public.get_public_species(objetivo)',
+    indices: [indiceFotos],
+    sinSecuencialEnSpecies: true,
+  },
 ]
+
+// Fotos de referencia con sesión (#234), como authenticated: la foto de la especie elegida en
+// el registro (una consulta por clave, como la pide la app a /rest/v1/species_photos) y las de
+// un lote de diez sugerencias (species_id=in.(...)), por si un día se pintan en la lista.
+const consultasFotos = [
+  {
+    descripcion: 'Foto de la especie elegida',
+    texto: 'species_id=eq.<id>',
+    clave: 'especie_con_foto',
+    llamada:
+      '(select p.* from public.species_photos p where p.species_id = objetivo) as q',
+    indices: [indiceFotos],
+    sinSecuencialEnSpecies: true,
+  },
+  {
+    descripcion: 'Fotos de diez sugerencias',
+    texto: 'species_id=in.(10 ids)',
+    llamada:
+      "(select p.* from public.species_photos p where p.species_id in (select i.id from pg_temp.perf_ids i where i.clave like 'sugerencia_%')) as q",
+    indices: [indiceFotos],
+    sinSecuencialEnSpecies: true,
+  },
+]
+
+// Una foto de referencia sintética en una de cada tres especies, como la escribiría la carga.
+const fotosSinteticas = `insert into public.species_photos (
+  species_id, medium_path, medium_width, medium_height, thumbnail_path, thumbnail_width,
+  thumbnail_height, source, source_photo_id, source_taxon_id, source_selection, source_url,
+  license, author_name, attribution, obtained_at)
+select s.id, s.id::text || '/medium-' || s.n || '.webp', 500, 375, s.id::text || '/thumb-' || s.n || '.webp',
+  160, 120, 'inaturalist', s.n::text, s.n::text, 'taxon_default', 'https://www.inaturalist.org/photos/' || s.n,
+  (array['cc0', 'pd', 'cc-by', 'cc-by-sa'])[1 + s.n % 4], 'Autora ' || s.n,
+  '(c) Autora ' || s.n || ', some rights reserved (CC BY)', now()
+from (select x.id, row_number() over (order by x.id) as n from public.species x) s
+where s.n % 3 = 0`
 
 // Ids que necesitan las consultas públicas, calculados como dueño antes de medir (anon no lee
 // las tablas). Si el catálogo no tiene Phalaenopsis amabilis, la ficha se mide con la primera
@@ -210,6 +259,14 @@ group by n.species_id order by count(*) desc, n.species_id limit 1;
 insert into pg_temp.perf_ids
 select 'phalaenopsis_amabilis', s.id from public.species s
 order by s.scientific_name <> 'Phalaenopsis amabilis', s.scientific_name limit 1;
+insert into pg_temp.perf_ids
+select 'especie_con_foto', p.species_id from public.species_photos p
+join public.species s on s.id = p.species_id
+where s.source <> 'user_proposal' or s.status = 'validated'
+order by p.species_id limit 1;
+insert into pg_temp.perf_ids
+select 'sugerencia_' || row_number() over (order by s.id), s.id
+from (select x.id from public.species x order by x.id limit 10) s;
 grant select on pg_temp.perf_ids to anon;`
 
 // Todas las consultas que se miden: las de search_species() como authenticated (desde #231 anon
@@ -227,6 +284,11 @@ const medidas = [
     grupo: 'publico',
     rol: 'anon',
   })),
+  ...consultasFotos.map((consulta) => ({
+    ...consulta,
+    grupo: 'fotos',
+    rol: 'authenticated',
+  })),
 ]
 const indicesContados = [
   ...new Set([
@@ -234,16 +296,18 @@ const indicesContados = [
     indiceEspeciesPublicas,
     indiceGenerosPublicos,
     ...indicesFicha,
+    indiceFotos,
     'species_genus_id_idx',
     'species_genus_id_name_idx',
   ]),
 ]
-const tablasRecorridas = ['species', 'species_names']
+const tablasRecorridas = ['species', 'species_names', 'species_photos']
 const tablasCatalogo = [
   'genera',
   'genus_abbreviations',
   'species',
   'species_names',
+  'species_photos',
 ]
 
 // Opciones -------------------------------------------------------------------------------
@@ -429,7 +493,7 @@ function scriptDePlanes() {
   medidas.forEach((consulta, indice) => {
     // Las del catálogo público tardan menos de 1 ms: se registran todas sus sentencias. Son
     // pocas, porque normalize_search_text() es sql y se expande en la consulta.
-    const minimo = consulta.grupo === 'publico' ? 0 : 1
+    const minimo = consulta.grupo === 'busqueda' ? 1 : 0
     const llamada = consulta.clave
       ? consulta.llamada.replace(
           'objetivo',
@@ -632,6 +696,10 @@ async function principal() {
         )
       }
       exigir(
+        ejecutarPsql(['-c', fotosSinteticas]),
+        'no se pudieron añadir las fotos de referencia sintéticas',
+      )
+      exigir(
         ejecutarPsql([
           '-c',
           `vacuum analyze ${tablasCatalogo.map((t) => `public.${t}`).join(', ')}`,
@@ -643,7 +711,8 @@ async function principal() {
            (select count(*) from public.species) || ' especies (' ||
            (select count(*) from public.species where type = 'hybrid') || ' híbridos), ' ||
            (select count(*) from public.species_names where type = 'synonym') || ' sinónimos, ' ||
-           (select count(*) from public.species_names where type = 'common') || ' nombres comunes'`,
+           (select count(*) from public.species_names where type = 'common') || ' nombres comunes, ' ||
+           (select count(*) from public.species_photos) || ' fotos de referencia'`,
       )
       console.log(
         `  ${cargado} (${((Date.now() - inicioCarga) / 1000).toFixed(1)} s, con vacuum analyze)`,
@@ -662,7 +731,8 @@ async function principal() {
       }
       console.log(
         `\nMidiendo ${consultas.length} consultas de search_species() como authenticated y ` +
-          `${consultasPublicas.length} del catálogo público como anon: ${calentamiento} ejecuciones ` +
+          `${consultasPublicas.length} del catálogo público como anon y ${consultasFotos.length} de fotos ` +
+          `de referencia como authenticated: ${calentamiento} ejecuciones ` +
           `de calentamiento y ${opciones.repeticiones} medidas cada una`,
       )
       const medicion = exigir(
@@ -674,7 +744,7 @@ async function principal() {
       const resultados = JSON.parse(medicion.stdout.trim())
 
       const fallos = []
-      const filasPorGrupo = { busqueda: [], publico: [] }
+      const filasPorGrupo = { busqueda: [], publico: [], fotos: [] }
       for (const resultado of resultados) {
         const consulta = medidas[resultado.consulta]
         const nombre = `${consulta.descripcion}: "${consulta.texto}"`
@@ -684,6 +754,7 @@ async function principal() {
           !contarRecorridos ||
           (usosIndice.some((uso) => uso > 0) &&
             recorridosDe('species_names') === 0 &&
+            recorridosDe('species_photos') === 0 &&
             (!consulta.sinSecuencialEnSpecies || recorridosDe('species') === 0))
         const cumple = resultado.p95 <= opciones.umbralMs
         if (!cumple) {
@@ -722,7 +793,7 @@ async function principal() {
         'Máx ms',
         'Filas',
         indices,
-        'Seq sp/nombres',
+        'Seq sp/nombres/fotos',
         '',
       ]
       console.log(
@@ -741,9 +812,10 @@ async function principal() {
           '  species_scientific_name_trgm_idx y de species_names_name_trgm_idx. La búsqueda va por\n' +
           '  etapas y para en cuanto llena el tope, así que una consulta que se resuelve por prefijo\n' +
           '  no recorre los de trigramas.\n' +
-          '  Seq sp/nombres: recorridos secuenciales por llamada de species y species_names. En\n' +
-          '  species puede haber uno: el hash join que añade los datos de la especie a los\n' +
-          '  candidatos, si el planificador lo prefiere al índice; en species_names debe ser 0.',
+          '  Seq sp/nombres/fotos: recorridos secuenciales por llamada de species, species_names y\n' +
+          '  species_photos. En species puede haber uno: el hash join que añade los datos de la\n' +
+          '  especie a los candidatos, si el planificador lo prefiere al índice; en species_names y\n' +
+          '  species_photos debe ser 0.',
       )
       console.log('\nCatálogo público (#231), como anon')
       console.log(
@@ -757,8 +829,17 @@ async function principal() {
         '\n  Índices esperados: recorridos por llamada de los índices de cada consulta: en la\n' +
           '  búsqueda, los mismos de search_species(); en los géneros, species_public_genus_idx; en\n' +
           '  las especies de un género, species_public_genus_name_idx;\n' +
-          '  en la ficha, species_pkey / species_names_species_id_name_key. Las listas y la ficha no\n' +
-          '  pueden recorrer species ni species_names de forma secuencial.',
+          '  en la ficha, species_pkey / species_names_species_id_name_key; en la ficha con foto,\n' +
+          '  species_photos_species_id_key. Las listas y la ficha no pueden recorrer species ni\n' +
+          '  species_names de forma secuencial, y ninguna consulta species_photos.',
+      )
+      console.log('\nFotos de referencia (#234), como authenticated')
+      console.log(
+        tabla(
+          cabecera('species_photos_species_id_key'),
+          filasPorGrupo.fotos,
+          new Set([2, 3, 4, 5]),
+        ),
       )
 
       const tamanos = consultar(

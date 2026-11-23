@@ -14,6 +14,15 @@ import {
   type PlantUpdate,
   type PlantValidation,
   type Profile,
+  type PublicGenusSpeciesRow,
+  type PublicSpeciesDetail,
+  type PublicSpeciesSearchRow,
+  type ReferencePhoto,
+  type ReferenceThumbnail,
+  speciesPhotoLicenses,
+  type SpeciesPhoto,
+  type SpeciesPhotoLicense,
+  type SpeciesPhotoRejection,
   type Species,
   type SpeciesMatchType,
   type SpeciesName,
@@ -136,6 +145,41 @@ describe('tipos del esquema', () => {
     // @ts-expect-error: "dead" no es un PlantStatus.
     const estado: PlantStatus = 'dead'
     void estado
+  })
+
+  it('fotos de referencia: licencias cerradas y foto opcional en el catálogo público', () => {
+    expect(speciesPhotoLicenses).toEqual(['cc0', 'pd', 'cc-by', 'cc-by-sa'])
+    expectTypeOf<SpeciesPhoto['license']>().toEqualTypeOf<SpeciesPhotoLicense>()
+    expectTypeOf<SpeciesPhotoRejection['reason']>().toEqualTypeOf<
+      'misidentified' | 'inappropriate' | 'author_request' | 'other'
+    >()
+    // @ts-expect-error: "cc-by-nc" no es una licencia aceptada.
+    const licencia: SpeciesPhotoLicense = 'cc-by-nc'
+    void licencia
+    expectTypeOf<PublicSpeciesDetail['reference_photo']>().toEqualTypeOf<
+      ReferencePhoto | null | undefined
+    >()
+    expectTypeOf<PublicGenusSpeciesRow['reference_thumbnail']>().toEqualTypeOf<
+      ReferenceThumbnail | null | undefined
+    >()
+    expectTypeOf<PublicSpeciesSearchRow['reference_thumbnail']>().toEqualTypeOf<
+      ReferenceThumbnail | null | undefined
+    >()
+    // Una ficha escrita antes del #234, sin la foto, sigue siendo válida.
+    const ficha: PublicSpeciesDetail = {
+      id: 'x',
+      scientific_name: 'Cattleya labiata',
+      genus_id: 'g',
+      genus_name: 'Cattleya',
+      type: 'species',
+      source: 'col',
+      source_ref: null,
+      synonyms: [],
+      synonym_count: 0,
+      common_names: [],
+      common_name_count: 0,
+    }
+    void ficha
   })
 
   it('expone los valores de los enumerados para la interfaz', () => {

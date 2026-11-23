@@ -149,7 +149,7 @@ declare
 begin
   foreach tabla in array array[
     'plants', 'plant_photos', 'profiles', 'product_events', 'catalog_audit_log', 'species_merge_keys',
-    'genera', 'genus_abbreviations', 'species', 'species_names'
+    'genera', 'genus_abbreviations', 'species', 'species_names', 'species_photos', 'species_photo_rejections'
   ] loop
     perform pruebas.debe_fallar('anon lee ' || tabla, format('select * from public.%I', tabla), '42501');
   end loop;
@@ -205,11 +205,12 @@ select pruebas.iguales(
   'Cattleya hybrid true'
 );
 
--- prueba: búsqueda: devuelve las columnas de search_species() sin el estado
+-- prueba: búsqueda: devuelve las columnas de search_species() sin el estado y con la miniatura de referencia al final
 select pruebas.iguales(
   'columnas',
   pg_get_function_result('public.search_public_species(text, integer)'::regprocedure),
-  'TABLE(id uuid, scientific_name text, genus_id uuid, genus_name text, type species_type, matched_name text, matched_name_type species_match_type)'
+  'TABLE(id uuid, scientific_name text, genus_id uuid, genus_name text, type species_type, matched_name text, matched_name_type species_match_type, '
+    || 'reference_thumbnail jsonb)'
 );
 
 -- prueba: búsqueda: excluye las especies no públicas, también por sus sinónimos y nombres comunes, y no deja huecos
@@ -365,7 +366,8 @@ select pruebas.iguales(
 select pruebas.iguales(
   'columnas',
   pg_get_function_result('public.list_public_genus_species(uuid, integer, integer)'::regprocedure),
-  'TABLE(id uuid, scientific_name text, type species_type, genus_id uuid, genus_name text, total_count bigint, current_page integer)'
+  'TABLE(id uuid, scientific_name text, type species_type, genus_id uuid, genus_name text, total_count bigint, current_page integer, '
+    || 'reference_thumbnail jsonb)'
 );
 select pruebas.iguales(
   'datos de cada fila',
@@ -436,7 +438,7 @@ select pruebas.iguales(
   'columnas',
   pg_get_function_result('public.get_public_species(uuid)'::regprocedure),
   'TABLE(id uuid, scientific_name text, genus_id uuid, genus_name text, type species_type, source species_source, '
-    || 'source_ref text, synonyms text[], synonym_count bigint, common_names jsonb, common_name_count bigint)'
+    || 'source_ref text, synonyms text[], synonym_count bigint, common_names jsonb, common_name_count bigint, reference_photo jsonb)'
 );
 select pruebas.iguales(
   'sin nombres: arreglos vacíos',
