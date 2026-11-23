@@ -399,7 +399,11 @@ div.orki-viewer__main { cursor: auto; }
   .orki-formactions { flex-direction: column; align-items: stretch; }
   .orki-formactions__secondary { align-self: center; min-height: 44px; padding: 0 var(--space-2); border-color: transparent; background: transparent; color: var(--color-secondary-strong); text-decoration: underline; text-underline-offset: 4px; }
   .orki-gallery { padding: var(--space-4); border-color: var(--color-secondary); background: var(--color-neutral-0); }
-  .orki-gallery__grid { gap: var(--space-2); }
+  .orki-gallery__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-2); }
+  .orki-gallery__item { aspect-ratio: auto; }
+  .orki-gallery__item--preparing { background: var(--color-neutral-50); }
+  .orki-gallery__photo { height: auto; aspect-ratio: 1 / 1; }
+  .orki-gallery__state { position: static; }
   .orki-gallery__actions .orki-btn { padding-right: var(--space-3); padding-left: var(--space-3); }
   .orki-detail, .orki-viewer__tools { display: grid; grid-template-columns: minmax(0, 1fr); }
   .orki-viewer__tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }

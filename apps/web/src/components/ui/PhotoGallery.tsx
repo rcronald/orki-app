@@ -65,7 +65,9 @@ function stateText(state: GalleryPhotoState): string | null {
     case 'uploading':
       return state.progress === undefined
         ? 'Subiendo…'
-        : `Subiendo… ${String(Math.round(state.progress * 100))} %`
+        : // Espacio duro antes de «%»: en la franja estrecha del celular, la
+          // cifra y su signo no se separan.
+          `Subiendo… ${String(Math.round(state.progress * 100))}\u00a0%`
     case 'saved':
       return 'Guardada'
     case 'error':
@@ -77,7 +79,8 @@ function stateText(state: GalleryPhotoState): string | null {
 
 // Galería de fotos de un formulario (orki-gallery, #220): recuadro con título
 // y contador («3 de 6»), cuadrícula de tres columnas con las miniaturas (la
-// primera, «Principal»), un botón de quitar en la esquina de cada una (objetivo
+// primera, «Principal»; hasta 720 px, dos columnas y el estado en una franja
+// bajo la miniatura para que se lea entero, #247), un botón de quitar en la esquina de cada una (objetivo
 // de 44 × 44 px aunque el círculo mida 28) y las acciones «Tomar foto» y
 // «Elegir fotos» con su línea de ayuda. Solo pinta: quien la usa guarda las
 // fotos, las prepara y las sube.
@@ -189,7 +192,11 @@ export function PhotoGallery({
                     decoding="async"
                   />
                 ) : (
-                  <span role="img" aria-label={label} />
+                  <span
+                    className="orki-gallery__photo"
+                    role="img"
+                    aria-label={label}
+                  />
                 )}
                 {/* La etiqueta y el estado van en el mismo borde: con un
                     estado a la vista, la etiqueta se aparta (el nombre
