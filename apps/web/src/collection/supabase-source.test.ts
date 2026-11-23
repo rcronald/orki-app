@@ -131,7 +131,29 @@ describe('lectura de la colección desde Supabase', () => {
         photoInBloom: true,
         photoPath: 'user_prueba/planta-1.webp',
         thumbnailPath: 'user_prueba/planta-1-mini.webp',
+        photoCount: 1,
       },
+    ])
+  })
+
+  it('pide el número de fotos (photo_count, #184) y lo pasa al modelo', async () => {
+    expect(COLLECTION_PLANT_SELECT.split(', ')).toContain('photo_count')
+    table = [
+      plantRow({ id: 'p1', photo_count: 4 }),
+      // Sin el dato (respuesta anterior al #184): la principal cuenta.
+      plantRow({ id: 'p2', photo_count: undefined }),
+      // El insert que crea la principal devuelve el recuento de antes.
+      plantRow({ id: 'p3', photo_count: 0 }),
+      plantRow({
+        id: 'p4',
+        photo_count: null,
+        photo_path: null,
+        thumbnail_path: null,
+      }),
+    ]
+
+    expect((await load()).map((plant) => plant.photoCount)).toEqual([
+      4, 1, 1, 0,
     ])
   })
 

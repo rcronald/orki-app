@@ -141,7 +141,11 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
 - **Formato:** `LOCAL_COPY_FORMAT` (hoy 1). Una copia de otro formato o
   dañada se borra y se trata como si no hubiera; la siguiente lectura de la
   red la vuelve a crear entera. No se migra: no hay nada en la copia que no
-  esté en la base.
+  esté en la base. Un campo nuevo de la planta no cambia el formato si se
+  puede deducir: `photoCount` (#184) falta en las copias guardadas antes y
+  `fromStoredCopy()` lo toma de la principal (1 si hay foto, 0 si no) hasta
+  la siguiente lectura de la red, en lugar de descartar la copia de quien
+  abre la app actualizada sin conexión.
 - **Fuente de la colección** (`collection/cached-source.ts`): entrega primero
   la copia (`provide`) y después lo de la red, y guarda cada resultado. Si la
   red falla por falta de conexión y hay copia, la colección queda lista con
@@ -190,6 +194,22 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   miniaturas que ya no son de ninguna planta suya (planta eliminada o foto
   reemplazada: la ruta lleva la versión). Las de otros usuarios se borran al
   cambiar de cuenta (`forgetPlantImagesExcept`).
+- **Varias fotos por planta (#181, #184):** decisión del responsable: sin
+  conexión se ve **solo la miniatura principal** de cada planta, como antes.
+  La descarga en segundo plano sigue bajando una miniatura por planta (la de
+  `thumbnailPath`, la principal) y la limpieza conserva solo esas: las
+  miniaturas de las demás fotos que la galería del detalle haya guardado al
+  verlas con conexión se borran en la siguiente pasada. Así el tamaño de la
+  tabla de abajo no cambia con el número de fotos. Si se quita la principal,
+  la siguiente pasa a ser la que se guarda (sin bajarla otra vez si ya
+  estaba). Sin conexión, la tarjeta y el detalle muestran la principal; las
+  demás fotos no están en el dispositivo y no se pueden ver hasta volver a
+  tener red (una pantalla que las liste debe tratarlas como una imagen que
+  no se pudo cargar). El número
+  de fotos de cada planta (`photoCount`) sí va en la copia, así que se puede
+  mostrar sin red aunque las fotos no estén. Lo comprueban
+  `photos/thumbnail-sync.test.ts` («con varias fotos por planta») y
+  `collection/local-copy.test.ts`.
 - **Tamaño** (estimado, no medido en un dispositivo):
 
   | Colección | Miniaturas (tope de 30 kB, WebP de 400 px) | Copia en IndexedDB |

@@ -148,7 +148,7 @@ test('dar de baja y reactivar', async ({
   ).toBe('gifted')
 
   // Ya no cuenta en la colección activa.
-  await page.getByRole('link', { name: 'Volver a mi colección' }).click()
+  await page.getByRole('link', { name: 'Volver a Mi colección' }).click()
   await expect(page.locator('.orki-pagehead__meta')).toContainText(
     '4 ejemplares',
   )
@@ -182,7 +182,7 @@ test('eliminar una planta con foto', async ({
 
   await page.goto(detalle(PLANTAS.maxima))
   await expect(
-    page.getByRole('img', { name: 'Foto de Cattleya maxima' }),
+    page.getByRole('img', { name: /^Foto principal de Cattleya maxima/ }),
   ).toBeVisible()
 
   await page

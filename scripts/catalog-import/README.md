@@ -2,7 +2,7 @@
 
 Scripts en Python que preparan el catálogo de especies de orquídeas de Orki a partir del **Catalogue of Life eXtended Release** (COL26.10 XR, clave de ChecklistBank `316691`). La investigación de la fuente, la licencia y el formato está en [FUENTE.md](FUENTE.md); las decisiones aprobadas, en el issue #72.
 
-Hay cuatro partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); la lista curada de híbridos, con su validación y su carga por el mismo flujo (#77, `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`, ver [Lista curada de híbridos](#lista-curada-de-híbridos)); y el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)).
+Hay cuatro partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); la lista curada de híbridos, con su validación y su carga por el mismo flujo (#77, `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`, ver [Lista curada de híbridos](#lista-curada-de-híbridos)); el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)); y, aparte, el emparejamiento de solo lectura con los taxones de iNaturalist para las fotos de referencia (#233, `orki-catalogo emparejar-inaturalist`, ver [Emparejamiento con iNaturalist](#emparejamiento-con-inaturalist)).
 
 ## Requisitos e instalación
 
@@ -39,24 +39,27 @@ También acepta el TSV suelto. Imprime los recuentos de géneros, especies, híb
 
 ## Código
 
-| Archivo                              | Qué hace                                                                                                                                |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/catalog_import/reader.py`       | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia                             |
-| `src/catalog_import/names.py`        | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)                                    |
-| `src/catalog_import/normalize.py`    | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste                                   |
-| `src/catalog_import/model.py`        | Modelo intermedio y códigos de motivo                                                                                                   |
-| `src/catalog_import/cli.py`          | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`; los híbridos, a `hybrids_cli.py`)                          |
-| `src/catalog_import/load_cli.py`     | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales (comunes con `cargar-hibridos`)                                    |
-| `src/catalog_import/target.py`       | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                                              |
-| `src/catalog_import/load.py`         | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                                             |
-| `src/catalog_import/report.py`       | Reporte CSV y resumen por pantalla (de las dos cargas)                                                                                  |
-| `src/catalog_import/hybrids.py`      | Lista curada de híbridos: formato del CSV y validación, sin base                                                                        |
-| `src/catalog_import/hybrids_load.py` | Plan de la carga de la lista curada (función pura); el resto es el flujo de `load.py`                                                   |
-| `src/catalog_import/hybrids_cli.py`  | `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`                                                                      |
-| `data/hibridos.csv`                  | La lista curada de híbridos (ver [Lista curada de híbridos](#lista-curada-de-híbridos))                                                 |
-| `fuente.json`                        | Versión fijada de la fuente: clave, DOI, licencia, URL y SHA-256 de la exportación (la usan el workflow y la atribución del backoffice) |
-| `tests/`                             | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md))                          |
-| `tests/basedatos.py`                 | Bases desechables con las migraciones para las pruebas de la carga                                                                      |
+| Archivo                                   | Qué hace                                                                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/catalog_import/reader.py`            | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia                             |
+| `src/catalog_import/names.py`             | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)                                    |
+| `src/catalog_import/normalize.py`         | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste                                   |
+| `src/catalog_import/model.py`             | Modelo intermedio y códigos de motivo                                                                                                   |
+| `src/catalog_import/cli.py`               | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`; los híbridos, a `hybrids_cli.py`)                          |
+| `src/catalog_import/load_cli.py`          | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales (comunes con `cargar-hibridos`)                                    |
+| `src/catalog_import/target.py`            | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                                              |
+| `src/catalog_import/load.py`              | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                                             |
+| `src/catalog_import/report.py`            | Reporte CSV y resumen por pantalla (de las dos cargas)                                                                                  |
+| `src/catalog_import/hybrids.py`           | Lista curada de híbridos: formato del CSV y validación, sin base                                                                        |
+| `src/catalog_import/hybrids_load.py`      | Plan de la carga de la lista curada (función pura); el resto es el flujo de `load.py`                                                   |
+| `src/catalog_import/hybrids_cli.py`       | `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`                                                                      |
+| `src/catalog_import/inaturalist.py`       | Cliente de solo lectura de la API de iNaturalist: caché, ritmo, topes y lectura de taxones y fotos                                      |
+| `src/catalog_import/inaturalist_match.py` | Emparejamiento con iNaturalist: lectura del catálogo, reglas, elección de la foto, reporte y resumen                                    |
+| `src/catalog_import/inaturalist_cli.py`   | `orki-catalogo emparejar-inaturalist`                                                                                                   |
+| `data/hibridos.csv`                       | La lista curada de híbridos (ver [Lista curada de híbridos](#lista-curada-de-híbridos))                                                 |
+| `fuente.json`                             | Versión fijada de la fuente: clave, DOI, licencia, URL y SHA-256 de la exportación (la usan el workflow y la atribución del backoffice) |
+| `tests/`                                  | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md))                          |
+| `tests/basedatos.py`                      | Bases desechables con las migraciones para las pruebas de la carga                                                                      |
 
 ### Modelo intermedio
 
@@ -456,6 +459,72 @@ La lista versionada empezó como un **borrador preparado por un agente** (issue 
 3. Si no existe o no se vende en Perú, borra la fila (mientras ninguna se haya cargado, los `id` todavía se pueden renumerar; después, nunca).
 4. Cambia `revisado` a `sí` y deja en `notas` la fuente.
 5. Valida y simula como en «Cómo añadir un híbrido». Con COL26.10 XR, el borrador entero marcado como revisado da 76 altas, 2 géneros nuevos (Burrageara y Miltassia, que conviene comprobar) y ningún conflicto: Paphiopedilum Maudiae, Paphiopedilum Leeanum y Phragmipedium Sedenii se quitaron del borrador porque COL ya los trae como nothoespecies («Paphiopedilum × maudiae»…).
+
+## Emparejamiento con iNaturalist
+
+`orki-catalogo emparejar-inaturalist` empareja las especies del catálogo con los taxones de Orchidaceae de iNaturalist y clasifica la licencia de su foto, para preparar las fotos de referencia (#180). Es de **solo lectura**: lee la API pública de iNaturalist sin clave, no descarga imágenes y no se conecta a ninguna base. La investigación (condiciones de uso, licencias, atribución, por qué la API y no el conjunto de datos abierto) y las cifras medidas están en [docs/inaturalist.md](../../docs/inaturalist.md).
+
+```sh
+# Familia entera (unas 115 peticiones de taxones y unas 610 de fotos de los taxones; más de una hora)
+uv run orki-catalogo emparejar-inaturalist --catalogo /tmp/col-316691.zip --catalogo data/hibridos.csv
+
+# Solo unos géneros, buscando también en las observaciones
+uv run orki-catalogo emparejar-inaturalist --catalogo /tmp/catalogo.json --genero Phalaenopsis --genero Masdevallia --alternativas observaciones
+
+# Los ocho géneros del alcance inicial, solo con la caché
+uv run orki-catalogo emparejar-inaturalist --catalogo exportacion.csv --generos-comunes --sin-red
+```
+
+| Opción                                         | Qué hace                                                                                                                                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--catalogo RUTA`                              | Catálogo de entrada (se puede repetir; ver abajo). Sin ninguno, solo resume iNaturalist.                                                                                                                                  |
+| `--genero NOMBRE`                              | Género que se lee de iNaturalist (se puede repetir). Sin ninguno, la familia entera (taxón 47217). Las especies del catálogo de otros géneros no entran en el reporte (se cuentan como fuera del alcance).                |
+| `--generos-comunes`                            | Añade los géneros del alcance inicial: Phalaenopsis, Cattleya, Dendrobium, Oncidium, Vanda, Cymbidium, Paphiopedilum y Masdevallia.                                                                                       |
+| `--alternativas ninguna\|taxon\|observaciones` | Si la foto por defecto no tiene licencia aceptada, dónde buscar otra: en las fotos del taxón (por defecto; una petición cada 30 taxones) y, además, en observaciones con grado de investigación (una petición por taxón). |
+| `--cache CARPETA`                              | Caché de las respuestas, por defecto `~/.cache/orki-catalogo/inaturalist`, fuera del repositorio. Para empezar de cero, bórrala.                                                                                          |
+| `--sin-red`                                    | Usa solo la caché.                                                                                                                                                                                                        |
+| `--max-peticiones N`                           | Tope de peticiones de la ejecución (por defecto y como máximo 9 000).                                                                                                                                                     |
+| `--intervalo S`                                | Segundos entre peticiones (como mínimo 1).                                                                                                                                                                                |
+| `--reporte RUTA`                               | CSV del reporte; por defecto `reporte-inaturalist-<fecha UTC>.csv` en la carpeta actual (git lo ignora).                                                                                                                  |
+| `--resumen-json RUTA`                          | Escribe también el resumen en JSON.                                                                                                                                                                                       |
+
+**Red.** Solo peticiones `GET` a `https://api.inaturalist.org/v1/` (cualquier otro host se rechaza antes de conectar), sin autenticación, con un `User-Agent` genérico sin datos de nadie, una petición por segundo como mucho y un tope de 9 000 al día, que se cuenta en la caché (`peticiones-AAAA-MM-DD.txt`, en UTC) y vale para todas las ejecuciones de ese día. Un 429 o un 5xx se reintenta tres veces, esperando 10, 30 y 90 segundos (o lo que diga `Retry-After`, si es más).
+
+**Reanudable.** Cada respuesta se guarda comprimida en la caché con su URL. Si la ejecución se corta (el tope, un error, Ctrl+C), la siguiente no repite nada de lo pedido y sigue desde ahí. Si el corte es al leer los taxones, no hay reporte; si es al buscar alternativas, el reporte se escribe con las que faltan como `no_buscada`. En los dos casos el código de salida es 3. La caché no caduca: para el mantenimiento, bórrala antes.
+
+### Catálogo de entrada
+
+Se reconoce por la extensión (y, en los CSV, por la cabecera):
+
+- `export.zip` o TSV de COL: se lee y normaliza con las reglas de [Reglas](#reglas), las mismas funciones que la carga.
+- JSON de `orki-catalogo ARCHIVO --salida catalogo.json`.
+- La lista curada de híbridos (`data/hibridos.csv`), validada como en `validar-hibridos`; sus `otros_nombres` cuentan como sinónimos.
+- Una **exportación del catálogo de la base**: CSV UTF-8 (con o sin BOM) separado por comas, con la cabecera `id,nombre,genero,tipo,sinonimos,plantas`. `id` es el de la especie, `tipo` es `species` o `hybrid`, `sinonimos` va separado por `|` y `plantas` (cuántas plantas de usuarios tiene; puede ir vacío) sirve para dar el resumen de las especies que ya están en alguna colección y para buscar antes sus alternativas. Por ejemplo, desde `psql` (columnas de las migraciones del catálogo y del inventario; no se ha ejecutado contra una base real):
+
+```sql
+\copy (select s.id, s.scientific_name as nombre, g.name as genero, s.type as tipo, coalesce(string_agg(n.name, '|' order by n.name) filter (where n.type = 'synonym'), '') as sinonimos, (select count(*) from public.plants p where p.species_id = s.id) as plantas from public.species s join public.genera g on g.id = s.genus_id left join public.species_names n on n.species_id = s.id group by s.id, g.name) to 'exportacion.csv' with (format csv, header)
+```
+
+Los nombres se normalizan con `normalize_name` y se comparan con `match_key` (sin mayúsculas, espacios limpios y sin el signo «×»), igual que la carga casa los géneros y la lista curada.
+
+### Reglas
+
+1. **Nombre aceptado:** un único taxón activo de iNaturalist con el nombre aceptado del catálogo es `nombre_aceptado`; si hay varios (homónimos), `ambiguo`.
+2. **Sinónimo:** si no, se busca por los sinónimos del catálogo (como nombre de un taxón activo) y por el nombre aceptado del catálogo entre los sinónimos de iNaturalist (sus nombres científicos no válidos y sus taxones inactivos, que apuntan a los activos que los sustituyen). No cuenta un taxón que ya emparejó otra especie por su nombre aceptado (las dos taxonomías no coinciden ahí). Un solo taxón posible es `sinonimo`; varios, `ambiguo`.
+3. Si varias especies llegan por sinónimo al mismo taxón, todas quedan `ambiguo`.
+4. Si no, `sin_taxon` (es lo normal en los grex de la lista curada: iNaturalist no los tiene).
+
+**Foto.** Licencias aceptadas: solo CC0 y CC BY. La foto por defecto del taxón vale si tiene una de ellas y no tiene marcas; si no, se busca la primera foto del taxón con licencia aceptada y, con `--alternativas observaciones`, una foto con licencia aceptada de la observación con grado de investigación más votada del propio taxón (o de una subespecie, variedad o forma suya; no de los híbridos que cuelgan de él).
+
+### Reporte y resumen
+
+CSV UTF-8 con BOM. Una fila por especie del catálogo en el alcance (`entidad = especie`) y otra por cada taxón activo de iNaturalist que ninguna especie tomó (`entidad = taxon`, `emparejamiento = sin_especie`). Columnas: `entidad`, `emparejamiento` (`nombre_aceptado`, `sinonimo`, `ambiguo`, `sin_taxon`, `sin_especie`), `ref`, `nombre`, `genero`, `tipo`, `plantas`, `fuente` (`col`, `curated`, `base` o `inaturalist`), `nombre_emparejado` (el sinónimo por el que se emparejó), `inat_id`, `inat_nombre`, `inat_rango`, `foto_por_defecto` (`aceptada`, `no_aceptada`, `sin_foto`), `licencia_por_defecto`, `foto_elegida` (`por_defecto`, `del_taxon`, `de_observacion`, `ninguna`, `no_buscada`), `foto_id`, `licencia`, `autor`, `atribucion` (el texto propuesto), `foto_url_medium`, `foto_pagina`, `observacion` y `detalle` (el motivo de un `ambiguo`).
+
+El resumen por pantalla da, para las especies del catálogo en el alcance (y las que están en alguna colección, si la entrada trae `plantas`), cuántas emparejan por nombre aceptado, por sinónimo, ambiguas y sin taxón, cuántas tienen foto por defecto aceptada, no aceptada o sin foto, y cuántas acaban con una foto usable; lo mismo para los taxones activos de iNaturalist leídos; y, por cada género del alcance inicial (o de `--genero`), las dos cosas en una línea.
+
+### Pruebas
+
+`tests/test_inaturalist.py` prueba el cliente sin red (la caché, `--sin-red`, el ritmo de una petición por segundo, los topes por ejecución y por día, los reintentos ante 429 y 5xx, que solo se admite `api.inaturalist.org`, el `User-Agent` y la lectura de taxones, fotos y observaciones); `tests/test_inaturalist_match.py`, la lectura de los cuatro formatos de catálogo, cada regla del emparejamiento, la elección de la foto, el reporte y el resumen; y `tests/test_inaturalist_cli.py`, la CLI de principio a fin con respuestas reales grabadas y recortadas (`tests/data/inaturalist/respuestas.json`, ver [PROCEDENCIA.md](tests/data/PROCEDENCIA.md)), también que una segunda ejecución sale entera de la caché y que una ejecución cortada por el tope sigue en la siguiente.
 
 ## Ejecución por ambiente
 

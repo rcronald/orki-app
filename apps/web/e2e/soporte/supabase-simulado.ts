@@ -35,7 +35,9 @@ import {
 // escribe la app de una foto en plants se refleja en la principal). Si una
 // prueba pone la foto de una planta directamente en `datos.plantas`, antes de
 // la siguiente petición se crea su fila en la posición 0, como la copia de la
-// migración.
+// migración. La galería del detalle (#183) cambia la nota y la fecha (con sus
+// restricciones) y reordena con reorder_plant_photos, la función propuesta en
+// ese issue (aún sin migración).
 //
 // Catálogo público (#231, #232): las cuatro funciones que puede llamar anon
 // (search_public_species, list_public_genera, list_public_genus_species y
@@ -362,6 +364,9 @@ export class SupabaseSimulado {
       photo_in_bloom: planta.photo_in_bloom,
       photo_path: planta.photo_path,
       thumbnail_path: planta.thumbnail_path,
+      // Campo calculado photo_count (#184): las filas de plant_photos.
+      photo_count: this.fotos.filter((foto) => foto.plant_id === planta.id)
+        .length,
       created_at: planta.created_at,
       updated_at: planta.updated_at,
       species: especie
@@ -823,6 +828,20 @@ export class SupabaseSimulado {
       }
       const cambiadas = mias.map((foto) => ({ ...foto, ...cambios }))
       for (const foto of cambiadas) {
+        // plant_photos_note_valid y plant_photos_taken_at_not_future.
+        const notaMala =
+          foto.note !== null &&
+          (foto.note.trim() === '' || [...foto.note].length > 500)
+        const manana = new Date(Date.now() + 2 * 86_400_000)
+          .toISOString()
+          .slice(0, 10)
+        if (notaMala || (foto.taken_at !== null && foto.taken_at > manana)) {
+          return errorPostgrest(
+            400,
+            '23514',
+            'violates check constraint "plant_photos_note_valid" (simulado)',
+          )
+        }
         if (
           !rutaDeLaPlanta(foto.photo_path, foto.user_id, foto.plant_id) ||
           !rutaDeLaPlanta(foto.thumbnail_path, foto.user_id, foto.plant_id)
@@ -853,6 +872,39 @@ export class SupabaseSimulado {
       this.copiarPrincipal(plantaId)
     }
     return conRepresentacion ? filas(mias, cabeceras) : vacia()
+  }
+
+  /**
+   * La función propuesta en el #183 (aún sin migración): pone las fotos de la
+   * planta en el orden de photo_ids, en una sola sentencia (la unicidad de la
+   * posición se comprueba al final). Si la lista no es exactamente la de las
+   * fotos de la planta, 22023 y no cambia nada.
+   */
+  private reordenarFotos(argumentos: Record<string, unknown>, yo: Identidad) {
+    if (yo.usuario === null) {
+      return errorPostgrest(401, 'PGRST301', 'JWT required (simulado)')
+    }
+    const plantaId = String(argumentos.target_plant_id)
+    const ids = Array.isArray(argumentos.photo_ids)
+      ? argumentos.photo_ids.map(String)
+      : []
+    const deLaPlanta = this.fotosDe(plantaId).filter(
+      (foto) => foto.user_id === yo.usuario,
+    )
+    if (
+      new Set(ids).size !== ids.length ||
+      ids.length !== deLaPlanta.length ||
+      deLaPlanta.some((foto) => !ids.includes(foto.id))
+    ) {
+      return errorPostgrest(
+        400,
+        '22023',
+        'las fotos no son las de la planta (simulado)',
+      )
+    }
+    for (const foto of deLaPlanta) foto.position = ids.indexOf(foto.id)
+    this.copiarPrincipal(plantaId)
+    return json(this.fotosDe(plantaId))
   }
 
   // Funciones (RPC) ---------------------------------------------------------------
@@ -936,13 +988,7 @@ export class SupabaseSimulado {
           proposed_name: primera.entered_name,
           type: primera.type,
           plant_count: plantas.length,
-          photos: plantas
-            .filter((p) => p.photo_path && p.thumbnail_path)
-            .slice(0, 4)
-            .map((p) => ({
-              photo_path: p.photo_path,
-              thumbnail_path: p.thumbnail_path,
-            })),
+          photos: this.fotosDeGrupo(plantas),
           plantas,
         }
       })
@@ -951,6 +997,47 @@ export class SupabaseSimulado {
           b.plant_count - a.plant_count ||
           a.proposed_name.localeCompare(b.proposed_name),
       )
+  }
+
+  /**
+   * Como list_proposal_groups() desde el #184: hasta seis fotos de
+   * plant_photos, por turnos (la principal de cada planta, de la más reciente
+   * a la más antigua; después la segunda de cada una...). Una planta sin
+   * filas aporta la foto de sus columnas.
+   */
+  private fotosDeGrupo(plantas: Planta[]) {
+    const porPlanta = [...plantas]
+      .sort(
+        (a, b) =>
+          b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id),
+      )
+      .map((planta) => {
+        const filas = this.fotos
+          .filter((foto) => foto.plant_id === planta.id)
+          .sort((a, b) => a.position - b.position)
+        if (filas.length > 0) return filas
+        return planta.photo_path && planta.thumbnail_path
+          ? [
+              {
+                photo_path: planta.photo_path,
+                thumbnail_path: planta.thumbnail_path,
+              },
+            ]
+          : []
+      })
+    const fotos: { photo_path: string; thumbnail_path: string }[] = []
+    for (let turno = 0; turno < 6; turno++) {
+      for (const filas of porPlanta) {
+        const foto = filas[turno]
+        if (foto && fotos.length < 6) {
+          fotos.push({
+            photo_path: foto.photo_path,
+            thumbnail_path: foto.thumbnail_path,
+          })
+        }
+      }
+    }
+    return fotos
   }
 
   private grupoPedido(argumentos: Record<string, unknown>) {
@@ -1186,6 +1273,8 @@ export class SupabaseSimulado {
         this.eventos.push(...(lote as EventoDeProducto[]))
         return vacia()
       }
+      case 'reorder_plant_photos':
+        return this.reordenarFotos(argumentos, yo)
       default:
         break
     }

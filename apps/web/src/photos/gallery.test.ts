@@ -3,8 +3,13 @@ import type { CollectionPlant } from '../collection/model.ts'
 import { plant } from '../test/collection.ts'
 import { PLANT_ID, processedPhoto, USER_ID } from '../test/photos.ts'
 import {
+  checkPlantPhotoDetails,
   listPlantPhotos,
+  orderWithMain,
+  orderWithMove,
   removeStoredPlantPhoto,
+  reorderPlantPhotos,
+  updatePlantPhoto,
   uploadPlantPhotos,
   type NewPlantPhoto,
   type PlantPhotosProgress,
@@ -371,8 +376,9 @@ describe('uploadPlantPhotos', () => {
     })
 
     expect(result.photos.map((photo) => photo.position)).toEqual([0, 2, 3, 4])
-    // La principal no cambió: no hace falta releer la planta.
-    expect(onPlantUpdated).not.toHaveBeenCalled()
+    // La principal no cambió, pero sí el número de fotos: se relee la planta.
+    expect(onPlantUpdated).toHaveBeenCalledOnce()
+    expect(onPlantUpdated.mock.calls[0]?.[0]).toMatchObject({ photoCount: 4 })
 
     // Cuando ya no hay sitio al final, ocupa el hueco.
     await uploadPlantPhotos(newPhotos(1), options(context))
@@ -594,5 +600,312 @@ describe('removeStoredPlantPhoto', () => {
     })
     expect(result.photosDeleted).toBe(true)
     expect(context.storage.objects.size).toBe(0)
+  })
+})
+
+describe('checkPlantPhotoDetails', () => {
+  const today = '2026-11-22'
+
+  it('normaliza: sin fecha ni nota, null; la nota sin espacios a los lados', () => {
+    expect(
+      checkPlantPhotoDetails(
+        { takenAt: '', note: '   ', inBloom: false },
+        today,
+      ),
+    ).toEqual({
+      details: { takenAt: null, note: null, inBloom: false },
+      problems: {},
+    })
+    expect(
+      checkPlantPhotoDetails(
+        { takenAt: '2026-11-22', note: '  Primera vara \n', inBloom: true },
+        today,
+      ).details,
+    ).toEqual({ takenAt: '2026-11-22', note: 'Primera vara', inBloom: true })
+  })
+
+  it('una fecha posterior a hoy o que no existe, y una nota de más de 500', () => {
+    expect(
+      checkPlantPhotoDetails(
+        { takenAt: '2026-11-23', note: 'a'.repeat(501), inBloom: false },
+        today,
+      ).problems,
+    ).toEqual({ takenAt: 'future', note: 'too-long' })
+    expect(
+      checkPlantPhotoDetails(
+        { takenAt: '2026-02-30', note: '', inBloom: false },
+        today,
+      ).problems,
+    ).toEqual({ takenAt: 'invalid' })
+  })
+
+  it('cuenta los caracteres como la base, no las unidades de UTF-16', () => {
+    // 500 emojis: 1000 unidades de UTF-16, pero 500 caracteres.
+    expect(
+      checkPlantPhotoDetails(
+        { takenAt: '', note: '🌸'.repeat(500), inBloom: false },
+        today,
+      ).problems,
+    ).toEqual({})
+  })
+})
+
+describe('updatePlantPhoto', () => {
+  it('guarda la fecha y la nota de una foto que no es la principal sin releer la planta', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const [, second] = context.rows.photosOf(PLANT_ID)
+    const readPlant = vi.spyOn(context.rows, 'readPlant')
+    const onPlantUpdated = vi.fn()
+
+    const result = await updatePlantPhoto({
+      ...options(context),
+      photo: second,
+      main: false,
+      changes: { takenAt: '2026-11-20', note: '  Vara nueva  ', inBloom: true },
+      onPlantUpdated,
+    })
+
+    expect(result.photo).toMatchObject({
+      id: second.id,
+      takenAt: '2026-11-20',
+      note: 'Vara nueva',
+      inBloom: true,
+      position: second.position,
+    })
+    expect(result.plant).toBeNull()
+    expect(readPlant).not.toHaveBeenCalled()
+    expect(onPlantUpdated).not.toHaveBeenCalled()
+    expect(context.rows.photosOf(PLANT_ID)[1].note).toBe('Vara nueva')
+  })
+
+  it('«en floración» de la principal pasa a la planta y se relee', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const [main] = context.rows.photosOf(PLANT_ID)
+    const onPlantUpdated = vi.fn()
+
+    const result = await updatePlantPhoto({
+      ...options(context),
+      photo: main,
+      main: true,
+      changes: { inBloom: true },
+      onPlantUpdated,
+    })
+
+    expect(result.plant?.photoInBloom).toBe(true)
+    expect(onPlantUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({ id: PLANT_ID, photoInBloom: true }),
+    )
+  })
+
+  it('una nota vacía se guarda como null; lo que no cumple las reglas no se envía', async () => {
+    const context = setup()
+    await uploadPlantPhotos(
+      [{ files: processedPhoto(), note: 'Antes' }],
+      options(context),
+    )
+    const [main] = context.rows.photosOf(PLANT_ID)
+    const update = vi.spyOn(context.rows, 'update')
+
+    const cleared = await updatePlantPhoto({
+      ...options(context),
+      photo: main,
+      main: true,
+      changes: { note: '   ' },
+    })
+    expect(cleared.photo.note).toBeNull()
+
+    update.mockClear()
+    await expect(
+      updatePlantPhoto({
+        ...options(context),
+        photo: main,
+        main: true,
+        changes: { note: 'x'.repeat(501) },
+      }),
+    ).rejects.toMatchObject({ reason: 'failed' })
+    await expect(
+      updatePlantPhoto({
+        ...options(context),
+        photo: main,
+        main: true,
+        changes: { takenAt: '2999-01-01' },
+      }),
+    ).rejects.toMatchObject({ reason: 'failed' })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('una foto que ya no existe es «not-found»; sin conexión, «offline»', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    const [main] = context.rows.photosOf(PLANT_ID)
+    await expect(
+      updatePlantPhoto({
+        ...options(context),
+        photo: { id: 'no-existe', inBloom: false },
+        main: false,
+        changes: { note: 'Hola' },
+      }),
+    ).rejects.toMatchObject({ reason: 'not-found' })
+
+    context.rows.failUpdate = () => ({
+      error: new PhotoStorageError('offline', { uncertain: true }),
+    })
+    await expect(
+      updatePlantPhoto({
+        ...options(context),
+        photo: main,
+        main: true,
+        changes: { note: 'Hola' },
+      }),
+    ).rejects.toMatchObject({ reason: 'offline' })
+    expect(context.rows.photosOf(PLANT_ID)[0].note).toBeNull()
+  })
+
+  it('otra cuenta no puede cambiar la foto', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(1), options(context))
+    const [main] = context.rows.photosOf(PLANT_ID)
+    await expect(
+      updatePlantPhoto({
+        ...options(context),
+        userId: OTHER_USER,
+        photo: main,
+        main: true,
+        changes: { note: 'Ajena' },
+      }),
+    ).rejects.toMatchObject({ reason: 'not-found' })
+  })
+})
+
+describe('orden de las fotos', () => {
+  const photos = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+
+  it('orderWithMain pone la elegida primero y conserva el resto', () => {
+    expect(orderWithMain(photos, 'c')).toEqual(['c', 'a', 'b'])
+    expect(orderWithMain(photos, 'a')).toEqual(['a', 'b', 'c'])
+    expect(orderWithMain(photos, 'z')).toEqual(['a', 'b', 'c'])
+  })
+
+  it('orderWithMove la cambia con la vecina; en un extremo no cambia nada', () => {
+    expect(orderWithMove(photos, 'b', -1)).toEqual(['b', 'a', 'c'])
+    expect(orderWithMove(photos, 'b', 1)).toEqual(['a', 'c', 'b'])
+    expect(orderWithMove(photos, 'a', -1)).toEqual(['a', 'b', 'c'])
+    expect(orderWithMove(photos, 'c', 1)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('reorderPlantPhotos', () => {
+  it('con 6 fotos (sin posiciones libres) cambia la principal de una vez y relee la planta', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(6), options(context))
+    const before = context.rows.photosOf(PLANT_ID)
+    const last = before[5]
+    const reorder = vi.spyOn(context.rows, 'reorder')
+    const onPlantUpdated = vi.fn()
+
+    const result = await reorderPlantPhotos({
+      ...options(context),
+      photos: before,
+      order: orderWithMain(before, last.id),
+      onPlantUpdated,
+    })
+
+    // Una sola escritura: nunca una galería a medias.
+    expect(reorder).toHaveBeenCalledTimes(1)
+    expect(result.photos.map((photo) => photo.id)).toEqual([
+      last.id,
+      ...before.slice(0, 5).map((photo) => photo.id),
+    ])
+    expect(result.photos.map((photo) => photo.position)).toEqual([
+      0, 1, 2, 3, 4, 5,
+    ])
+    // La tarjeta del inventario pasa a mostrar la nueva principal.
+    expect(result.plant).toMatchObject({
+      photoPath: last.photoPath,
+      thumbnailPath: last.thumbnailPath,
+    })
+    expect(onPlantUpdated).toHaveBeenCalledWith(result.plant)
+  })
+
+  it('mover una que no es la principal no relee la planta', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(3), options(context))
+    const before = context.rows.photosOf(PLANT_ID)
+    const onPlantUpdated = vi.fn()
+    const result = await reorderPlantPhotos({
+      ...options(context),
+      photos: before,
+      order: orderWithMove(before, before[1].id, 1),
+      onPlantUpdated,
+    })
+    expect(result.photos.map((photo) => photo.id)).toEqual([
+      before[0].id,
+      before[2].id,
+      before[1].id,
+    ])
+    expect(result.plant).toBeNull()
+    expect(onPlantUpdated).not.toHaveBeenCalled()
+  })
+
+  it('el mismo orden no envía nada', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const before = context.rows.photosOf(PLANT_ID)
+    const reorder = vi.spyOn(context.rows, 'reorder')
+    const result = await reorderPlantPhotos({
+      ...options(context),
+      photos: before,
+      order: orderWithMove(before, before[0].id, -1),
+    })
+    expect(reorder).not.toHaveBeenCalled()
+    expect(result.photos).toEqual(before)
+  })
+
+  it('si otra foto se añadió entre tanto, rechaza con «position-taken» y no cambia nada', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const before = context.rows.photosOf(PLANT_ID)
+    await uploadPlantPhotos(newPhotos(1), options(context))
+
+    await expect(
+      reorderPlantPhotos({
+        ...options(context),
+        photos: before,
+        order: orderWithMain(before, before[1].id),
+      }),
+    ).rejects.toMatchObject({ reason: 'position-taken' })
+    expect(context.rows.photosOf(PLANT_ID)[0].id).toBe(before[0].id)
+  })
+
+  it('sin conexión rechaza con «offline» y el orden queda como estaba', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const before = context.rows.photosOf(PLANT_ID)
+    context.rows.failReorder = () => ({
+      error: new PhotoStorageError('offline', { uncertain: true }),
+    })
+    await expect(
+      reorderPlantPhotos({
+        ...options(context),
+        photos: before,
+        order: orderWithMain(before, before[1].id),
+      }),
+    ).rejects.toMatchObject({ reason: 'offline' })
+    expect(context.rows.photosOf(PLANT_ID)).toEqual(before)
+  })
+
+  it('un orden con otras fotos es un error de quien llama', async () => {
+    const context = setup()
+    await uploadPlantPhotos(newPhotos(2), options(context))
+    const before = context.rows.photosOf(PLANT_ID)
+    await expect(
+      reorderPlantPhotos({
+        ...options(context),
+        photos: before,
+        order: [before[0].id, before[0].id],
+      }),
+    ).rejects.toThrow('El orden nuevo no tiene las mismas fotos.')
   })
 })

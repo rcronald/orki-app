@@ -24,7 +24,8 @@ beforeEach(() => {
 
 // Todas las frases del texto aprobado el 22 de noviembre de 2026 (#111),
 // tal como estaban antes del rediseño (#202), salvo la atribución del
-// catálogo, que pasó a «Créditos y fuentes» (CreditsPage.test.tsx). Si falta
+// catálogo, que pasó a «Créditos y fuentes» (CreditsPage.test.tsx), y con la
+// frase de la cola de propuestas puesta al día para varias fotos (#184). Si falta
 // una, la prueba falla: recortar el texto es una decisión del responsable.
 const APPROVED_TEXT = [
   'Tu cuenta: tu correo y, si entras con Google, los datos de tu perfil de Google que recibe el servicio de acceso (como tu nombre y tu foto). Además, orqui.app guarda un perfil con tu identificador de usuario y el idioma de la app.',
@@ -48,7 +49,7 @@ const APPROVED_TEXT = [
   'Tus plantas y sus fotos solo las ves tú. La base de datos solo entrega a cada cuenta sus propias plantas.',
   'Las personas que administran el catálogo de especies tienen dos excepciones:',
   'Pueden ver cuántas plantas de todos los usuarios están enlazadas a cada especie: solo el número, sin saber de quién son.',
-  'Ven las plantas cuyo nombre está «por validar», para confirmar a qué especie corresponden. Las ven agrupadas con las de otros usuarios que escribieron el mismo nombre con el mismo género. De cada grupo ven el nombre tal como lo escribió la mayoría, el género, el tipo más frecuente, cuántas plantas hay y hasta cuatro fotos. Pueden abrir la foto actual de esas plantas, no la de las demás. No reciben el origen, la ubicación, el apodo ni las fechas, y la pantalla no les muestra de quién son.',
+  'Ven las plantas cuyo nombre está «por validar», para confirmar a qué especie corresponden. Las ven agrupadas con las de otros usuarios que escribieron el mismo nombre con el mismo género. De cada grupo ven el nombre tal como lo escribió la mayoría, el género, el tipo más frecuente, cuántas plantas hay y hasta seis fotos. Pueden abrir todas las fotos de esas plantas mientras el nombre está «por validar», no las de las demás. No reciben el origen, la ubicación, el apodo, las fechas ni las notas de las fotos, y la pantalla no les muestra de quién son.',
   'Los cambios que hacen en el catálogo quedan registrados. Cuando resuelven un nombre «por validar», el registro guarda ese nombre, el género y cuántas plantas había, pero no de quién eran ni sus fotos.',
   'Ninguna cuenta de la app puede leer los eventos de uso, tampoco los tuyos: solo se consultan en la base de datos para calcular las mediciones.',
   'Una copia de tu inventario, para que puedas verlo y buscar en él sin conexión. Se borra al cerrar sesión.',

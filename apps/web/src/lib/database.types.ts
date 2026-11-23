@@ -185,8 +185,9 @@ export type Database = {
           updated_at: string
           user_id: string
           validation: Database['public']['Enums']['plant_validation']
+          photo_count: number | null
         }
-        ComputedFields: never
+        ComputedFields: 'photo_count'
         Insert: {
           acquired_on?: string
           created_at?: string
@@ -710,6 +711,15 @@ export type Database = {
         }[]
       }
       normalize_search_text: { Args: { value: string }; Returns: string }
+      photo_count: {
+        Args: {
+          plant: Omit<
+            Database['public']['Tables']['plants']['Row'],
+            Database['public']['Tables']['plants']['ComputedFields']
+          >
+        }
+        Returns: number
+      }
       preview_species_merge: {
         Args: { kept_species_id: string; merged_species_id: string }
         Returns: {
@@ -735,6 +745,27 @@ export type Database = {
         }[]
       }
       record_product_events: { Args: { events: Json }; Returns: undefined }
+      reorder_plant_photos: {
+        Args: { photo_ids: string[]; target_plant_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          in_bloom: boolean
+          note: string | null
+          photo_path: string
+          plant_id: string
+          position: number
+          taken_at: string | null
+          thumbnail_path: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'plant_photos'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
       search_catalog_species: {
         Args: {

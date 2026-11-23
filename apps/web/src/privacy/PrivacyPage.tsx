@@ -27,6 +27,9 @@ import {
 // catálogo, que pasó a «Créditos y fuentes» (con un enlace desde aquí); se
 // reagrupó en cuatro secciones y se añadieron las frases de resumen: de ahí
 // la fecha nueva.
+// Con el #184 (varias fotos por planta) cambió lo que ve el equipo del
+// catálogo de las plantas por validar: hasta seis fotos y todas las de esas
+// plantas, no solo la principal.
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
 // aprobado.
 //
@@ -178,10 +181,11 @@ function sections(state: unknown): TextPageSection[] {
               qué especie corresponden. Las ven agrupadas con las de otros
               usuarios que escribieron el mismo nombre con el mismo género. De
               cada grupo ven el nombre tal como lo escribió la mayoría, el
-              género, el tipo más frecuente, cuántas plantas hay y hasta cuatro
-              fotos. Pueden abrir la foto actual de esas plantas, no la de las
-              demás. No reciben el origen, la ubicación, el apodo ni las fechas,
-              y la pantalla no les muestra de quién son.
+              género, el tipo más frecuente, cuántas plantas hay y hasta seis
+              fotos. Pueden abrir todas las fotos de esas plantas mientras el
+              nombre está «por validar», no las de las demás. No reciben el
+              origen, la ubicación, el apodo, las fechas ni las notas de las
+              fotos, y la pantalla no les muestra de quién son.
             </li>
           </ul>
           <p>

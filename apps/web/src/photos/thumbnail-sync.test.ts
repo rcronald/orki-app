@@ -132,6 +132,81 @@ describe('miniaturas sin conexión', () => {
     )
   })
 
+  describe('con varias fotos por planta (#184)', () => {
+    // Planta 1 con tres fotos: la principal (thumb-v1) y dos más (thumb-v2 y
+    // thumb-v3), que solo están en plant_photos, no en la planta.
+    const many = () =>
+      plant({
+        thumbnailPath: thumb(1, 'v1'),
+        photoPath: `${USER_ID}/${plantId(1)}/photo-v1.webp`,
+        photoCount: 3,
+      })
+
+    it('solo baja la miniatura principal de cada planta', async () => {
+      const storage = storageWith([
+        thumb(1, 'v1'),
+        thumb(1, 'v2'),
+        thumb(1, 'v3'),
+        thumb(2),
+      ])
+      const download = vi.spyOn(storage, 'download')
+      const cache = memoryCache()
+      const result = await syncThumbnails({
+        userId: USER_ID,
+        plants: [many(), plant({ thumbnailPath: thumb(2), photoCount: 1 })],
+        signal: signal(),
+        storage,
+        cache,
+        canDownload: () => true,
+      })
+      expect(result).toEqual({ downloaded: 2, missing: 0 })
+      expect(download.mock.calls.map(([path]) => path).sort()).toEqual(
+        [thumb(1, 'v1'), thumb(2)].sort(),
+      )
+      expect([...cache.blobs.keys()].sort()).toEqual(
+        [thumb(1, 'v1'), thumb(2)].sort(),
+      )
+    })
+
+    it('la limpieza conserva la principal y la de otros usuarios; las secundarias vistas en el detalle no se guardan para sin conexión', async () => {
+      const ajena = thumb(9, 'v1', 'user_otro')
+      // La galería del detalle dejó en la caché las otras dos miniaturas.
+      const cache = memoryCache([
+        thumb(1, 'v1'),
+        thumb(1, 'v2'),
+        thumb(1, 'v3'),
+        ajena,
+      ])
+      await syncThumbnails({
+        userId: USER_ID,
+        plants: [many()],
+        signal: signal(),
+        storage: storageWith([]),
+        cache,
+        canDownload: () => false,
+      })
+      expect([...cache.blobs.keys()].sort()).toEqual(
+        [thumb(1, 'v1'), ajena].sort(),
+      )
+    })
+
+    it('al quitar la principal, la siguiente pasa a ser la que se guarda, sin bajarla otra vez si ya estaba', async () => {
+      const storage = storageWith([thumb(1, 'v2')])
+      const download = vi.spyOn(storage, 'download')
+      const cache = memoryCache([thumb(1, 'v1'), thumb(1, 'v2')])
+      await syncThumbnails({
+        userId: USER_ID,
+        plants: [plant({ thumbnailPath: thumb(1, 'v2'), photoCount: 2 })],
+        signal: signal(),
+        storage,
+        cache,
+        canDownload: () => true,
+      })
+      expect(download).not.toHaveBeenCalled()
+      expect([...cache.blobs.keys()]).toEqual([thumb(1, 'v2')])
+    })
+  })
+
   it('sin conexión o con ahorro de datos, limpia pero no descarga', async () => {
     const storage = storageWith([thumb(1)])
     const download = vi.spyOn(storage, 'download')

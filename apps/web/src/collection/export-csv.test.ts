@@ -11,7 +11,7 @@ import {
 } from './export-csv.ts'
 
 const HEADER =
-  'Nombre científico,Nombre ingresado,Género,Tipo,Estado,Validación,Fecha de adquisición,Origen,Ubicación,Apodo,Color de flor,Foto en floración,Fecha de registro'
+  'Nombre científico,Nombre ingresado,Género,Tipo,Estado,Validación,Fecha de adquisición,Origen,Ubicación,Apodo,Color de flor,Foto en floración,Fecha de registro,Número de fotos'
 
 // Filas del archivo sin la marca de orden de bytes ni la línea final vacía.
 function rows(csv: string): string[] {
@@ -40,9 +40,9 @@ describe('inventoryCsv', () => {
     expect(csv.charCodeAt(0)).toBe(0xfeff)
     expect(rows(csv)).toEqual([
       HEADER,
-      'Phalaenopsis amabilis,phalaenopsis amabilis,Phalaenopsis,Especie,Activa,Validada,2026-11-01,Vivero Los Andes,Ventana de la sala,La blanca,Blanco,Sí,2026-11-01',
+      'Phalaenopsis amabilis,phalaenopsis amabilis,Phalaenopsis,Especie,Activa,Validada,2026-11-01,Vivero Los Andes,Ventana de la sala,La blanca,Blanco,Sí,2026-11-01,1',
     ])
-    expect(CSV_COLUMNS).toHaveLength(13)
+    expect(CSV_COLUMNS).toHaveLength(14)
   })
 
   it('al codificarse en UTF-8 la marca son los bytes EF BB BF y las tildes, la ñ y el "×" se conservan', async () => {
@@ -77,7 +77,7 @@ describe('inventoryCsv', () => {
       createdAt: '2026-10-05T12:00:00+00:00',
     })
     expect(rows(inventoryCsv([pending]))[1]).toBe(
-      ',la naranja del mercado,Phalaenopsis,No sé,Activa,Por validar,2026-10-05,,,,,,2026-10-05',
+      ',la naranja del mercado,Phalaenopsis,No sé,Activa,Por validar,2026-10-05,,,,,,2026-10-05,0',
     )
   })
 
@@ -110,6 +110,19 @@ describe('inventoryCsv', () => {
         .slice(1)
         .map((row) => row.split(',')[11]),
     ).toEqual(['Sí', 'No', ''])
+  })
+
+  it('número de fotos: de 0 a 6, en la última columna, sin mover las demás', () => {
+    const csv = inventoryCsv([
+      plant({ photoPath: 'u/a.webp', photoCount: 6, displayName: 'A' }),
+      plant({ photoPath: 'u/b.webp', photoCount: 1, displayName: 'B' }),
+      plant({ photoPath: null, photoCount: 0, displayName: 'C' }),
+    ])
+    const [header, ...lines] = rows(csv)
+    expect(header?.split(',').at(-1)).toBe('Número de fotos')
+    expect(header?.split(',')[12]).toBe('Fecha de registro')
+    expect(lines.map((row) => row.split(',').at(-1))).toEqual(['6', '1', '0'])
+    expect(csv).not.toContain('u/a.webp')
   })
 
   it('ordena por género y por nombre, sin tener en cuenta el "×" ni las tildes', () => {
@@ -148,7 +161,7 @@ describe('inventoryCsv', () => {
     expect(row).toContain('"Vivero, Lima"')
     expect(row).toContain('"Sala\nventana norte"')
     expect(row).toContain('"La ""reina"", de casa"')
-    expect(parseCsv(csv.slice(BOM.length))[1]).toHaveLength(13)
+    expect(parseCsv(csv.slice(BOM.length))[1]).toHaveLength(14)
     expect(parseCsv(csv.slice(BOM.length))[1]?.[9]).toBe('La "reina", de casa')
   })
 

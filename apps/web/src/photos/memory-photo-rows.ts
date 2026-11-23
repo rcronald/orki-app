@@ -1,7 +1,9 @@
 import type { CollectionPlant } from '../collection/model.ts'
+import { localDateString } from '../lib/localDate.ts'
 import { MAX_PLANT_PHOTOS } from './paths.ts'
 import {
   byPosition,
+  type PlantPhotoRowChanges,
   type PlantPhotoRowInsert,
   type PlantPhotoRows,
   type StoredPlantPhoto,
@@ -10,8 +12,11 @@ import { PhotoStorageError } from './storage.ts'
 
 // plant_photos en memoria, con la misma interfaz que la de PostgREST y las
 // reglas de la base que importan a la app (#219): dueño, carpeta de las rutas,
-// posición de 0 a 5 y única por planta, y copia de la principal a las columnas
-// de la planta. Lo usan las pruebas (y lo puede usar la página de muestra).
+// posición de 0 a 5 y única por planta, nota (no en blanco, hasta 500) y fecha
+// (no futura, con un día de margen), copia de la principal a las columnas de
+// la planta y número de fotos (photoCount) al releerla. reorder() hace lo
+// mismo que la función reorder_plant_photos de la base (#183). Lo usan las
+// pruebas (y lo puede usar la página de muestra).
 // Puede fallar a voluntad, también "después de aplicar" (la red cae con la
 // fila ya guardada).
 
@@ -31,6 +36,14 @@ export interface MemoryPlantPhotoRows extends PlantPhotoRows {
   failInsert:
     ((row: PlantPhotoRowInsert) => SimulatedRowFailure | null) | undefined
   failRemove: ((photoId: string) => SimulatedRowFailure | null) | undefined
+  failUpdate:
+    | ((
+        photoId: string,
+        changes: PlantPhotoRowChanges,
+      ) => SimulatedRowFailure | null)
+    | undefined
+  failReorder:
+    ((photoIds: readonly string[]) => SimulatedRowFailure | null) | undefined
   failReadPlant: (() => PhotoStorageError | null) | undefined
   /** Fotos de una planta en orden (para las comprobaciones de las pruebas). */
   photosOf(plantId: string): StoredPlantPhoto[]
@@ -42,6 +55,18 @@ function inFolder(path: string, userId: string, plantId: string): boolean {
     path.startsWith(folder) &&
     path.length > folder.length &&
     !path.slice(folder.length).includes('/')
+  )
+}
+
+/** Las restricciones de la tabla sobre la nota y la fecha (23514). */
+function validDetails(row: StoredPlantPhoto): boolean {
+  const { note, takenAt } = row
+  if (note !== null && (note.trim() === '' || note.length > 500)) return false
+  if (takenAt === null) return true
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(takenAt) && takenAt <= localDateString(tomorrow)
   )
 }
 
@@ -79,6 +104,8 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
     failList: undefined,
     failInsert: undefined,
     failRemove: undefined,
+    failUpdate: undefined,
+    failReorder: undefined,
     failReadPlant: undefined,
     photosOf,
 
@@ -147,6 +174,51 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
       return Promise.resolve(deleted)
     },
 
+    update(photoId, userId, changes) {
+      const failure = store.failUpdate?.(photoId, changes)
+      if (failure && !failure.applied) return Promise.reject(failure.error)
+      const row = rows.get(photoId)
+      if (!row || row.userId !== userId) {
+        return Promise.reject(new PhotoStorageError('not-found'))
+      }
+      const next = { ...row }
+      if (changes.takenAt !== undefined) next.takenAt = changes.takenAt
+      if (changes.note !== undefined) next.note = changes.note
+      if (changes.inBloom !== undefined) next.inBloom = changes.inBloom
+      if (!validDetails(next)) {
+        return Promise.reject(new PhotoStorageError('failed'))
+      }
+      rows.set(photoId, next)
+      copyMainPhoto(row.plantId)
+      if (failure) return Promise.reject(failure.error)
+      return Promise.resolve(plain(next))
+    },
+
+    reorder(plantId, userId, photoIds) {
+      const failure = store.failReorder?.(photoIds)
+      if (failure && !failure.applied) return Promise.reject(failure.error)
+      const current = photosOf(plantId).filter(
+        (photo) => rows.get(photo.id)?.userId === userId,
+      )
+      const wanted = new Set(photoIds)
+      if (
+        wanted.size !== photoIds.length ||
+        current.length !== photoIds.length ||
+        current.some((photo) => !wanted.has(photo.id))
+      ) {
+        // 22023 de la función: la lista no es la de las fotos de la planta.
+        return Promise.reject(new PhotoStorageError('position-taken'))
+      }
+      // Una sola sentencia: todas las posiciones cambian a la vez.
+      photoIds.forEach((id, position) => {
+        const row = rows.get(id)
+        if (row) rows.set(id, { ...row, position })
+      })
+      copyMainPhoto(plantId)
+      if (failure) return Promise.reject(failure.error)
+      return Promise.resolve(photosOf(plantId))
+    },
+
     readPlant(plantId, userId) {
       const failure = store.failReadPlant?.()
       if (failure) return Promise.reject(failure)
@@ -154,7 +226,11 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
       if (!plant || plant.userId !== userId) {
         return Promise.reject(new PhotoStorageError('not-found'))
       }
-      const copy: Partial<typeof plant> = { ...plant }
+      // Como photo_count: el número de filas de la planta.
+      const copy: Partial<typeof plant> = {
+        ...plant,
+        photoCount: photosOf(plantId).length,
+      }
       delete copy.userId
       return Promise.resolve(copy as CollectionPlant)
     },

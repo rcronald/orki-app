@@ -1,8 +1,10 @@
 import type { CollectionPlant } from '../collection/model.ts'
+import { isCalendarDate, localDateString } from '../lib/localDate.ts'
 import { MAX_PLANT_PHOTOS, plantPhotoPaths } from './paths.ts'
 import {
   appPlantPhotoRows,
   byPosition,
+  type PlantPhotoRowChanges,
   type PlantPhotoRows,
   type StoredPlantPhoto,
 } from './photo-rows.ts'
@@ -25,7 +27,9 @@ import {
 // varias fotos ya preparadas, añadir a una planta que ya tiene, quitar una y
 // leerlas en orden. La usan el registro y la edición (PlantForm, #221); la
 // base copia la principal a las columnas de plants, que leen la tarjeta del
-// inventario y las versiones de la app ya instaladas.
+// inventario y las versiones de la app ya instaladas. La galería del detalle
+// (#183) cambia la fecha, la nota y "en floración" de una foto
+// (updatePlantPhoto) y el orden (reorderPlantPhotos, con la principal).
 //
 // Orden de las operaciones al subir una foto: primero los dos archivos y
 // después la fila.
@@ -360,8 +364,10 @@ export async function uploadPlantPhotos(
 
   const finalResults = results as PlantPhotoUploadResult[]
   const mainAfter = saved[0]?.id ?? null
+  // Se relee la planta si cambió la principal o el número de fotos
+  // (photoCount, #184): la tarjeta y la exportación leen las dos cosas.
   const plant =
-    mainAfter !== mainBefore
+    mainAfter !== mainBefore || saved.length !== before.length
       ? await refreshPlant(rows, plantId, userId, onPlantUpdated)
       : null
   return {
@@ -439,4 +445,187 @@ export async function removeStoredPlantPhoto({
   ]
   const leftovers = await removeQuietly(storage, paths)
   return { photosDeleted: leftovers.length === 0, leftovers, plant }
+}
+
+// Fecha, nota y "en floración" (#183) ------------------------------------------
+
+/** Tope de la nota de una foto (plant_photos_note_valid). */
+export const MAX_PHOTO_NOTE_LENGTH = 500
+
+/** Fecha, nota y "en floración" de una foto, ya normalizadas. */
+export interface PlantPhotoDetails {
+  /** AAAA-MM-DD o null. */
+  takenAt: string | null
+  /** Sin espacios al principio ni al final; null si queda vacía. */
+  note: string | null
+  inBloom: boolean
+}
+
+/** Qué está mal en lo que se escribió; vacío si nada. */
+export interface PlantPhotoDetailsProblems {
+  takenAt?: 'invalid' | 'future'
+  note?: 'too-long'
+}
+
+/** Largo de un texto como lo cuenta Postgres (char_length): por caracteres. */
+export function noteLength(note: string): number {
+  return [...note].length
+}
+
+/**
+ * Normaliza lo escrito en el formulario de una foto y dice qué está mal, con
+ * las reglas de la base: fecha opcional y no posterior a hoy (la base deja un
+ * día de margen por las zonas horarias; aquí se usa el día de este
+ * dispositivo) y nota opcional de hasta 500 caracteres.
+ */
+export function checkPlantPhotoDetails(
+  input: { takenAt: string; note: string; inBloom: boolean },
+  today: string = localDateString(),
+): { details: PlantPhotoDetails; problems: PlantPhotoDetailsProblems } {
+  const takenAt = input.takenAt.trim() === '' ? null : input.takenAt.trim()
+  const trimmed = input.note.trim()
+  const note = trimmed === '' ? null : trimmed
+  const problems: PlantPhotoDetailsProblems = {}
+  if (takenAt !== null && !isCalendarDate(takenAt)) problems.takenAt = 'invalid'
+  else if (takenAt !== null && takenAt > today) problems.takenAt = 'future'
+  if (note !== null && noteLength(note) > MAX_PHOTO_NOTE_LENGTH) {
+    problems.note = 'too-long'
+  }
+  return { details: { takenAt, note, inBloom: input.inBloom }, problems }
+}
+
+export interface UpdatePlantPhotoOptions extends PlantGalleryOptions {
+  /** La foto que se cambia, tal como se leyó. */
+  photo: Pick<StoredPlantPhoto, 'id' | 'inBloom'>
+  /** true si es la principal: su "en floración" se copia a la planta. */
+  main: boolean
+  changes: PlantPhotoRowChanges
+}
+
+export interface UpdatePlantPhotoResult {
+  photo: StoredPlantPhoto
+  /** La planta releída si cambió "en floración" de la principal; si no, null. */
+  plant: CollectionPlant | null
+}
+
+/**
+ * Cambia la fecha, la nota o "en floración" de una foto guardada. La nota se
+ * guarda sin espacios a los lados (vacía, null). Si lo pasado no cumple las
+ * reglas (checkPlantPhotoDetails), rechaza con PhotoStorageError `failed` sin
+ * enviar nada; si la foto ya no existe, con `not-found`; sin conexión, con
+ * `offline`. Si cambió "en floración" de la principal, la base lo copia a la
+ * planta y se relee (onPlantUpdated), como al quitar una foto.
+ */
+export async function updatePlantPhoto({
+  userId,
+  plantId,
+  photo,
+  main,
+  changes,
+  rows = appPlantPhotoRows(),
+  onPlantUpdated,
+}: UpdatePlantPhotoOptions): Promise<UpdatePlantPhotoResult> {
+  const patch: PlantPhotoRowChanges = { ...changes }
+  if (patch.note !== undefined && patch.note !== null) {
+    const trimmed = patch.note.trim()
+    patch.note = trimmed === '' ? null : trimmed
+  }
+  const { problems } = checkPlantPhotoDetails({
+    takenAt: patch.takenAt ?? '',
+    note: patch.note ?? '',
+    inBloom: false,
+  })
+  if (problems.takenAt || problems.note) {
+    throw new PhotoStorageError('failed', { cause: problems })
+  }
+  const updated = await rows.update(photo.id, userId, patch)
+  const plant =
+    main && patch.inBloom !== undefined && patch.inBloom !== photo.inBloom
+      ? await refreshPlant(rows, plantId.toLowerCase(), userId, onPlantUpdated)
+      : null
+  return { photo: updated, plant }
+}
+
+// Orden y foto principal (#183) ----------------------------------------------
+
+/** Ids en el orden de `photos`, con `photoId` al principio (la principal). */
+export function orderWithMain(
+  photos: readonly Pick<StoredPlantPhoto, 'id'>[],
+  photoId: string,
+): string[] {
+  const ids = photos.map((photo) => photo.id)
+  if (!ids.includes(photoId)) return ids
+  return [photoId, ...ids.filter((id) => id !== photoId)]
+}
+
+/**
+ * Ids en el orden de `photos`, con `photoId` un lugar antes (-1) o después
+ * (1). En un extremo, el orden no cambia.
+ */
+export function orderWithMove(
+  photos: readonly Pick<StoredPlantPhoto, 'id'>[],
+  photoId: string,
+  offset: -1 | 1,
+): string[] {
+  const ids = photos.map((photo) => photo.id)
+  const from = ids.indexOf(photoId)
+  const to = from + offset
+  if (from === -1 || to < 0 || to >= ids.length) return ids
+  ids[from] = ids[to]
+  ids[to] = photoId
+  return ids
+}
+
+export interface ReorderPlantPhotosOptions extends PlantGalleryOptions {
+  /** Las fotos de la planta tal como se leyeron, en orden. */
+  photos: readonly StoredPlantPhoto[]
+  /** Los mismos ids en el orden nuevo (orderWithMain, orderWithMove). */
+  order: readonly string[]
+}
+
+export interface ReorderPlantPhotosResult {
+  /** Todas las fotos en el orden nuevo, con sus posiciones (0, 1, 2...). */
+  photos: StoredPlantPhoto[]
+  /** La planta releída si cambió la principal; si no, null. */
+  plant: CollectionPlant | null
+}
+
+/**
+ * Cambia el orden de las fotos de una planta de una vez: o queda el orden
+ * nuevo entero, o el de antes (nunca una galería a medias). La primera es la
+ * principal: si cambia, la base la copia a la planta y se relee
+ * (onPlantUpdated), así la tarjeta del inventario muestra la nueva. Si el
+ * orden es el mismo, no envía nada.
+ *
+ * Rechaza con PhotoStorageError: `position-taken` si las fotos de la planta
+ * ya no son las que se leyeron (otro dispositivo añadió o quitó una; hay que
+ * volver a leerlas), `offline`, `session-ended` o `failed`.
+ */
+export async function reorderPlantPhotos({
+  userId,
+  plantId,
+  photos,
+  order,
+  rows = appPlantPhotoRows(),
+  onPlantUpdated,
+}: ReorderPlantPhotosOptions): Promise<ReorderPlantPhotosResult> {
+  const ids = photos.map((photo) => photo.id)
+  if (
+    order.length !== ids.length ||
+    new Set(order).size !== order.length ||
+    order.some((id) => !ids.includes(id))
+  ) {
+    // Error de quien llama: el orden tiene que tener las mismas fotos.
+    throw new Error('El orden nuevo no tiene las mismas fotos.')
+  }
+  if (order.every((id, index) => id === ids[index])) {
+    return { photos: [...photos], plant: null }
+  }
+  const id = plantId.toLowerCase()
+  const reordered = await rows.reorder(id, userId, order)
+  const plant =
+    reordered[0]?.id !== ids[0]
+      ? await refreshPlant(rows, id, userId, onPlantUpdated)
+      : null
+  return { photos: reordered, plant }
 }

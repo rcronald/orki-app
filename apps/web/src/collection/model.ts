@@ -31,9 +31,12 @@ import type {
  * Las pantallas que escriban una planta (#11, #16) pueden pedir de vuelta las
  * mismas columnas (.select(COLLECTION_PLANT_SELECT)) y pasar la fila por
  * toCollectionPlant() para reflejarla en la colección sin volver a leerla.
+ *
+ * photo_count es un campo calculado (public.photo_count(plants), #184): el
+ * número de filas de plant_photos de la planta, de 0 a 6.
  */
 export const COLLECTION_PLANT_SELECT =
-  'id, entered_name, type, validation, status, acquired_on, origin, location, nickname, flower_color, photo_in_bloom, photo_path, thumbnail_path, created_at, updated_at, species:species_id (id, scientific_name, type, status), genus:genus_id (id, name)'
+  'id, entered_name, type, validation, status, acquired_on, origin, location, nickname, flower_color, photo_in_bloom, photo_path, thumbnail_path, photo_count, created_at, updated_at, species:species_id (id, scientific_name, type, status), genus:genus_id (id, name)'
 
 /** Fila tal como la devuelve la consulta de COLLECTION_PLANT_SELECT. */
 export type CollectionPlantRow = Pick<
@@ -54,6 +57,11 @@ export type CollectionPlantRow = Pick<
   | 'created_at'
   | 'updated_at'
 > & {
+  /**
+   * Número de fotos (campo calculado). Opcional en el tipo: una fila sin él
+   * (una respuesta simulada antigua, por ejemplo) se trata con photoCountOf().
+   */
+  photo_count?: number | null
   species: Pick<Species, 'id' | 'scientific_name' | 'type' | 'status'> | null
   genus: Pick<Genus, 'id' | 'name'>
 }
@@ -104,6 +112,32 @@ export interface CollectionPlant {
   photoPath: string | null
   /** Ruta de la miniatura en el almacenamiento privado (#10), no una dirección. */
   thumbnailPath: string | null
+  /**
+   * Número de fotos de la planta (#184), de 0 a 6; la principal es la de
+   * photoPath. Para un indicador discreto en la tarjeta cuando hay más de una
+   * (aún sin pintar). Viene de la lectura de la planta; tras añadir o quitar
+   * fotos, la galería relee la planta (gallery.ts). Una copia sin conexión
+   * guardada antes del #184 no lo trae: fromStoredCopy() lo deduce con
+   * photoCountOf() (1 si hay principal, 0 si no) hasta la siguiente lectura.
+   */
+  photoCount: number
+}
+
+/**
+ * Número de fotos de una planta a partir de lo leído: photo_count si llegó y,
+ * como mínimo, 1 si tiene principal. El mínimo cubre las filas sin el dato
+ * (copias y respuestas anteriores al #184) y la respuesta de un insert o
+ * update que crea la principal en la misma sentencia (la base devuelve el
+ * recuento de antes; ver la migración 20261124090000).
+ */
+export function photoCountOf(
+  photoCount: unknown,
+  photoPath: string | null,
+): number {
+  const main = photoPath === null ? 0 : 1
+  return typeof photoCount === 'number' && Number.isInteger(photoCount)
+    ? Math.max(photoCount, main)
+    : main
 }
 
 /** Pasa una fila de la consulta al modelo de la colección. */
@@ -136,5 +170,6 @@ export function toCollectionPlant(row: CollectionPlantRow): CollectionPlant {
     photoInBloom: row.photo_in_bloom,
     photoPath: row.photo_path,
     thumbnailPath: row.thumbnail_path,
+    photoCount: photoCountOf(row.photo_count, row.photo_path),
   }
 }

@@ -46,6 +46,7 @@ function samplePlant(
     photoInBloom: false,
     photoPath: null,
     thumbnailPath: null,
+    photoCount: (data.photoPath ?? null) === null ? 0 : 1,
     ...data,
   }
 }

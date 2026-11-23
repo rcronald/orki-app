@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { PLANT_STATUS_LABEL } from '../collection/labels.ts'
 import type { CollectionPlant } from '../collection/model.ts'
-import { useReadOnly } from '../collection/useReadOnly.ts'
+import { useReadOnly, type ReadOnlyReason } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
+import { Icon } from '../components/ui/Icon.tsx'
 import { ActionNotice } from '../detail/ActionNotice.tsx'
 import { BackToCollection } from '../detail/BackToCollection.tsx'
 import { cameFromInventory } from '../detail/navigation.ts'
@@ -17,16 +18,29 @@ import {
   type PlantActionServices,
 } from '../detail/PlantActions.tsx'
 import { PlantDetailView, PlantName } from '../detail/PlantDetailView.tsx'
+import {
+  PlantGallery,
+  type PlantGalleryServices,
+} from '../detail/PlantGallery.tsx'
 import { DETAIL_TEXT } from '../detail/texts.ts'
+import { usePlantGallery } from '../detail/usePlantGallery.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { deletePlantWithPhotos } from '../photos/delete.ts'
+import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
+import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
 import { updatePlant } from '../registration/save-plant.ts'
 import { PATHS } from '../routes/paths.ts'
 
 // Detalle de un ejemplar (#16), en /coleccion/:plantId. Exige sesión y va en
 // su propio chunk (App.tsx lo carga de forma diferida). Los datos salen de la
-// colección en memoria (usePlantLookup); la foto completa se pide aquí.
+// colección en memoria (usePlantLookup); las fotos, de plant_photos
+// (usePlantGallery, #183), con la principal de la colección mientras tanto o
+// sin conexión.
+//
+// Diseño (#183): la cabecera de pantalla (PageHeader) con «Volver a Mi
+// colección», el nombre como título y el apodo debajo; la galería a la
+// izquierda y los datos y las acciones a la derecha (PlantDetailView).
 //
 // Siempre se pinta una sola <Page>: al pasar de "cargando" a la planta, el h1
 // es el mismo elemento y conserva el foco que le dio la navegación.
@@ -35,7 +49,9 @@ import { PATHS } from '../routes/paths.ts'
 // - guardar la edición o dar de baja o reactivar: aquí, con la planta ya
 //   actualizada en la colección (upsertPlant);
 // - eliminar: el inventario ("atrás" si se llegó desde él, para conservar la
-//   búsqueda, los filtros y la posición), con el aviso de lo eliminado.
+//   búsqueda, los filtros y la posición), con el aviso de lo eliminado;
+// - cambiar la principal o su «en flor» desde la galería: aquí, con la planta
+//   releída en la colección (la tarjeta del inventario ya muestra la nueva).
 
 type DetailNotice =
   | { kind: 'saved' }
@@ -46,6 +62,16 @@ type DetailNotice =
 function savedNoticeFor(plantId: string | undefined) {
   const notice = peekPlantNotice()
   return notice?.kind === 'saved' && notice.plantId === plantId ? notice : null
+}
+
+/** «Volver a Mi colección»: el de la cabecera, de 44 px de alto (#174). */
+function Back() {
+  return (
+    <BackToCollection className="orki-link orki-pagehead__back">
+      <Icon name="arrow-left" />
+      {DETAIL_TEXT.back}
+    </BackToCollection>
+  )
 }
 
 export default function PlantDetailPage() {
@@ -86,6 +112,7 @@ export default function PlantDetailPage() {
   }
 
   const shown = lookup.status === 'found' ? lookup.plant : departed
+  const header = (meta?: string) => ({ art: false, meta, back: <Back /> })
 
   if (shown !== null) {
     const plant = shown
@@ -101,10 +128,14 @@ export default function PlantDetailPage() {
       <Page
         title={plant.displayName}
         heading={<PlantName plant={plant} />}
-        before={<BackToCollection />}
+        width="wide"
+        header={header(plant.nickname ?? undefined)}
       >
-        <PlantDetailView
+        <PlantDetailContent
           plant={plant}
+          userId={userId}
+          readOnly={readOnly}
+          onPlantUpdated={upsertPlant}
           notice={
             <>
               {noticeText && (
@@ -164,23 +195,84 @@ export default function PlantDetailPage() {
   switch (lookup.status) {
     case 'error':
       return (
-        <Page title={DETAIL_TEXT.errorTitle} before={<BackToCollection />}>
+        <Page title={DETAIL_TEXT.errorTitle} width="wide" header={header()}>
           <LoadErrorPanel error={lookup.error} onRetry={collection.reload} />
         </Page>
       )
     case 'not-found':
       return (
-        <Page title={DETAIL_TEXT.notFoundTitle} before={<BackToCollection />}>
+        <Page title={DETAIL_TEXT.notFoundTitle} width="wide" header={header()}>
           <p className="text-md text-neutral-700">{DETAIL_TEXT.notFound}</p>
         </Page>
       )
     default:
       return (
-        <Page title={DETAIL_TEXT.loadingTitle} before={<BackToCollection />}>
+        <Page title={DETAIL_TEXT.loadingTitle} width="wide" header={header()}>
           <p role="status" className="text-md text-neutral-700">
             {DETAIL_TEXT.loading}
           </p>
         </Page>
       )
   }
+}
+
+interface PlantDetailContentProps {
+  plant: CollectionPlant
+  userId: string | null
+  readOnly: ReadOnlyReason | null
+  onPlantUpdated: (plant: CollectionPlant) => void
+  notice: ReactNode
+  actions: ReactNode
+}
+
+/** Galería, datos y acciones de la planta, con las fotos de plant_photos. */
+function PlantDetailContent({
+  plant,
+  userId,
+  readOnly,
+  onPlantUpdated,
+  notice,
+  actions,
+}: PlantDetailContentProps) {
+  const gallery = usePlantGallery(plant, userId)
+  const rows = usePlantPhotoRows()
+  const owner = userId ?? ''
+  const services: PlantGalleryServices = {
+    updatePhoto: ({ photo, main, details }) =>
+      updatePlantPhoto({
+        userId: owner,
+        plantId: plant.id,
+        photo,
+        main,
+        changes: details,
+        rows,
+        onPlantUpdated,
+      }),
+    reorderPhotos: ({ photos, order }) =>
+      reorderPlantPhotos({
+        userId: owner,
+        plantId: plant.id,
+        photos,
+        order,
+        rows,
+        onPlantUpdated,
+      }),
+  }
+  return (
+    <PlantDetailView
+      plant={plant}
+      notice={notice}
+      gallery={
+        <PlantGallery
+          key={plant.id}
+          plant={plant}
+          gallery={gallery}
+          readOnly={readOnly}
+          services={services}
+          onPlantUpdated={onPlantUpdated}
+        />
+      }
+      actions={actions}
+    />
+  )
 }

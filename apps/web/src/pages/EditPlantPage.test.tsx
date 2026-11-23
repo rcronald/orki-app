@@ -4,7 +4,7 @@ import { Route } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LAST_USER_KEY } from '../auth/offline-identity.ts'
 import type { CollectionPlant } from '../collection/model.ts'
-import { DETAIL_TEXT } from '../detail/texts.ts'
+import { DETAIL_TEXT, GALLERY_TEXT } from '../detail/texts.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { PhotoProcessingError } from '../photos/errors.ts'
 import type { ProcessedPhoto } from '../photos/process.ts'
@@ -123,6 +123,8 @@ async function renderEdit(
     plants,
     images: images.source,
     extraRoutes: <Route path={PATHS.editPlant} element={<EditPlantPage />} />,
+    // El detalle lee las fotos del mismo Supabase simulado que la edición.
+    photoRows: null,
   })
   if (entries === undefined) {
     const first = plants[0]
@@ -489,7 +491,9 @@ describe('EditPlantPage', () => {
       `${USER}/${AMABILIS_ID}/photo-v1.webp`,
       `${USER}/${AMABILIS_ID}/thumb-v1.webp`,
     ])
-    expect(screen.getByRole('img', { name: DETAIL_TEXT.noPhoto })).toBeVisible()
+    expect(
+      await screen.findByRole('img', { name: GALLERY_TEXT.noPhoto }),
+    ).toBeVisible()
   })
 
   it('quitar la principal y añadir otra: la nueva pasa a ser la principal y la tarjeta la usa', async () => {

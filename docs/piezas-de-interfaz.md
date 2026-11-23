@@ -1,4 +1,4 @@
-# Piezas de interfaz para «Mi colección», «¿Ya la tengo?», «Tu cuenta» y el registro
+# Piezas de interfaz para «Mi colección», «¿Ya la tengo?», «Tu cuenta», el registro y el detalle
 
 Guía de uso de las piezas del design system que dejaron listas el #206, el #213,
 el #207 y el #220 para los rediseños de «Mi colección» (#208), «¿Ya la tengo?»
@@ -749,6 +749,97 @@ desactivados). En escritorio, tres columnas (anterior a la izquierda, la
 página en el centro, siguiente a la derecha); hasta 720 px, la página arriba a
 todo el ancho y los dos enlaces debajo, cada uno en su mitad. La pantalla lleva
 el foco al título de la lista al cambiar de página.
+
+## Galería del detalle y visor (#183)
+
+Para el detalle de una planta (`/coleccion/:id`). En `/muestra`, sección
+«Detalle del ejemplar» (abre «Ver el detalle»): galería con tres fotos en
+memoria, visor, fecha y nota, principal y orden.
+
+### Diseño del detalle: `orki-detail`
+
+`div.orki-detail` > `div.orki-detail__media` (galería) + `div.orki-detail__info`
+(`Panel` de datos y acciones). En escritorio, dos columnas iguales alineadas
+arriba; hasta 720 px, una columna en el orden del documento. Lo pinta
+`PlantDetailView` (prop `gallery`).
+
+### Galería: `orki-viewer`
+
+`detail/PlantGallery.tsx` (sabe de plantas: pide las miniaturas con
+`usePlantImage` y escribe con los servicios que le pasan). Marcado:
+
+```html
+<section class="orki-viewer" aria-labelledby="…">
+  <div class="orki-viewer__head">
+    <h2 class="orki-viewer__title">Fotos</h2>
+    <span class="orki-gallery__count">4 de 6</span>
+  </div>
+  <button class="orki-viewer__main" aria-label="Ver en grande: Foto principal de …">
+    <img class="orki-viewer__photo" alt="Foto principal de …" />
+  </button>
+  <ul class="orki-viewer__thumbs" aria-label="Elegir la foto que se ve">
+    <li><button class="orki-viewer__thumb" aria-pressed="true" aria-label="Foto principal"><img alt="" /></button></li>
+  </ul>
+  <div class="orki-viewer__facts">
+    <p class="orki-viewer__meta">Foto del 5 de octubre de 2026 <span class="orki-match">En flor</span></p>
+    <p class="orki-viewer__note">…</p>
+  </div>
+  <div class="orki-viewer__tools">…botones secundarios…</div>
+  <p class="orki-viewer__hint" id="…">motivo de los deshabilitados</p>
+  <p class="orki-viewer__status" role="status"></p>
+  <a class="orki-btn orki-btn--secondary orki-viewer__manage">Añadir o quitar fotos</a>
+</section>
+```
+
+- Foto grande 4:3 sobre `color-neutral-50`, `radius-lg`, entera
+  (`object-fit: contain`); sin foto, `orki-viewer__photo--empty` con el
+  marcador `sin-foto.svg`. Es siempre el mismo botón (el foco vuelve a él al
+  cerrar el visor).
+- Miniaturas en seis columnas (mínimo 44 px de alto), recortadas; la elegida
+  con borde de 3 px `color-secondary-strong`.
+- Hueco de una foto que no está (sin conexión o que no cargó):
+  `span.orki-viewer__missing` con `cloud-off` y «Disponible con conexión» (en
+  la miniatura, solo el icono y el texto en su nombre). Nunca una imagen rota.
+- Avisos: `orki-viewer__notice` (neutro, con icono y, si aplica,
+  «Reintentar») y `orki-viewer__error` (`role="alert"`, `color-danger-soft`).
+- Acciones (`orki-viewer__tools`): en fila; hasta 720 px, rejilla de dos
+  columnas con las dos primeras a todo el ancho.
+- Formulario de fecha y nota (`orki-viewer__form`, con `__formtitle` h3 y
+  `__formactions`): `TextField type="date"`, un `textarea.orki-field__input`
+  con contador en `orki-field__hint`, `Chip` «En flor», y «Cancelar» y
+  «Guardar» (principal) a la derecha; hasta 720 px, uno sobre otro con
+  «Guardar» arriba.
+
+### `PhotoLightbox` (`components/ui/PhotoLightbox.tsx`)
+
+Visor a pantalla completa sobre `Modal` (foco atrapado, Escape, foco devuelto).
+
+```ts
+interface PhotoLightboxProps {
+  title: string // nombre del diálogo: «Fotos de Cattleya maxima»
+  count: number
+  index: number // la que se ve, desde 0
+  onIndexChange: (index: number) => void
+  onClose: () => void
+  children: ReactNode // la imagen: <img className="orki-lightbox__photo" alt="…">
+  caption?: ReactNode // fecha y nota (PhotoFacts)
+}
+```
+
+- Fondo `color-neutral-900`, texto y anillo de foco `color-neutral-0`.
+  Título y «Foto 2 de 4» (`aria-live="polite"`) arriba a la izquierda,
+  «Cerrar» (48 px, primer foco) arriba a la derecha, la imagen entera en el
+  centro y el texto debajo (con su propio desplazamiento si es largo).
+- «Foto anterior» y «Foto siguiente» (48 px, a los lados de la imagen), las
+  flechas ← y → del teclado y deslizar el dedo (más de 48 px en horizontal).
+  En los extremos, `aria-disabled` sobre `color-neutral-700`; no da la vuelta.
+  Con una sola foto no aparecen.
+- No sabe de dónde salen las imágenes: quien lo usa decide qué descargar (el
+  detalle pide la foto completa solo aquí y muestra la miniatura mientras
+  tanto).
+- Clases: `orki-lightbox` (capa), `__panel`, `__title`, `__count`, `__close`,
+  `__stage`, `__photo`, `__nav` (`--previous`, `--next`), `__notice`,
+  `__caption`.
 
 ## Contraste
 
