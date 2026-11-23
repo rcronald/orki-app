@@ -625,6 +625,40 @@ test.describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', ()
     expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(1)
     await coherente(supabase)
   })
+
+  test('salir tras un guardado a medias borra lo que ninguna fila cita', async ({
+    page,
+    supabase,
+  }) => {
+    conFotos(supabase, 2)
+    await fallarUnaVez(
+      page,
+      `${ORIGEN_SUPABASE}/rest/v1/plant_photos**`,
+      'PATCH',
+    )
+    await abrirEdicion(page, PLANTAS.maxima)
+    await elegirFotos(page, 1)
+    await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByRole('button', { name: 'Quitar' })
+      .click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByLabel('Nota', { exact: true })
+      .fill('Nueva vara')
+    await page.getByRole('button', { name: 'Listo' }).click()
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    const alerta = page.getByRole('alert').filter({ hasText: 'Reintentar' })
+    await expect(alerta).toContainText('Parte de los cambios ya quedó guardada')
+
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+    await aviso(page).getByRole('button', { name: 'Salir sin guardar' }).click()
+    await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+    // La quitada ya no tiene fila ni archivos; la nueva sí quedó guardada.
+    expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(2)
+    await coherente(supabase)
+  })
 })
 
 test.describe('aviso de cambios sin guardar', () => {

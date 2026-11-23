@@ -17,6 +17,7 @@ import {
   type PlannedPhotoDetails,
   type PlantEditEvent,
   type PlantEditPlan,
+  type PlantEditStep,
   type UploadedPhotos,
 } from './edit-plan.ts'
 
@@ -569,4 +570,135 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
     expect(failure).toBeInstanceOf(PlantEditError)
     expect(failure).toMatchObject({ plantGone: true })
   })
+
+  it('una fila de otro dispositivo se conserva, detrás, sin error', async () => {
+    const context = setup(1)
+    const [p0] = context.stored
+    if (!p0) throw new Error('Sin fotos.')
+    const a = added()
+    // Mientras se editaba, otro dispositivo añadió una foto.
+    const otherPath = `${USER_ID}/${PLANT_ID}/photo-otro.webp`
+    const otherThumb = `${USER_ID}/${PLANT_ID}/thumb-otro.webp`
+    await context.rows.insert({
+      plantId: PLANT_ID,
+      userId: USER_ID,
+      photoPath: otherPath,
+      thumbnailPath: otherThumb,
+      inBloom: false,
+      takenAt: null,
+      note: null,
+      position: 1,
+    })
+    for (const path of [otherPath, otherThumb]) {
+      context.storage.objects.set(path, {
+        blob: new Blob([new Uint8Array(4)]),
+        contentType: 'image/webp',
+      })
+    }
+    const events: PlantEditEvent[] = []
+    await apply(context, plan([a, keep(p0)]), new Map(), (event) =>
+      events.push(event),
+    )
+    expect(rowPaths(context).slice(1)).toEqual([p0.photoPath, otherPath])
+    expect(events[0]).toMatchObject({ type: 'rows-read' })
+    expectConsistent(context)
+  })
+
+  // En cada paso que puede fallar: tras el fallo, ninguna fila cita un
+  // archivo que no existe; si la persona sale, lo subido sin fila se borra;
+  // si reintenta, termina con el bucket igual a lo citado.
+  const failures: Record<
+    PlantEditStep,
+    (context: Context, version: string) => void
+  > = {
+    read: (context) => {
+      context.rows.failList = () => new PhotoStorageError('offline')
+    },
+    upload: (context, version) => {
+      context.storage.failUploads = (path) =>
+        path.includes(`thumb-${version}`)
+          ? new PhotoStorageError('offline')
+          : null
+    },
+    data: (context) => {
+      context.updatePlant.mockRejectedValueOnce(new PlantSaveError('offline'))
+    },
+    remove: (context) => {
+      context.rows.failRemove = () => ({
+        error: new PhotoStorageError('offline', { uncertain: true }),
+        applied: true,
+      })
+    },
+    insert: (context) => {
+      context.rows.failInsert = () => ({
+        error: new PhotoStorageError('offline', { uncertain: true }),
+        applied: true,
+      })
+    },
+    details: (context) => {
+      context.rows.failUpdate = () => ({
+        error: new PhotoStorageError('offline'),
+      })
+    },
+    order: (context) => {
+      context.rows.failReorder = () => ({
+        error: new PhotoStorageError('offline'),
+      })
+    },
+  }
+  const heal = (context: Context) => {
+    context.rows.failList = undefined
+    context.storage.failUploads = undefined
+    context.rows.failRemove = undefined
+    context.rows.failInsert = undefined
+    context.rows.failUpdate = undefined
+    context.rows.failReorder = undefined
+  }
+
+  for (const [step, fail] of Object.entries(failures)) {
+    for (const then of ['salir', 'reintentar'] as const) {
+      it(`falla el paso «${step}» y la persona decide ${then}: el bucket queda igual a lo citado`, async () => {
+        const context = setup(2)
+        const [p0, p1] = context.stored
+        if (!p0 || !p1) throw new Error('Sin fotos.')
+        const a = added()
+        const editPlan = plan(
+          [a, keep(p1, { ...NO_DETAILS, note: 'Nueva vara' })],
+          [p0],
+          { nickname: 'La reina' },
+        )
+        fail(context, photoVersionFor(a.files))
+        const uploaded: UploadedPhotos = new Map()
+        await expect(apply(context, editPlan, uploaded)).rejects.toMatchObject({
+          step,
+        })
+        // Ninguna fila cita un archivo que no existe.
+        for (const path of cited(context)) {
+          expect(context.storage.objects.has(path)).toBe(true)
+        }
+        const main = context.rows.plants.get(PLANT_ID)?.photoPath
+        if (main) expect(context.storage.objects.has(main)).toBe(true)
+
+        heal(context)
+        if (then === 'salir') {
+          await discardUploads(
+            uploaded,
+            { userId: USER_ID, plantId: PLANT_ID },
+            context,
+            editPlan.removed,
+          )
+          expectConsistent(context)
+          // La quitada conserva su foto si su fila no llegó a borrarse.
+          expect(context.storage.objects.has(p0.photoPath)).toBe(
+            rowPaths(context).includes(p0.photoPath),
+          )
+        } else {
+          await apply(context, editPlan, uploaded)
+          expect(rowPaths(context)).toHaveLength(2)
+          expect(context.rows.photosOf(PLANT_ID)[1]?.id).toBe(p1.id)
+          expectConsistent(context)
+        }
+      })
+    }
+  }
 })

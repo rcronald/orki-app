@@ -548,12 +548,89 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/coleccion/x/editar',
     )
+    const busy = screen.getByRole('dialog', {
+      name: 'Se están guardando los cambios',
+    })
+    expect(busy).toHaveAccessibleDescription(
+      'Espera a que termine: si sales a mitad, el guardado puede quedar incompleto. Al terminar volverás a la ficha.',
+    )
+    expect(
+      within(busy).getByRole('button', { name: 'Entendido' }),
+    ).toHaveFocus()
 
     release()
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(rows.photosOf(PLANT_ID)).toHaveLength(1)
     expectConsistent(context)
     link.remove()
+  })
+
+  it('a) el aviso de esperar se cierra si el guardado falla y no vuelve en el reintento', async () => {
+    const context = setup(0)
+    const { user, rows, onSaved } = context
+    await loaded(0)
+    await choosePhotos(user, 1)
+    const { insert, release } = holdInserts(rows)
+    rows.failInsert = () => ({ error: new PhotoStorageError('offline') })
+    await user.click(submit())
+    await waitFor(() => expect(insert).toHaveBeenCalled())
+    const link = appLink()
+    await user.click(link)
+    expect(
+      screen.getByRole('dialog', { name: 'Se están guardando los cambios' }),
+    ).toBeVisible()
+
+    release()
+    const alert = await screen.findByRole('alert')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(
+      within(alert).getByRole('button', { name: 'Reintentar' }),
+    ).toHaveFocus()
+
+    rows.failInsert = undefined
+    await user.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expectConsistent(context)
+    link.remove()
+  })
+
+  it('salir tras un guardado a medias borra lo que ninguna fila cita', async () => {
+    const context = setup(2)
+    const { user, rows, onCancel, unmount } = context
+    await loaded(2)
+    await choosePhotos(user, 1)
+    await user.click(screen.getByRole('button', { name: 'Gestionar fotos' }))
+    await user.click(
+      within(photoGroup('Foto principal')).getByRole('button', {
+        name: 'Quitar',
+      }),
+    )
+    await user.type(
+      within(photoGroup('Foto principal')).getByLabelText('Nota'),
+      'Nueva vara',
+    )
+    await user.click(screen.getByRole('button', { name: 'Listo' }))
+    rows.failUpdate = () => ({ error: new PhotoStorageError('offline') })
+    await user.click(submit())
+    await screen.findByRole('alert')
+    // La fila de la quitada ya no está y la nueva ya tiene la suya.
+    expect(rows.photosOf(PLANT_ID).map((photo) => photo.id)).not.toContain(
+      'foto-0',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    const dialog = screen.getByRole('dialog', { name: '¿Salir sin guardar?' })
+    expect(dialog).toHaveTextContent('Parte de los cambios ya quedó guardada')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Salir sin guardar' }),
+    )
+    await waitFor(() => expect(onCancel).toHaveBeenCalled())
+    // La página sale de la edición: el formulario se desmonta.
+    unmount()
+    await waitFor(() => expectConsistent(context))
+    expect(rows.photosOf(PLANT_ID)).toHaveLength(2)
   })
 
   it('a) si el formulario se desmonta durante el guardado, no navega ni deja filas sin archivo', async () => {
