@@ -269,21 +269,31 @@ select pruebas.iguales(
   (select c.resultados from con_umbral_alto c)
 );
 
--- prueba: anon y authenticated pueden buscar
+-- prueba: authenticated puede buscar; anon no (desde #231 usa search_public_species())
 set local role anon;
-select pruebas.iguales('anon sin token', pg_temp.posicion('phal amab', 'Phalaenopsis amabilis'), 1::bigint);
+select pruebas.debe_fallar('anon sin token', $$select * from public.search_species('phal amab')$$, '42501');
 set local request.jwt.claims = '{"role": "anon"}';
-select pruebas.iguales('anon con la clave publicable', pg_temp.posicion('orquidea mariposa', 'Phalaenopsis amabilis'), 1::bigint);
+select pruebas.debe_fallar('anon con la clave publicable', $$select * from public.search_species('orquidea mariposa')$$, '42501');
 set local role postgres;
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
 select pruebas.iguales('authenticated', pg_temp.posicion('phal amab', 'Phalaenopsis amabilis'), 1::bigint);
 
--- prueba: anon no lee nada fuera del catálogo a través de la búsqueda
--- La planta "Phalaenopsis secretissima" de user_a no es del catálogo: no sale ni para anon ni
--- para su dueño, y la búsqueda no da a anon acceso a plants.
+-- prueba: la búsqueda no devuelve nada fuera del catálogo
+-- La planta "Phalaenopsis secretissima" de user_a no es del catálogo: no sale ni para otro
+-- usuario ni para su dueño, ni en la búsqueda pública (search_public_species, para anon).
 set local role anon;
 set local request.jwt.claims = '{"sub": "user_a", "role": "anon"}';
+select pruebas.iguales(
+  'nombres que no son del catálogo en la búsqueda pública',
+  (select count(*) from public.search_public_species('phalaenopsis secretissima', 20) s
+     where s.matched_name = 'Phalaenopsis secretissima'),
+  0::bigint
+);
+select pruebas.debe_fallar('anon sigue sin leer plants', 'select * from public.plants', '42501');
+set local role postgres;
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "user_b", "role": "authenticated"}';
 select pruebas.iguales(
   'resultados que no son especies del catálogo',
   (select count(*) from public.search_species('phalaenopsis secretissima', 20) s
@@ -296,7 +306,6 @@ select pruebas.iguales(
      where s.matched_name = 'Phalaenopsis secretissima'),
   0::bigint
 );
-select pruebas.debe_fallar('anon sigue sin leer plants', 'select * from public.plants', '42501');
 set local role postgres;
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
@@ -307,14 +316,14 @@ select pruebas.iguales(
   0::bigint
 );
 
--- prueba: permisos: anon, authenticated y service_role pueden ejecutar las dos funciones; PUBLIC no
+-- prueba: permisos: authenticated y service_role pueden ejecutar las dos funciones, anon solo normalize_search_text(); PUBLIC no
 select pruebas.iguales(
   'permiso de ejecución por rol',
   (select string_agg(f.funcion || ' ' || r.rol || ':' || has_function_privilege(r.rol, f.funcion, 'execute'), ', ' order by f.funcion, r.rol)
      from (values ('public.normalize_search_text(text)'), ('public.search_species(text, integer)')) f (funcion)
      cross join (values ('anon'), ('authenticated'), ('service_role')) r (rol)),
   'public.normalize_search_text(text) anon:true, public.normalize_search_text(text) authenticated:true, '
-    || 'public.normalize_search_text(text) service_role:true, public.search_species(text, integer) anon:true, '
+    || 'public.normalize_search_text(text) service_role:true, public.search_species(text, integer) anon:false, '
     || 'public.search_species(text, integer) authenticated:true, public.search_species(text, integer) service_role:true'
 );
 select pruebas.iguales(
@@ -395,15 +404,15 @@ select pruebas.iguales(
 -- prueba: la búsqueda usa los índices de trigramas de species y species_names
 -- Con los recorridos secuenciales desactivados, Postgres los usa si la consulta es indexable
 -- (es la misma expresión que el índice y un operador de la clase gin_trgm_ops). Se cuentan los
--- recorridos de cada índice en esta transacción antes y después de buscar como anon.
+-- recorridos de cada índice en esta transacción antes y después de buscar como authenticated.
 create temp table recorridos_antes as
   select c.relname::text as indice, pg_stat_get_xact_numscans(c.oid) as recorridos
   from pg_class c
   where c.relname in ('species_scientific_name_trgm_idx', 'species_names_name_trgm_idx');
-grant select on recorridos_antes to anon;
+grant select on recorridos_antes to authenticated;
 set local enable_seqscan = off;
-set local role anon;
-select pruebas.iguales('busca como anon', pg_temp.posicion('catleya labiata', 'Cattleya labiata'), 1::bigint);
+set local role authenticated;
+select pruebas.iguales('busca como authenticated', pg_temp.posicion('catleya labiata', 'Cattleya labiata'), 1::bigint);
 set local role postgres;
 select pruebas.iguales(
   'índices recorridos por la búsqueda',

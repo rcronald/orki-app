@@ -3,7 +3,8 @@
 -- PostgREST ejecuta cada petición con el rol del token (anon sin sesión, authenticated con
 -- sesión de Clerk, service_role con la clave de servicio) y deja las claims del token en
 -- request.jwt.claims. Aquí se reproduce con "set local role" y "set local request.jwt.claims".
--- Para anon el catálogo es de solo lectura y perfiles y plantas están cerrados. Lo que puede
+-- anon no lee ninguna tabla: el catálogo lo consulta con las funciones del catálogo público
+-- (catalogo_publico.sql) y perfiles y plantas están cerrados. Lo que puede
 -- hacer authenticated se prueba en politicas_catalogo.sql (escribir el catálogo, solo los
 -- administradores) y en politicas_plantas_y_perfiles.sql (su perfil y sus plantas).
 
@@ -16,15 +17,13 @@ insert into public.profiles (id) values ('user_a');
 insert into public.plants (user_id, entered_name, species_id)
 values ('user_a', 'Mi labiata', pruebas.especie('Cattleya labiata'));
 
--- prueba: anon lee las cuatro tablas del catálogo
+-- prueba: anon no lee las tablas del catálogo (desde #231, solo las funciones del catálogo público)
 set local role anon;
 set local request.jwt.claims = '{"role": "anon"}';
-select pruebas.iguales(
-  'filas visibles de genera, genus_abbreviations, species y species_names',
-  (select row((select count(*) from public.genera), (select count(*) from public.genus_abbreviations),
-              (select count(*) from public.species), (select count(*) from public.species_names))::text),
-  '(43,43,1,1)'
-);
+select pruebas.debe_fallar('anon lee genera', 'select * from public.genera', '42501');
+select pruebas.debe_fallar('anon lee genus_abbreviations', 'select * from public.genus_abbreviations', '42501');
+select pruebas.debe_fallar('anon lee species', 'select * from public.species', '42501');
+select pruebas.debe_fallar('anon lee species_names', 'select * from public.species_names', '42501');
 
 -- prueba: authenticated lee las cuatro tablas del catálogo
 set local role authenticated;
