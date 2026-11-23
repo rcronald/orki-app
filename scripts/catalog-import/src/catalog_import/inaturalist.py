@@ -37,9 +37,15 @@ API_BASE = f'https://{API_HOST}/v1/'
 USER_AGENT = 'orki-catalogo/0.1 (emparejamiento de fotos de referencia; solo lectura)'
 # Familia Orchidaceae en iNaturalist: https://www.inaturalist.org/taxa/47217
 ORCHIDACEAE = 47217
-# Licencias aceptadas por el responsable (#180): solo CC0 y CC BY. Fuera NC, ND, SA y
-# todos los derechos reservados (license_code nulo).
-ACCEPTED_LICENSES = frozenset({'cc0', 'cc-by'})
+# Licencias aceptadas por el responsable (#180, comentario del 23 de noviembre de 2026): CC0,
+# dominio público («pd»), CC BY y CC BY-SA. Fuera las «no comercial» (NC), las «sin obra
+# derivada» (ND) y todos los derechos reservados (license_code nulo). Son las mismas que admite
+# la restricción species_photos_license_accepted de la base.
+ACCEPTED_LICENSES = frozenset({'cc0', 'pd', 'cc-by', 'cc-by-sa'})
+# Filtro «photo_license» de la búsqueda de observaciones: los valores que documenta el Swagger
+# son las licencias Creative Commons y «cc0»; la marca de dominio público no está entre ellos,
+# así que no se pide (una foto «pd» de observación no se encuentra por esta vía).
+OBSERVATION_LICENSE_FILTER = ('cc-by', 'cc-by-sa', 'cc0')
 # Ritmo: «about 1 per second» y «around 10k API requests a day» (prácticas recomendadas de la
 # API). Se deja un margen por debajo del tope diario.
 MIN_INTERVAL = 1.0
@@ -413,7 +419,7 @@ def observation_photo(client: Client, taxon: Taxon) -> Photo | None:
         'observations',
         {
             'taxon_id': taxon.id,
-            'photo_license': ','.join(sorted(ACCEPTED_LICENSES)),
+            'photo_license': ','.join(OBSERVATION_LICENSE_FILTER),
             'quality_grade': 'research',
             'photos': 'true',
             'order_by': 'votes',
