@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { ESPECIES, GENEROS } from './soporte/datos.ts'
+import { ESPECIES, GENEROS, PLANTAS } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 import { ORIGEN_SUPABASE } from './soporte/supabase-simulado.ts'
 
@@ -214,4 +214,34 @@ test.describe('con sesión', () => {
       expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
     },
   )
+
+  // El caso que reprodujo el responsable (#296): la planta «Phalaenopsis
+  // amabilis» está en el inventario con el nombre por validar (sin enlazar a
+  // la especie) y la ficha de esa especie decía «Aún no la tienes».
+  test('con un ejemplar del mismo nombre por validar dice «Podrías tenerla» y lleva a su ficha', async ({
+    page,
+    supabase,
+    revisarAccesibilidad,
+  }) => {
+    const planta = supabase.datos.plantas.find((p) => p.id === PLANTAS.amabilis)
+    if (!planta) throw new Error('Falta la planta de partida')
+    planta.species_id = null
+    planta.validation = 'pending'
+
+    await page.goto(`/catalogo/especie/${ESPECIES.phalaenopsisAmabilis}`)
+    await expect(page.getByText('Podrías tenerla')).toBeVisible()
+    await expect(page.getByText('Aún no la tienes')).toHaveCount(0)
+    await expect(
+      page.getByText('Tienes 1 ejemplar con ese nombre, pendiente de validar.'),
+    ).toBeVisible()
+    await revisarAccesibilidad('ficha con un ejemplar por validar')
+    await sinDesplazamientoHorizontal(page)
+
+    // La acción destacada es ver el ejemplar, no registrar otro.
+    await expect(
+      page.getByRole('link', { name: 'Registrar esta especie' }),
+    ).toHaveClass(/orki-btn--secondary/)
+    await page.getByRole('link', { name: /Ver el ejemplar/ }).click()
+    await expect(page).toHaveURL(new RegExp(`/coleccion/${PLANTAS.amabilis}$`))
+  })
 })
