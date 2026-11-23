@@ -26,6 +26,7 @@ interface HarnessProps {
   action?: AutocompleteAction
   onOptionSelect?: (option: AutocompleteOption) => void
   initialValue?: string
+  suggestedOptionId?: string
 }
 
 // Quien usa el componente filtra y guarda el texto; aquí, con un filtro simple.
@@ -37,6 +38,7 @@ function Harness({
   action,
   onOptionSelect,
   initialValue = '',
+  suggestedOptionId,
 }: HarnessProps) {
   const [value, setValue] = useState(initialValue)
   const query = value.trim().toLowerCase()
@@ -55,6 +57,7 @@ function Harness({
       error={error}
       minQueryLength={minQueryLength}
       action={action}
+      suggestedOptionId={suggestedOptionId}
       onOptionSelect={(option) => {
         setValue(option.label)
         onOptionSelect?.(option)
@@ -170,6 +173,34 @@ describe('Autocomplete', () => {
 
     expect(onOptionSelect).not.toHaveBeenCalled()
     expect(getInput()).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('la sugerencia destacada queda activa sin flechas y Enter la elige (#280)', () => {
+    const onOptionSelect = vi.fn()
+    render(
+      <Harness
+        onOptionSelect={onOptionSelect}
+        suggestedOptionId="p-aphrodite"
+      />,
+    )
+    getInput().focus()
+    type('phal')
+    const [first, second] = screen.getAllByRole('option')
+    expect(getInput()).toHaveAttribute('aria-activedescendant', second?.id)
+    expect(second).toHaveAttribute('aria-selected', 'true')
+
+    // Las flechas siguen desde ella; Inicio la quita.
+    key('ArrowUp')
+    expect(getInput()).toHaveAttribute('aria-activedescendant', first?.id)
+    key('Home')
+    expect(getInput()).not.toHaveAttribute('aria-activedescendant')
+    key('Enter')
+    expect(onOptionSelect).not.toHaveBeenCalled()
+
+    // Al volver a escribir, vuelve a estar destacada.
+    type('phala')
+    key('Enter')
+    expect(onOptionSelect).toHaveBeenCalledWith(SPECIES[1])
   })
 
   it('elige con clic sin quitar el foco del campo', () => {

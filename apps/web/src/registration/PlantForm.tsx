@@ -74,7 +74,7 @@ import {
   type PlantFormValues,
 } from './form-state.ts'
 import { GenusField } from './GenusField.tsx'
-import { NameField } from './NameField.tsx'
+import { NameField, type NameResolution } from './NameField.tsx'
 import { OriginField } from './OriginField.tsx'
 import { PendingPhotoNotice } from './PendingPhotoNotice.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
@@ -84,6 +84,7 @@ import {
   PLANT_TYPE_LABEL,
 } from './texts.ts'
 import { SpeciesPreview, type LoadReferencePhoto } from './SpeciesPreview.tsx'
+import { useDeducedGenus } from './useDeducedGenus.ts'
 import { useQuickGenera } from './useQuickGenera.ts'
 import {
   newPhotoEntry,
@@ -167,6 +168,11 @@ interface PlantFormCommonProps {
    * borrador guardado y vuelve al descartarlo.
    */
   initialSpecies?: FormSpecies | null
+  /**
+   * Llevar el foco a «Nombre» al montarse (#280): la pantalla de registro, como
+   * «¿Ya la tengo?» con su campo. La página de muestra no lo pide.
+   */
+  autoFocusName?: boolean
   /** Dónde se guardan las fotos pendientes del borrador; por defecto, IndexedDB. */
   photoDraftBackend?: DraftPhotoBackend
   /**
@@ -320,6 +326,7 @@ export function PlantForm(props: PlantFormProps) {
     draftUserId = null,
     initialName = '',
     initialSpecies = null,
+    autoFocusName = false,
     photoDraftBackend = appDraftPhotoBackend(),
     now = deviceNow,
     camera = 'auto',
@@ -476,7 +483,62 @@ export function PlantForm(props: PlantFormProps) {
   }, [draftPhotosKey])
 
   const offlineId = useId()
+  const formRef = useRef<HTMLFormElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+
+  // Después del efecto de Page, que lleva el foco al título al navegar. Este
+  // componente va dentro de Page y su efecto corre antes que el de Page (en
+  // «¿Ya la tengo?» es al revés: la pantalla contiene Page), así que el foco
+  // se mueve en una microtarea, cuando ya corrieron todos los efectos.
+  // Mientras se confirma la sesión el formulario está desactivado y el campo
+  // no admite el foco: se lleva al activarse, una sola vez y solo si la
+  // persona no lo puso ya en otro sitio (sigue en la página o en el título).
+  const nameFocused = useRef(false)
+  const nameDisabled = !online || registered !== null
+  useEffect(() => {
+    if (!autoFocusName || nameFocused.current || nameDisabled) return
+    nameFocused.current = true
+    queueMicrotask(() => {
+      const active = document.activeElement
+      if (
+        active !== null &&
+        active !== document.body &&
+        active.tagName !== 'H1'
+      ) {
+        return
+      }
+      nameRef.current?.focus()
+    })
+  }, [autoFocusName, nameDisabled])
+
+  // Nombre exacto (#280): si se envía mientras aún se busca el nombre (Enter
+  // justo después de escribirlo), el guardado espera a saber si es una especie
+  // del catálogo, que se enlaza sola. Si resulta que hay que elegir (un
+  // sinónimo, varias), no se guarda: la persona lo ve y decide.
+  const [nameResolution, setNameResolution] =
+    useState<NameResolution>('settled')
+  const submitQueued = useRef(false)
+  useEffect(() => {
+    if (!submitQueued.current || nameResolution === 'resolving') return
+    submitQueued.current = false
+    // Fuera del efecto: el envío usa flushSync (abrir «Más detalles» antes de
+    // llevar el foco a un error), que dentro de un efecto no pinta a tiempo.
+    if (nameResolution === 'settled') {
+      queueMicrotask(() => formRef.current?.requestSubmit())
+    }
+  }, [nameResolution])
+
+  // Género de la primera palabra de un nombre libre (#280).
+  const deducedGenus = useDeducedGenus(
+    values,
+    dispatch,
+    services.searchGenera,
+    online && registered === null,
+  )
+  const genusDispatch: typeof dispatch = (action) => {
+    deducedGenus.forget()
+    dispatch(action)
+  }
   const genusRef = useRef<HTMLDivElement>(null)
   const typeRef = useRef<HTMLDivElement>(null)
   const dateRef = useRef<HTMLInputElement>(null)
@@ -639,6 +701,10 @@ export function PlantForm(props: PlantFormProps) {
     if (savingRef.current || !online || registered !== null) return
     // Con fotos a medio preparar no se guarda: el botón lo dice.
     if (preparing) return
+    if (nameResolution === 'resolving') {
+      submitQueued.current = true
+      return
+    }
     setSubmitted(true)
     const found = validatePlantForm(values, localDateString(now()))
     const firstInvalid = PLANT_FORM_FIELDS.find((field) => found[field])
@@ -883,6 +949,8 @@ export function PlantForm(props: PlantFormProps) {
           searchSpecies={services.searchSpecies}
           error={errors.name}
           inputRef={nameRef}
+          linkInitialName
+          onResolutionChange={setNameResolution}
         />
         <DuplicateNotice
           species={values.species}
@@ -901,7 +969,7 @@ export function PlantForm(props: PlantFormProps) {
 
       <GenusField
         values={values}
-        dispatch={dispatch}
+        dispatch={genusDispatch}
         quickGenera={quickGenera}
         onRetryQuickGenera={retryQuickGenera}
         searchGenera={services.searchGenera}
@@ -1127,6 +1195,7 @@ export function PlantForm(props: PlantFormProps) {
 
   return (
     <form
+      ref={formRef}
       noValidate
       aria-label={text.title}
       className="flex flex-col gap-space-5"

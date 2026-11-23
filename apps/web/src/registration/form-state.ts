@@ -109,6 +109,11 @@ export type PlantFormAction =
   | { type: 'nameChanged'; name: string }
   | { type: 'speciesSelected'; species: FormSpecies }
   | { type: 'genusSelected'; genus: FormGenus }
+  /**
+   * Género deducido de la primera palabra de un nombre libre (#280), o null
+   * para quitar el que se dedujo. No toca una especie enlazada ni "Otro".
+   */
+  | { type: 'genusDeduced'; genus: FormGenus | null }
   | { type: 'otherGenusToggled' }
   | { type: 'typeSelected'; plantType: PlantType }
   | { type: 'acquiredOnChanged'; acquiredOn: string }
@@ -158,6 +163,9 @@ export function plantFormReducer(
     case 'genusSelected':
       if (locked) return state
       return { ...state, genus: action.genus, otherGenusOpen: false }
+    case 'genusDeduced':
+      if (locked || state.otherGenusOpen) return state
+      return { ...state, genus: action.genus }
     case 'otherGenusToggled':
       if (locked) return state
       // Abrir "Otro" quita el género elegido: hay que buscar uno. Cerrarlo

@@ -1404,6 +1404,9 @@ export class SupabaseSimulado {
           this.datos.generos
             .map((g) => ({
               genero: g,
+              // La consulta entera es una abreviatura: coincide por ella,
+              // aunque también sea el comienzo del nombre (como la base).
+              exacta: g.abreviaturas.find((a) => normalizar(a) === texto),
               abreviatura:
                 g.abreviaturas.find((a) => normalizar(a).startsWith(texto)) ??
                 null,
@@ -1412,13 +1415,13 @@ export class SupabaseSimulado {
               ({ genero, abreviatura }) =>
                 normalizar(genero.name).includes(texto) || abreviatura !== null,
             )
-            .map(({ genero, abreviatura }) => ({
+            .map(({ genero, exacta, abreviatura }) => ({
               id: genero.id,
               name: genero.name,
               is_quick_access: genero.is_quick_access,
-              matched_abbreviation: normalizar(genero.name).includes(texto)
-                ? null
-                : abreviatura,
+              matched_abbreviation:
+                exacta ??
+                (normalizar(genero.name).includes(texto) ? null : abreviatura),
             })),
         )
       }

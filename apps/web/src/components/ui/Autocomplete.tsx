@@ -86,6 +86,12 @@ export interface AutocompleteProps extends NativeInputProps {
    * Por defecto 1: cualquier texto.
    */
   minQueryLength?: number
+  /**
+   * Sugerencia que queda destacada (activa) sin mover las flechas, para que
+   * Enter la elija: por ejemplo, la especie de un sinónimo escrito entero
+   * (#280). Las flechas, Inicio y Fin la cambian como siempre.
+   */
+  suggestedOptionId?: string
 }
 
 const defaultResultCount = (count: number) =>
@@ -114,6 +120,7 @@ export function Autocomplete({
   formatResultCount = defaultResultCount,
   error,
   minQueryLength = 1,
+  suggestedOptionId,
   id,
   className,
   onKeyDown,
@@ -130,10 +137,18 @@ export function Autocomplete({
 
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  // Si la persona ya movió la opción activa (flechas, Inicio o Fin) desde que
+  // escribió: entonces la sugerencia destacada ya no manda.
+  const [moved, setMoved] = useState(false)
 
   // La acción final cuenta como un elemento más de la lista.
   const itemCount = options.length + (action ? 1 : 0)
-  const active = activeIndex >= 0 && activeIndex < itemCount ? activeIndex : -1
+  const suggestedIndex =
+    suggestedOptionId === undefined
+      ? -1
+      : options.findIndex((option) => option.id === suggestedOptionId)
+  const current = moved ? activeIndex : suggestedIndex
+  const active = current >= 0 && current < itemCount ? current : -1
   const activeId =
     active === -1
       ? undefined
@@ -179,6 +194,12 @@ export function Autocomplete({
   const close = () => {
     setOpen(false)
     setActiveIndex(-1)
+    setMoved(false)
+  }
+
+  const move = (index: number) => {
+    setActiveIndex(index)
+    setMoved(true)
   }
 
   const choose = (index: number) => {
@@ -197,25 +218,25 @@ export function Autocomplete({
         event.preventDefault()
         if (!popupVisible) {
           setOpen(true)
-          // Alt + flecha abajo abre la lista sin mover la opción activa.
-          setActiveIndex(event.altKey || itemCount === 0 ? -1 : 0)
+          // Alt + flecha abajo abre la lista sin mover la opción activa (la
+          // destacada, si la hay, sigue siéndolo).
+          if (event.altKey) return
+          move(itemCount === 0 ? -1 : 0)
           return
         }
         if (itemCount === 0) return
-        setActiveIndex(
-          active === -1 || active === itemCount - 1 ? 0 : active + 1,
-        )
+        move(active === -1 || active === itemCount - 1 ? 0 : active + 1)
         return
       }
       case 'ArrowUp': {
         event.preventDefault()
         if (!popupVisible) {
           setOpen(true)
-          setActiveIndex(itemCount === 0 ? -1 : itemCount - 1)
+          move(itemCount === 0 ? -1 : itemCount - 1)
           return
         }
         if (itemCount === 0) return
-        setActiveIndex(active <= 0 ? itemCount - 1 : active - 1)
+        move(active <= 0 ? itemCount - 1 : active - 1)
         return
       }
       case 'Enter': {
@@ -240,7 +261,7 @@ export function Autocomplete({
       case 'End':
         // Inicio y Fin mueven el cursor dentro del texto; la opción activa
         // vuelve al campo.
-        setActiveIndex(-1)
+        move(-1)
         return
       default:
         return
@@ -284,6 +305,7 @@ export function Autocomplete({
             onValueChange(event.target.value)
             setOpen(true)
             setActiveIndex(-1)
+            setMoved(false)
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}

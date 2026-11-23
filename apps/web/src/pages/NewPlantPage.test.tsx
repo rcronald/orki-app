@@ -555,7 +555,9 @@ describe('NewPlantPage', () => {
     await user.type(dateInput(), '2026-11-22')
     await user.click(submitButton())
 
-    expect(dateInput()).toHaveFocus()
+    // Enviado justo después de escribir el nombre, el registro espera a la
+    // búsqueda del nombre (#280) antes de validar.
+    await waitFor(() => expect(dateInput()).toHaveFocus())
     expect(dateInput()).toHaveAccessibleDescription(
       PLANT_FORM_ERROR_TEXT.dateFuture,
     )
@@ -819,7 +821,7 @@ describe('NewPlantPage', () => {
     // Con "Otro" y sin elegir género, no se guarda.
     await user.click(submitButton())
     const search = screen.getByRole('combobox', { name: 'Buscar otro género' })
-    expect(search).toHaveFocus()
+    await waitFor(() => expect(search).toHaveFocus())
     expect(
       screen.getByText(PLANT_FORM_ERROR_TEXT.genusNotFound),
     ).toBeInTheDocument()
@@ -838,10 +840,14 @@ describe('NewPlantPage', () => {
     expect(chip('Miltoniopsis')).toHaveFocus()
     expect(screen.queryByText(PLANT_FORM_ERROR_TEXT.genusNotFound)).toBeNull()
 
+    // La primera palabra del nombre ya buscó su género (#280); el buscador,
+    // lo escrito en él.
     const searchCall = requests().find(
-      (r) => r.url.pathname === '/rest/v1/rpc/search_genera',
+      (r) =>
+        r.url.pathname === '/rest/v1/rpc/search_genera' &&
+        (r.body as { query: string }).query === 'mps',
     )
-    expect(searchCall?.body).toMatchObject({ query: 'mps' })
+    expect(searchCall).toBeDefined()
 
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
@@ -883,7 +889,7 @@ describe('NewPlantPage', () => {
     expect(nameInput()).toHaveFocus()
     await user.type(nameInput(), 'Stanhopea')
     await user.click(submitButton())
-    expect(chip('Cattleya')).toHaveFocus()
+    await waitFor(() => expect(chip('Cattleya')).toHaveFocus())
     expect(nameInput()).not.toHaveAttribute('aria-invalid')
   })
 
@@ -978,7 +984,9 @@ describe('NewPlantPage', () => {
 
     await fillFreeName(user)
     await user.click(submitButton())
-    expect(submitButton()).toHaveTextContent('Registrando…')
+    await waitFor(() =>
+      expect(submitButton()).toHaveTextContent('Registrando…'),
+    )
     expect(submitButton()).toHaveAttribute('aria-disabled', 'true')
     await user.click(submitButton())
     await user.type(dateInput(), '{Enter}')
@@ -1796,7 +1804,9 @@ describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
     expect(detailsButton()).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(submitButton())
-    expect(detailsButton()).toHaveAttribute('aria-expanded', 'true')
+    await waitFor(() =>
+      expect(detailsButton()).toHaveAttribute('aria-expanded', 'true'),
+    )
     expect(locationInput()).toHaveFocus()
     expect(locationInput()).toHaveAccessibleDescription(
       new RegExp(`^${PLANT_FORM_ERROR_TEXT.textTooLong}`),
