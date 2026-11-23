@@ -339,4 +339,85 @@ as $$
   ) f
 $$;
 
+-- Listas blancas de privilegios (#283) -------------------------------------------------------
+--
+-- Lo que anon, authenticated y PUBLIC pueden hacer en public, leído del catálogo de Postgres en
+-- un texto ordenado y estable para compararlo con la lista de supabase/tests/listas_blancas.sql.
+-- PUBLIC cuenta como un rol más («PUBLIC»): lo que tiene lo tienen anon y authenticated.
+
+-- Privilegios de tabla sobre las tablas, vistas, vistas materializadas, tablas externas y
+-- secuencias de public: «relación rol PRIV,PRIV» separados por «; », o «ninguno».
+create function pruebas.privilegios_de_relaciones()
+returns text
+language sql
+stable
+as $$
+  select coalesce(string_agg(t.linea, '; ' order by t.linea collate "C"), 'ninguno')
+  from (
+    select c.relname || ' ' || coalesce(nullif(a.grantee, 0)::regrole::text, 'PUBLIC') || ' '
+           || string_agg(a.privilege_type, ',' order by a.privilege_type collate "C") as linea
+    from pg_class c
+    cross join lateral aclexplode(coalesce(
+      c.relacl, acldefault((case when c.relkind = 'S' then 's' else 'r' end)::"char", c.relowner))) a
+    where c.relnamespace = 'public'::regnamespace
+      and c.relkind in ('r', 'p', 'v', 'm', 'f', 'S')
+      and (a.grantee = 0 or a.grantee in (select r.oid from pg_roles r where r.rolname in ('anon', 'authenticated')))
+    group by c.relname, a.grantee
+  ) t
+$$;
+
+-- Privilegios por columna sobre las relaciones de public: «relación rol PRIV(col, col)»
+-- separados por «; », o «ninguno».
+create function pruebas.privilegios_de_columnas()
+returns text
+language sql
+stable
+as $$
+  select coalesce(string_agg(t.linea, '; ' order by t.linea collate "C"), 'ninguno')
+  from (
+    select c.relname || ' ' || coalesce(nullif(a.grantee, 0)::regrole::text, 'PUBLIC') || ' '
+           || a.privilege_type || '(' || string_agg(att.attname::text, ', ' order by att.attname::text collate "C") || ')' as linea
+    from pg_attribute att
+    join pg_class c on c.oid = att.attrelid
+    cross join lateral aclexplode(att.attacl) a
+    where c.relnamespace = 'public'::regnamespace
+      and att.attnum > 0
+      and not att.attisdropped
+      and (a.grantee = 0 or a.grantee in (select r.oid from pg_roles r where r.rolname in ('anon', 'authenticated')))
+    group by c.relname, a.grantee, a.privilege_type
+  ) t
+$$;
+
+-- Funciones y procedimientos de public que el rol puede ejecutar (por concesión directa, por
+-- PUBLIC o por herencia), separados por «, », o «ninguna».
+create function pruebas.funciones_ejecutables(rol text)
+returns text
+language sql
+stable
+as $$
+  select coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text collate "C"), 'ninguna')
+  from pg_proc p
+  where p.pronamespace = 'public'::regnamespace
+    and has_function_privilege(rol, p.oid, 'execute')
+$$;
+
+-- Vistas de public sin security_invoker = true, separadas por «, », o «ninguna». Una vista sin
+-- esa opción lee las tablas con los permisos de su dueño (postgres), sin RLS: quien pueda leer
+-- la vista lee las filas de todos. Las vistas materializadas no admiten la opción y tampoco
+-- aplican RLS, así que cuentan siempre.
+create function pruebas.vistas_sin_security_invoker()
+returns text
+language sql
+stable
+as $$
+  select coalesce(string_agg(c.relname::text, ', ' order by c.relname::text collate "C"), 'ninguna')
+  from pg_class c
+  where c.relnamespace = 'public'::regnamespace
+    and c.relkind in ('v', 'm')
+    and not exists (
+      select from unnest(c.reloptions) o
+      where lower(o) in ('security_invoker=true', 'security_invoker=on', 'security_invoker=yes', 'security_invoker=1')
+    )
+$$;
+
 grant execute on all functions in schema pruebas to public;

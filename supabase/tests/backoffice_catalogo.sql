@@ -224,6 +224,10 @@ returns text language sql as $$
   from public.search_catalog_species(consulta, page_size => tamano) with ordinality as r
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: listado: recorre todo el catálogo hacia delante sin saltos ni repeticiones
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "app_role": "catalog_admin"}';

@@ -1061,13 +1061,21 @@ npm run db:test -- sincronizacion acceso   # solo los archivos cuyo nombre conti
 
 Las pruebas comprueban el esquema sin tocar los proyectos de Supabase. El comando crea una base de datos Postgres vacía y desechable, le añade lo mínimo de Supabase que necesitan las migraciones, aplica todas las migraciones de `supabase/migrations` en orden, ejecuta las pruebas de `supabase/tests` y, al terminar, borra la base. Cada prueba corre en una transacción que se revierte, así que no deja datos (y el comando lo comprueba al final). La salida dice qué prueba falló, en qué línea y por qué; el comando termina con código distinto de cero si falla alguna prueba o alguna migración.
 
-Necesita el cliente `psql` de PostgreSQL 14 o posterior (en macOS, `brew install postgresql@17`). No necesita Docker, ni credenciales, ni `npm ci`. Puede usar dos tipos de servidor:
+Necesita PostgreSQL 17 (en macOS, `brew install postgresql@17`), la misma versión mayor que el CI y los proyectos de Supabase. No necesita Docker, ni credenciales, ni `npm ci`. Con un servidor anterior al 17 el comando se niega a seguir y explica cómo instalarlo, porque algo puede pasar en otra versión y fallar en el CI: ya pasó con una prueba que funcionaba en el 14 y fallaba en el 17 por una conversión implícita (`text || "char"`), y en el 14 no existen `security_invoker` ni `nulls not distinct`. Para ejecutarlo de todos modos con otra versión, sin garantías, `ORKI_PERMITIR_PG_ANTIGUO=1 npm run db:test` (solo avisa). Lo mismo vale para `npm run db:types` y `npm run db:perf`, que preparan la misma base. Puede usar dos tipos de servidor:
 
-- **Clúster temporal (por defecto).** Si no se define `ORKI_TEST_DB_URL`, crea un servidor Postgres con `initdb` y `pg_ctl` en un directorio temporal, que escucha solo en `127.0.0.1` en un puerto libre y con una contraseña aleatoria, y lo destruye al terminar, también si falla una prueba o se interrumpe con Ctrl+C. Usa los binarios del directorio que indique `ORKI_PG_BINDIR`, si se define, o los de `pg_config --bindir` o el `PATH`. Con Homebrew vienen en el paquete `postgresql@17` (o el de la versión que tengas).
+- **Clúster temporal (por defecto).** Si no se define `ORKI_TEST_DB_URL`, crea un servidor Postgres con `initdb` y `pg_ctl` en un directorio temporal, que escucha solo en `127.0.0.1` en un puerto libre y con una contraseña aleatoria, y lo destruye al terminar, también si falla una prueba o se interrumpe con Ctrl+C. Busca los binarios (`initdb`, `pg_ctl` y `psql`), por este orden, en el directorio que indique `ORKI_PG_BINDIR`, en el PostgreSQL 17 de Homebrew (`/opt/homebrew/opt/postgresql@17/bin`, o `/usr/local/opt/postgresql@17/bin` en un Mac con Intel), en el de `pg_config --bindir` y en el `PATH`. `postgresql@17` es un paquete keg-only: Homebrew no lo enlaza en el `PATH`, así que puede convivir con otra versión enlazada (por ejemplo, la 14) sin cambiar nada, y el comando usa igualmente el 17. Si lo tienes en otro sitio, indícalo con `ORKI_PG_BINDIR=/ruta/a/postgresql-17/bin`. La primera línea de la salida dice qué versión se usa.
 - **Un servidor que ya tengas.** Indica su URL en `ORKI_TEST_DB_URL` con un usuario superusuario:
 
   ```sh
   ORKI_TEST_DB_URL=postgresql://usuario:clave@localhost:5432/postgres npm run db:test
+  ```
+
+  Si no quieres instalar el 17, sirve un contenedor desechable con la imagen oficial (con Docker o Podman; el superusuario se llama `supabase_admin` para que `postgres` no lo sea, como en Supabase y en el CI):
+
+  ```sh
+  podman run -d --rm --name orki-pg17 -e POSTGRES_USER=supabase_admin -e POSTGRES_PASSWORD=desechable -p 127.0.0.1:55432:5432 postgres:17
+  ORKI_TEST_DB_URL=postgresql://supabase_admin:desechable@127.0.0.1:55432/postgres npm run db:test
+  podman stop orki-pg17
   ```
 
   La base de la URL solo se usa para conectarse: el comando trabaja en una base nueva que crea y borra él mismo (`orki_pruebas_...`) y no toca las demás. Crea los roles `anon`, `authenticated`, `service_role` y `postgres` si no existen (son del servidor, no de una base) y los borra al terminar si los creó él. Si el servidor ya tiene un rol `postgres` superusuario, avisa: las migraciones se aplicarán con más permisos que en Supabase.
@@ -1076,7 +1084,7 @@ Por seguridad, el comando se niega a ejecutarse si la URL apunta a Supabase (`*.
 
 En el CI, el job **Pruebas de base de datos** de `.github/workflows/ci.yml` corre en cada pull request y en cada push a `main` con un servicio de Postgres 17 (imagen oficial `postgres:17`, la misma versión mayor que los proyectos de Supabase) y `ORKI_TEST_DB_URL` apuntando a él.
 
-Qué simula de Supabase (en `scripts/db-desechable/supabase-minimo.sql`): los roles `anon`, `authenticated` y `service_role` (este último ignora RLS), el rol `postgres` sin superusuario como dueño de lo que crean las migraciones (que se aplican con él, cada una en su transacción, como la CLI de Supabase), los esquemas `extensions` y `auth`, `auth.jwt()` leyendo las claims de `request.jwt.claims` y los privilegios por defecto que Supabase concede sobre las tablas nuevas de `public` (el peor caso, para comprobar que las migraciones los retiran). Las pruebas de acceso reproducen una petición de la API con `set local role` y `set local request.jwt.claims`.
+Qué simula de Supabase (en `scripts/db-desechable/supabase-minimo.sql`): los roles `anon`, `authenticated` y `service_role` (este último ignora RLS), el rol `postgres` sin superusuario como dueño de lo que crean las migraciones (que se aplican con él, cada una en su transacción, como la CLI de Supabase), los esquemas `extensions` y `auth`, `auth.jwt()` leyendo las claims de `request.jwt.claims` y los privilegios por defecto que Supabase concede sobre lo nuevo de `public` (el peor caso, para comprobar que las migraciones los retiran; desde el #283 una migración los cierra para `anon` y `authenticated`, ver [Privilegios por defecto y listas blancas](supabase/README.md#privilegios-por-defecto-y-listas-blancas)). Las pruebas de acceso reproducen una petición de la API con `set local role` y `set local request.jwt.claims`.
 
 Qué no cubren:
 
@@ -1084,7 +1092,7 @@ Qué no cubren:
 - El token real de Clerk ni su validación en Supabase: las pruebas inventan las claims (`sub`).
 - El resto de Supabase: Supabase Auth, almacenamiento, otros esquemas y extensiones del proyecto, y la configuración de cada proyecto (por ejemplo, si un proyecto antiguo concede privilegios por defecto distintos).
 - Concurrencia entre transacciones: cada prueba corre en una sola sesión.
-- Diferencias de versión: en local se puede usar cualquier PostgreSQL desde la 14 y en el CI se usa la 17, como Supabase. Algo que solo falle en una versión puede pasar en local y fallar en el CI, o al revés; el CI es la referencia.
+- Diferencias de versión menor: en local y en el CI se usa la 17, como Supabase, pero no necesariamente la misma versión menor. Con `ORKI_PERMITIR_PG_ANTIGUO=1` se puede usar una versión mayor anterior; el CI sigue siendo la referencia.
 - La configuración regional: en el clúster temporal se usa `en_US.UTF-8` si existe (si no, `C.UTF-8` o `C`); con `C`, `lower()` no pasa a minúsculas las letras con tilde.
 
 Cómo se escriben las pruebas y cómo añadir una al crear una migración está en [supabase/README.md](supabase/README.md#pruebas-de-base-de-datos).

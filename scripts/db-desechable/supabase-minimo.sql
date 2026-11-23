@@ -20,8 +20,9 @@
 --     las migraciones le retiran ese permiso y las pruebas lo comprueban. No se simula el
 --     disparador de eventos que la usa: las migraciones activan RLS de forma explícita.
 --   - Los privilegios por defecto que Supabase concede sobre lo que se crea en "public" (todo
---     a anon, authenticated y service_role). Es el peor caso: las migraciones deben retirarlos
---     de forma explícita, y las pruebas comprueban que lo hacen.
+--     a anon, authenticated y service_role). Es el peor caso: la migración
+--     20261125100000_privilegios_por_defecto_cerrados.sql (#283) los retira para anon y
+--     authenticated, y supabase/tests/listas_blancas.sql comprueba que lo hace.
 --   - Lo mínimo del esquema "storage" (Supabase Storage): las tablas storage.buckets y
 --     storage.objects, storage.foldername(), el bloqueo de borrados directos y los permisos de
 --     los roles. Ver la sección "Esquema storage" al final.

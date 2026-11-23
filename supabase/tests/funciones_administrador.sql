@@ -215,8 +215,11 @@ select pruebas.iguales(
 );
 
 -- prueba: la regla general rechaza una función security definer que puede ejecutar anon, aunque llame al guardián
--- Es lo que pasa si se olvida el revoke: Supabase concede por defecto la ejecución de toda
--- función nueva de public a anon, authenticated y service_role.
+-- Antes del #283 era lo que pasaba si se olvidaba el revoke: Supabase concedía por defecto la
+-- ejecución de toda función nueva de public a anon, authenticated y service_role. Desde
+-- entonces una función nueva nace cerrada, así que aquí se concede a mano, como lo haría
+-- quien la abriera a anon por error (o un rol que no sea postgres, con sus propios privilegios
+-- por defecto).
 create function public.prueba_sin_revoke()
 returns void
 language plpgsql
@@ -227,6 +230,7 @@ begin
   perform private.require_catalog_admin();
 end;
 $$;
+grant execute on function public.prueba_sin_revoke() to anon, authenticated;
 select pruebas.iguales(
   'funciones expuestas sin el patrón',
   pruebas.funciones_definer_expuestas(),

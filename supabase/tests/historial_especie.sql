@@ -45,6 +45,10 @@ as $$
   select set_config('orki.catalog_action_id', '', true)
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: permisos: solo authenticated la ejecuta, y solo un administrador obtiene el historial
 select pruebas.iguales(
   'quién puede ejecutarla',
