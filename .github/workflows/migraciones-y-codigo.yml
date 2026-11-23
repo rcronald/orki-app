@@ -1,0 +1,52 @@
+name: Migraciones y código
+
+# Regla «expandir y contraer» (#281, supabase/README.md): un pull request que toca
+# supabase/migrations/ no toca el código de la app (apps/web/src), salvo los tipos del
+# esquema (lib/database.types.ts, lib/database.ts y su prueba lib/database.test.ts). La base
+# va en un PR anterior al código que la usa.
+#
+# Se salta de forma explícita y visible con la etiqueta «migración con código»: el job pasa
+# con un aviso. Por eso corre también al poner o quitar etiquetas. No es un check obligatorio
+# para fusionar: eso se decide en la protección de main.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migraciones-y-codigo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  comprobar:
+    name: Migraciones separadas del código de la app
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Configurar Node desde .nvmrc
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # Los archivos del PR respecto a donde se separó de la rama base (tres puntos), con los
+      # renombrados como borrado más alta, para que mover una migración también cuente.
+      - name: Comprobar los archivos del PR
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          CABEZA: ${{ github.event.pull_request.head.sha }}
+          ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          ARCHIVOS: ${{ runner.temp }}/archivos.txt
+        run: |
+          git diff --name-only --no-renames "${BASE}...${CABEZA}" > "$ARCHIVOS"
+          node scripts/migraciones-y-codigo/index.mjs

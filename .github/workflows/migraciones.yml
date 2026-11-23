@@ -1,17 +1,23 @@
 name: Migraciones
 
-# Aplica las migraciones pendientes de supabase/migrations en un proyecto de Supabase.
-# - Automático: en producción, al llegar a main un cambio en supabase/migrations.
-# - Manual: desde la pestaña Actions, eligiendo el ambiente (dev o prod).
+# Aplica las migraciones pendientes de supabase/migrations en un proyecto de Supabase y, en
+# producción, publica después la web (#281). Así la web nunca llega antes que el esquema que
+# necesita, y si una migración falla la web anterior sigue publicada.
+# - Automático: en cada push a main (sin filtro de rutas: sin migraciones pendientes no
+#   aplica nada, pero publica la web igual). Vercel ya no despliega main por su cuenta
+#   (git.deploymentEnabled en apps/web/vercel.json): lo hace este workflow con el Deploy Hook.
+# - Manual: desde la pestaña Actions, eligiendo el ambiente. Con dev solo migra; con prod
+#   (solo desde main) migra y publica.
+# Guía y marcha atrás: «Despliegue ordenado» y siguientes en el README.
+run-name: Migraciones (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
+
 on:
   push:
     branches: [main]
-    paths:
-      - 'supabase/migrations/**'
   workflow_dispatch:
     inputs:
       ambiente:
-        description: Ambiente donde aplicar las migraciones
+        description: Ambiente donde aplicar las migraciones (prod además publica la web)
         type: choice
         options:
           - dev
@@ -31,18 +37,54 @@ jobs:
   migrar:
     name: Aplicar migraciones (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Las migraciones, la copia del esquema y la espera de la prueba de humo (15 minutos como
+    # mucho) a que Vercel publique.
+    timeout-minutes: 40
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+    defaults:
+      run:
+        # Con «shell: bash» explícito, GitHub ejecuta bash con -e y -o pipefail. Nunca se usa
+        # set -x: imprimiría los secretos que llegan por el entorno.
+        shell: bash
     env:
       AMBIENTE: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
     steps:
-      - name: Comprobar que producción solo se migra desde main
-        if: env.AMBIENTE == 'prod' && github.ref != 'refs/heads/main'
+      # Todo lo que puede impedir publicar la web se comprueba aquí, antes de tocar la base:
+      # o se aplican las migraciones y se publica la web, o ninguna de las dos cosas.
+      - name: Comprobar la rama y la configuración
         env:
           RAMA: ${{ github.ref_name }}
+          REF_GIT: ${{ github.ref }}
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
-          echo "::error::Las migraciones de producción solo se aplican desde main (se lanzó desde ${RAMA})."
-          exit 1
+          case "$AMBIENTE" in dev | prod) ;; *)
+            echo "::error::Ambiente no válido."
+            exit 1
+            ;;
+          esac
+          if [[ "$AMBIENTE" == prod && "$REF_GIT" != refs/heads/main ]]; then
+            echo "::error::Las migraciones de producción solo se aplican desde main (se lanzó desde ${RAMA})."
+            exit 1
+          fi
+          if [[ ! "$REF_PROYECTO" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error::Falta la variable SUPABASE_PROJECT_REF del environment ${AMBIENTE} o no es un identificador de proyecto."
+            exit 1
+          fi
+          if [[ "$AMBIENTE" == prod ]]; then
+            if [[ -z "${VERCEL_DEPLOY_HOOK_URL//[[:space:]]/}" ]]; then
+              echo "::error::Falta el secreto VERCEL_DEPLOY_HOOK_URL del environment prod. Sin él no se puede publicar la web, así que no se ha aplicado ninguna migración. Crea en Vercel el Deploy Hook de producción (proyecto > Settings > Git > Deploy Hooks, rama main) y guarda su URL en GitHub como secreto del environment prod: gh secret set VERCEL_DEPLOY_HOOK_URL --env prod. Después vuelve a lanzar este workflow (Re-run jobs). Ver «Despliegue ordenado» en el README."
+              exit 1
+            fi
+            # Sin mostrarla: solo se comprueba la forma.
+            if [[ "$VERCEL_DEPLOY_HOOK_URL" != https://api.vercel.com/v1/integrations/deploy/* ]]; then
+              echo "::error::El secreto VERCEL_DEPLOY_HOOK_URL del environment prod no es la URL de un Deploy Hook de Vercel (https://api.vercel.com/v1/integrations/deploy/...). No se ha aplicado ninguna migración. Vuelve a copiarla de Vercel (Settings > Git > Deploy Hooks)."
+              exit 1
+            fi
+            echo "Producción: se aplicarán las migraciones pendientes y después se publicará la web."
+          else
+            echo "Desarrollo: solo se aplican las migraciones; no se despliega nada."
+          fi
 
       - name: Obtener el código
         uses: actions/checkout@v7
@@ -58,6 +100,60 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      # Lista lo que se va a aplicar sin aplicar nada (db push --dry-run). Al resumen del job
+      # solo pasan los nombres de las migraciones; la salida completa queda en el registro.
+      - name: Simular las migraciones pendientes
+        id: simulacion
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SALIDA: ${{ runner.temp }}/simulacion.txt
+        run: |
+          node scripts/supabase-db.mjs aplicar --dry-run 2>&1 | tee "$SALIDA"
+          node scripts/despliegue/simulacion.mjs
+
+      # Copia del esquema previo (solo estructura: ni filas ni roles), por si hay que revisar
+      # cómo estaba la base antes de una migración. Solo si hay algo que aplicar (o si la
+      # simulación no se entendió). Si la copia falla, no se aplica nada. Se comprueba que no
+      # lleva ninguna de las credenciales del job antes de subirla como artefacto.
+      - name: Copiar el esquema previo
+        id: copia
+        if: steps.simulacion.outputs.pendientes != 'no'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          CARPETA: ${{ runner.temp }}/esquema
+        run: |
+          mkdir -p "$CARPETA"
+          archivo="${CARPETA}/esquema-previo-${AMBIENTE}-$(date -u +%Y%m%dT%H%M%SZ).sql"
+          node scripts/supabase-db.mjs esquema "$archivo"
+          if [[ ! -s "$archivo" ]]; then
+            echo "::error::La copia del esquema salió vacía: no se aplica ninguna migración."
+            exit 1
+          fi
+          if grep -qF -- "$SUPABASE_DB_PASSWORD" "$archivo" || grep -qF -- "$SUPABASE_ACCESS_TOKEN" "$archivo"; then
+            rm -f "$archivo"
+            echo "::error::La copia del esquema contiene una de las credenciales del job: se ha borrado y no se aplica ninguna migración."
+            exit 1
+          fi
+          {
+            echo "## Copia del esquema previo"
+            echo
+            echo "Guardada como artefacto de esta ejecución ($(wc -l < "$archivo") líneas, solo estructura; se conserva 14 días)."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir la copia del esquema
+        if: steps.copia.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: esquema-previo-${{ env.AMBIENTE }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/esquema/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Aplicar migraciones pendientes
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -71,3 +167,44 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: npm run db:status
+
+      # El Deploy Hook publica la cabeza de main en el momento de llamarlo, no este commit. Si
+      # main ya avanzó, el commit nuevo puede traer migraciones que todavía no se han aplicado
+      # (su ejecución espera a esta): se deja que esa ejecución publique la web.
+      - name: Comprobar que main no ha avanzado
+        id: vigente
+        if: env.AMBIENTE == 'prod'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORIO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          cabeza="$(gh api "repos/${REPOSITORIO}/commits/main" --jq .sha)"
+          if [[ "$cabeza" == "$COMMIT" ]]; then
+            echo "desplegar=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "desplegar=no" >> "$GITHUB_OUTPUT"
+            mensaje="main ya está en ${cabeza:0:7} (esta ejecución es de ${COMMIT:0:7}): la web la publicará la ejecución de ese commit, después de aplicar sus migraciones."
+            echo "::notice::${mensaje}"
+            printf '## Despliegue de producción\n\nNo se dispara: %s\n\n' "$mensaje" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # La URL del hook llega solo por el entorno; el script no la imprime y deja en el resumen
+      # el código HTTP de la respuesta.
+      - name: Publicar la web (Deploy Hook de Vercel)
+        if: env.AMBIENTE == 'prod' && steps.vigente.outputs.desplegar == 'si'
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: node scripts/despliegue/disparar.mjs
+
+      # Sin sesión ni secretos: espera a que producción sirva este commit, comprueba que la
+      # página carga y que el catálogo público responde con la clave publicable. Si faltan las
+      # variables APP_URL o SUPABASE_PUBLISHABLE_KEY del environment, se omite con un aviso.
+      - name: Prueba de humo de producción
+        if: env.AMBIENTE == 'prod' && steps.vigente.outputs.desplegar == 'si'
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          COMMIT: ${{ github.sha }}
+        run: node scripts/despliegue/humo.mjs
