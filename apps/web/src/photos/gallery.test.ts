@@ -376,8 +376,9 @@ describe('uploadPlantPhotos', () => {
     })
 
     expect(result.photos.map((photo) => photo.position)).toEqual([0, 2, 3, 4])
-    // La principal no cambió: no hace falta releer la planta.
-    expect(onPlantUpdated).not.toHaveBeenCalled()
+    // La principal no cambió, pero sí el número de fotos: se relee la planta.
+    expect(onPlantUpdated).toHaveBeenCalledOnce()
+    expect(onPlantUpdated.mock.calls[0]?.[0]).toMatchObject({ photoCount: 4 })
 
     // Cuando ya no hay sitio al final, ocupa el hueco.
     await uploadPlantPhotos(newPhotos(1), options(context))

@@ -31,8 +31,8 @@ export function useRegistrationEvent({
   now = deviceNow,
 }: RegistrationEventOptions): {
   /**
-   * El registro terminó. `hasPhoto`: si quedó con alguna foto; por defecto,
-   * si la planta tiene foto principal.
+   * El registro terminó. `hasPhoto`: si quedó con al menos una foto; por
+   * defecto, si la planta tiene alguna (photoCount, que cuenta la principal).
    */
   onRegistered: (
     plant: CollectionPlant,
@@ -60,7 +60,7 @@ export function useRegistrationEvent({
       current.record(
         plantRegisteredEvent({
           durationMs: current.clock() - start,
-          hasPhoto: options.hasPhoto ?? plant.photoPath !== null,
+          hasPhoto: options.hasPhoto ?? plant.photoCount > 0,
           namePending: plant.validation === 'pending',
           offline: current.offline,
           occurredAt: current.now(),

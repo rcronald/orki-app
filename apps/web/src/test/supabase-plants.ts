@@ -79,6 +79,7 @@ export function rowOf(plant: CollectionPlant): CollectionPlantRow {
     photo_in_bloom: plant.photoInBloom,
     photo_path: plant.photoPath,
     thumbnail_path: plant.thumbnailPath,
+    photo_count: plant.photoCount,
     created_at: plant.createdAt,
     updated_at: plant.updatedAt,
     species: plant.species
@@ -213,6 +214,7 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
       photo_path: main?.photo_path ?? null,
       thumbnail_path: main?.thumbnail_path ?? null,
       photo_in_bloom: main?.in_bloom ?? false,
+      photo_count: photosOf(plantId).length,
     })
   }
 

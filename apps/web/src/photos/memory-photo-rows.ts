@@ -13,9 +13,10 @@ import { PhotoStorageError } from './storage.ts'
 // plant_photos en memoria, con la misma interfaz que la de PostgREST y las
 // reglas de la base que importan a la app (#219): dueño, carpeta de las rutas,
 // posición de 0 a 5 y única por planta, nota (no en blanco, hasta 500) y fecha
-// (no futura, con un día de margen), y copia de la principal a las columnas de
-// la planta. reorder() hace lo que haría la función reorder_plant_photos
-// propuesta en el #183. Lo usan las pruebas (y lo puede usar la página de muestra).
+// (no futura, con un día de margen), copia de la principal a las columnas de
+// la planta y número de fotos (photoCount) al releerla. reorder() hace lo
+// mismo que la función reorder_plant_photos de la base (#183). Lo usan las
+// pruebas (y lo puede usar la página de muestra).
 // Puede fallar a voluntad, también "después de aplicar" (la red cae con la
 // fila ya guardada).
 
@@ -225,7 +226,11 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
       if (!plant || plant.userId !== userId) {
         return Promise.reject(new PhotoStorageError('not-found'))
       }
-      const copy: Partial<typeof plant> = { ...plant }
+      // Como photo_count: el número de filas de la planta.
+      const copy: Partial<typeof plant> = {
+        ...plant,
+        photoCount: photosOf(plantId).length,
+      }
       delete copy.userId
       return Promise.resolve(copy as CollectionPlant)
     },

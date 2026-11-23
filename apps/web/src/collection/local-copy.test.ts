@@ -167,6 +167,39 @@ describe('formato de la copia', () => {
     expect(fromStoredCopy('copia', 'user_a')).toBeNull()
   })
 
+  it('guarda el número de fotos y lo lee igual', async () => {
+    const storage = createIndexedDbCopyStorage(freshDbName())
+    const many = plant({ photoPath: 'u/p/photo-1.webp', photoCount: 5 })
+    await storage.write(copyFor('user_a', { plants: [many] }))
+    const copy = await storage.read('user_a')
+    expect(copy?.plants.map((saved) => saved.photoCount)).toEqual([5])
+  })
+
+  it('una copia anterior al número de fotos se conserva y lo deduce de la principal', async () => {
+    const name = freshDbName()
+    const withPhoto = plant({ photoPath: 'u/p/photo-1.webp' })
+    const withoutPhoto = plant({ photoPath: null })
+    const old = toStoredCopy(
+      copyFor('user_a', { plants: [withPhoto, withoutPhoto] }),
+    )
+    // Como la guardaba la app antes del #184: sin photoCount, mismo formato.
+    const legacy = {
+      ...old,
+      plants: old.plants.map((saved) => {
+        const copy: Partial<typeof saved> = { ...saved }
+        delete copy.photoCount
+        return copy
+      }),
+    }
+    expect(legacy.format).toBe(LOCAL_COPY_FORMAT)
+    await putRaw(name, legacy)
+
+    const copy = await createIndexedDbCopyStorage(name).read('user_a')
+    expect(copy?.plants.map((saved) => saved.photoCount)).toEqual([1, 0])
+    expect(copy?.plants[0]).toEqual(withPhoto)
+    expect(await keysRaw(name)).toEqual(['user_a'])
+  })
+
   it('una copia sin extras se guarda con listas vacías', () => {
     const stored = toStoredCopy(copyFor('user_a', { extras: {} }))
     expect(stored.speciesNames).toEqual([])

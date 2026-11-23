@@ -1,4 +1,4 @@
-import type { CollectionPlant } from './model.ts'
+import { photoCountOf, type CollectionPlant } from './model.ts'
 import type { OwnershipExtras, SpeciesExtraName } from './ownership.ts'
 
 // Copia local de la colección en el dispositivo (#18, #118), en IndexedDB.
@@ -15,6 +15,10 @@ import type { OwnershipExtras, SpeciesExtraName } from './ownership.ts'
 //   una versión anterior o posterior de la app) no se migra: se borra y se
 //   trata como si no hubiera copia, porque la red la vuelve a llenar entera
 //   en la próxima lectura. Lo mismo con una copia dañada.
+// - Campos añadidos sin cambiar el formato: photoCount (#184). Una copia
+//   guardada antes no lo trae; al leerla se deduce de la principal
+//   (photoCountOf: 1 si hay foto, 0 si no) en lugar de descartarla, así quien
+//   abre la app sin conexión tras actualizar sigue viendo su colección.
 // - Todo con try/catch: sin IndexedDB (algunos modos privados) o con un
 //   fallo (sin espacio), no se guarda nada y la app funciona como sin caché.
 
@@ -88,12 +92,19 @@ export function fromStoredCopy(
   return {
     userId,
     savedAt: stored.savedAt,
-    plants: stored.plants,
+    plants: stored.plants.map(withPhotoCount),
     extras: {
       speciesNames: new Map(stored.speciesNames),
       genusAbbreviations: new Map(stored.genusAbbreviations),
     },
   }
+}
+
+/** La planta guardada, con photoCount aunque la copia sea anterior al #184. */
+function withPhotoCount(plant: CollectionPlant): CollectionPlant {
+  const stored = plant as Partial<CollectionPlant>
+  const photoCount = photoCountOf(stored.photoCount, plant.photoPath ?? null)
+  return stored.photoCount === photoCount ? plant : { ...plant, photoCount }
 }
 
 // IndexedDB -------------------------------------------------------------------

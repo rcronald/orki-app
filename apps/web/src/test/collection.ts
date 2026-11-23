@@ -31,6 +31,7 @@ export function plantRow(
     photo_in_bloom: true,
     photo_path: 'user_prueba/planta-1.webp',
     thumbnail_path: 'user_prueba/planta-1-mini.webp',
+    photo_count: 1,
     created_at: '2026-11-01T15:00:00+00:00',
     updated_at: '2026-11-02T10:30:00+00:00',
     species: {
@@ -88,6 +89,8 @@ export function plant(
     photoInBloom: false,
     photoPath: null,
     thumbnailPath: null,
+    // Por defecto, solo la principal si la hay.
+    photoCount: (overrides.photoPath ?? null) === null ? 0 : 1,
     ...overrides,
   }
 }

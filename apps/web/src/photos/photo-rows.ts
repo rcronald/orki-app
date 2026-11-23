@@ -23,8 +23,8 @@ import { PhotoStorageError } from './storage.ts'
 //   cambia. Tras escribir una foto, la planta de la colección puede quedar
 //   desfasada: readPlant() la vuelve a leer.
 // - RLS: cada persona lee, crea, cambia y borra solo sus fotos.
-// - Reordenar (#183) va por la función reorder_plant_photos, que aún no existe
-//   en la base: ver reorder() y el README (detalle de la planta).
+// - Reordenar (#183) va por la función reorder_plant_photos de la base
+//   (migración 20261124100000): ver reorder().
 
 /** Una foto guardada de una planta, con los nombres de la app. */
 export interface StoredPlantPhoto {
@@ -169,14 +169,6 @@ export function photoRowError(
   return recordError(error, status)
 }
 
-/** rpc() de supabase-js para una función que aún no está en los tipos. */
-interface UntypedRpcClient {
-  rpc(
-    fn: string,
-    args: Record<string, unknown>,
-  ): PromiseLike<{ data: unknown; error: unknown; status: number }>
-}
-
 interface SupabaseRowsOptions {
   getClient?: () => Promise<OrkiSupabaseClient>
 }
@@ -273,13 +265,13 @@ export function createSupabasePlantPhotoRows({
       // seis fotos no queda ninguna posición libre de paso. PostgREST no
       // sabe poner un valor distinto en cada fila de un PATCH, y un upsert
       // escribiría plant_id y user_id, que la API no deja cambiar. Por eso va
-      // por la función reorder_plant_photos (propuesta en el #183; sus
-      // tipos aún no están en database.types.ts).
-      const supabase = (await client()) as unknown as UntypedRpcClient
-      const { data, error, status } = await supabase.rpc(
-        'reorder_plant_photos',
-        { target_plant_id: plantId, photo_ids: [...photoIds] },
-      )
+      // por la función reorder_plant_photos.
+      const { data, error, status } = await (
+        await client()
+      ).rpc('reorder_plant_photos', {
+        target_plant_id: plantId,
+        photo_ids: [...photoIds],
+      })
       if (error) throw photoRowError(error, status)
       const rows = (Array.isArray(data) ? data : []) as PlantPhotoRow[]
       return rows
