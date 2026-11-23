@@ -80,6 +80,8 @@ export const LOG_FORM_TEXT = {
   bloomYes: 'Sí',
   bloomNo: 'No',
   automaticDate: 'La fecha y hora se guardan automáticamente.',
+  offline:
+    'Sin conexión: el registro no se puede guardar ahora. Lo que escribiste sigue aquí; podrás guardarlo cuando vuelva la conexión.',
   cancel: 'Cancelar',
   save: 'Guardar registro',
   saving: 'Guardando…',
