@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import { flushSync } from 'react-dom'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
@@ -87,7 +87,7 @@ import {
   type PhotoEntry,
 } from '../registration/usePhotoEntries.ts'
 import { useQuickGenera } from '../registration/useQuickGenera.ts'
-import { plantEditPath, signInPathFor } from '../routes/paths.ts'
+import { PATHS, plantEditPath, signInPathFor } from '../routes/paths.ts'
 import {
   applyPlantEdit,
   discardUploads,
@@ -205,6 +205,7 @@ function failureText(
   error: PlantEditError,
   labels: readonly string[],
 ): { title: string; reason: string | null } {
+  if (error.plantGone) return { title: EDIT_TEXT.plantGone, reason: null }
   switch (error.step) {
     case 'upload':
       return { title: EDIT_TEXT.uploadFailed(labels), reason: error.message }
@@ -242,7 +243,10 @@ function sessionEnded(error: PlantEditError): boolean {
  *
  * Salir con cambios sin guardar pregunta antes (useLeaveGuard): por un
  * enlace de la app, con «atrás», con «Cancelar» o «Volver a la ficha», o al
- * cerrar o recargar la pestaña.
+ * cerrar o recargar la pestaña. Mientras se guarda no se puede salir (#279):
+ * esas vías solo avisan de que hay que esperar. Si el formulario se desmonta
+ * de todos modos, no navega al terminar y lo que sobre se borra cuando el
+ * intento en curso termina (discardUploads).
  */
 export function EditPlantForm({
   plant,
@@ -268,6 +272,9 @@ export function EditPlantForm({
   const [partial, setPartial] = useState(false)
   // Archivos subidos de las fotos nuevas, de un intento al siguiente.
   const uploaded = useRef<UploadedPhotos>(new Map())
+  // Si el formulario sigue montado (al terminar un guardado, #279).
+  const mounted = useRef(false)
+  const navigate = useNavigate()
   const [quickGenera, retryQuickGenera] = useQuickGenera(
     services.loadQuickGenera,
     online,
@@ -327,6 +334,15 @@ export function EditPlantForm({
   const [removed, setRemoved] = useState<
     { entry: PhotoEntry; index: number }[]
   >([])
+  // Fotos quitadas cuya fila ya borró un intento (#279): no se pueden
+  // deshacer, pero sus archivos se borran al terminar de guardar.
+  const [goneIds, setGoneIds] = useState<ReadonlySet<string>>(new Set())
+  const undoable = removed.filter(
+    ({ entry }) => entry.kind !== 'stored' || !goneIds.has(entry.stored.id),
+  )
+  const markGone = (ids: readonly string[]) => {
+    if (ids.length > 0) setGoneIds((current) => new Set([...current, ...ids]))
+  }
   const [storedLoad, setStoredLoad] = useState<'loading' | 'ready' | 'error'>(
     'loading',
   )
@@ -409,7 +425,10 @@ export function EditPlantForm({
         inBloom: before.inBloom,
       })
     })
-  const dirty = dataDirty || photosDirty
+  // Tras un guardado a medias la base ya no es la de antes: guardar aplica el
+  // plan aunque el formulario vuelva a verse como al abrirlo (por ejemplo,
+  // tras quitar una foto nueva que ya tenía fila).
+  const dirty = dataDirty || photosDirty || partial
 
   // Errores (desde el primer intento de guardar) -------------------------------
   const errors: PlantFormErrors = submitted
@@ -435,20 +454,36 @@ export function EditPlantForm({
     }
   }
 
-  const guard = useLeaveGuard({
-    dirty,
-    partial,
-    onDiscard: () => {
+  const saving = save.status === 'saving'
+  const guard = useLeaveGuard({ dirty, partial, busy: saving })
+
+  // Al desmontarse (se salió, con o sin preguntar), se borran los archivos
+  // subidos que no llegaron a tener fila y los de las fotos quitadas cuya
+  // fila ya borró un intento. discardUploads espera a que termine
+  // el intento en curso, si lo hay: hasta entonces puede crear la fila que
+  // los cita.
+  const discardRef = useRef<() => void>(() => undefined)
+  useEffect(() => {
+    discardRef.current = () => {
       if (userId === null) return
       void discardUploads(
         uploaded.current,
         { userId, plantId: plant.id },
         services,
+        removed.flatMap(({ entry }) =>
+          entry.kind === 'stored' ? [entry.stored] : [],
+        ),
       )
-    },
+    }
   })
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      discardRef.current()
+    }
+  }, [])
 
-  const saving = save.status === 'saving'
   const preparing = entries.some((entry) => entry.kind === 'preparing')
   const locked = values.species !== null
 
@@ -457,7 +492,8 @@ export function EditPlantForm({
     guard.requestLeave(onCancel)
   }
   useEffect(() => {
-    cancelRef.current = cancel
+    // «Volver a la ficha»: durante un guardado avisa de que hay que esperar.
+    cancelRef.current = () => guard.requestLeave(onCancel)
     return () => {
       cancelRef.current = null
     }
@@ -549,9 +585,9 @@ export function EditPlantForm({
   }
 
   const undoRemove = () => {
-    const last = removed.at(-1)
+    const last = undoable.at(-1)
     if (!last || saving) return
-    setRemoved((items) => items.slice(0, -1))
+    setRemoved((items) => items.filter((item) => item !== last))
     photos.insert(last.entry, last.index)
     setPhotoStatus(EDIT_TEXT.photoRestored)
   }
@@ -640,6 +676,49 @@ export function EditPlantForm({
     }
   }
 
+  // Conciliar el formulario con las filas leídas al empezar un intento
+  // (#279): lo que otro intento u otro dispositivo ya cambió.
+  const reconcile = (rows: readonly StoredPlantPhoto[]) => {
+    const ids = new Set(rows.map((row) => row.id))
+    const uploadedPaths = new Set(
+      [...uploaded.current.values()].map((paths) => paths.photoPath),
+    )
+    const known = new Set([
+      ...photos
+        .current()
+        .flatMap((entry) => (entry.kind === 'stored' ? [entry.stored.id] : [])),
+      ...removed.flatMap(({ entry }) =>
+        entry.kind === 'stored' ? [entry.stored.id] : [],
+      ),
+    ])
+    const foreign = rows.filter(
+      (row) => !known.has(row.id) && !uploadedPaths.has(row.photoPath),
+    )
+    // Guardadas sin fila: se quitaron en otro lado.
+    photos.update((list) => [
+      ...list.filter(
+        (entry) => entry.kind !== 'stored' || ids.has(entry.stored.id),
+      ),
+      ...foreign.map(storedPhotoEntry),
+    ])
+    if (foreign.length > 0) {
+      setDetails((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          foreign.map((row) => [storedPhotoEntry(row).key, storedDetails(row)]),
+        ),
+      }))
+    }
+    // Quitadas cuya fila ya no está: ya no se pueden deshacer.
+    markGone(
+      removed.flatMap(({ entry }) =>
+        entry.kind === 'stored' && !ids.has(entry.stored.id)
+          ? [entry.stored.id]
+          : [],
+      ),
+    )
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (savingRef.current || !online || preparing || storedLoad !== 'ready') {
@@ -718,6 +797,12 @@ export function EditPlantForm({
         case 'photos-written':
           setPartial(true)
           return
+        case 'rows-read':
+          reconcile(edit.rows)
+          return
+        case 'row-removed':
+          markGone([edit.id])
+          return
       }
     }
     try {
@@ -729,8 +814,11 @@ export function EditPlantForm({
       )
       if (result.plant) onPlantStored(result.plant)
       savingRef.current = false
-      uploaded.current = new Map()
-      await guard.leave(() => onSaved(result.plant ?? plant, { changed: true }))
+      // Si la persona ya no está en la edición, no se la lleva a la ficha.
+      if (!mounted.current) return
+      await guard.leave(() => {
+        if (mounted.current) onSaved(result.plant ?? plant, { changed: true })
+      })
     } catch (error) {
       savingRef.current = false
       // Las que sí se subieron vuelven a verse como pendientes: aún no son
@@ -752,13 +840,15 @@ export function EditPlantForm({
     }
   }
 
-  // Tras un fallo, el mensaje se ve y el foco va a «Reintentar».
+  // Tras un fallo, el mensaje se ve y el foco va a «Reintentar» (o a «Ir a
+  // Mi colección», si la planta ya no existe).
   const failure = save.status === 'error' ? save.error : null
   const retryRef = useRef<HTMLButtonElement>(null)
+  const collectionRef = useRef<HTMLAnchorElement>(null)
   useEffect(() => {
     if (failure === null) return
     alertRef.current?.scrollIntoView?.({ block: 'center' })
-    retryRef.current?.focus()
+    ;(collectionRef.current ?? retryRef.current)?.focus()
   }, [failure])
 
   // Miniaturas: las nuevas, de su Blob; las guardadas, de Storage.
@@ -1068,10 +1158,10 @@ export function EditPlantForm({
       {leftOutNotice !== null && (
         <p className="orki-gallery__notice">{leftOutNotice}</p>
       )}
-      {removed.length > 0 && (
+      {undoable.length > 0 && (
         <div className="flex flex-wrap items-center gap-space-3">
           <p className="orki-gallery__notice">
-            {EDIT_TEXT.removedPending(removed.length)}
+            {EDIT_TEXT.removedPending(undoable.length)}
           </p>
           <Button aria-disabled={saving || undefined} onClick={undoRemove}>
             {EDIT_TEXT.undoRemove}
@@ -1241,26 +1331,44 @@ export function EditPlantForm({
             {failureCopy.title}
           </p>
           {failureCopy.reason !== null && <p>{failureCopy.reason}</p>}
-          <p>{partial ? EDIT_TEXT.partlySaved : EDIT_TEXT.nothingSaved}</p>
-          <div className="flex flex-wrap gap-space-3">
-            <Button
-              ref={retryRef}
-              type="submit"
-              aria-disabled={!online || undefined}
-              aria-describedby={!online ? offlineId : undefined}
+          {failure.plantGone ? (
+            <Link
+              ref={collectionRef}
+              to={PATHS.collection}
+              className="orki-btn orki-btn--secondary"
+              data-sin-aviso=""
+              onClick={(event) => {
+                event.preventDefault()
+                // No queda nada que guardar: se sale sin preguntar.
+                void guard.leave(() => void navigate(PATHS.collection))
+              }}
             >
-              {EDIT_TEXT.retry}
-            </Button>
-            {sessionEnded(failure) && (
-              <Link
-                to={signInPathFor(plantEditPath(plant.id))}
-                className="orki-btn orki-btn--secondary"
-                data-sin-aviso=""
-              >
-                {EDIT_TEXT.signIn}
-              </Link>
-            )}
-          </div>
+              {EDIT_TEXT.goToCollection}
+            </Link>
+          ) : (
+            <>
+              <p>{partial ? EDIT_TEXT.partlySaved : EDIT_TEXT.nothingSaved}</p>
+              <div className="flex flex-wrap gap-space-3">
+                <Button
+                  ref={retryRef}
+                  type="submit"
+                  aria-disabled={!online || undefined}
+                  aria-describedby={!online ? offlineId : undefined}
+                >
+                  {EDIT_TEXT.retry}
+                </Button>
+                {sessionEnded(failure) && (
+                  <Link
+                    to={signInPathFor(plantEditPath(plant.id))}
+                    className="orki-btn orki-btn--secondary"
+                    data-sin-aviso=""
+                  >
+                    {EDIT_TEXT.signIn}
+                  </Link>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
