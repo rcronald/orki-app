@@ -54,6 +54,7 @@ interface Setup {
 }
 
 let services: Setup
+let images: ReturnType<typeof fakeImageSource>
 
 beforeEach(() => {
   document.documentElement.lang = 'es'
@@ -61,6 +62,7 @@ beforeEach(() => {
   const entries = createMemoryPlantLogEntries({ userId: USER })
   entries.plants.set(ID, USER)
   services = { entries, storage: createMemoryPhotoStorage() }
+  images = fakeImageSource()
 })
 
 async function seed(
@@ -83,7 +85,7 @@ async function seed(
 function renderSection(readOnly: ReadOnlyReason | null = null) {
   return render(
     <PlantLogServicesContext value={services}>
-      <PlantImagesContext value={fakeImageSource().source}>
+      <PlantImagesContext value={images.source}>
         <main>
           <h1>Cattleya adelinae</h1>
           <PlantLogSection plant={CATTLEYA} readOnly={readOnly} userId={USER} />
@@ -140,6 +142,20 @@ describe('PlantLogSection: la lista', () => {
         name: LOG_TEXT.openPhoto('Revisión'),
       }),
     ).toBeVisible()
+    // La miniatura se pide como 'photo': solo en memoria, no en Cache
+    // Storage (la bitácora no se guarda en el dispositivo).
+    await waitFor(() =>
+      expect(images.acquire).toHaveBeenCalledWith(
+        `${USER}/${ID}/log/thumb-v.webp`,
+        'photo',
+        expect.anything(),
+      ),
+    )
+    expect(images.acquire).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'thumbnail',
+      expect.anything(),
+    )
     expect(within(abono).getByText('Floración observada: sí')).toBeVisible()
     // Sin descripción, sin floración ni foto: no se pintan.
     expect(within(riego).getByText('Diez minutos.')).toBeVisible()
@@ -603,7 +619,7 @@ describe('PlantLogSection: eliminar un registro', () => {
     await screen.findByRole('list', { name: LOG_TEXT.listLabel })
     view.rerender(
       <PlantLogServicesContext value={services}>
-        <PlantImagesContext value={fakeImageSource().source}>
+        <PlantImagesContext value={images.source}>
           <main>
             <h1>Cattleya adelinae</h1>
             <PlantLogSection

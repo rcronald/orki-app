@@ -64,7 +64,7 @@ const BLOOM_OPTIONS: readonly { value: Bloom; label: string }[] = [
 
 /** Opción de un grupo de opción única con aspecto de tarjeta (radio nativo oculto). */
 const CHOICE_CLASSES =
-  'group flex cursor-pointer items-center gap-space-3 rounded-md border-[1.5px] border-neutral-200 bg-neutral-0 text-md text-neutral-900 has-[:checked]:border-secondary-strong has-[:focus-visible]:outline-[2px] has-[:focus-visible]:outline-offset-[2px] has-[:focus-visible]:outline-secondary has-[:focus-visible]:outline-solid has-[:disabled]:cursor-not-allowed'
+  'group flex cursor-pointer items-center rounded-md border-[1.5px] border-neutral-200 bg-neutral-0 text-md text-neutral-900 has-[:checked]:border-secondary-strong has-[:focus-visible]:outline-[2px] has-[:focus-visible]:outline-offset-[2px] has-[:focus-visible]:outline-secondary has-[:focus-visible]:outline-solid has-[:disabled]:cursor-not-allowed'
 
 /**
  * «Nuevo registro de bitácora» (#267, maqueta del #263): diálogo modal en
@@ -326,7 +326,7 @@ export function AddLogEntryDialog({
       </button>
 
       <form
-        className="flex flex-col gap-space-5"
+        className="flex flex-col gap-space-4"
         noValidate
         onSubmit={(event) => void submit(event)}
       >
@@ -343,7 +343,7 @@ export function AddLogEntryDialog({
               return (
                 <label
                   key={value}
-                  className={`${CHOICE_CLASSES} min-h-[56px] px-space-4 py-space-2 has-[:checked]:bg-secondary-soft has-[:checked]:font-semibold publico-estrecho:px-space-3 [&_svg]:size-[24px] [&_svg]:flex-none`}
+                  className={`${CHOICE_CLASSES} min-h-[56px] gap-space-3 px-space-4 py-space-2 has-[:checked]:bg-secondary-soft has-[:checked]:font-semibold publico-estrecho:px-space-3 [&_svg]:size-[24px] [&_svg]:flex-none`}
                 >
                   <input
                     ref={index === 0 ? firstType : undefined}
@@ -421,48 +421,52 @@ export function AddLogEntryDialog({
         </div>
 
         <div className="flex flex-col gap-space-2">
-          <div className="flex flex-wrap items-center gap-space-3">
+          <div className="flex items-center gap-space-3">
             {photo.status === 'ready' && thumbnailUrl && (
               <img
                 src={thumbnailUrl}
                 alt={LOG_FORM_TEXT.photoPreview}
                 width={96}
                 height={96}
-                className="size-[96px] rounded-md border border-neutral-200 object-cover"
+                className="size-[96px] flex-none rounded-md border border-neutral-200 object-cover"
               />
             )}
-            <Button
-              ref={photoButton}
-              icon="camera"
-              aria-disabled={busy || photo.status === 'preparing' || undefined}
-              aria-describedby={
-                [photoError && photoErrorId, photoHintId]
-                  .filter(Boolean)
-                  .join(' ') || undefined
-              }
-              onClick={() => {
-                if (!busy && photo.status !== 'preparing') {
-                  fileInput.current?.click()
-                }
-              }}
-            >
-              {photo.status === 'ready'
-                ? LOG_FORM_TEXT.changePhoto
-                : photo.status === 'preparing'
-                  ? LOG_FORM_TEXT.preparing
-                  : LOG_FORM_TEXT.addPhoto}
-            </Button>
-            {photo.status === 'ready' && (
+            <div className="flex min-w-[0] flex-wrap gap-space-3">
               <Button
-                icon="trash-2"
-                aria-disabled={busy || undefined}
+                ref={photoButton}
+                icon="camera"
+                aria-disabled={
+                  busy || photo.status === 'preparing' || undefined
+                }
+                aria-describedby={
+                  [photoError && photoErrorId, photoHintId]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
                 onClick={() => {
-                  if (!busy) removePhoto()
+                  if (!busy && photo.status !== 'preparing') {
+                    fileInput.current?.click()
+                  }
                 }}
               >
-                {LOG_FORM_TEXT.removePhoto}
+                {photo.status === 'ready'
+                  ? LOG_FORM_TEXT.changePhoto
+                  : photo.status === 'preparing'
+                    ? LOG_FORM_TEXT.preparing
+                    : LOG_FORM_TEXT.addPhoto}
               </Button>
-            )}
+              {photo.status === 'ready' && (
+                <Button
+                  icon="trash-2"
+                  aria-disabled={busy || undefined}
+                  onClick={() => {
+                    if (!busy) removePhoto()
+                  }}
+                >
+                  {LOG_FORM_TEXT.removePhoto}
+                </Button>
+              )}
+            </div>
           </div>
           <input
             ref={fileInput}
@@ -491,11 +495,11 @@ export function AddLogEntryDialog({
           <legend className="orki-field__label mb-space-2">
             {LOG_FORM_TEXT.bloom}
           </legend>
-          <div className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-space-3">
+          <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-space-3 publico-estrecho:gap-space-2">
             {BLOOM_OPTIONS.map((option) => (
               <label
                 key={option.value}
-                className={`${CHOICE_CLASSES} min-h-[48px] justify-center px-space-2 has-[:checked]:bg-secondary-strong has-[:checked]:font-semibold has-[:checked]:text-neutral-0`}
+                className={`${CHOICE_CLASSES} min-h-[48px] justify-center gap-space-2 px-space-2 whitespace-nowrap has-[:checked]:bg-secondary-strong has-[:checked]:font-semibold has-[:checked]:text-neutral-0`}
               >
                 <input
                   type="radio"

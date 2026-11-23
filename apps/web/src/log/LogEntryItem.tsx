@@ -25,7 +25,7 @@ interface LogEntryItemProps {
 /** La foto completa en el visor; mientras llega (o si falla), la miniatura. */
 function ViewerPhoto({ entry, alt }: { entry: LogEntry; alt: string }) {
   const full = usePlantImage(entry.photoPath, 'photo')
-  const thumbnail = usePlantImage(entry.thumbnailPath, 'thumbnail')
+  const thumbnail = usePlantImage(entry.thumbnailPath, 'photo')
   const image = full.status === 'ready' ? full : thumbnail
   return image.status === 'ready' ? (
     <img className="orki-lightbox__photo" src={image.src} alt={alt} />
@@ -38,7 +38,9 @@ function ViewerPhoto({ entry, alt }: { entry: LogEntry; alt: string }) {
 function EntryPhoto({ entry }: { entry: LogEntry }) {
   const button = useRef<HTMLButtonElement>(null)
   const near = useNearViewport(button)
-  const thumbnail = usePlantImage(entry.thumbnailPath, 'thumbnail', near)
+  // Como 'photo': solo en memoria. La bitácora no se guarda en el
+  // dispositivo (#263), tampoco sus miniaturas en Cache Storage.
+  const thumbnail = usePlantImage(entry.thumbnailPath, 'photo', near)
   const online = useOnlineStatus()
   const [open, setOpen] = useState(false)
   const alt = LOG_TEXT.photoAlt(entry.title)

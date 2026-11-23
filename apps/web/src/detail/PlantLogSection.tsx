@@ -293,14 +293,16 @@ export function PlantLogSection({
       )}
 
       {(writable || log.entries.length > 0) && (
-        <div className="flex">
+        // Sin el aspecto nativo (Safari ignora el alto de un select nativo
+        // y lo deja en 26 px), con la flecha del sistema encima.
+        <div className="relative flex self-start">
           <label htmlFor={filterId} className="sr-only">
             {LOG_TEXT.filterLabel}
           </label>
           <select
             ref={filterRef}
             id={filterId}
-            className="orki-field__input w-auto max-w-[100%] min-w-[240px] cursor-pointer publico-estrecho:min-w-[0]"
+            className="orki-field__input min-h-[48px] w-auto max-w-[100%] min-w-[240px] cursor-pointer appearance-none pr-[44px] publico-estrecho:min-w-[200px]"
             value={log.filter ?? ''}
             onChange={(event) => {
               const value = event.target.value
@@ -318,6 +320,10 @@ export function PlantLogSection({
               </option>
             ))}
           </select>
+          <Icon
+            name="chevron-down"
+            className="pointer-events-none absolute top-[50%] right-space-3 size-[20px] -translate-y-[50%] text-neutral-900"
+          />
         </div>
       )}
 

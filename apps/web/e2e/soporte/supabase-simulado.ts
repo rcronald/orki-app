@@ -1852,8 +1852,7 @@ export class SupabaseSimulado {
     const fallo = this.falloDeBitacora('lista')
     if (fallo) return this.respuestaDeFallo(fallo)
     const tipo = argumentos.entry_type ?? null
-    const texto = (valor: unknown) =>
-      typeof valor === 'string' ? valor : null
+    const texto = (valor: unknown) => (typeof valor === 'string' ? valor : null)
     const antesDe = texto(argumentos.before_created_at)
     const antesId = texto(argumentos.before_id)
     if ((antesDe === null) !== (antesId === null)) {
