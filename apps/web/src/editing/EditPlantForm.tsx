@@ -42,6 +42,12 @@ import {
 } from '../photos/gallery.ts'
 import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
 import type { PlantPhotoRows, StoredPlantPhoto } from '../photos/photo-rows.ts'
+import {
+  EDIT_REUSE_MS,
+  forgetPlantPhotosOf,
+  recentPlantPhotos,
+  rememberPlantPhotos,
+} from '../photos/plant-photos-memory.ts'
 import { PhotoStorageError, type PhotoStorage } from '../photos/storage.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { useStoredThumbnails } from '../photos/useStoredThumbnails.ts'
@@ -358,14 +364,25 @@ export function EditPlantForm({
   const filesInput = useRef<HTMLInputElement>(null)
   const alertRef = useRef<HTMLDivElement>(null)
 
-  // Las fotos guardadas: se piden siempre (la planta en memoria puede venir
-  // de la copia sin conexión).
+  // Las fotos guardadas: de plant_photos, no de la planta en memoria (puede
+  // venir de la copia sin conexión). Si la ficha las acaba de leer, se usan
+  // esas (#285, photos/plant-photos-memory.ts): el plan de guardado vuelve a
+  // leerlas al empezar y concilia con ellas lo que haya cambiado entre tanto.
   useEffect(() => {
     if (userId === null) return
     let active = true
-    services.rows.list(plant.id.toLowerCase(), userId).then(
+    const plantId = plant.id.toLowerCase()
+    const recent =
+      storedAttempt === 0
+        ? recentPlantPhotos(services.rows, userId, plantId, EDIT_REUSE_MS)
+        : null
+    const read = recent
+      ? Promise.resolve(recent)
+      : services.rows.list(plantId, userId)
+    read.then(
       (stored) => {
         if (!active) return
+        if (!recent) rememberPlantPhotos(services.rows, userId, plantId, stored)
         photos.replace(stored.map(storedPhotoEntry))
         setStoredBefore(stored)
         setDetails(
@@ -813,6 +830,14 @@ export function EditPlantForm({
         onEvent,
       )
       if (result.plant) onPlantStored(result.plant)
+      // Las filas como quedaron: la ficha no las vuelve a leer al volver.
+      rememberPlantPhotos(
+        services.rows,
+        plan.userId,
+        plan.plantId,
+        result.photos,
+        'saved',
+      )
       savingRef.current = false
       // Si la persona ya no está en la edición, no se la lleva a la ficha.
       if (!mounted.current) return
@@ -821,6 +846,8 @@ export function EditPlantForm({
       })
     } catch (error) {
       savingRef.current = false
+      // Pudo quedar a medias: lo recordado de la planta ya no vale.
+      forgetPlantPhotosOf(services.rows, plan.userId, plan.plantId)
       // Las que sí se subieron vuelven a verse como pendientes: aún no son
       // de la planta (solo las que fallaron dicen «No se subió»).
       photos.update((list) =>

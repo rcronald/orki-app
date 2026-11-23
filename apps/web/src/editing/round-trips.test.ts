@@ -272,6 +272,7 @@ describe('lo que sale a la vez al guardar la edición (#285)', () => {
 })
 
 describe('peticiones y viajes al registrar con fotos (#285)', () => {
+  // Sin contar la inserción de la planta (una petición y un viaje antes).
   it('3 fotos en una planta recién creada', async () => {
     const context = setup(0)
     const onPlantUpdated = vi.fn()
@@ -283,6 +284,9 @@ describe('peticiones y viajes al registrar con fotos (#285)', () => {
         storage: context.services.storage,
         rows: context.services.rows,
         onPlantUpdated,
+        // Lo que pasa el registro (NewPlantPage) con la planta que la base
+        // acaba de devolver sin fotos.
+        knownPhotos: [],
       },
     )
     expect(result.complete).toBe(true)
@@ -293,9 +297,9 @@ describe('peticiones y viajes al registrar con fotos (#285)', () => {
       lecturasDeFotos: counter.count('rows.list'),
     }).toMatchInlineSnapshot(`
       {
-        "lecturasDeFotos": 1,
-        "peticiones": 11,
-        "viajes": 6,
+        "lecturasDeFotos": 0,
+        "peticiones": 10,
+        "viajes": 5,
       }
     `)
     expect(onPlantUpdated).toHaveBeenCalledTimes(1)

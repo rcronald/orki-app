@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { lazy } from 'react'
 import { Route } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PhotoStorageError } from '../photos/storage.ts'
 import { PATHS } from '../routes/paths.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { plant } from '../test/collection.ts'
@@ -85,6 +86,52 @@ describe('lecturas de plant_photos entre la ficha, la edición y el guardado (#2
     )
     await screen.findByText('Primera vara')
     expect(rows.photosOf(ID)[0]?.note).toBe('Primera vara')
-    expect(list.mock.calls.length).toMatchInlineSnapshot(`4`)
+    // Antes del #285, cuatro: la ficha, la edición, el plan y la ficha otra
+    // vez. Ahora, la de la ficha y la del plan.
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('si el guardado falla, al volver a la ficha se leen otra vez', async () => {
+    const rows = memoryRowsFor([SUBJECT], USER)
+    const list = vi.spyOn(rows, 'list')
+    const user = userEvent.setup()
+    await renderPlantRoutes({
+      entries: [`/coleccion/${ID}`],
+      plants: [SUBJECT],
+      photoRows: rows,
+      extraRoutes: <Route path={PATHS.editPlant} element={<EditPlantPage />} />,
+    })
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1))
+    await user.click(await screen.findByRole('link', { name: 'Editar planta' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Gestionar fotos' }),
+    )
+    const manager = screen.getByRole('region', { name: 'Gestionar fotos' })
+    await user.type(
+      within(
+        within(manager).getByRole('group', { name: 'Foto principal' }),
+      ).getByLabelText('Nota'),
+      'Primera vara',
+    )
+    await user.click(screen.getByRole('button', { name: 'Listo' }))
+    rows.failUpdate = () => ({ error: new PhotoStorageError('offline') })
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await screen.findByRole('alert')
+    expect(list).toHaveBeenCalledTimes(2)
+
+    // Sale sin guardar: la ficha no se fía de lo recordado.
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    await user.click(
+      within(
+        screen.getByRole('dialog', { name: '¿Salir sin guardar?' }),
+      ).getByRole('button', { name: 'Salir sin guardar' }),
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        `/coleccion/${ID}`,
+      ),
+    )
+    // La ficha lee otra vez (discardUploads no lee: no hay nada que borrar).
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(3))
   })
 })

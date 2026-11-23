@@ -5,6 +5,13 @@ import {
   photoStorageErrorFrom,
   type PhotoStorageErrorReason,
 } from '../photos/storage.ts'
+import {
+  forgetAllPlantPhotos,
+  recalledPlantPhotos,
+  recentPlantPhotos,
+  rememberPlantPhotos,
+  SAVED_FRESH_MS,
+} from '../photos/plant-photos-memory.ts'
 import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
 
 // Las fotos de una planta para la galería del detalle (#183).
@@ -15,19 +22,21 @@ import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
 //   conexión (la colección y las miniaturas principales se guardan en el
 //   dispositivo, #18 y #119).
 // - Lo leído se recuerda en memoria mientras dura la pestaña, por persona y
-//   planta: al volver a la planta sin conexión se ve la galería entera (cada
-//   foto, si su miniatura está en la caché). No se guarda en el dispositivo:
-//   sin conexión tras recargar, solo la principal.
+//   planta (photos/plant-photos-memory.ts, que comparte con la edición): al
+//   volver a la planta sin conexión se ve la galería entera (cada foto, si su
+//   miniatura está en la caché). No se guarda en el dispositivo: sin conexión
+//   tras recargar, solo la principal.
+// - Al volver de guardar la edición no se lee otra vez (#285): se usan las
+//   filas que devolvió la base al terminar el guardado, si son de hace menos
+//   de SAVED_FRESH_MS. «Volver a cargar» y la vuelta de la conexión leen
+//   siempre.
 // - Si la lectura falla, se reintenta al recuperar la conexión.
 // - Sin la lista leída (o recordada) no hay ids de fotos: la galería no deja
 //   cambiar nada (`known` false).
 
-/** Lo recordado por "<usuario>/<planta>". */
-const remembered = new Map<string, StoredPlantPhoto[]>()
-
 /** Olvida lo recordado (pruebas). */
 export function forgetPlantGalleries(): void {
-  remembered.clear()
+  forgetAllPlantPhotos()
 }
 
 export type PlantGalleryLoad =
@@ -89,10 +98,17 @@ export function usePlantGallery(
   useEffect(() => {
     if (key === null || userId === null) return
     let active = true
-    rows.list(plantId, userId).then(
+    const saved =
+      attempt === 0
+        ? recentPlantPhotos(rows, userId, plantId, SAVED_FRESH_MS, {
+            savedOnly: true,
+          })
+        : null
+    const read = saved ? Promise.resolve(saved) : rows.list(plantId, userId)
+    read.then(
       (photos) => {
         if (!active) return
-        remembered.set(key, photos)
+        if (!saved) rememberPlantPhotos(rows, userId, plantId, photos)
         setResult({ key, photos })
       },
       (error: unknown) => {
@@ -117,11 +133,11 @@ export function usePlantGallery(
   const reload = useCallback(() => setAttempt((count) => count + 1), [])
   const replace = useCallback(
     (photos: StoredPlantPhoto[]) => {
-      if (key === null) return
-      remembered.set(key, photos)
+      if (key === null || userId === null) return
+      rememberPlantPhotos(rows, userId, plantId, photos)
       setResult({ key, photos })
     },
-    [key],
+    [rows, key, plantId, userId],
   )
 
   const load: PlantGalleryLoad = current?.photos
@@ -129,7 +145,8 @@ export function usePlantGallery(
     : current?.error
       ? { status: 'error', reason: current.error }
       : { status: 'loading' }
-  const recalled = key === null ? undefined : remembered.get(key)
+  const recalled =
+    userId === null ? undefined : recalledPlantPhotos(rows, userId, plantId)
   const photos =
     current?.photos ??
     (recalled && stillValid(recalled, plant) ? recalled : undefined)

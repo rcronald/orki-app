@@ -31,15 +31,34 @@ import { useRegistrationEvent } from '../telemetry/useRegistrationEvent.ts'
 // (?foto=1) ya no existe: la dirección sigue abriendo el registro y el
 // parámetro se ignora.
 
+// Plantas que la base acaba de devolver sin ninguna foto (#285): la primera
+// subida a una de ellas no vuelve a leer sus fotos (no tiene). Solo la
+// primera: un reintento lee, porque el intento anterior pudo dejar filas.
+const insertedWithoutPhotos = new Set<string>()
+
 const SUPABASE_SERVICES: PlantFormServices = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
   loadReferencePhoto: (speciesId, options) =>
     getSpeciesReferencePhoto(speciesId, options),
-  savePlant: (insert) => insertPlant(insert),
+  async savePlant(insert) {
+    const plant = await insertPlant(insert)
+    // Lo dice la respuesta de la base (también la de una planta ya guardada
+    // por un intento anterior): sin principal y con photo_count 0.
+    if (plant.photoPath === null && plant.photoCount === 0) {
+      insertedWithoutPhotos.add(plant.id.toLowerCase())
+    }
+    return plant
+  },
   // Con la planta ya guardada: sube las fotos y crea sus filas en orden.
-  uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),
+  uploadPhotos: (photos, options) => {
+    const fresh = insertedWithoutPhotos.delete(options.plantId.toLowerCase())
+    return uploadPlantPhotos(
+      photos,
+      fresh ? { ...options, knownPhotos: [] } : options,
+    )
+  },
 }
 
 export default function NewPlantPage() {

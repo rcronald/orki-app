@@ -120,6 +120,13 @@ export interface UploadPlantPhotosOptions extends PlantGalleryOptions {
    */
   signal?: AbortSignal
   onProgress?: (progress: PlantPhotosProgress) => void
+  /**
+   * Las fotos que ya tiene la planta, solo si quien llama las sabe por la
+   * base (#285): la planta recién insertada, sin fotos, es []. Así no se leen
+   * otra vez. Al reintentar no se pasa: lo que llegó del intento anterior
+   * solo se sabe leyendo.
+   */
+  knownPhotos?: readonly StoredPlantPhoto[]
 }
 
 export interface UploadPlantPhotosResult {
@@ -203,13 +210,16 @@ export async function uploadPlantPhotos(
     signal,
     onProgress,
     onPlantUpdated,
+    knownPhotos,
   }: UploadPlantPhotosOptions,
 ): Promise<UploadPlantPhotosResult> {
   const plantId = rawPlantId.toLowerCase()
   if (signal?.aborted) {
     throw new PhotoStorageError('aborted', { cause: signal.reason })
   }
-  const before = await rows.list(plantId, userId)
+  const before = knownPhotos
+    ? [...knownPhotos].sort(byPosition)
+    : await rows.list(plantId, userId)
   const saved = [...before]
   const mainBefore = before[0]?.id ?? null
 
