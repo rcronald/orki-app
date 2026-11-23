@@ -22,7 +22,12 @@ import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
 import { recordProductEvent } from '../telemetry/product-events.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
-import { CATTLEYA, plant, speciesNamed } from '../test/collection.ts'
+import {
+  CATTLEYA,
+  plant,
+  RHYNCHOLAELIOCATTLEYA,
+  speciesNamed,
+} from '../test/collection.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -450,6 +455,199 @@ describe('OwnershipCheckPage', () => {
         screen.getByRole('button', { name: 'Reintentar' }),
       ).toBeInTheDocument()
       await expectNoAxeViolations()
+    })
+  })
+
+  // Los sinónimos, nombres comunes y abreviaturas llegan aparte de las
+  // plantas (#243): mientras faltan, un «no» no es definitivo (#274).
+  describe('sinónimos y abreviaturas que faltan (#274)', () => {
+    /** Planta por validar del género Rlc., que solo se encuentra por la abreviatura. */
+    const HSINYING = plant({
+      displayName: 'Hsinying Excell',
+      displayNameIsScientific: false,
+      enteredName: 'Hsinying Excell',
+      species: null,
+      genus: RHYNCHOLAELIOCATTLEYA,
+      validation: 'pending',
+    })
+    const WITH_RLC: readonly CollectionPlant[] = [...PLANTS, HSINYING]
+    const EXTRAS = {
+      speciesNames: new Map([
+        [
+          'species-amabilis',
+          [{ name: 'Phalaenopsis grandiflora', type: 'synonym' as const }],
+        ],
+      ]),
+      genusAbbreviations: new Map([
+        ['genus-rlc', ['Rlc.']],
+        ['genus-phal', ['Phal.']],
+      ]),
+    }
+
+    interface ExtrasCall {
+      plants: readonly CollectionPlant[]
+      resolve: (extras: typeof EXTRAS) => void
+      reject: (error: unknown) => void
+    }
+
+    /** Lector de extras que queda pendiente hasta que la prueba responde. */
+    function heldExtras() {
+      const calls: ExtrasCall[] = []
+      const fetchExtras = (plants: readonly CollectionPlant[]) =>
+        new Promise<typeof EXTRAS>((resolve, reject) => {
+          calls.push({ plants, resolve, reject })
+        })
+      return { calls, fetchExtras }
+    }
+
+    async function respond(run: () => void) {
+      await act(async () => {
+        run()
+        for (let index = 0; index < 6; index += 1) await Promise.resolve()
+      })
+    }
+
+    /** Primera visita: sin copia, las plantas llegan y los extras no. */
+    async function firstVisit(plants: readonly CollectionPlant[] = WITH_RLC) {
+      const extras = heldExtras()
+      const cached = createCachedCollectionSource({
+        network: source,
+        storage: createMemoryCopyStorage(),
+        fetchExtras: extras.fetchExtras,
+        onSaved: () => {},
+      })
+      renderAt(['/ya-la-tengo'], cached)
+      await settle()
+      await respond(() => source.last().resolve(plants))
+      expect(extras.calls).toHaveLength(1)
+      return extras
+    }
+
+    it('primera visita, extras pendientes: un sinónimo no responde «Aún no la tienes» y se resuelve solo', async () => {
+      const extras = await firstVisit()
+      await ask('Phalaenopsis grandiflora')
+
+      expect(answer()).not.toHaveTextContent('Aún no la tienes')
+      expect(answer()).toHaveTextContent(
+        'Comprobando sinónimos y abreviaturas…',
+      )
+
+      await respond(() => extras.calls[0].resolve(EXTRAS))
+      expect(answer()).toHaveTextContent(
+        'Sí, la tienes2 ejemplares de Phalaenopsis amabilis',
+      )
+    })
+
+    it('primera visita, extras pendientes: una abreviatura («Rlc.») tampoco', async () => {
+      const extras = await firstVisit()
+      await ask('Rlc. Hsinying')
+
+      expect(answer()).not.toHaveTextContent('Aún no la tienes')
+      expect(answer()).toHaveTextContent(
+        'Comprobando sinónimos y abreviaturas…',
+      )
+
+      await respond(() => extras.calls[0].resolve(EXTRAS))
+      expect(answer()).toHaveTextContent('Sí, la tienes1 ejemplar')
+    })
+
+    it('primera visita, extras pendientes: lo que no tiene pasa a «Aún no la tienes» al llegar', async () => {
+      const extras = await firstVisit()
+      await ask('Vanda coerulea')
+      expect(answer()).toHaveTextContent(
+        'Comprobando sinónimos y abreviaturas…',
+      )
+
+      await respond(() => extras.calls[0].resolve(EXTRAS))
+      expect(answer()).toHaveTextContent('Aún no la tienes')
+    })
+
+    it('por el nombre aceptado responde «Sí, la tienes» al momento, sin esperar a los extras', async () => {
+      await firstVisit()
+      await ask('Phalaenopsis amabilis')
+      expect(answer()).toHaveTextContent(
+        'Sí, la tienes2 ejemplares de Phalaenopsis amabilis',
+      )
+    })
+
+    it('extras que fallan: no afirma que no la tiene, lo dice y deja reintentar', async () => {
+      const extras = await firstVisit()
+      await respond(() => extras.calls[0].reject(new TypeError('red')))
+      const user = await ask('Rlc. Hsinying')
+
+      expect(answer()).not.toHaveTextContent('Aún no la tienes')
+      expect(answer()).toHaveTextContent(
+        'no pudimos comprobar sinónimos ni abreviaturas',
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+      expect(extras.calls).toHaveLength(2)
+      await respond(() => extras.calls[1].resolve(EXTRAS))
+      expect(answer()).toHaveTextContent('Sí, la tienes1 ejemplar')
+    })
+
+    it('copia anterior y extras que fallan: la planta nueva no da un «no» seguro', async () => {
+      const storage = createMemoryCopyStorage()
+      await storage.write({
+        userId: 'user_a',
+        savedAt: '2026-11-20T08:00:00.000Z',
+        plants: PLANTS,
+        // Los de sus plantas: sin la abreviatura de Rlc.
+        extras: {
+          speciesNames: EXTRAS.speciesNames,
+          genusAbbreviations: new Map([['genus-phal', ['Phal.']]]),
+        },
+      })
+      const extras = heldExtras()
+      const cached = createCachedCollectionSource({
+        network: source,
+        storage,
+        fetchExtras: extras.fetchExtras,
+        onSaved: () => {},
+      })
+      renderAt(['/ya-la-tengo'], cached)
+      await settle()
+      // Registrada después de la copia (desde otro dispositivo).
+      await respond(() => source.last().resolve(WITH_RLC))
+      await respond(() => extras.calls[0].reject(new TypeError('red')))
+      await ask('Hsinying')
+      expect(answer()).toHaveTextContent('Sí, la tienes')
+
+      await ask('Rlc. Hsinying')
+      expect(answer()).not.toHaveTextContent('Aún no la tienes')
+      expect(answer()).toHaveTextContent(
+        'no pudimos comprobar sinónimos ni abreviaturas',
+      )
+    })
+
+    it('sin conexión, con una planta guardada después de los extras de la copia: no da un «no» seguro', async () => {
+      const storage = createMemoryCopyStorage()
+      // La copia tiene la planta (se registró en la app y se guardó), pero
+      // no los extras de su género.
+      await storage.write({
+        userId: 'user_a',
+        savedAt: '2026-11-20T08:00:00.000Z',
+        plants: WITH_RLC,
+        extras: { speciesNames: EXTRAS.speciesNames },
+      })
+      const cached = createCachedCollectionSource({
+        network: source,
+        storage,
+        fetchExtras: () => Promise.resolve({}),
+        onSaved: () => {},
+      })
+      online = false
+      renderAt(['/ya-la-tengo'], cached)
+      await settle()
+      await respond(() =>
+        source.last().reject(new CollectionLoadError('offline')),
+      )
+
+      await ask('Rlc. Hsinying')
+      expect(answer()).not.toHaveTextContent('Aún no la tienes')
+      expect(answer()).toHaveTextContent(
+        'sin conexión no podemos comprobar sinónimos ni abreviaturas',
+      )
     })
   })
 
