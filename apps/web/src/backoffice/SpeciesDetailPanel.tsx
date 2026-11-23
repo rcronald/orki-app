@@ -14,6 +14,7 @@ import { SpeciesForm } from './SpeciesForm.tsx'
 import { SpeciesHistory } from './SpeciesHistory.tsx'
 import { SpeciesMergeDialog } from './SpeciesMergeDialog.tsx'
 import { SpeciesNames } from './SpeciesNames.tsx'
+import { SpeciesReferencePhoto } from './SpeciesReferencePhoto.tsx'
 import {
   formatCount,
   formatDateTime,
@@ -54,7 +55,8 @@ export interface SpeciesDetailPanelProps {
 // ficha del Catalogue of Life, fechas y número de plantas enlazadas. Desde
 // aquí se edita (nombre, género, tipo y estado), se borra si no tiene plantas
 // enlazadas, se fusiona con otra (SpeciesMergeDialog) y se editan sus
-// sinónimos y nombres comunes (SpeciesNames). Al final, su historial de
+// sinónimos y nombres comunes (SpeciesNames). Se ve su foto de referencia y
+// se puede retirar (SpeciesReferencePhoto, #234). Al final, su historial de
 // cambios (SpeciesHistory), también mientras se edita.
 export function SpeciesDetailPanel({
   detail,
@@ -356,6 +358,11 @@ function DetailBody({
           <p>Ninguna planta de usuarios la tiene enlazada.</p>
         </ConfirmDialog>
       )}
+      <SpeciesReferencePhoto
+        species={species}
+        source={source}
+        onChanged={onChanged}
+      />
       <SpeciesNames species={species} source={source} onChanged={onChanged} />
     </>
   )

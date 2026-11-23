@@ -33,6 +33,7 @@ import {
 } from '../lib/catalogWrites.ts'
 import type { GenusSearchResult } from '../lib/catalogSearch.ts'
 import type { PlantImageSource } from '../photos/read.ts'
+import type { ReferencePicture } from '../lib/referencePhotos.ts'
 import samplePhoto from './foto-muestra.svg'
 import type {
   SpeciesNameType,
@@ -664,6 +665,23 @@ export function createSampleCatalogSource(
     )
   }
 
+  // Fotos de referencia (#234): la primera especie trae una de muestra, que se
+  // puede retirar como en la base (retire_species_photo).
+  const referencePhotos = new Map<string, ReferencePicture>()
+  if (firstSpecies) {
+    referencePhotos.set(firstSpecies.id, {
+      medium: { src: samplePhoto, width: 480, height: 360 },
+      thumbnail: { src: samplePhoto, width: 160, height: 120 },
+      credit: {
+        author: 'Autora de muestra',
+        license: 'cc-by',
+        sourceUrl: 'https://www.inaturalist.org/photos/12345',
+        modified: true,
+      },
+      sourcePhotoId: '12345',
+    })
+  }
+
   // Cola de propuestas: grupos por validar, del más grande al más pequeño.
   const proposals: ProposalGroup[] =
     scenario === 'vacio' ? [] : buildProposals()
@@ -1025,6 +1043,7 @@ export function createSampleCatalogSource(
             id: nameId(item.id, index),
             ...name,
           })),
+          referencePhoto: referencePhotos.get(item.id) ?? null,
         }
       }),
     plantCount: (id, options = {}) =>
@@ -1502,6 +1521,24 @@ export function createSampleCatalogSource(
         return { plantCount: group?.plantCount ?? 0 }
       }),
     proposalImages: () => sampleImages,
+    retireSpeciesPhoto: (speciesId, sourcePhotoId, reason) =>
+      respond(undefined, () => {
+        if (reason === null) reject('reason-required')
+        const photo = referencePhotos.get(speciesId)
+        if (!photo || photo.sourcePhotoId !== sourcePhotoId) {
+          reject('species-photo-not-found')
+        }
+        referencePhotos.delete(speciesId)
+        record(speciesId, [], {
+          action: 'retire_species_photo',
+          details: {
+            reason,
+            source_photo_id: sourcePhotoId,
+            author_name: photo?.credit.author,
+            license: photo?.credit.license,
+          },
+        })
+      }),
     deleteSpecies: (id) =>
       respond(undefined, () => {
         const item = findSpecies(id)

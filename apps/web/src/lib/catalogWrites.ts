@@ -10,6 +10,7 @@ import type {
   SpeciesMergePreviewRow,
   SpeciesMergeResultRow,
   SpeciesNameType,
+  SpeciesPhotoRejectionReason,
   SpeciesSource,
   SpeciesStatus,
   SpeciesType,
@@ -73,6 +74,9 @@ export type CatalogWriteProblem =
   | 'abbreviation-not-found'
   // Cola de propuestas.
   | 'group-required'
+  // Fotos de referencia (#234).
+  | 'reason-required'
+  | 'species-photo-not-found'
 
 /** Campo del formulario al que se asocia el error (aria-describedby). */
 export type CatalogWriteField =
@@ -240,6 +244,10 @@ export function catalogWriteMessage(
       return 'Esta abreviatura ya no está en el catálogo.'
     case 'group-required':
       return 'Falta el grupo de la propuesta: vuelve a cargar la cola.'
+    case 'reason-required':
+      return 'Elige por qué se retira la foto: mal identificada, inapropiada, a petición del autor u otro motivo.'
+    case 'species-photo-not-found':
+      return 'La foto de referencia de esta especie cambió (otra persona la retiró o la carga la sustituyó): no se retiró nada. Se volvió a cargar el detalle.'
   }
 }
 
@@ -304,6 +312,8 @@ const REASON: Record<string, CatalogWriteProblem> = {
   abbreviation_taken: 'abbreviation-taken',
   abbreviation_not_found: 'abbreviation-not-found',
   group_required: 'group-required',
+  reason_required: 'reason-required',
+  species_photo_not_found: 'species-photo-not-found',
 }
 
 // Restricciones del esquema, por si la base rechaza la fila sin pasar por las
@@ -1157,4 +1167,39 @@ export async function markProposalUnidentifiable(
     }),
   )
   return toResolution(rows)
+}
+
+// Fotos de referencia (#234) ------------------------------------------------------
+
+/** Por qué se retira una foto de referencia, en el orden del formulario. */
+export const SPECIES_PHOTO_REJECTION_REASONS = [
+  'misidentified',
+  'inappropriate',
+  'author_request',
+  'other',
+] as const satisfies readonly SpeciesPhotoRejectionReason[]
+
+/**
+ * Retira la foto de referencia que vio el administrador
+ * (retire_species_photo): la borra, recuerda que no debe volver y deja la
+ * acción en el historial de la especie. Falla con 'reason-required' sin un
+ * motivo válido y con 'species-photo-not-found' si la especie ya no tiene esa
+ * foto (otra persona la retiró o la carga la cambió): entonces no se tocó nada.
+ */
+export async function retireSpeciesPhoto(
+  speciesId: string,
+  sourcePhotoId: string,
+  reason: SpeciesPhotoRejectionReason | null,
+): Promise<void> {
+  if (reason === null || !SPECIES_PHOTO_REJECTION_REASONS.includes(reason)) {
+    throw new CatalogWriteError('reason-required')
+  }
+  const supabase = await client()
+  await settleWrite(
+    supabase.rpc('retire_species_photo', {
+      target_species_id: speciesId,
+      target_source_photo_id: sourcePhotoId,
+      retire_reason: reason,
+    }),
+  )
 }

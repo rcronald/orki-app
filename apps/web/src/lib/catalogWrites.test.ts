@@ -15,6 +15,7 @@ import {
   MAX_BATCH_SPECIES,
   mergeCatalogSpecies,
   previewSpeciesMerge,
+  retireSpeciesPhoto,
   setCatalogSpeciesStatus,
   toCatalogWriteError,
   updateCatalogGenus,
@@ -879,5 +880,47 @@ describe('fusión de especies', () => {
     expect(
       (await failure(mergeCatalogSpecies(MERGED_ID, KEPT_ID))).problem,
     ).toBe('offline')
+  })
+})
+
+describe('retirar la foto de referencia (#234)', () => {
+  it('llama a retire_species_photo con la especie, la foto vista y el motivo', async () => {
+    fetchMock.mockReturnValue(
+      jsonResponse([
+        { action_id: 'a1', medium_path: 'm.webp', thumbnail_path: 't.webp' },
+      ]),
+    )
+    await retireSpeciesPhoto(SPECIES_ID, '12345', 'misidentified')
+    expect(lastRequest()).toEqual({
+      path: 'rpc/retire_species_photo',
+      body: {
+        target_species_id: SPECIES_ID,
+        target_source_photo_id: '12345',
+        retire_reason: 'misidentified',
+      },
+    })
+  })
+
+  it('sin motivo no llama a la base', async () => {
+    const error = await failure(retireSpeciesPhoto(SPECIES_ID, '12345', null))
+    expect(error.problem).toBe('reason-required')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('traduce los rechazos de la base', async () => {
+    fetchMock.mockReturnValueOnce(
+      rejection(404, 'P0002', 'species_photo_not_found', {
+        species_id: SPECIES_ID,
+        source_photo_id: '12345',
+        current_source_photo_id: '999',
+      }),
+    )
+    expect(
+      (await failure(retireSpeciesPhoto(SPECIES_ID, '12345', 'other'))).problem,
+    ).toBe('species-photo-not-found')
+    fetchMock.mockReturnValueOnce(rejection(400, '22023', 'reason_required'))
+    expect(
+      (await failure(retireSpeciesPhoto(SPECIES_ID, '12345', 'other'))).problem,
+    ).toBe('reason-required')
   })
 })
