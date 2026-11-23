@@ -49,3 +49,15 @@ describe('ensureProfile durante la eliminación de la cuenta (#110)', () => {
     expect(upsert).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('ensureProfile en cada arranque (#285)', () => {
+  it('con sesión, tres arranques de la app en el mismo dispositivo', async () => {
+    for (let start = 0; start < 3; start += 1) {
+      // Una carga nueva de la página: el módulo empieza sin nada en memoria.
+      vi.resetModules()
+      const fresh = await import('./profile.ts')
+      await expect(fresh.ensureProfile(USER)).resolves.toBe(true)
+    }
+    expect(upsert.mock.calls.length).toMatchInlineSnapshot(`3`)
+  })
+})

@@ -311,6 +311,59 @@ describe('Backoffice: nombres de una especie', () => {
     )
   })
 
+  it('añadir un nombre común relee solo lo que cambia (#285)', async () => {
+    handlers['rpc/add_species_name'] = () =>
+      jsonResponse({
+        id: 'n3',
+        species_id: SPECIES,
+        name: 'flor de mayo',
+        type: 'common',
+        language: null,
+      })
+    const user = userEvent.setup()
+    const panel = await openSpecies()
+    await user.click(
+      await within(panel).findByRole('button', { name: 'Añadir nombre común' }),
+    )
+    const form = within(panel).getByRole('form', {
+      name: 'Añadir nombre común',
+    })
+    await user.type(
+      within(form).getByRole('textbox', { name: 'Nombre común' }),
+      'flor de mayo',
+    )
+    // Todo lo leído al abrir ya llegó.
+    await waitFor(() =>
+      expect(requestsTo('rpc/species_history')).toHaveLength(1),
+    )
+    const before = fetchMock.mock.calls.length
+    await user.click(within(form).getByRole('button', { name: 'Guardar' }))
+    expect(
+      await findAnnouncement(
+        'Se añadió el nombre común «flor de mayo» a «Phalaenopsis amabilis».',
+      ),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(requestsTo('rpc/species_history')).toHaveLength(2),
+    )
+    // Las lecturas que salieron tras la escritura, por ruta.
+    const reads = fetchMock.mock.calls
+      .slice(before)
+      .map((call) => requestOf(call).path)
+      .filter((path) => path !== 'rpc/add_species_name')
+      .sort()
+    expect(reads).toMatchInlineSnapshot(`
+      [
+        "rpc/catalog_summary",
+        "rpc/count_proposal_groups",
+        "rpc/count_species_plants",
+        "rpc/list_catalog_species",
+        "rpc/species_history",
+        "species",
+      ]
+    `)
+  })
+
   it('un nombre común con idioma mal escrito: el error va junto al idioma', async () => {
     handlers['rpc/add_species_name'] = () =>
       rejection(400, '22023', 'invalid_language')
