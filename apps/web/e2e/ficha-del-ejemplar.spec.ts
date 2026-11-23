@@ -379,7 +379,10 @@ test('sin conexión: se ve lo guardado y no se puede editar', async ({
     await expect(control).toHaveAccessibleDescription(motivo)
   }
   // Desactivado (aria-disabled, sigue recibiendo el foco): no abre nada.
-  await editarNotas.dispatchEvent('click')
+  // Con el teclado, como lo haría una persona. (Un clic sintético con
+  // dispatchEvent tumbaba la página en el Firefox de Playwright.)
+  await editarNotas.focus()
+  await page.keyboard.press('Enter')
   await expect(notas(page).getByRole('textbox')).toHaveCount(0)
   await revisarAccesibilidad('ficha sin conexión')
 
