@@ -47,12 +47,6 @@ export interface AccountViewProps {
   headingLevel?: 2 | 3
 }
 
-// Las filas deshabilitadas (aria-disabled) se distinguen poco de las activas
-// con los estilos de orki-action: sin el chevron, que promete una acción, y
-// con el motivo en lugar del texto secundario (lo pone ActionRow).
-const DATA_LIST_CLASSES =
-  "[&_[aria-disabled='true']]:cursor-not-allowed [&_[aria-disabled='true']>svg:last-child]:hidden"
-
 /**
  * Contenido de la pantalla de cuenta (#110, rediseño del #214), sin Clerk ni
  * Supabase: los datos y los efectos llegan por props. Tres paneles (Perfil,
@@ -118,7 +112,10 @@ export function AccountView({
 
       <Panel title={ACCOUNT_TEXT.dataHeading} headingLevel={headingLevel}>
         <div className="flex flex-col gap-space-2">
-          <ActionList className={DATA_LIST_CLASSES}>
+          {/* Una fila deshabilitada (aria-disabled) se ve atenuada, con el
+              motivo en lugar del texto secundario: lo ponen orki-action y
+              ActionRow. */}
+          <ActionList>
             {exportRow != null && <li>{exportRow}</li>}
             <li>
               <ActionRow

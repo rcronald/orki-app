@@ -1,7 +1,13 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import { resetOfflineIdentity } from '../auth/offline-identity.ts'
+
+// findBy… y waitFor esperan 1 s por defecto. Con la máquina cargada (varias
+// tandas de pruebas a la vez), la primera carga de una página diferida lo
+// supera y la prueba falla sin que haya nada roto. Con 5 s las que pasan
+// tardan lo mismo; solo esperan más las que de verdad fallan.
+configure({ asyncUtilTimeout: 5000 })
 
 // Sin globals de Vitest, Testing Library no limpia el DOM por sí sola.
 afterEach(() => {

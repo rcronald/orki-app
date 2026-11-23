@@ -1,14 +1,20 @@
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { useRef } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
+import { Icon } from '../components/ui/Icon.tsx'
 import { cameFromDetail } from '../detail/navigation.ts'
 import { leavePlantNotice } from '../detail/notice.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
-import { removePlantPhoto, replacePlantPhoto } from '../photos/upload.ts'
+import {
+  listPlantPhotos,
+  removeStoredPlantPhoto,
+  uploadPlantPhotos,
+} from '../photos/gallery.ts'
 import {
   PlantForm,
   type PlantFormBaseServices,
@@ -26,17 +32,19 @@ import { plantDetailPath } from '../routes/paths.ts'
 //   el del registro, que es de una planta nueva.
 // - Se guarda solo lo que cambió (plantPatch), sin validation ni user_id; con
 //   la planta devuelta se actualiza la colección en memoria (upsertPlant).
-// - La foto: la ya subida se ve en el campo; una nueva la reemplaza
-//   (replacePlantPhoto sube, apunta y borra la anterior) y "Quitar foto" la
-//   quita (removePlantPhoto).
+// - Las fotos (#221): la galería muestra las guardadas (listPlantPhotos). Las
+//   que se quitan se borran al guardar (removeStoredPlantPhoto; hasta
+//   entonces, "Deshacer" o "Cancelar" las conservan) y las nuevas se suben
+//   después (uploadPlantPhotos), hasta 6 en total.
 // - Al terminar o cancelar se vuelve al detalle: con "atrás" si se llegó
-//   desde él, para no apilar otra entrada en el historial.
+//   desde él, para no apilar otra entrada en el historial. El enlace de volver
+//   de la cabecera hace lo mismo que "Cancelar" (pregunta si hay cambios).
 
 const SERVICES: PlantFormBaseServices = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
-  uploadPhoto: (files, options) => replacePlantPhoto(files, options),
+  uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),
 }
 
 export default function EditPlantPage() {
@@ -49,6 +57,7 @@ export default function EditPlantPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const fromDetail = cameFromDetail(location.state)
+  const cancelRef = useRef<(() => void) | null>(null)
 
   const backToDetail = (id: string) => {
     if (fromDetail) void navigate(-1)
@@ -80,7 +89,27 @@ export default function EditPlantPage() {
       const { plant } = lookup
       const owner = userId ?? ''
       return (
-        <Page title={PLANT_EDIT_TEXT.title}>
+        <Page
+          title={PLANT_EDIT_TEXT.title}
+          width="wide"
+          header={{
+            art: false,
+            back: (
+              <Link
+                to={plantDetailPath(plant.id)}
+                className="orki-link orki-pagehead__back"
+                onClick={(event) => {
+                  // Como "Cancelar": pregunta antes de perder los cambios.
+                  event.preventDefault()
+                  cancelRef.current?.()
+                }}
+              >
+                <Icon name="arrow-left" />
+                {PLANT_EDIT_TEXT.back}
+              </Link>
+            ),
+          }}
+        >
           <PlantForm
             // Se precarga al montarse: con otra planta, otro formulario.
             key={plant.id}
@@ -88,12 +117,14 @@ export default function EditPlantPage() {
             editing={{
               plant,
               updatePlant: (id, patch) => updatePlant(id, owner, patch),
-              removePhoto: (options) => removePlantPhoto(options),
+              listPhotos: (options) => listPlantPhotos(options),
+              removePhoto: (options) => removeStoredPlantPhoto(options),
             }}
             online={online}
             knownPlants={status === 'loading' ? null : plants}
             draftUserId={userId}
             onPlantStored={upsertPlant}
+            cancelRef={cancelRef}
             onSaved={(saved: CollectionPlant, { changed }) => {
               if (changed)
                 leavePlantNotice({ kind: 'saved', plantId: saved.id })

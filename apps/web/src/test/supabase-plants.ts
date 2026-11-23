@@ -148,6 +148,29 @@ export interface FakeSupabase {
   deleteResponder: (() => Promise<Response>) | null
   /** Respuesta del listado o el borrado de archivos, si no es la normal. */
   storageResponder: ((request: SentRequest) => Promise<Response>) | null
+  /**
+   * Filas de plant_photos (#221). Una planta con foto empieza con su
+   * principal en la posición 0, como tras la copia de la migración; la
+   * principal se copia a plants al insertar o borrar, como sync_plant.
+   */
+  photos: FakePhotoRow[]
+  /** Fotos de una planta en orden. */
+  photosOf(plantId: string): FakePhotoRow[]
+  /** Respuesta del borrado de una fila de plant_photos, si no es la normal. */
+  photoDeleteResponder: (() => Promise<Response>) | null
+}
+
+/** Una fila de plant_photos en memoria. */
+export interface FakePhotoRow {
+  id: string
+  plant_id: string
+  photo_path: string
+  thumbnail_path: string
+  in_bloom: boolean
+  taken_at: string | null
+  note: string | null
+  position: number
+  created_at: string
 }
 
 let clock = Date.parse('2026-11-21T15:00:00Z')
@@ -156,9 +179,83 @@ let clock = Date.parse('2026-11-21T15:00:00Z')
 export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
   const rows = new Map(plants.map((plant) => [plant.id, rowOf(plant)]))
   const files = new Set<string>()
+  const photos: FakePhotoRow[] = []
   for (const plant of plants) {
     if (plant.photoPath) files.add(plant.photoPath)
     if (plant.thumbnailPath) files.add(plant.thumbnailPath)
+    if (plant.photoPath && plant.thumbnailPath) {
+      photos.push({
+        id: `foto-${plant.id}`,
+        plant_id: plant.id,
+        photo_path: plant.photoPath,
+        thumbnail_path: plant.thumbnailPath,
+        in_bloom: plant.photoInBloom,
+        taken_at: null,
+        note: null,
+        position: 0,
+        created_at: plant.createdAt,
+      })
+    }
+  }
+
+  const photosOf = (plantId: string) =>
+    fake.photos
+      .filter((photo) => photo.plant_id === plantId)
+      .sort((a, b) => a.position - b.position)
+
+  /** Como sync_plant: la principal pasa a las columnas de la planta. */
+  const syncMain = (plantId: string) => {
+    const row = rows.get(plantId)
+    if (!row) return
+    const [main] = photosOf(plantId)
+    rows.set(plantId, {
+      ...row,
+      photo_path: main?.photo_path ?? null,
+      thumbnail_path: main?.thumbnail_path ?? null,
+      photo_in_bloom: main?.in_bloom ?? false,
+    })
+  }
+
+  const photoRows = (request: SentRequest): Promise<Response> => {
+    const param = (name: string) =>
+      request.url.searchParams.get(name)?.replace(/^eq\./, '')
+    if (request.method === 'GET') {
+      return json(photosOf(param('plant_id') ?? ''))
+    }
+    if (request.method === 'POST') {
+      const body = (isRecord(request.body) ? request.body : {}) as Omit<
+        FakePhotoRow,
+        'id' | 'created_at'
+      >
+      if (!rows.has(body.plant_id)) {
+        return json({ code: '23503', message: 'foreign key' }, 409)
+      }
+      if (
+        photosOf(body.plant_id).some(
+          (photo) => photo.position === body.position,
+        )
+      ) {
+        return json({ code: '23505', message: 'duplicate key' }, 409)
+      }
+      clock += 1000
+      const row: FakePhotoRow = {
+        ...body,
+        id: `foto-${String(clock)}`,
+        created_at: new Date(clock).toISOString(),
+      }
+      fake.photos.push(row)
+      syncMain(row.plant_id)
+      return json(row, 201)
+    }
+    if (request.method === 'DELETE') {
+      if (fake.photoDeleteResponder) return fake.photoDeleteResponder()
+      const id = param('id')
+      const found = fake.photos.find((photo) => photo.id === id)
+      fake.photos = fake.photos.filter((photo) => photo !== found)
+      if (found) syncMain(found.plant_id)
+      return json(found ? [found] : [])
+    }
+    return json({ message: 'Ruta inesperada plant_photos' }, 404)
   }
 
   const respond = (...args: FetchArgs): Promise<Response> => {
@@ -166,6 +263,17 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
     const { pathname, searchParams } = request.url
     const id = searchParams.get('id')?.replace(/^eq\./, '')
     if (pathname === '/rest/v1/genera') return json(QUICK_GENERA)
+    if (pathname === '/rest/v1/plant_photos') return photoRows(request)
+    // La planta releída tras cambiar su principal (readPlant).
+    if (pathname === '/rest/v1/plants' && request.method === 'GET') {
+      const row = id === undefined ? undefined : rows.get(id)
+      return row
+        ? json(row)
+        : json(
+            { code: 'PGRST116', message: 'JSON object requested, 0 rows' },
+            406,
+          )
+    }
     if (pathname === '/rest/v1/rpc/search_species') {
       return json(Object.values(SPECIES).map(searchResult))
     }
@@ -181,6 +289,9 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
       }
       const next = applyPatch(row, body)
       rows.set(row.id, next)
+      // Como sync_photos: "en floración" de la planta es el de la principal.
+      const [main] = photosOf(row.id)
+      if (main && 'photo_in_bloom' in body) main.in_bloom = next.photo_in_bloom
       return json(next)
     }
     if (pathname === '/rest/v1/plants' && request.method === 'DELETE') {
@@ -280,6 +391,9 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
     patchResponder: null,
     deleteResponder: null,
     storageResponder: null,
+    photos,
+    photosOf,
+    photoDeleteResponder: null,
   }
   return fake
 }

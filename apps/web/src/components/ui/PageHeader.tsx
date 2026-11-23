@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from 'react'
+import { useState, type ReactNode, type Ref } from 'react'
 import art240 from '../../assets/ilustraciones/cabecera-240.webp'
 import art480 from '../../assets/ilustraciones/cabecera-480.webp'
 
@@ -19,7 +19,11 @@ export interface PageHeaderProps {
    * de una sola tarea («¿Ya la tengo?»), con el título y la frase centrados.
    */
   variant?: 'default' | 'center'
-  /** Con la ilustración de la esquina (por defecto, sí). */
+  /**
+   * Con la ilustración de la esquina (por defecto, sí). Si no carga (sin
+   * conexión: no va en el precaché), la cabecera sigue sin ella, sin el hueco
+   * de una imagen rota.
+   */
   art?: boolean
   /** Referencia al h1, para darle el foco al navegar (Page lo hace). */
   headingRef?: Ref<HTMLHeadingElement>
@@ -51,6 +55,10 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   const Heading = `h${headingLevel}` as const
+  // La ilustración no va en el precaché: sin red no carga y el navegador
+  // pintaría el icono de una imagen rota. Si falla, se quita y el texto
+  // vuelve a su sitio (las reglas de orki-pagehead__art + … dejan de aplicar).
+  const [artFailed, setArtFailed] = useState(false)
   const classes = [
     'orki-pagehead',
     variant === 'center' && 'orki-pagehead--center',
@@ -61,8 +69,9 @@ export function PageHeader({
 
   return (
     <div className={classes}>
-      {art && (
+      {art && !artFailed && (
         <img
+          onError={() => setArtFailed(true)}
           className="orki-pagehead__art"
           src={art240}
           srcSet={`${art240} ${ART.small.width}w, ${art480} ${ART.largeWidth}w`}

@@ -134,8 +134,8 @@ export default defineConfig({
         // añade el plugin (includeAssets e iconos del manifest), así no se
         // duplican en el precache. Las fuentes van precacheadas para que la app
         // se vea con su tipografía sin conexión. Las fotos de fondo por género
-        // del registro (avif, #13) también: son cinco, de menos de 100 KB cada
-        // una, y así aparecen al momento y sin conexión.
+        // del registro (avif, #13) se precacheaban; desde el #221 el
+        // formulario no las usa, así que ya no van en el build.
         globPatterns: ['**/*.{js,css,html,woff2,avif}'],
         // La foto de la portada (#193) no: sus cinco variantes suman unos
         // 450 KB, más de lo que queda en el presupuesto del precaché, y quien

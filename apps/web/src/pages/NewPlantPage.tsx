@@ -1,15 +1,15 @@
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useCollection } from '../collection/useCollection.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
+import { Icon } from '../components/ui/Icon.tsx'
 import { registeredPlantState } from '../inventory/registered-plant.ts'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
-import { replacePlantPhoto } from '../photos/upload.ts'
+import { uploadPlantPhotos } from '../photos/gallery.ts'
 import {
   PlantForm,
   type PlantFormServices,
 } from '../registration/PlantForm.tsx'
-import { isPhotoFirst } from '../registration/photo-first.ts'
 import { prefilledName } from '../registration/prefill-name.ts'
 import { loadQuickAccessGenera } from '../registration/quick-genera.ts'
 import { insertPlant } from '../registration/save-plant.ts'
@@ -17,19 +17,21 @@ import { PLANT_FORM_TEXT } from '../registration/texts.ts'
 import { PATHS } from '../routes/paths.ts'
 import { useRegistrationEvent } from '../telemetry/useRegistrationEvent.ts'
 
-// Registro de una planta (#85), en /coleccion/nueva. Exige sesión. Va en su
-// propio chunk (App.tsx lo carga de forma diferida). Con ?foto=1 (#87), el
-// mismo formulario empieza por la foto; con ?nombre= (#123, desde "Aún no la
-// tienes"), con ese nombre ya escrito. Al terminar, el evento de producto
-// "registro completado" (#146, useRegistrationEvent).
+// Registro de una planta (#85, con galería desde el #221), en
+// /coleccion/nueva. Exige sesión. Va en su propio chunk (App.tsx lo carga de
+// forma diferida). Con ?nombre= (#123, desde "Aún no la tienes"), con ese
+// nombre ya escrito. Al terminar, el evento de producto "registro completado"
+// (#146, useRegistrationEvent). La antigua entrada "desde la cámara"
+// (?foto=1) ya no existe: la dirección sigue abriendo el registro y el
+// parámetro se ignora.
 
 const SUPABASE_SERVICES: PlantFormServices = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
   savePlant: (insert) => insertPlant(insert),
-  // Con la planta ya guardada: sube foto y miniatura y la apunta a ellas.
-  uploadPhoto: (files, options) => replacePlantPhoto(files, options),
+  // Con la planta ya guardada: sube las fotos y crea sus filas en orden.
+  uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),
 }
 
 export default function NewPlantPage() {
@@ -51,11 +53,24 @@ export default function NewPlantPage() {
   // desactiva con su aviso de sin conexión.
   const online = useReadOnly() === null
   const [search] = useSearchParams()
-  const photoFirst = isPhotoFirst(search)
-  const registration = useRegistrationEvent({ photoFirst, offline: !online })
+  const registration = useRegistrationEvent({ offline: !online })
 
   return (
-    <Page title={PLANT_FORM_TEXT.title}>
+    <Page
+      title={PLANT_FORM_TEXT.title}
+      width="wide"
+      header={{
+        art: false,
+        back: (
+          // Salir por aquí conserva el borrador, como cualquier enlace de la
+          // app: lo escrito se recupera al volver.
+          <Link to={PATHS.collection} className="orki-link orki-pagehead__back">
+            <Icon name="arrow-left" />
+            {PLANT_FORM_TEXT.back}
+          </Link>
+        ),
+      }}
+    >
       <PlantForm
         // El borrador se lee al montarse: con otra cuenta, otro formulario.
         key={userId ?? ''}
@@ -63,15 +78,13 @@ export default function NewPlantPage() {
         online={online}
         knownPlants={knownPlants}
         draftUserId={userId}
-        photoFirst={photoFirst}
-        onPhotoChosen={registration.onPhotoChosen}
         initialName={prefilledName(search)}
-        // En cuanto la planta existe (y otra vez al tener su foto), a la
-        // colección: si la foto falla o se sale a mitad, ya está en el
+        // En cuanto la planta existe (y otra vez al cambiar su principal), a
+        // la colección: si una foto falla o se sale a mitad, ya está en el
         // inventario.
         onPlantStored={upsertPlant}
-        onSaved={(plant) => {
-          registration.onRegistered(plant)
+        onSaved={(plant, { photos }) => {
+          registration.onRegistered(plant, { hasPhoto: photos > 0 })
           // La colección ya tiene la última versión (onPlantStored). Sustituye
           // la entrada del registro: "atrás" desde el inventario no vuelve al
           // formulario ya guardado.

@@ -1,11 +1,9 @@
-import type { CollectionPlant } from '../collection/model.ts'
 import {
   newPhotoVersion,
   plantPhotoPaths,
   type PlantPhotoPaths,
   type PlantPhotoType,
 } from './paths.ts'
-import { appPlantPhotoRecords, type PlantPhotoRecords } from './plant-record.ts'
 import {
   appPhotoStorage,
   PhotoStorageError,
@@ -13,15 +11,11 @@ import {
   type PhotoStorage,
 } from './storage.ts'
 
-// Subida de la foto y la miniatura de una planta (#82) y ciclo completo de
-// reemplazar o quitar la foto de una planta que ya existe.
+// Subida de la foto y la miniatura de una planta (#82). La usa la galería
+// (gallery.ts, #219), que crea la fila de cada foto después de subir sus dos
+// archivos. Las antiguas replacePlantPhoto y removePlantPhoto (una sola foto
+// por planta) se retiraron con el formulario con galería (#221).
 //
-// Regla de orden: la planta nunca apunta a un archivo que no existe.
-//   Reemplazar: 1) subir los dos archivos nuevos (si falla uno, se borra el
-//   otro); 2) apuntar la planta a ellos; 3) reflejarlo en la colección;
-//   4) borrar los anteriores.
-//   Quitar: 1) poner las rutas de la planta a null; 2) reflejarlo; 3) borrar
-//   los archivos.
 // Si algo falla, lo peor que queda es un archivo sin planta (un huérfano),
 // que el script de limpieza encuentra (scripts/fotos-huerfanas.mjs), nunca
 // una planta con la foto rota.
@@ -188,114 +182,4 @@ export async function uploadPhotoFiles(
     throw photoStorageErrorFrom(failure.reason)
   }
   return paths
-}
-
-/** Planta tal como la necesita el ciclo de la foto. */
-export type PlantPhotoTarget = Pick<
-  CollectionPlant,
-  'id' | 'photoPath' | 'thumbnailPath'
->
-
-export interface PlantPhotoChangeOptions {
-  userId: string
-  plant: PlantPhotoTarget
-  storage?: PhotoStorage
-  records?: PlantPhotoRecords
-  signal?: AbortSignal
-  /** Refleja la planta actualizada (useCollection().upsertPlant). */
-  onPlantUpdated?: (plant: CollectionPlant) => void
-}
-
-export interface PlantPhotoChangeResult {
-  /** La planta ya actualizada en la base. */
-  plant: CollectionPlant
-  /**
-   * Archivos anteriores que no se pudieron borrar (sin conexión al final). La
-   * operación está hecha igualmente; quedan para el script de limpieza.
-   */
-  leftovers: string[]
-}
-
-function previousPaths(
-  plant: PlantPhotoTarget,
-  keep: PlantPhotoPaths | null,
-): string[] {
-  const kept = new Set([keep?.photoPath, keep?.thumbnailPath])
-  return [plant.photoPath, plant.thumbnailPath].filter(
-    (path): path is string => path !== null && path !== '' && !kept.has(path),
-  )
-}
-
-/**
- * Pone una foto nueva a una planta que ya existe (también la primera, tras
- * registrarla): sube, apunta la planta, lo refleja en la colección y borra
- * la foto anterior. Para reintentar, se vuelve a llamar con el mismo `files`:
- * no hay que elegir ni preparar la foto otra vez.
- *
- * Si falla al apuntar la planta:
- * - con un rechazo seguro (la base respondió que no), se borran los archivos
- *   nuevos y la planta sigue con su foto anterior;
- * - si no se sabe (`uncertain`: la red cayó sin respuesta), los archivos
- *   nuevos se quedan, porque la planta quizá ya apunta a ellos. Reintentar
- *   termina el trabajo; si nadie reintenta, serán huérfanos para el script.
- * La cancelación vale hasta que sale la escritura en la base.
- */
-export async function replacePlantPhoto(
-  files: PhotoFiles,
-  {
-    userId,
-    plant,
-    storage = appPhotoStorage(),
-    records = appPlantPhotoRecords(),
-    signal,
-    onProgress,
-    onPlantUpdated,
-  }: PlantPhotoChangeOptions & {
-    onProgress?: (progress: UploadProgress) => void
-  },
-): Promise<PlantPhotoChangeResult> {
-  const paths = await uploadPhotoFiles(files, {
-    userId,
-    plantId: plant.id,
-    storage,
-    signal,
-    onProgress,
-  })
-  const fresh = [paths.photoPath, paths.thumbnailPath]
-  if (signal?.aborted) {
-    await removeQuietly(storage, fresh)
-    throw abortedError(signal)
-  }
-
-  let updated: CollectionPlant
-  try {
-    updated = await records.setPhotoPaths(plant.id, userId, paths)
-  } catch (error) {
-    const failure = photoStorageErrorFrom(error)
-    if (!failure.uncertain) await removeQuietly(storage, fresh)
-    throw failure
-  }
-  onPlantUpdated?.(updated)
-  const leftovers = await removeQuietly(storage, previousPaths(plant, paths))
-  return { plant: updated, leftovers }
-}
-
-/**
- * Quita la foto de una planta: primero la planta deja de apuntar a ella y
- * después se borran los archivos. Si el borrado falla, la planta ya está sin
- * foto y los archivos quedan para el script de limpieza.
- */
-export async function removePlantPhoto({
-  userId,
-  plant,
-  storage = appPhotoStorage(),
-  records = appPlantPhotoRecords(),
-  signal,
-  onPlantUpdated,
-}: PlantPhotoChangeOptions): Promise<PlantPhotoChangeResult> {
-  throwIfAborted(signal)
-  const updated = await records.setPhotoPaths(plant.id, userId, null)
-  onPlantUpdated?.(updated)
-  const leftovers = await removeQuietly(storage, previousPaths(plant, null))
-  return { plant: updated, leftovers }
 }

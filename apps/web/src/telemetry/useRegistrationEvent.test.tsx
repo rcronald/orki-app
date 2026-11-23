@@ -9,10 +9,9 @@ const AT = new Date('2026-11-21T12:00:00.000Z')
 let clock = 0
 let record: ReturnType<typeof vi.fn<(event: ProductEvent | null) => void>>
 
-function renderRegistration(photoFirst = false) {
+function renderRegistration() {
   return renderHook(() =>
     useRegistrationEvent({
-      photoFirst,
       offline: false,
       record,
       clock: () => clock,
@@ -47,32 +46,31 @@ describe('evento "registro completado"', () => {
     })
   })
 
-  it('con "Con foto", desde que se elige la primera foto', () => {
-    const { result } = renderRegistration(true)
-    clock = 5000
-    act(() => result.current.onPhotoChosen())
-    clock = 9000
-    // Cambiar la foto no mueve el inicio.
-    act(() => result.current.onPhotoChosen())
-    clock = 25_000
+  it('«con foto» es verdadero con al menos una foto de la galería, aunque la planta aún no la refleje', () => {
+    const { result } = renderRegistration()
+    clock = 21_000
     act(() =>
       result.current.onRegistered(
         plant({ photoPath: null, validation: 'validated' }),
+        { hasPhoto: true },
       ),
     )
     expect(record.mock.calls[0]?.[0]).toMatchObject({
       duration_ms: 20_000,
-      has_photo: false,
+      has_photo: true,
       name_pending: false,
     })
   })
 
-  it('"Con foto" sin elegir ninguna mide desde que se abrió; y solo una vez', () => {
-    const { result } = renderRegistration(true)
+  it('sin fotos, «con foto» es falso; y se envía solo una vez', () => {
+    const { result } = renderRegistration()
     clock = 11_000
-    act(() => result.current.onRegistered(plant()))
-    act(() => result.current.onRegistered(plant()))
+    act(() => result.current.onRegistered(plant(), { hasPhoto: false }))
+    act(() => result.current.onRegistered(plant(), { hasPhoto: true }))
     expect(record).toHaveBeenCalledTimes(1)
-    expect(record.mock.calls[0]?.[0]?.duration_ms).toBe(10_000)
+    expect(record.mock.calls[0]?.[0]).toMatchObject({
+      duration_ms: 10_000,
+      has_photo: false,
+    })
   })
 })

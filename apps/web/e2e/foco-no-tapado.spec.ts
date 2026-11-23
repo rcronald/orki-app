@@ -2,13 +2,13 @@ import type { Locator, Page } from '@playwright/test'
 import { PLANTAS } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 
-// El foco no queda tapado por las barras que se quedan fijas al desplazar la
-// página (WCAG 2.4.11, #151): las acciones del formulario de registro y
-// edición, fijas abajo. El inventario ya no tiene barras fijas (#208): el
-// buscador va en su sitio y registrar, en la cabecera; aquí se comprueba que
-// siga sin tenerlas y que el foco se vea al recorrerlo. axe no lo comprueba:
-// hace falta llegar con el tabulador, que es cuando el navegador desplaza la
-// página.
+// El foco no queda tapado por barras que se quedan fijas al desplazar la
+// página (WCAG 2.4.11, #151). Ya no hay ninguna: el inventario dejó de
+// tenerlas en el #208 (el buscador va en su sitio y registrar, en la
+// cabecera) y el registro y la edición en el #221 (las acciones van al final
+// del formulario). Aquí se comprueba que sigan sin tenerlas y que el foco se
+// vea al recorrerlas. axe no lo comprueba: hace falta llegar con el
+// tabulador, que es cuando el navegador desplaza la página.
 //
 // Pantalla de celular en todos los perfiles. Safari y el WebKit de Playwright
 // solo llevan el tabulador a los campos de formulario (no a enlaces ni a
@@ -26,31 +26,59 @@ async function tabularHasta(page: Page, destino: Locator, tecla = 'Tab') {
   throw new Error('El tabulador no llegó al destino')
 }
 
-/** El elemento con el foco no se solapa con la barra. */
-async function noLoTapa(page: Page, barra: Locator) {
-  const caja = await barra.boundingBox()
-  const foco = await page.evaluate(() => {
-    const r = document.activeElement?.getBoundingClientRect()
-    return r ? { top: r.top, bottom: r.bottom } : null
-  })
-  expect(caja).not.toBeNull()
-  expect(foco).not.toBeNull()
-  if (!caja || !foco) return
-  const solapa = foco.bottom > caja.y && foco.top < caja.y + caja.height
-  expect(solapa, 'el control con el foco queda debajo de la barra').toBe(false)
+/**
+ * El elemento con el foco se ve: al menos la mitad de su alto queda dentro de
+ * la ventana. WCAG 2.4.11 pide que no quede tapado del todo por contenido de
+ * la página; sin barras fijas, lo único que puede recortarlo es el borde de
+ * la ventana. No se exige que quepa entero: Firefox y WebKit en Linux no
+ * desplazan la página si el control ya asoma casi completo por abajo (visto
+ * en el CI, #237), y eso no es un fallo de la app. Se espera a que se cumpla
+ * porque el desplazamiento puede llegar un momento después del foco.
+ */
+async function focoALaVista(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const r = document.activeElement?.getBoundingClientRect()
+          if (!r || r.height === 0) return false
+          const visible =
+            Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)
+          return visible / r.height >= 0.5
+        }),
+      { message: 'el control con el foco queda fuera de la vista' },
+    )
+    .toBe(true)
 }
 
-test('registro: el campo de la fecha no queda bajo las acciones', async ({
+/** Nada en la página queda fijo al desplazarla. */
+async function sinBarrasFijas(page: Page) {
+  const fijos = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('body *')].filter((el) =>
+        ['fixed', 'sticky'].includes(getComputedStyle(el).position),
+      ).length,
+  )
+  expect(fijos).toBe(0)
+  await expect(
+    page.locator('[data-barra-superior], [data-barra-inferior]'),
+  ).toHaveCount(0)
+}
+
+test('registro: sin barras fijas, el foco se ve en la fecha y en el origen', async ({
   page,
 }) => {
   await page.goto('/coleccion/nueva')
   const fecha = page.getByLabel('Fecha de adquisición')
   await expect(fecha).toBeVisible()
+  await sinBarrasFijas(page)
   await tabularHasta(page, fecha)
-  await noLoTapa(page, page.locator('[data-barra-inferior]'))
+  await focoALaVista(page)
+  await tabularHasta(page, page.getByRole('combobox', { name: 'Origen' }))
+  await focoALaVista(page)
 })
 
-test('edición: los chips del tipo no quedan bajo las acciones', async ({
+test('edición: sin barras fijas, el foco se ve en el tipo y en las acciones del final', async ({
   page,
   browserName,
 }) => {
@@ -58,18 +86,15 @@ test('edición: los chips del tipo no quedan bajo las acciones', async ({
   await page.goto(`/coleccion/${PLANTAS.amabilis}/editar`)
   const tipo = page.getByRole('button', { name: 'Especie', exact: true })
   await expect(tipo).toBeVisible()
+  await sinBarrasFijas(page)
   await tabularHasta(page, tipo)
-  await noLoTapa(page, page.locator('[data-barra-inferior]'))
+  await focoALaVista(page)
+  await tabularHasta(
+    page,
+    page.getByRole('button', { name: 'Guardar cambios' }),
+  )
+  await focoALaVista(page)
 })
-
-/** El elemento con el foco está entero dentro de la ventana. */
-async function focoALaVista(page: Page) {
-  const dentro = await page.evaluate(() => {
-    const r = document.activeElement?.getBoundingClientRect()
-    return r ? r.top >= 0 && r.bottom <= window.innerHeight : false
-  })
-  expect(dentro, 'el control con el foco queda fuera de la vista').toBe(true)
-}
 
 test('inventario: sin barras fijas, el foco se ve en el pie y en las tarjetas', async ({
   page,

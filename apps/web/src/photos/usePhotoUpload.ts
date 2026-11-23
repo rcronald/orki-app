@@ -8,13 +8,14 @@ import type { UploadProgress } from './upload.ts'
 
 // Estado de una subida para la interfaz (#82): en curso con su progreso,
 // hecha o fallida con su motivo, con cancelar y reintentar. No sabe qué se
-// sube: recibe una tarea (por ejemplo, replacePlantPhoto con la foto ya
+// sube: recibe una tarea (por ejemplo, uploadPhotoFiles con la foto ya
 // preparada) y la vuelve a lanzar tal cual al reintentar, así que no hay que
-// elegir ni preparar la foto otra vez.
+// elegir ni preparar la foto otra vez. Lo usa la sección «Fotos» de /muestra;
+// el formulario con galería (#221) lleva el estado de cada foto él mismo.
 //
-//   const upload = usePhotoUpload<PlantPhotoChangeResult>()
+//   const upload = usePhotoUpload<PlantPhotoPaths>()
 //   upload.start(({ signal, onProgress }) =>
-//     replacePlantPhoto(files, { userId, plant, signal, onProgress, onPlantUpdated }))
+//     uploadPhotoFiles(files, { userId, plantId, signal, onProgress }))
 
 export interface PhotoUploadContext {
   signal: AbortSignal

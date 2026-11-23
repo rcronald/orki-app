@@ -23,9 +23,9 @@ import {
 // Galería de una planta: varias fotos (de 0 a 6) en public.plant_photos (#219,
 // parte de #218). Capa de datos para el formulario con galería (#221): subir
 // varias fotos ya preparadas, añadir a una planta que ya tiene, quitar una y
-// leerlas en orden. No cambia ninguna pantalla; replacePlantPhoto y
-// removePlantPhoto (upload.ts) siguen funcionando con el formulario de una
-// foto, porque la base copia lo que escriben en plants a la foto principal.
+// leerlas en orden. La usan el registro y la edición (PlantForm, #221); la
+// base copia la principal a las columnas de plants, que leen la tarjeta del
+// inventario y las versiones de la app ya instaladas.
 //
 // Orden de las operaciones al subir una foto: primero los dos archivos y
 // después la fila.

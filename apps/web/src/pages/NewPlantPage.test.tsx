@@ -30,7 +30,6 @@ import {
   createMemoryDraftPhotoBackend,
 } from '../registration/draft-photo.ts'
 import { initialPlantFormValues } from '../registration/form-state.ts'
-import { genusBackgroundUrl } from '../registration/genus-backgrounds.ts'
 import { clearQuickAccessGeneraCache } from '../registration/quick-genera.ts'
 import {
   PLANT_INVALID_TEXT,
@@ -237,18 +236,20 @@ function respond(...args: FetchArgs): Promise<Response> {
   if (pathname === '/rest/v1/plants' && request.method === 'POST') {
     return insertResponder(request.body as Record<string, unknown>)
   }
+  // La planta releída (readPlant), con la principal ya copiada, como hace la
+  // base (sync_plant).
   if (pathname === '/rest/v1/plants' && request.method === 'GET') {
-    const id = request.url.searchParams.get('id')?.replace(/^eq\./, '')
-    return json(createdRow({ ...lastInsert(), id }))
-  }
-  // Apuntar la planta a su foto (replacePlantPhoto).
-  if (pathname === '/rest/v1/plants' && request.method === 'PATCH') {
-    const body = request.body as Record<string, string | null>
+    const id = request.url.searchParams.get('id')?.replace(/^eq\./, '') ?? ''
+    const [main] = photoRowsOf(id)
     return json({
-      ...createdRow(lastInsert()),
-      photo_path: body.photo_path,
-      thumbnail_path: body.thumbnail_path,
+      ...createdRow({ ...lastInsert(), id }),
+      photo_path: main?.photo_path ?? null,
+      thumbnail_path: main?.thumbnail_path ?? null,
+      photo_in_bloom: main?.in_bloom ?? false,
     })
+  }
+  if (pathname === '/rest/v1/plant_photos') {
+    return photoRowsResponder(request)
   }
   const storagePath = pathname.match(
     /^\/storage\/v1\/object\/plant-photos\/(.+)$/,
@@ -272,6 +273,57 @@ function respond(...args: FetchArgs): Promise<Response> {
     return json([])
   }
   return json({ message: `Ruta inesperada ${pathname}` }, 404)
+}
+
+/** Una fila de plant_photos, como la guarda PostgREST. */
+interface PhotoRow {
+  id: string
+  plant_id: string
+  photo_path: string
+  thumbnail_path: string
+  in_bloom: boolean
+  taken_at: string | null
+  note: string | null
+  position: number
+  created_at: string
+}
+
+/** plant_photos en memoria: lo que la galería guardó. */
+let photoRowStore: PhotoRow[] = []
+/** Respuesta a cada inserción en plant_photos; por defecto, guardada. */
+let photoInsertResponder: (row: PhotoRow) => Promise<Response> | null
+
+function photoRowsOf(plantId: string): PhotoRow[] {
+  return photoRowStore
+    .filter((row) => row.plant_id === plantId)
+    .sort((a, b) => a.position - b.position)
+}
+
+function photoRowsResponder(request: SentRequest): Promise<Response> {
+  const plantId =
+    request.url.searchParams.get('plant_id')?.replace(/^eq\./, '') ?? ''
+  if (request.method === 'GET') return json(photoRowsOf(plantId))
+  if (request.method === 'POST') {
+    const body = request.body as Omit<PhotoRow, 'id' | 'created_at'>
+    const row: PhotoRow = {
+      id: crypto.randomUUID(),
+      created_at: '2026-11-21T15:00:00+00:00',
+      ...body,
+      in_bloom: body.in_bloom,
+      taken_at: body.taken_at,
+      note: body.note,
+    }
+    const custom = photoInsertResponder(row)
+    if (custom) return custom
+    if (
+      photoRowsOf(row.plant_id).some((other) => other.position === row.position)
+    ) {
+      return json({ code: '23505', message: 'duplicate key' }, 409)
+    }
+    photoRowStore.push(row)
+    return json(row, 201)
+  }
+  return json({ message: 'Ruta inesperada plant_photos' }, 404)
 }
 
 function lastInsert(): Record<string, unknown> {
@@ -302,6 +354,8 @@ beforeEach(() => {
   insertResponder = (body) => json(createdRow(body), 201)
   storageUploadResponder = (path) =>
     json({ Id: `id-${path}`, Key: `plant-photos/${path}` })
+  photoRowStore = []
+  photoInsertResponder = () => null
   processPhoto.mockReset()
   processPhoto.mockImplementation(() => Promise.resolve(processedPhoto()))
   draftPhotos.entries.clear()
@@ -464,6 +518,13 @@ describe('NewPlantPage', () => {
     await user.click(option)
 
     expect(nameInput()).toHaveValue('Masdevallia veitchiana')
+    // «Coincidencia en el catálogo» bajo el campo, dentro de su ayuda (#221).
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toHaveClass(
+      'orki-match',
+    )
+    expect(nameInput()).toHaveAccessibleDescription(
+      `${PLANT_FORM_TEXT.nameMatch} ${PLANT_FORM_TEXT.nameHint}`,
+    )
     // El género de la especie no es de acceso rápido: aparece como chip.
     const genus = chip('Masdevallia')
     expect(genus).toHaveAttribute('aria-pressed', 'true')
@@ -482,14 +543,25 @@ describe('NewPlantPage', () => {
     expect(species).toHaveAttribute('aria-pressed', 'true')
     await expectNoAxeViolations()
 
-    // Cambiar el texto desenlaza: siguen marcados y vuelven a ser editables.
+    // Cambiar el texto desenlaza: la coincidencia se limpia y el género y el
+    // tipo siguen marcados, pero vuelven a ser editables.
     await user.type(nameInput(), ' x')
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
     expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
     expect(chip('Masdevallia')).not.toHaveAttribute('aria-disabled')
     expect(species).not.toHaveAttribute('aria-disabled')
     expect(screen.queryByText(PLANT_FORM_TEXT.lockedHint)).toBeNull()
     await user.click(chip('Cattleya'))
     expect(chip('Cattleya')).toHaveAttribute('aria-pressed', 'true')
+
+    // Volver a elegir una sugerencia vuelve a dar la coincidencia.
+    await user.clear(nameInput())
+    await user.type(nameInput(), 'wakanki')
+    await user.click(
+      await screen.findByRole('option', { name: /^Masdevallia veitchiana,/ }),
+    )
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
+    expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('guardar con especie envía species_id, sin validation ni user_id, y vuelve al inventario con la planta', async () => {
@@ -621,7 +693,7 @@ describe('NewPlantPage', () => {
     await screen.findByRole('button', { name: 'Phalaenopsis' })
     await chooseAmabilis(user)
     expect(nameInput()).toHaveAccessibleDescription(
-      PLANT_FORM_TEXT.nameLinkedHint,
+      `${PLANT_FORM_TEXT.nameMatch} ${PLANT_FORM_TEXT.nameHint}`,
     )
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
@@ -980,12 +1052,13 @@ describe('NewPlantPage', () => {
     await user.tab()
     await user.tab()
     expect(dateInput()).toHaveFocus()
-    // La foto, opcional, se salta con un tabulador más.
-    await user.tab()
-    expect(screen.getByRole('button', { name: 'Elegir foto' })).toHaveFocus()
     await user.tab()
     expect(originInput()).toHaveFocus()
     await user.keyboard('Feria de Miraflores')
+    // La galería, opcional, se salta con un tabulador más (sin pantalla
+    // táctil, solo «Elegir fotos»).
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Elegir fotos' })).toHaveFocus()
     // "Más detalles" se abre con Enter y sus campos siguen en orden.
     await user.tab()
     expect(detailsButton()).toHaveFocus()
@@ -1014,7 +1087,8 @@ describe('NewPlantPage', () => {
 })
 
 const originInput = () => screen.getByRole('combobox', { name: 'Origen' })
-const detailsButton = () => screen.getByRole('button', { name: 'Más detalles' })
+const detailsButton = () =>
+  screen.getByRole('button', { name: 'Más detalles (opcional)' })
 const locationInput = () => screen.getByLabelText('Ubicación')
 const nicknameInput = () => screen.getByLabelText('Apodo')
 const draftKey = plantDraftKey('user_prueba')
@@ -1453,32 +1527,48 @@ describe('NewPlantPage: aviso de duplicado (#88)', () => {
   })
 })
 
-// Foto en el registro (#87) ----------------------------------------------------
+// Galería de fotos en el registro (#221) ----------------------------------------
 
-const photoGroup = () => screen.getByRole('group', { name: 'Foto' })
-const chooseButton = () => screen.getByRole('button', { name: 'Elegir foto' })
+const gallery = () => screen.getByRole('region', { name: 'Fotos (opcional)' })
+const chooseButton = () => screen.getByRole('button', { name: 'Elegir fotos' })
 const bloomChip = () =>
   screen.queryByRole('button', { name: PLANT_FORM_TEXT.photoInBloom })
-const previewImage = () =>
-  screen.queryByRole('img', { name: 'Vista previa de la foto elegida' })
+const thumbnails = () =>
+  within(gallery())
+    .queryAllByRole('img')
+    .map(
+      (image) => image.getAttribute('aria-label') ?? image.getAttribute('alt'),
+    )
 
-function photoFile() {
-  return new File([new Uint8Array(10)], 'IMG_0001.jpg', { type: 'image/jpeg' })
+function photoFile(index = 1) {
+  return new File([new Uint8Array(10)], `IMG_000${String(index)}.jpg`, {
+    type: 'image/jpeg',
+  })
 }
 
-function fileInput(container: HTMLElement): HTMLInputElement {
-  const input = container.querySelector<HTMLInputElement>('input[type="file"]')
-  if (!input) throw new Error('No hay campo de archivo.')
+function filesInput(container: HTMLElement): HTMLInputElement {
+  const input = container.querySelector<HTMLInputElement>(
+    'input[type="file"][multiple]',
+  )
+  if (!input) throw new Error('No hay campo de archivos.')
   return input
 }
 
-/** Elige una foto con el campo (el <input type="file"> oculto). */
-async function choosePhoto(
+/** Elige `count` fotos de una vez y espera a que estén preparadas. */
+async function choosePhotos(
   user: ReturnType<typeof userEvent.setup>,
   container: HTMLElement,
+  count = 1,
 ) {
-  await user.upload(fileInput(container), photoFile())
-  await screen.findByRole('img', { name: 'Vista previa de la foto elegida' })
+  await user.upload(
+    filesInput(container),
+    Array.from({ length: count }, (_, index) => photoFile(index + 1)),
+  )
+  await waitFor(() =>
+    expect(
+      container.querySelector('.orki-gallery__item--preparing'),
+    ).toBeNull(),
+  )
 }
 
 /** Peticiones en orden, como "MÉTODO ruta". */
@@ -1496,14 +1586,21 @@ function storageUploads(): string[] {
     .map((r) => decodeURIComponent(r.url.pathname.slice(STORAGE_PREFIX.length)))
 }
 
-function photoPatches(): Record<string, unknown>[] {
+function photoRowInserts(): Record<string, unknown>[] {
   return requests()
-    .filter((r) => r.method === 'PATCH' && r.url.pathname === '/rest/v1/plants')
+    .filter(
+      (r) => r.method === 'POST' && r.url.pathname === '/rest/v1/plant_photos',
+    )
     .map((r) => r.body as Record<string, unknown>)
 }
 
 function uploaded(path: string): Promise<Response> {
   return json({ Id: `id-${path}`, Key: `plant-photos/${path}` })
+}
+
+/** Versión de una ruta de foto o miniatura. */
+function versionOf(path: string): string {
+  return /(?:photo|thumb)-([^.]+)\./.exec(path)?.[1] ?? ''
 }
 
 /** Subidas que no responden hasta llamar a la función devuelta. */
@@ -1526,25 +1623,40 @@ function failUploads(status: number) {
     )
 }
 
-describe('NewPlantPage: foto (#87)', () => {
-  it('sin foto no sube nada: solo la inserción', async () => {
+describe('NewPlantPage: galería de fotos (#221)', () => {
+  it('sin fotos no sube nada: solo la inserción, con la galería vacía', async () => {
     const user = userEvent.setup()
     await renderPage()
-    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
+    expect(within(gallery()).getByText('0 de 6')).toBeInTheDocument()
+    expect(within(gallery()).getByText('Aún no hay fotos.')).toBeInTheDocument()
+    // En el escritorio (sin pantalla táctil) no se ofrece «Tomar foto».
+    expect(
+      within(gallery()).queryByRole('button', { name: 'Tomar foto' }),
+    ).toBeNull()
     await chooseAmabilis(user)
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
     expect(storageUploads()).toEqual([])
-    expect(photoPatches()).toEqual([])
+    expect(photoRowInserts()).toEqual([])
     expect(processPhoto).not.toHaveBeenCalled()
   })
 
-  it('con foto: guarda la planta, después sube foto y miniatura, apunta la planta a ellas y el inventario muestra la miniatura', async () => {
+  it('con una foto: guarda la planta, después sube foto y miniatura y crea su fila; el inventario muestra la principal', async () => {
     const user = userEvent.setup()
     const { container } = await renderPage()
     await chooseAmabilis(user)
-    await choosePhoto(user, container)
+    // «Elegir fotos» abre el selector (el <input> oculto, múltiple).
+    const open = vi.spyOn(filesInput(container), 'click')
+    await user.click(chooseButton())
+    expect(open).toHaveBeenCalled()
+    await choosePhotos(user, container)
     expect(processPhoto).toHaveBeenCalledTimes(1)
+    expect(thumbnails()).toEqual(['Foto principal'])
+    expect(within(gallery()).getByText('1 de 6')).toBeInTheDocument()
+    expect(within(gallery()).getByText('Principal')).toBeInTheDocument()
+    expect(
+      within(gallery()).getByText('Foto añadida: 1 de 6.'),
+    ).toHaveAttribute('role', 'status')
     await expectNoAxeViolations()
 
     await user.click(submitButton())
@@ -1552,32 +1664,29 @@ describe('NewPlantPage: foto (#87)', () => {
 
     const insert = lastInsert()
     const id = String(insert.id)
-    // "En floración" no se marcó.
     expect(insert).not.toHaveProperty('photo_in_bloom')
     const uploads = storageUploads()
     expect(uploads).toHaveLength(2)
     for (const path of uploads)
       expect(path.startsWith(`user_prueba/${id}/`)).toBe(true)
-    expect(photoPatches()).toHaveLength(1)
-    const patch = photoPatches()[0] ?? {}
-    expect(String(patch.photo_path)).toMatch(
-      new RegExp(`^user_prueba/${id}/photo-.+\\.webp$`),
-    )
-    expect(String(patch.thumbnail_path)).toMatch(
-      new RegExp(`^user_prueba/${id}/thumb-.+\\.webp$`),
-    )
-    // Orden: primero la planta, después los archivos y al final las rutas.
+    expect(photoRowStore).toHaveLength(1)
+    expect(photoRowStore[0]).toMatchObject({
+      plant_id: id,
+      position: 0,
+      in_bloom: false,
+    })
+    // Orden: primero la planta, después los archivos y al final la fila.
     const log = requestLog()
     const inserted = log.indexOf('POST /rest/v1/plants')
     const firstUpload = log.findIndex((line) =>
       line.startsWith(`POST ${STORAGE_PREFIX}`),
     )
-    const patched = log.indexOf('PATCH /rest/v1/plants')
+    const row = log.indexOf('POST /rest/v1/plant_photos')
     expect(inserted).toBeGreaterThanOrEqual(0)
     expect(inserted).toBeLessThan(firstUpload)
-    expect(firstUpload).toBeLessThan(patched)
+    expect(firstUpload).toBeLessThan(row)
 
-    // La tarjeta pide la miniatura (no la foto grande) y la muestra.
+    // La tarjeta pide la miniatura de la principal y la muestra.
     const thumbnail = await screen.findByRole('img', {
       name: 'Foto de Phalaenopsis amabilis',
     })
@@ -1588,252 +1697,136 @@ describe('NewPlantPage: foto (#87)', () => {
       (r) => r.method === 'GET' && r.url.pathname.startsWith(STORAGE_PREFIX),
     )
     expect(downloads.map((r) => r.url.pathname)).toEqual([
-      `${STORAGE_PREFIX}${String(patch.thumbnail_path)}`,
+      `${STORAGE_PREFIX}${String(photoRowStore[0]?.thumbnail_path)}`,
     ])
   })
 
-  it('"La foto es en floración" solo aparece con foto, se envía y se quita al quitar la foto', async () => {
+  it('con seis: las sube en orden, la primera es la principal, y las acciones se deshabilitan', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    await fillFreeName(user)
+    await choosePhotos(user, container, 6)
+    expect(thumbnails()).toEqual([
+      'Foto principal',
+      'Foto 2 de 6',
+      'Foto 3 de 6',
+      'Foto 4 de 6',
+      'Foto 5 de 6',
+      'Foto 6 de 6',
+    ])
+    expect(within(gallery()).getByText('6 de 6')).toBeInTheDocument()
+    expect(chooseButton()).toHaveAttribute('aria-disabled', 'true')
+    expect(chooseButton()).toHaveAccessibleDescription(
+      'Ya tienes 6 fotos. Quita una para añadir otra.',
+    )
+    const open = vi.spyOn(filesInput(container), 'click')
+    await user.click(chooseButton())
+    expect(open).not.toHaveBeenCalled()
+    await expectNoAxeViolations()
+
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(storageUploads()).toHaveLength(12)
+    const id = String(lastInsert().id)
+    expect(photoRowsOf(id).map((row) => row.position)).toEqual([
+      0, 1, 2, 3, 4, 5,
+    ])
+    // La principal es la primera elegida.
+    expect(versionOf(photoRowsOf(id)[0]?.photo_path ?? '')).toBe(
+      versionOf(storageUploads()[0] ?? ''),
+    )
+  })
+
+  it('una selección que no cabe añade las que caben, dice cuántas quedaron fuera y conserva las ya elegidas; la séptima no entra', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    await choosePhotos(user, container, 4)
+    await choosePhotos(user, container, 3)
+    expect(thumbnails()).toHaveLength(6)
+    expect(processPhoto).toHaveBeenCalledTimes(6)
+    expect(
+      within(gallery()).getAllByText(
+        'Se añadieron 2 fotos; 1 quedó fuera: el máximo es 6.',
+      ).length,
+    ).toBeGreaterThan(0)
+    // Con seis, otra selección no añade nada.
+    await user.upload(filesInput(container), photoFile(9))
+    expect(thumbnails()).toHaveLength(6)
+    expect(processPhoto).toHaveBeenCalledTimes(6)
+  })
+
+  it('quitar la principal promueve la siguiente, lo anuncia y vuelve a habilitar las acciones', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    await choosePhotos(user, container, 6)
+    expect(chooseButton()).toHaveAttribute('aria-disabled', 'true')
+
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
+    expect(thumbnails()).toEqual([
+      'Foto principal',
+      'Foto 2 de 5',
+      'Foto 3 de 5',
+      'Foto 4 de 5',
+      'Foto 5 de 5',
+    ])
+    expect(
+      within(gallery()).getByText(
+        'Foto quitada: quedan 5 de 6. La siguiente pasa a ser la principal.',
+      ),
+    ).toHaveAttribute('role', 'status')
+    // El foco pasa a la que ocupa su lugar, la nueva principal.
+    expect(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    ).toHaveFocus()
+    expect(chooseButton()).not.toHaveAttribute('aria-disabled')
+    expect(within(gallery()).getByText('5 de 6')).toBeInTheDocument()
+  })
+
+  it('"La foto principal es en floración" solo aparece con fotos, va en la principal y se quita al quedarse sin fotos', async () => {
     const user = userEvent.setup()
     const { container } = await renderPage()
     await chooseAmabilis(user)
     await user.click(detailsButton())
     expect(bloomChip()).toBeNull()
 
-    await choosePhoto(user, container)
-    expect(bloomChip()).toHaveAttribute('aria-pressed', 'false')
+    await choosePhotos(user, container)
     await user.click(bloomChip() as HTMLElement)
     expect(bloomChip()).toHaveAttribute('aria-pressed', 'true')
-    await expectNoAxeViolations()
-
-    // Quitar la foto la esconde y la desmarca; el foco vuelve al campo.
-    await user.click(screen.getByRole('button', { name: 'Quitar foto' }))
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    )
     expect(bloomChip()).toBeNull()
     expect(chooseButton()).toHaveFocus()
-    await choosePhoto(user, container)
-    expect(bloomChip()).toHaveAttribute('aria-pressed', 'false')
-    await user.click(bloomChip() as HTMLElement)
 
+    await choosePhotos(user, container, 2)
+    await user.click(bloomChip() as HTMLElement)
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
     expect(lastInsert()).toMatchObject({ photo_in_bloom: true })
+    expect(photoRowStore.map((row) => row.in_bloom)).toEqual([true, false])
   })
 
-  it('con un nombre por validar recomienda añadir una foto, sin exigirla', async () => {
-    const user = userEvent.setup()
-    await renderPage()
-    await fillFreeName(user)
-    expect(photoGroup()).toHaveAccessibleDescription(
-      `${PLANT_FORM_TEXT.pendingPhotoHint} Más en Privacidad.`,
-    )
-    await expectNoAxeViolations()
-
-    await user.click(submitButton())
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(lastInsert()).not.toHaveProperty('species_id')
-    expect(storageUploads()).toEqual([])
-  })
-
-  it('con un nombre por validar y una foto, avisa de que el equipo del catálogo podrá verla', async () => {
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
-    await fillFreeName(user)
-    await choosePhoto(user, container)
-
-    expect(photoGroup()).toHaveAccessibleDescription(
-      `${PLANT_FORM_TEXT.pendingPhotoNotice} Más en Privacidad.`,
-    )
-    // Un solo mensaje: la recomendación sin foto ya no está.
-    expect(
-      screen.queryByText(PLANT_FORM_TEXT.pendingPhotoHint, { exact: false }),
-    ).toBeNull()
-    const link = within(photoGroup()).getByRole('link', { name: 'Privacidad' })
-    expect(link).toHaveAttribute('href', '/privacidad')
-    expect(link).not.toHaveAttribute('target')
-    await expectNoAxeViolations()
-  })
-
-  it('con una especie del catálogo no avisa de la foto ni enlaza a privacidad', async () => {
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    await chooseAmabilis(user)
-    await choosePhoto(user, container)
-    expect(photoGroup()).toHaveAccessibleDescription(PLANT_FORM_TEXT.photoHint)
-    expect(screen.queryByRole('link', { name: 'Privacidad' })).toBeNull()
-  })
-
-  it('el enlace a Privacidad no pierde lo escrito: al volver se recupera el borrador', async () => {
-    const user = userEvent.setup()
-    await renderPage()
-    await fillFreeName(user)
-
-    await user.click(screen.getByRole('link', { name: 'Privacidad' }))
-    expect(location()).toBe('/privacidad')
-    await user.click(screen.getByRole('link', { name: 'Volver al registro' }))
-
-    expect(
-      await screen.findByText(PLANT_FORM_TEXT.draftRestored),
-    ).toBeInTheDocument()
-    expect(nameInput()).toHaveValue('La naranja del mercado')
-    expect(photoGroup()).toHaveAccessibleDescription(
-      `${PLANT_FORM_TEXT.pendingPhotoHint} Más en Privacidad.`,
-    )
-
-    await user.click(submitButton())
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(lastInsert()).not.toHaveProperty('species_id')
-    expect(storageUploads()).toEqual([])
-  })
-
-  it('si la subida falla, la planta queda registrada; se reintenta con la misma foto, sin prepararla otra vez', async () => {
-    failUploads(503)
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    await chooseAmabilis(user)
-    await choosePhoto(user, container)
-    await user.click(submitButton())
-
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(PLANT_FORM_TEXT.photoUploadFailed)
-    expect(alert).toHaveTextContent(
-      'No se pudo guardar la foto. Vuelve a intentarlo.',
-    )
-    expect(alert).toHaveTextContent(PLANT_FORM_TEXT.photoUploadRetryHint)
-    const retry = screen.getByRole('button', {
-      name: PLANT_FORM_TEXT.photoUploadRetry,
-    })
-    await waitFor(() => expect(retry).toHaveFocus())
-    expect(
-      screen.getByRole('button', {
-        name: PLANT_FORM_TEXT.photoContinueWithout,
-      }),
-    ).toBeInTheDocument()
-    // Ya registrada: el formulario no se puede tocar ni volver a enviar, y el
-    // borrador ya no está.
-    expect(nameInput()).toBeDisabled()
-    expect(location()).toBe('/coleccion/nueva')
-    expect(plantInserts()).toHaveLength(1)
-    expect(photoPatches()).toEqual([])
-    expect(window.localStorage.getItem(draftKey)).toBeNull()
-    await expectNoAxeViolations()
-
-    storageUploadResponder = uploaded
-    await user.click(retry)
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(plantInserts()).toHaveLength(1)
-    expect(processPhoto).toHaveBeenCalledTimes(1)
-    expect(photoPatches()).toHaveLength(1)
-    // El reintento sube a las mismas rutas (la misma versión de la foto).
-    const uploads = storageUploads()
-    expect(uploads).toHaveLength(4)
-    expect(new Set(uploads).size).toBe(2)
-  })
-
-  it('si la subida falla, se puede continuar sin foto: la planta ya está en el inventario', async () => {
-    failUploads(503)
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    await chooseAmabilis(user)
-    await choosePhoto(user, container)
-    await user.click(submitButton())
-    await user.click(
-      await screen.findByRole('button', {
-        name: PLANT_FORM_TEXT.photoContinueWithout,
-      }),
-    )
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(screen.getAllByRole('article')).toHaveLength(1)
-    expect(photoPatches()).toEqual([])
-    expect(await screen.findByText(/^Registraste/)).toBeInTheDocument()
-  })
-
-  it('con la sesión terminada al subir no ofrece reintentar, solo continuar', async () => {
-    failUploads(401)
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    await chooseAmabilis(user)
-    await choosePhoto(user, container)
-    await user.click(submitButton())
-
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(PLANT_FORM_TEXT.photoUploadFailed)
-    expect(alert).not.toHaveTextContent(PLANT_FORM_TEXT.photoUploadRetryHint)
-    expect(
-      screen.queryByRole('button', { name: PLANT_FORM_TEXT.photoUploadRetry }),
-    ).toBeNull()
-    const continueButton = screen.getByRole('button', {
-      name: PLANT_FORM_TEXT.photoContinueWithout,
-    })
-    await waitFor(() => expect(continueButton).toHaveFocus())
-    await user.click(continueButton)
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-  })
-
-  it('mientras sube no se envía dos veces; "Cancelar subida" deja la planta registrada sin foto', async () => {
-    const release = holdUploads()
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    await chooseAmabilis(user)
-    await choosePhoto(user, container)
-    await user.click(submitButton())
-
-    const busy = await screen.findByRole('button', {
-      name: PLANT_FORM_TEXT.photoUploadingButton,
-    })
-    expect(busy).toHaveAttribute('aria-disabled', 'true')
-    expect(busy).toHaveFocus()
-    expect(
-      await screen.findByText(/^Tu orquídea quedó registrada\. Subiendo/),
-    ).toBeInTheDocument()
-    await user.click(busy)
-    await user.keyboard('{Enter}')
-    expect(plantInserts()).toHaveLength(1)
-    await waitFor(() => expect(storageUploads()).toHaveLength(2))
-    await expectNoAxeViolations()
-
-    await user.click(
-      screen.getByRole('button', { name: PLANT_FORM_TEXT.photoUploadCancel }),
-    )
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      PLANT_FORM_TEXT.photoUploadCancelled,
-    )
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: PLANT_FORM_TEXT.photoUploadRetry }),
-      ).toHaveFocus(),
-    )
-    // Lo que llegue a subirse tras cancelar no apunta la planta.
-    await act(async () => {
-      release()
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(photoPatches()).toEqual([])
-
-    await user.click(
-      screen.getByRole('button', {
-        name: PLANT_FORM_TEXT.photoContinueWithout,
-      }),
-    )
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-  })
-
-  it('mientras se prepara la foto no se puede registrar', async () => {
-    let finish: (photo: ProcessedPhoto) => void = () => undefined
+  it('mientras se preparan las fotos no se puede registrar', async () => {
+    let finish: (photo: ProcessedPhoto) => void = () => {}
     processPhoto.mockImplementation(
       () =>
-        new Promise<ProcessedPhoto>((resolve) => {
+        new Promise((resolve) => {
           finish = resolve
         }),
     )
     const user = userEvent.setup()
     const { container } = await renderPage()
     await chooseAmabilis(user)
-    await user.upload(fileInput(container), photoFile())
-    const preparing = await screen.findByRole('button', {
-      name: PLANT_FORM_TEXT.photoPreparing,
+    await user.upload(filesInput(container), photoFile())
+    expect(thumbnails()).toEqual(['Foto principal'])
+    expect(within(gallery()).getByText('Preparando…')).toBeInTheDocument()
+    const busy = screen.getByRole('button', {
+      name: PLANT_FORM_TEXT.photosPreparing,
     })
-    expect(preparing).toHaveAttribute('aria-disabled', 'true')
-    await user.click(preparing)
+    expect(busy).toHaveAttribute('aria-disabled', 'true')
+    await user.click(busy)
     expect(plantInserts()).toHaveLength(0)
 
     await act(async () => {
@@ -1848,135 +1841,421 @@ describe('NewPlantPage: foto (#87)', () => {
     expect(storageUploads()).toHaveLength(2)
   })
 
-  it('recargar con una foto elegida conserva lo escrito y la foto, con el mismo id de planta', async () => {
-    const user = userEvent.setup()
-    const first = await renderPage()
-    await user.type(nameInput(), 'Stanhopea')
-    await choosePhoto(user, first.container)
-    const saved = storedDraft()
-    await waitFor(() => expect(draftPhotos.entries.size).toBe(1))
-    expect(draftPhotos.entries.get('user_prueba')?.plantId).toBe(saved?.plantId)
-
-    first.unmount()
-    await renderPage()
-    expect(
-      await screen.findByText(PLANT_FORM_TEXT.draftRestored),
-    ).toBeInTheDocument()
-    expect(nameInput()).toHaveValue('Stanhopea')
-    expect(
-      await screen.findByRole('img', {
-        name: 'Vista previa de la foto elegida',
-      }),
-    ).toBeInTheDocument()
-    // No se vuelve a preparar.
-    expect(processPhoto).toHaveBeenCalledTimes(1)
-    await expectNoAxeViolations()
-
-    await user.click(chip('Cattleya'))
-    await user.click(within(typeGroup()).getByRole('button', { name: 'No sé' }))
-    await user.click(submitButton())
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(lastInsert().id).toBe(saved?.plantId)
-    expect(storageUploads()).toHaveLength(2)
-    for (const path of storageUploads()) {
-      expect(path.startsWith(`user_prueba/${String(saved?.plantId)}/`)).toBe(
-        true,
+  it('una foto que no se puede preparar se quita con su motivo; las demás siguen', async () => {
+    processPhoto
+      .mockImplementationOnce(() => Promise.resolve(processedPhoto()))
+      .mockImplementationOnce(() =>
+        Promise.reject(new PhotoProcessingError('not-an-image')),
       )
-    }
-    // Guardar borra el borrador y su foto.
-    expect(window.localStorage.getItem(draftKey)).toBeNull()
-    expect(draftPhotos.entries.size).toBe(0)
-  })
-
-  it('una foto sola, sin nada escrito, también se conserva al recargar', async () => {
-    const user = userEvent.setup()
-    const first = await renderPage()
-    await choosePhoto(user, first.container)
-    expect(storedDraft()?.plantId).toBeTruthy()
-    await waitFor(() => expect(draftPhotos.entries.size).toBe(1))
-
-    first.unmount()
-    await renderPage()
-    expect(
-      await screen.findByRole('img', {
-        name: 'Vista previa de la foto elegida',
-      }),
-    ).toBeInTheDocument()
-
-    // Quitarla, con el formulario vacío, borra el borrador entero.
-    await user.click(screen.getByRole('button', { name: 'Quitar foto' }))
-    expect(window.localStorage.getItem(draftKey)).toBeNull()
-    await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
-  })
-
-  it('una foto pendiente que no va con el borrador se descarta', async () => {
-    await draftPhotos.put('user_prueba', {
-      version: 1,
-      plantId: '30000000-0000-4000-8000-000000000009',
-      savedAt: Date.now(),
-      fileName: 'vieja.jpg',
-      photo: processedPhoto(),
-    })
-    await renderPage()
-    await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
-    expect(previewImage()).toBeNull()
-  })
-
-  it('descartar el borrador quita también la foto', async () => {
-    const user = userEvent.setup()
-    const first = await renderPage()
-    await user.type(nameInput(), 'Stanhopea')
-    await choosePhoto(user, first.container)
-    first.unmount()
-    await renderPage()
-    await screen.findByRole('img', { name: 'Vista previa de la foto elegida' })
-
-    await user.click(
-      await screen.findByRole('button', { name: PLANT_FORM_TEXT.draftDiscard }),
-    )
-    expect(previewImage()).toBeNull()
-    await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
-  })
-
-  it('"Cancelar" con solo una foto pregunta antes de salir', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const user = userEvent.setup()
     const { container } = await renderPage()
-    await choosePhoto(user, container)
-    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-    expect(confirm).toHaveBeenCalledWith(PLANT_FORM_TEXT.confirmDiscard)
-    expect(location()).toBe('/coleccion/nueva')
+    await choosePhotos(user, container, 2)
+    expect(thumbnails()).toEqual(['Foto principal'])
+    expect(within(gallery()).getByRole('alert')).toHaveTextContent(
+      /^No se pudo preparar «IMG_0002\.jpg»\./,
+    )
   })
 
-  it('desde la cámara (?foto=1): la foto va lo primero y, al elegirla, el foco pasa al nombre', async () => {
-    const user = userEvent.setup()
-    const { container } = await renderPage([], '/coleccion/nueva?foto=1')
-    const form = screen.getByRole('form', { name: PLANT_FORM_TEXT.title })
-    // El primer control del formulario es el de la foto.
-    expect(within(form).getAllByRole('button')[0]).toBe(chooseButton())
-    expect(photoGroup()).toHaveAccessibleDescription(
-      PLANT_FORM_TEXT.photoFirstHint,
-    )
+  describe('nombre por validar (#12, #210)', () => {
+    it('sin fotos las recomienda, sin exigirlas, y se registra igual', async () => {
+      const user = userEvent.setup()
+      await renderPage()
+      await fillFreeName(user)
+      expect(gallery()).toHaveAccessibleDescription(
+        `${PLANT_FORM_TEXT.pendingPhotoHint} Más en Privacidad.`,
+      )
+      await expectNoAxeViolations()
+
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(lastInsert()).not.toHaveProperty('species_id')
+      expect(storageUploads()).toEqual([])
+    })
+
+    it('con fotos avisa, en plural, de que el equipo del catálogo podrá verlas', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      expect(gallery()).not.toHaveAccessibleDescription()
+      await fillFreeName(user)
+      await choosePhotos(user, container)
+      expect(gallery()).toHaveAccessibleDescription(
+        `${PLANT_FORM_TEXT.pendingPhotoNotice(1)} Más en Privacidad.`,
+      )
+      await choosePhotos(user, container, 2)
+      expect(gallery()).toHaveAccessibleDescription(
+        'Como el nombre queda por validar, el equipo del catálogo podrá ver estas fotos para identificarla. Más en Privacidad.',
+      )
+      const link = within(gallery()).getByRole('link', { name: 'Privacidad' })
+      expect(link).toHaveAttribute('href', '/privacidad')
+      expect(link).not.toHaveAttribute('target')
+      await expectNoAxeViolations()
+
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(photoRowStore).toHaveLength(3)
+    })
+
+    it('con «Otro» y fotos: guarda el género elegido y las fotos', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await user.type(nameInput(), 'Miltoniopsis Herr Alexandre')
+      await user.click(chip('Otro'))
+      await user.type(
+        screen.getByRole('combobox', { name: 'Buscar otro género' }),
+        'mps',
+      )
+      await user.click(
+        await screen.findByRole('option', { name: /^Miltoniopsis,/ }),
+      )
+      await user.click(
+        within(typeGroup()).getByRole('button', { name: 'Híbrido' }),
+      )
+      await choosePhotos(user, container, 2)
+      expect(gallery()).toHaveAccessibleDescription(/^Como el nombre queda/)
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(lastInsert()).toMatchObject({
+        entered_name: 'Miltoniopsis Herr Alexandre',
+        genus_id: GENERA.miltoniopsis.id,
+        type: 'hybrid',
+      })
+      expect(lastInsert()).not.toHaveProperty('species_id')
+      expect(photoRowStore).toHaveLength(2)
+    })
+
+    it('con una especie del catálogo no hay aviso', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container)
+      expect(gallery()).not.toHaveAccessibleDescription()
+      expect(screen.queryByRole('link', { name: 'Privacidad' })).toBeNull()
+    })
+
+    it('el enlace a Privacidad no pierde lo escrito ni las fotos: al volver se recupera el borrador', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await fillFreeName(user)
+      await choosePhotos(user, container, 2)
+      await waitFor(() => expect(draftPhotos.entries.size).toBe(1))
+
+      await user.click(screen.getByRole('link', { name: 'Privacidad' }))
+      expect(location()).toBe('/privacidad')
+      await user.click(screen.getByRole('link', { name: 'Volver al registro' }))
+
+      expect(
+        await screen.findByText(PLANT_FORM_TEXT.draftRestored),
+      ).toBeInTheDocument()
+      expect(nameInput()).toHaveValue('La naranja del mercado')
+      await waitFor(() => expect(thumbnails()).toHaveLength(2))
+    })
+  })
+
+  describe('si falla la subida', () => {
+    it('una foto falla: la planta queda registrada, dice cuál y reintenta solo esa, sin duplicar la planta', async () => {
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container, 3)
+      // Falla la segunda foto (sus dos archivos) hasta que se diga.
+      let failing: string | null = null
+      let healed = false
+      storageUploadResponder = (path) => {
+        const version = versionOf(path)
+        const seen = [...new Set(storageUploads().map(versionOf))]
+        if (failing === null && seen.indexOf(version) === 1) failing = version
+        return version === failing && !healed
+          ? json({ statusCode: '503', error: 'Error', message: 'Fallo' }, 503)
+          : uploaded(path)
+      }
+      await user.click(submitButton())
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Tu orquídea quedó registrada, pero no se pudo subir la foto 2 de 3.',
+      )
+      expect(alert).toHaveTextContent(PLANT_FORM_TEXT.photosRetryHint)
+      expect(within(gallery()).getByText('No se subió')).toBeInTheDocument()
+      expect(within(gallery()).getAllByText('Guardada')).toHaveLength(2)
+      const retry = screen.getByRole('button', {
+        name: PLANT_FORM_TEXT.photosRetry,
+      })
+      await waitFor(() => expect(retry).toHaveFocus())
+      expect(
+        screen.getByRole('button', {
+          name: PLANT_FORM_TEXT.photosContinueWithout,
+        }),
+      ).toBeInTheDocument()
+      // Ya registrada: no se edita ni se quitan fotos; el borrador ya no está.
+      expect(nameInput()).toBeDisabled()
+      expect(
+        within(gallery()).queryByRole('button', { name: /^Quitar/ }),
+      ).toBeNull()
+      expect(location()).toBe('/coleccion/nueva')
+      expect(plantInserts()).toHaveLength(1)
+      const id = String(lastInsert().id)
+      expect(photoRowsOf(id)).toHaveLength(2)
+      expect(window.localStorage.getItem(draftKey)).toBeNull()
+      await expectNoAxeViolations()
+
+      // Reintentar solo esa, desde su miniatura.
+      healed = true
+      const before = storageUploads().length
+      await user.click(
+        within(gallery()).getByRole('button', {
+          name: 'Reintentar foto 2 de 3',
+        }),
+      )
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(plantInserts()).toHaveLength(1)
+      expect(processPhoto).toHaveBeenCalledTimes(3)
+      // Solo los dos archivos de la que faltaba, a las mismas rutas.
+      const retried = storageUploads().slice(before)
+      expect(retried).toHaveLength(2)
+      expect(retried.map(versionOf)).toEqual([failing, failing])
+      // Conserva su lugar entre las demás.
+      expect(photoRowsOf(id).map((row) => row.position)).toEqual([0, 1, 2])
+      expect(photoRowInserts()).toHaveLength(3)
+    })
+
+    it('«Reintentar fotos» reintenta todas las que fallaron', async () => {
+      failUploads(503)
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container, 2)
+      await user.click(submitButton())
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Tu orquídea quedó registrada, pero no se pudieron subir 2 fotos: la foto principal y la foto 2 de 2.',
+      )
+      storageUploadResponder = uploaded
+      await user.click(
+        screen.getByRole('button', { name: PLANT_FORM_TEXT.photosRetry }),
+      )
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(plantInserts()).toHaveLength(1)
+      expect(photoRowStore).toHaveLength(2)
+    })
+
+    it('se puede continuar sin ellas: la planta ya está en el inventario', async () => {
+      failUploads(503)
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container)
+      await user.click(submitButton())
+      await user.click(
+        await screen.findByRole('button', {
+          name: PLANT_FORM_TEXT.photosContinueWithout,
+        }),
+      )
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(screen.getAllByRole('article')).toHaveLength(1)
+      expect(photoRowStore).toEqual([])
+      expect(await screen.findByText(/^Registraste/)).toBeInTheDocument()
+    })
+
+    it('con la sesión terminada no ofrece reintentar, solo continuar', async () => {
+      failUploads(401)
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container)
+      await user.click(submitButton())
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(/^Tu orquídea quedó registrada, pero/)
+      expect(alert).not.toHaveTextContent(PLANT_FORM_TEXT.photosRetryHint)
+      expect(
+        screen.queryByRole('button', { name: PLANT_FORM_TEXT.photosRetry }),
+      ).toBeNull()
+      const continueButton = screen.getByRole('button', {
+        name: PLANT_FORM_TEXT.photosContinue,
+      })
+      await waitFor(() => expect(continueButton).toHaveFocus())
+      await user.click(continueButton)
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+    })
+
+    it('mientras sube no se envía dos veces y se ve el progreso; «Cancelar subida» deja la planta registrada', async () => {
+      const release = holdUploads()
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container, 2)
+      await user.click(submitButton())
+
+      const busy = await screen.findByRole('button', {
+        name: PLANT_FORM_TEXT.photosUploadingButton,
+      })
+      expect(busy).toHaveAttribute('aria-disabled', 'true')
+      expect(
+        await screen.findByText(
+          'Tu orquídea quedó registrada. Subiendo las fotos… (0 de 2)',
+        ),
+      ).toBeInTheDocument()
+      expect(
+        within(gallery()).getAllByText(/^Subiendo…/).length,
+      ).toBeGreaterThan(0)
+      await user.click(busy)
+      expect(plantInserts()).toHaveLength(1)
+
+      await user.click(
+        screen.getByRole('button', {
+          name: PLANT_FORM_TEXT.photosUploadCancel,
+        }),
+      )
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        PLANT_FORM_TEXT.photosCancelled(PLANT_FORM_TEXT.savedPrefix),
+      )
+      release()
+      await user.click(
+        screen.getByRole('button', {
+          name: PLANT_FORM_TEXT.photosContinueWithout,
+        }),
+      )
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(plantInserts()).toHaveLength(1)
+    })
+  })
+
+  describe('borrador con fotos', () => {
+    const draftedPhotos = () =>
+      draftPhotos.entries.get('user_prueba')?.photos as
+        { fileName: string }[] | undefined
+
+    it('recargar conserva lo escrito y las fotos en su orden, con el mismo id de planta', async () => {
+      const user = userEvent.setup()
+      const first = await renderPage()
+      await user.type(nameInput(), 'Stanhopea')
+      await choosePhotos(user, first.container, 3)
+      const saved = storedDraft()
+      await waitFor(() => expect(draftedPhotos()).toHaveLength(3))
+      expect(draftPhotos.entries.get('user_prueba')?.plantId).toBe(
+        saved?.plantId,
+      )
+      expect(draftedPhotos()?.map((photo) => photo.fileName)).toEqual([
+        'IMG_0001.jpg',
+        'IMG_0002.jpg',
+        'IMG_0003.jpg',
+      ])
+
+      first.unmount()
+      await renderPage()
+      expect(
+        await screen.findByText(PLANT_FORM_TEXT.draftRestored),
+      ).toBeInTheDocument()
+      expect(nameInput()).toHaveValue('Stanhopea')
+      await waitFor(() => expect(thumbnails()).toHaveLength(3))
+      // No se vuelven a preparar.
+      expect(processPhoto).toHaveBeenCalledTimes(3)
+      await expectNoAxeViolations()
+
+      await user.click(chip('Cattleya'))
+      await user.click(
+        within(typeGroup()).getByRole('button', { name: 'No sé' }),
+      )
+      await user.click(submitButton())
+      await waitFor(() => expect(location()).toBe('/coleccion'))
+      expect(lastInsert().id).toBe(saved?.plantId)
+      expect(storageUploads()).toHaveLength(6)
+      // Guardar borra el borrador y sus fotos.
+      expect(window.localStorage.getItem(draftKey)).toBeNull()
+      expect(draftPhotos.entries.size).toBe(0)
+    })
+
+    it('solo fotos, sin nada escrito, también se conservan; quitarlas todas borra el borrador', async () => {
+      const user = userEvent.setup()
+      const first = await renderPage()
+      await choosePhotos(user, first.container)
+      expect(storedDraft()?.plantId).toBeTruthy()
+      await waitFor(() => expect(draftPhotos.entries.size).toBe(1))
+
+      first.unmount()
+      await renderPage()
+      await waitFor(() => expect(thumbnails()).toHaveLength(1))
+
+      await user.click(
+        within(gallery()).getByRole('button', {
+          name: 'Quitar foto principal',
+        }),
+      )
+      expect(window.localStorage.getItem(draftKey)).toBeNull()
+      await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
+    })
+
+    it('unas fotos pendientes que no van con el borrador se descartan', async () => {
+      await draftPhotos.put('user_prueba', {
+        version: 2,
+        plantId: '30000000-0000-4000-8000-000000000009',
+        savedAt: Date.now(),
+        photos: [{ fileName: 'vieja.jpg', photo: processedPhoto() }],
+      })
+      await renderPage()
+      await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
+      expect(thumbnails()).toEqual([])
+    })
+
+    it('descartar el borrador quita también las fotos', async () => {
+      const user = userEvent.setup()
+      const first = await renderPage()
+      await user.type(nameInput(), 'Stanhopea')
+      await choosePhotos(user, first.container, 2)
+      first.unmount()
+      await renderPage()
+      await waitFor(() => expect(thumbnails()).toHaveLength(2))
+
+      await user.click(
+        await screen.findByRole('button', {
+          name: PLANT_FORM_TEXT.draftDiscard,
+        }),
+      )
+      expect(thumbnails()).toEqual([])
+      await waitFor(() => expect(draftPhotos.entries.size).toBe(0))
+    })
+
+    it('"Cancelar" con solo una foto pregunta antes de salir', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      const user = userEvent.setup()
+      const { container } = await renderPage()
+      await choosePhotos(user, container)
+      await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+      expect(confirm).toHaveBeenCalledWith(PLANT_FORM_TEXT.confirmDiscard)
+      expect(location()).toBe('/coleccion/nueva')
+    })
+  })
+
+  it('la antigua entrada desde la cámara (?foto=1) abre el registro de siempre', async () => {
+    await renderPage([], '/coleccion/nueva?foto=1')
     expect(
-      photoGroup().compareDocumentPosition(nameInput()) &
+      screen.getByRole('form', { name: PLANT_FORM_TEXT.title }),
+    ).toBeInTheDocument()
+    // El nombre va antes que la galería.
+    expect(
+      nameInput().compareDocumentPosition(gallery()) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
-    await expectNoAxeViolations()
+  })
 
-    // El toque en el botón abre el selector (el <input> oculto).
-    const open = vi.spyOn(fileInput(container), 'click')
+  it('sin conexión, la galería se desactiva con el resto y las fotos se conservan', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    await choosePhotos(user, container)
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    act(() => {
+      window.dispatchEvent(new Event('offline'))
+    })
+    expect(chooseButton()).toHaveAttribute('aria-disabled', 'true')
+    expect(
+      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    const open = vi.spyOn(filesInput(container), 'click')
     await user.click(chooseButton())
-    expect(open).toHaveBeenCalled()
-    await choosePhoto(user, container)
-    expect(nameInput()).toHaveFocus()
-
-    await user.keyboard('phal amab')
-    await user.click(
-      await screen.findByRole('option', { name: 'Phalaenopsis amabilis' }),
-    )
-    await user.click(submitButton())
-    await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(storageUploads()).toHaveLength(2)
+    expect(open).not.toHaveBeenCalled()
+    expect(thumbnails()).toEqual(['Foto principal'])
+    await expectNoAxeViolations()
   })
 
   describe('evento "registro completado" (#146)', () => {
@@ -2003,14 +2282,11 @@ describe('NewPlantPage: foto (#87)', () => {
       setProductEventsRuntimeLoader(null)
     })
 
-    it('desde la cámara, con foto y nombre del catálogo, sin nombres en el evento', async () => {
+    it('con fotos y nombre del catálogo, sin nombres en el evento', async () => {
       const user = userEvent.setup()
-      const { container } = await renderPage([], '/coleccion/nueva?foto=1')
-      await choosePhoto(user, container)
-      await user.keyboard('phal amab')
-      await user.click(
-        await screen.findByRole('option', { name: 'Phalaenopsis amabilis' }),
-      )
+      const { container } = await renderPage()
+      await chooseAmabilis(user)
+      await choosePhotos(user, container, 2)
       await user.click(submitButton())
       await waitFor(() => expect(location()).toBe('/coleccion'))
       await waitFor(() => expect(recorded).toHaveLength(1))
@@ -2025,7 +2301,7 @@ describe('NewPlantPage: foto (#87)', () => {
       expect(JSON.stringify(recorded)).not.toMatch(/phal|amabilis/i)
     })
 
-    it('sin foto y con el nombre por validar', async () => {
+    it('sin fotos y con el nombre por validar', async () => {
       const user = userEvent.setup()
       await renderPage()
       await fillFreeName(user)
@@ -2038,103 +2314,5 @@ describe('NewPlantPage: foto (#87)', () => {
         name_pending: true,
       })
     })
-  })
-
-  it('sin conexión, el campo de foto queda desactivado con el resto y la foto se conserva', async () => {
-    const user = userEvent.setup()
-    const { container } = await renderPage()
-    await choosePhoto(user, container)
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
-    act(() => {
-      window.dispatchEvent(new Event('offline'))
-    })
-    expect(
-      screen.getByRole('button', { name: 'Elegir otra foto' }),
-    ).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Quitar foto' })).toBeDisabled()
-    expect(previewImage()).toBeInTheDocument()
-    await expectNoAxeViolations()
-  })
-})
-
-describe('NewPlantPage: fondo por género (#13)', () => {
-  // jsdom no carga imágenes: un doble de Image que "carga" al momento y
-  // apunta qué fotos se pidieron.
-  let requested: string[]
-
-  beforeEach(() => {
-    requested = []
-    class LoadingImage {
-      decoding = 'auto'
-      onload: (() => void) | null = null
-      onerror: (() => void) | null = null
-      set src(value: string) {
-        requested.push(value)
-        queueMicrotask(() => this.onload?.())
-      }
-    }
-    vi.stubGlobal('Image', LoadingImage)
-  })
-
-  const backdrop = () => screen.getByTestId('fondo-genero')
-  const phalaenopsis = genusBackgroundUrl('Phalaenopsis')
-  const cattleya = genusBackgroundUrl('Cattleya')
-
-  it('cambia solo al fijarse el género, no mientras se escribe, y pasa la revisión de accesibilidad', async () => {
-    const user = userEvent.setup()
-    await renderPage()
-    expect(backdrop()).toHaveAttribute('data-fondo', 'neutro')
-
-    // Escribir y ver sugerencias no toca el fondo: ni descarga ni cambio.
-    const seen = new Set<string | null>()
-    const observer = new MutationObserver(() =>
-      seen.add(backdrop().getAttribute('data-fondo')),
-    )
-    observer.observe(backdrop(), { attributes: true, childList: true })
-    await user.type(nameInput(), 'phal amab')
-    await screen.findByRole('option', { name: 'Phalaenopsis amabilis' })
-    expect(requested).toEqual([])
-    expect(seen.size).toBe(0)
-
-    // Elegir la especie fija Phalaenopsis: aparece su foto.
-    await user.click(
-      screen.getByRole('option', { name: 'Phalaenopsis amabilis' }),
-    )
-    await waitFor(() =>
-      expect(backdrop()).toHaveAttribute('data-fondo', phalaenopsis),
-    )
-    expect(requested).toEqual([phalaenopsis])
-
-    // Seguir escribiendo desenlaza la especie pero el género se queda: el
-    // fondo no cambia.
-    seen.clear()
-    await user.type(nameInput(), ' x')
-    expect(backdrop()).toHaveAttribute('data-fondo', phalaenopsis)
-    expect([...seen].every((value) => value === phalaenopsis)).toBe(true)
-    await expectNoAxeViolations()
-
-    // Un chip de género con foto la cambia; "Otro" (sin género) la quita.
-    await user.click(chip('Cattleya'))
-    await waitFor(() =>
-      expect(backdrop()).toHaveAttribute('data-fondo', cattleya),
-    )
-    await user.click(chip('Otro'))
-    expect(backdrop()).toHaveAttribute('data-fondo', 'neutro')
-    observer.disconnect()
-  })
-
-  it('un género sin foto deja el fondo neutro', async () => {
-    const user = userEvent.setup()
-    await renderPage()
-
-    await user.type(nameInput(), 'wakanki')
-    await user.click(
-      await screen.findByRole('option', {
-        name: /^Masdevallia veitchiana,\s*Nombre común: Wakanki$/,
-      }),
-    )
-    expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
-    expect(backdrop()).toHaveAttribute('data-fondo', 'neutro')
-    expect(requested).toEqual([])
   })
 })

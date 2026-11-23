@@ -4,6 +4,7 @@ import {
   type AutocompleteOption,
 } from '../components/ui/Autocomplete.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
+import { MatchBadge } from '../components/ui/MatchBadge.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import {
   SEARCH_QUERY_MIN_LENGTH,
@@ -69,11 +70,21 @@ export function NameField({
   const pending =
     isPendingName(values) &&
     (freeNameChosenFor === values.name || search.status !== 'loading')
-  const hint = linked
-    ? PLANT_FORM_TEXT.nameLinkedHint
-    : pending
-      ? PLANT_FORM_TEXT.namePendingHint
-      : PLANT_FORM_TEXT.nameHint
+  // Con una especie elegida, la insignia «Coincidencia en el catálogo»
+  // (#221) va en la ayuda, sobre el texto de siempre: el lector la lee con el
+  // campo. Editar el texto desenlaza la especie y la insignia desaparece.
+  const hint = linked ? (
+    <span className="flex flex-col items-start gap-space-1">
+      <MatchBadge className="mt-space-1">
+        {PLANT_FORM_TEXT.nameMatch}
+      </MatchBadge>{' '}
+      <span>{PLANT_FORM_TEXT.nameHint}</span>
+    </span>
+  ) : pending ? (
+    PLANT_FORM_TEXT.namePendingHint
+  ) : (
+    PLANT_FORM_TEXT.nameHint
+  )
 
   return (
     <div className="flex flex-col gap-space-1">

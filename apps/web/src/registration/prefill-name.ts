@@ -2,8 +2,8 @@ import { PATHS } from '../routes/paths.ts'
 
 // Registro con el nombre ya escrito (#123): "Aún no la tienes" lleva a
 // /coleccion/nueva?nombre=<lo buscado>, y el formulario empieza con ese
-// nombre en el campo, como si se hubiera escrito ahí. Va aparte de paths.ts,
-// como photo-first.ts, para no sumar nada al chunk inicial.
+// nombre en el campo, como si se hubiera escrito ahí. Va aparte de paths.ts
+// para no sumar nada al chunk inicial.
 
 export const PREFILL_NAME_PARAM = 'nombre'
 

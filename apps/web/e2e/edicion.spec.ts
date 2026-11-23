@@ -4,15 +4,16 @@ import { fileURLToPath } from 'node:url'
 import { PLANTAS, USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 
-// Detalle, edición y baja de un ejemplar (#16): editar los datos, dar de baja
-// y reactivar, y eliminar para siempre (con su foto y su miniatura).
+// Detalle, edición y baja de un ejemplar (#16): editar los datos y las fotos
+// (#221), dar de baja y reactivar, y eliminar para siempre (con su foto y su
+// miniatura).
 
-const FOTO_WEBP = readFileSync(
-  path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '../src/photos/fixtures/sin-metadatos.webp',
-  ),
+const FIXTURES = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../src/photos/fixtures',
 )
+const FOTO_WEBP = readFileSync(path.join(FIXTURES, 'sin-metadatos.webp'))
+const FOTO_JPG = path.join(FIXTURES, 'sin-metadatos.jpg')
 
 const detalle = (id: string) => `/coleccion/${id}`
 
@@ -48,6 +49,78 @@ test('editar los datos de una planta', async ({
   expect(
     supabase.plantasDe(USUARIO).find((p) => p.id === PLANTAS.amabilis),
   ).toMatchObject({ nickname: 'La reina', flower_color: 'bicolor' })
+})
+
+test('editar las fotos: quitar la principal y añadir otras', async ({
+  page,
+  supabase,
+  revisarAccesibilidad,
+}) => {
+  // Cattleya maxima con dos fotos guardadas, con sus archivos en el bucket.
+  const carpeta = `${USUARIO}/${PLANTAS.maxima}`
+  for (const version of ['a', 'b']) {
+    for (const archivo of [
+      `${carpeta}/photo-${version}.webp`,
+      `${carpeta}/thumb-${version}.webp`,
+    ]) {
+      supabase.archivos.set(archivo, { tipo: 'image/webp', bytes: FOTO_WEBP })
+    }
+  }
+  Object.assign(
+    supabase.datos.plantas.find((p) => p.id === PLANTAS.maxima) ?? {},
+    {
+      photo_path: `${carpeta}/photo-a.webp`,
+      thumbnail_path: `${carpeta}/thumb-a.webp`,
+    },
+  )
+  // La copia de la migración crea la principal; la segunda, detrás.
+  expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(1)
+  supabase.fotos.push({
+    ...supabase.fotosDe(PLANTAS.maxima)[0],
+    id: '99999999-9999-4999-8999-999999999999',
+    photo_path: `${carpeta}/photo-b.webp`,
+    thumbnail_path: `${carpeta}/thumb-b.webp`,
+    position: 1,
+  })
+
+  await page.goto(`${detalle(PLANTAS.maxima)}/editar`)
+  const galeria = page.getByRole('region', { name: 'Fotos (opcional)' })
+  await expect(galeria.locator('.orki-gallery__count')).toContainText('2 de 6')
+  await expect(
+    galeria.getByRole('img', { name: 'Foto principal' }),
+  ).toHaveAttribute('src', /^blob:/)
+
+  // Quitar la principal: la siguiente pasa a serlo; se borra al guardar.
+  await galeria.getByRole('button', { name: 'Quitar foto principal' }).click()
+  await expect(
+    galeria.getByText('Una foto guardada se borrará al guardar los cambios.'),
+  ).toBeVisible()
+  await expect(galeria.locator('.orki-gallery__count')).toContainText('1 de 6')
+  expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(2)
+
+  const selector = page.waitForEvent('filechooser')
+  await galeria.getByRole('button', { name: 'Elegir fotos' }).click()
+  await (await selector).setFiles([FOTO_JPG, FOTO_JPG])
+  await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(0)
+  await expect(galeria.locator('.orki-gallery__count')).toContainText('3 de 6')
+  await revisarAccesibilidad('edición de las fotos')
+
+  await page.getByRole('button', { name: 'Guardar cambios' }).click()
+  await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+  await expect(page.getByText('Guardaste los cambios.')).toBeVisible()
+
+  const fotos = supabase.fotosDe(PLANTAS.maxima)
+  expect(fotos).toHaveLength(3)
+  // La que era la segunda es ahora la principal; las nuevas, detrás.
+  expect(fotos[0]?.photo_path).toBe(`${carpeta}/photo-b.webp`)
+  expect(
+    supabase.datos.plantas.find((p) => p.id === PLANTAS.maxima)?.photo_path,
+  ).toBe(`${carpeta}/photo-b.webp`)
+  // Sin huérfanos: los archivos de la quitada ya no están.
+  await expect
+    .poll(() => supabase.archivos.has(`${carpeta}/photo-a.webp`))
+    .toBe(false)
+  expect(supabase.archivos.has(`${carpeta}/thumb-a.webp`)).toBe(false)
 })
 
 test('dar de baja y reactivar', async ({

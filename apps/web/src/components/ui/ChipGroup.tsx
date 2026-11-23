@@ -8,6 +8,13 @@ export type ChipGroupProps = ComponentPropsWithRef<'div'> & {
    * desplaza la fila hasta el que tiene el foco.
    */
   scroll?: boolean
+  /**
+   * Hasta 720 px, una fila de ancho completo con aspecto de control
+   * segmentado (orki-chips--segmented), para dos o tres opciones cortas como
+   * el tipo del registro (#220). Los chips siguen siendo botones de alternar
+   * (aria-pressed) dentro del grupo, como en SegmentedControl.
+   */
+  segmented?: boolean
 }
 
 // Contenedor de chips (orki-chips): fila que se parte con espacio space-2. Es
@@ -17,9 +24,15 @@ export function ChipGroup({
   className,
   role = 'group',
   scroll = false,
+  segmented = false,
   ...props
 }: ChipGroupProps) {
-  const classes = ['orki-chips', scroll && 'orki-chips--scroll', className]
+  const classes = [
+    'orki-chips',
+    scroll && 'orki-chips--scroll',
+    segmented && 'orki-chips--segmented',
+    className,
+  ]
     .filter(Boolean)
     .join(' ')
 
