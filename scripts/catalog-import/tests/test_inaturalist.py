@@ -236,9 +236,10 @@ def test_photo_sizes_and_licenses() -> None:
     assert reserved is not None
     assert reserved.license is None
     assert not reserved.accepted
-    for code in ('cc0', 'cc-by'):
+    # Las cuatro licencias de la decisión del 23 de noviembre de 2026 (#180).
+    for code in ('cc0', 'pd', 'cc-by', 'cc-by-sa'):
         assert Photo(1, code, '', None, 'u').accepted
-    for code in ('cc-by-nc', 'cc-by-sa', 'cc-by-nd', 'cc-by-nc-sa', 'cc-by-nc-nd', 'pd'):
+    for code in ('cc-by-nc', 'cc-by-nd', 'cc-by-nc-sa', 'cc-by-nc-nd'):
         assert not Photo(1, code, '', None, 'u').accepted
     medium = parse_photo({'id': 3, 'url': 'https://x/photos/3/medium.jpeg'})
     assert medium is not None
@@ -307,7 +308,7 @@ def test_observation_photo_skips_hybrid_descendants_and_bad_photos(tmp_path: Pat
         'observations',
         {
             'taxon_id': 47215,
-            'photo_license': 'cc-by,cc0',
+            'photo_license': 'cc-by,cc-by-sa,cc0',
             'quality_grade': 'research',
             'photos': 'true',
             'order_by': 'votes',

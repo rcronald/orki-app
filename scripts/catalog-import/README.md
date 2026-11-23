@@ -2,7 +2,7 @@
 
 Scripts en Python que preparan el catálogo de especies de orquídeas de Orki a partir del **Catalogue of Life eXtended Release** (COL26.10 XR, clave de ChecklistBank `316691`). La investigación de la fuente, la licencia y el formato está en [FUENTE.md](FUENTE.md); las decisiones aprobadas, en el issue #72.
 
-Hay cuatro partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); la lista curada de híbridos, con su validación y su carga por el mismo flujo (#77, `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`, ver [Lista curada de híbridos](#lista-curada-de-híbridos)); el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)); y, aparte, el emparejamiento de solo lectura con los taxones de iNaturalist para las fotos de referencia (#233, `orki-catalogo emparejar-inaturalist`, ver [Emparejamiento con iNaturalist](#emparejamiento-con-inaturalist)).
+Hay cuatro partes: lectura, filtrado y normalización (#73), con una CLI de solo lectura; la carga en la base de datos con su reporte (#74, `orki-catalogo cargar`, ver [Carga en la base de datos](#carga-en-la-base-de-datos)); la lista curada de híbridos, con su validación y su carga por el mismo flujo (#77, `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`, ver [Lista curada de híbridos](#lista-curada-de-híbridos)); el workflow manual con la guía por ambiente (#75, ver [Ejecución por ambiente](#ejecución-por-ambiente)); el emparejamiento de solo lectura con los taxones de iNaturalist para las fotos de referencia (#233, `orki-catalogo emparejar-inaturalist`, ver [Emparejamiento con iNaturalist](#emparejamiento-con-inaturalist)); y la carga de esas fotos en la base y en Storage, con su limpieza (#234, `orki-catalogo cargar-fotos-inaturalist` y `orki-catalogo limpiar-fotos-referencia`, ver [Fotos de referencia](#fotos-de-referencia)).
 
 ## Requisitos e instalación
 
@@ -20,7 +20,7 @@ uv run ruff check             # lint
 uv run ruff format --check    # formato (uv run ruff format para aplicarlo)
 ```
 
-La lectura y la normalización solo usan la biblioteca estándar. La carga usa [psycopg](https://www.psycopg.org/psycopg3/) 3.3.8 con el extra `binary`, que trae libpq compilada (no hace falta instalar el cliente de PostgreSQL). Las dependencias de desarrollo son pytest 9.2.0 y ruff 0.17.4. Para actualizarlas: mover la fecha `exclude-newer` de `pyproject.toml` (solo se aceptan versiones publicadas antes de esa fecha), cambiar las versiones y ejecutar `uv lock`.
+La lectura y la normalización solo usan la biblioteca estándar. La carga usa [psycopg](https://www.psycopg.org/psycopg3/) 3.3.8 con el extra `binary`, que trae libpq compilada (no hace falta instalar el cliente de PostgreSQL). La carga de fotos de referencia usa [Pillow](https://python-pillow.org/) 13.0.0 para leer las imágenes de iNaturalist (JPEG, PNG) y escribirlas en WebP sin metadatos: la biblioteca estándar no sabe hacerlo, y sus ruedas traen libwebp y littlecms compiladas, así que tampoco hace falta instalar nada más. Las dependencias de desarrollo son pytest 9.2.0 y ruff 0.17.4. Para actualizarlas: mover la fecha `exclude-newer` de `pyproject.toml` (solo se aceptan versiones publicadas antes de esa fecha), cambiar las versiones y ejecutar `uv lock`.
 
 En el CI, el job «Importación del catálogo (Python)» de `.github/workflows/ci.yml` ejecuta esos mismos tres pasos, con un Postgres 17 desechable para las pruebas de la carga (ver [Pruebas de la carga](#pruebas-de-la-carga)), y además valida el formato de la lista curada de híbridos (`uv run --locked orki-catalogo validar-hibridos data/hibridos.csv`).
 
@@ -39,27 +39,31 @@ También acepta el TSV suelto. Imprime los recuentos de géneros, especies, híb
 
 ## Código
 
-| Archivo                                   | Qué hace                                                                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/catalog_import/reader.py`            | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia                             |
-| `src/catalog_import/names.py`             | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)                                    |
-| `src/catalog_import/normalize.py`         | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste                                   |
-| `src/catalog_import/model.py`             | Modelo intermedio y códigos de motivo                                                                                                   |
-| `src/catalog_import/cli.py`               | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`; los híbridos, a `hybrids_cli.py`)                          |
-| `src/catalog_import/load_cli.py`          | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales (comunes con `cargar-hibridos`)                                    |
-| `src/catalog_import/target.py`            | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                                              |
-| `src/catalog_import/load.py`              | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                                             |
-| `src/catalog_import/report.py`            | Reporte CSV y resumen por pantalla (de las dos cargas)                                                                                  |
-| `src/catalog_import/hybrids.py`           | Lista curada de híbridos: formato del CSV y validación, sin base                                                                        |
-| `src/catalog_import/hybrids_load.py`      | Plan de la carga de la lista curada (función pura); el resto es el flujo de `load.py`                                                   |
-| `src/catalog_import/hybrids_cli.py`       | `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`                                                                      |
-| `src/catalog_import/inaturalist.py`       | Cliente de solo lectura de la API de iNaturalist: caché, ritmo, topes y lectura de taxones y fotos                                      |
-| `src/catalog_import/inaturalist_match.py` | Emparejamiento con iNaturalist: lectura del catálogo, reglas, elección de la foto, reporte y resumen                                    |
-| `src/catalog_import/inaturalist_cli.py`   | `orki-catalogo emparejar-inaturalist`                                                                                                   |
-| `data/hibridos.csv`                       | La lista curada de híbridos (ver [Lista curada de híbridos](#lista-curada-de-híbridos))                                                 |
-| `fuente.json`                             | Versión fijada de la fuente: clave, DOI, licencia, URL y SHA-256 de la exportación (la usan el workflow y la atribución del backoffice) |
-| `tests/`                                  | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md))                          |
-| `tests/basedatos.py`                      | Bases desechables con las migraciones para las pruebas de la carga                                                                      |
+| Archivo                                      | Qué hace                                                                                                                                |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/catalog_import/reader.py`               | Lee la exportación línea a línea (del zip o del TSV), valida la cabecera y devuelve las filas de la familia                             |
+| `src/catalog_import/names.py`                | Limpieza de espacios, signo de híbrido uniforme y análisis de la forma del nombre (binomio, fórmula)                                    |
+| `src/catalog_import/normalize.py`            | Filtrado, normalización y deduplicación al modelo intermedio, con el motivo de cada descarte o ajuste                                   |
+| `src/catalog_import/model.py`                | Modelo intermedio y códigos de motivo                                                                                                   |
+| `src/catalog_import/cli.py`                  | CLI `orki-catalogo` (resumen de solo lectura; `cargar` pasa a `load_cli.py`; los híbridos, a `hybrids_cli.py`)                          |
+| `src/catalog_import/load_cli.py`             | `orki-catalogo cargar`: opciones, conexión, errores sin credenciales (comunes con `cargar-hibridos`)                                    |
+| `src/catalog_import/target.py`               | Ambiente, URL de conexión y protección contra cargar en la base equivocada                                                              |
+| `src/catalog_import/load.py`                 | Carga: lectura de la base, plan (función pura) y escritura por conjuntos en una transacción                                             |
+| `src/catalog_import/report.py`               | Reporte CSV y resumen por pantalla (de las dos cargas)                                                                                  |
+| `src/catalog_import/hybrids.py`              | Lista curada de híbridos: formato del CSV y validación, sin base                                                                        |
+| `src/catalog_import/hybrids_load.py`         | Plan de la carga de la lista curada (función pura); el resto es el flujo de `load.py`                                                   |
+| `src/catalog_import/hybrids_cli.py`          | `orki-catalogo validar-hibridos` y `orki-catalogo cargar-hibridos`                                                                      |
+| `src/catalog_import/inaturalist.py`          | Cliente de solo lectura de la API de iNaturalist: caché, ritmo, topes y lectura de taxones y fotos                                      |
+| `src/catalog_import/inaturalist_match.py`    | Emparejamiento con iNaturalist: lectura del catálogo, reglas, elección de la foto, reporte y resumen                                    |
+| `src/catalog_import/inaturalist_cli.py`      | `orki-catalogo emparejar-inaturalist`                                                                                                   |
+| `src/catalog_import/reference_photos.py`     | Fotos de referencia: lectura de la base, alcance, elección de la foto, atribución, plan de filas, transacción y reporte                 |
+| `src/catalog_import/reference_images.py`     | Descarga de las imágenes de iNaturalist (caché, ritmo, topes) y conversión a WebP con Pillow                                            |
+| `src/catalog_import/species_storage.py`      | Bucket `species-photos` por la API de Storage con la clave de servicio: credenciales, subida, listado y borrado                         |
+| `src/catalog_import/reference_photos_cli.py` | `orki-catalogo cargar-fotos-inaturalist` y `orki-catalogo limpiar-fotos-referencia`                                                     |
+| `data/hibridos.csv`                          | La lista curada de híbridos (ver [Lista curada de híbridos](#lista-curada-de-híbridos))                                                 |
+| `fuente.json`                                | Versión fijada de la fuente: clave, DOI, licencia, URL y SHA-256 de la exportación (la usan el workflow y la atribución del backoffice) |
+| `tests/`                                     | Pruebas; la muestra real y su procedencia están en `tests/data/` ([PROCEDENCIA.md](tests/data/PROCEDENCIA.md))                          |
+| `tests/basedatos.py`                         | Bases desechables con las migraciones para las pruebas de la carga                                                                      |
 
 ### Modelo intermedio
 
@@ -514,7 +518,7 @@ Los nombres se normalizan con `normalize_name` y se comparan con `match_key` (si
 3. Si varias especies llegan por sinónimo al mismo taxón, todas quedan `ambiguo`.
 4. Si no, `sin_taxon` (es lo normal en los grex de la lista curada: iNaturalist no los tiene).
 
-**Foto.** Licencias aceptadas: solo CC0 y CC BY. La foto por defecto del taxón vale si tiene una de ellas y no tiene marcas; si no, se busca la primera foto del taxón con licencia aceptada y, con `--alternativas observaciones`, una foto con licencia aceptada de la observación con grado de investigación más votada del propio taxón (o de una subespecie, variedad o forma suya; no de los híbridos que cuelgan de él).
+**Foto.** Licencias aceptadas: CC0, dominio público (`pd`), CC BY y CC BY-SA (decisión del 23 de noviembre de 2026 en #180). La foto por defecto del taxón vale si tiene una de ellas y no tiene marcas; si no, se busca la primera foto del taxón con licencia aceptada y, con `--alternativas observaciones`, una foto con licencia aceptada de la observación con grado de investigación más votada del propio taxón (o de una subespecie, variedad o forma suya; no de los híbridos que cuelgan de él).
 
 ### Reporte y resumen
 
@@ -525,6 +529,129 @@ El resumen por pantalla da, para las especies del catálogo en el alcance (y las
 ### Pruebas
 
 `tests/test_inaturalist.py` prueba el cliente sin red (la caché, `--sin-red`, el ritmo de una petición por segundo, los topes por ejecución y por día, los reintentos ante 429 y 5xx, que solo se admite `api.inaturalist.org`, el `User-Agent` y la lectura de taxones, fotos y observaciones); `tests/test_inaturalist_match.py`, la lectura de los cuatro formatos de catálogo, cada regla del emparejamiento, la elección de la foto, el reporte y el resumen; y `tests/test_inaturalist_cli.py`, la CLI de principio a fin con respuestas reales grabadas y recortadas (`tests/data/inaturalist/respuestas.json`, ver [PROCEDENCIA.md](tests/data/PROCEDENCIA.md)), también que una segunda ejecución sale entera de la caché y que una ejecución cortada por el tope sigue en la siguiente.
+
+## Fotos de referencia
+
+`orki-catalogo cargar-fotos-inaturalist` pone a cada especie del catálogo una **foto de referencia** sacada de iNaturalist (#234, parte de #180): empareja las especies **de la base** con los taxones de iNaturalist (el mismo emparejamiento y la misma caché que `emparejar-inaturalist`), elige una foto con licencia aceptada, la reduce a WebP, la sube al bucket `species-photos` y escribe las filas de `public.species_photos` con su atribución. Cumple el [contrato de la carga](../../supabase/README.md#contrato-de-la-carga) de `supabase/README.md`; el modelo, el bucket y la retirada de fotos desde el backoffice están descritos allí. `orki-catalogo limpiar-fotos-referencia` borra del bucket los archivos que ya no cita ninguna fila.
+
+```sh
+cd scripts/catalog-import
+# Simulación (por defecto): lee la base e iNaturalist y descarga las imágenes a la caché, pero no sube nada y revierte la transacción
+uv run orki-catalogo cargar-fotos-inaturalist --ambiente dev --max-especies 20
+# Carga de verdad: sube los archivos y confirma las filas
+uv run orki-catalogo cargar-fotos-inaturalist --ambiente dev --max-especies 20 --escribir
+# Archivos que sobran en el bucket: primero la lista, después el borrado
+uv run orki-catalogo limpiar-fotos-referencia --ambiente dev
+uv run orki-catalogo limpiar-fotos-referencia --ambiente dev --borrar
+```
+
+### Opciones
+
+| Opción                                         | Qué hace                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--ambiente local\|dev\|prod`                  | Obligatoria. La misma protección de ambiente que `cargar` (ver [Protección de ambiente](#protección-de-ambiente)).                                                                                                                                  |
+| `--escribir`                                   | Sube los archivos y confirma las filas. Sin ella, todo se simula (ver abajo).                                                                                                                                                                       |
+| `--confirmar-produccion REF`                   | Obligatoria para escribir en producción, como en `cargar`.                                                                                                                                                                                          |
+| `--genero NOMBRE`                              | Solo las especies de ese género (se puede repetir).                                                                                                                                                                                                 |
+| `--todo-el-catalogo`                           | Todas las especies del catálogo (lee la familia entera de iNaturalist).                                                                                                                                                                             |
+| `--max-especies N`                             | Como mucho N especies del alcance: primero las que tienen más plantas en las colecciones, después por nombre. Repetir con el mismo N da las mismas especies; para seguir, se sube N.                                                                |
+| `--leer-familia`                               | Lee de iNaturalist la familia entera (unas 115 peticiones la primera vez, después de la caché) en vez de solo los géneros del alcance: empareja también las especies cuyo taxón está en otro género en iNaturalist.                                 |
+| `--alternativas ninguna\|taxon\|observaciones` | Además de la foto por defecto del taxón: las demás fotos del taxón (por defecto), también la de la observación con grado de investigación más votada (una petición por taxón; son fotos que la comunidad no eligió, conviene revisarlas) o ninguna. |
+| `--cache CARPETA`, `--cache-imagenes CARPETA`  | Cachés de la API (por defecto la de `emparejar-inaturalist`, `~/.cache/orki-catalogo/inaturalist`) y de las imágenes (`~/.cache/orki-catalogo/inaturalist-imagenes`), fuera del repositorio.                                                        |
+| `--sin-red`                                    | Solo las cachés: no pide nada a iNaturalist.                                                                                                                                                                                                        |
+| `--max-peticiones N`, `--intervalo S`          | Como en `emparejar-inaturalist`. El intervalo vale también para las descargas.                                                                                                                                                                      |
+| `--reporte RUTA`, `--resumen-json RUTA`        | El CSV (por defecto `reporte-carga-fotos-<ambiente>-<simulacion\|escritura>-<fecha UTC>.csv`, que git ignora) y el resumen en JSON.                                                                                                                 |
+
+**Alcance por defecto:** las especies que alguien tiene en su colección (con alguna planta enlazada) y las de los ocho géneros comunes del alcance inicial (Phalaenopsis, Cattleya, Dendrobium, Oncidium, Vanda, Cymbidium, Paphiopedilum y Masdevallia), como decidió el responsable en #180. De iNaturalist se leen solo los géneros de las especies del alcance (con `--max-especies`, los de esas N), salvo con `--leer-familia` o `--todo-el-catalogo`. El emparejamiento se hace contra **todas** las especies de la base de esos géneros, no solo las del alcance, para que una especie fuera del alcance que ya tiene un taxón por su nombre aceptado siga contando como en `emparejar-inaturalist`.
+
+### Variables de entorno
+
+| Variable               | Cuándo                                     | Qué es                                                                                                                                                                                                                                                                 |
+| ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORKI_CATALOG_DB_URL`  | Siempre                                    | La URL de la base, como las demás cargas (ver [En desarrollo, desde tu máquina](#en-desarrollo-desde-tu-máquina)). Se conecta como `postgres`.                                                                                                                         |
+| `SUPABASE_SECRET_KEY`  | Con `--escribir` y en la limpieza          | La clave secreta del proyecto (`sb_secret_...`, en Project Settings > API Keys; o la `service_role` heredada), la misma que usan `npm run fotos:huerfanas` y `npm run datos:sin-dueno`. El bucket no tiene políticas: solo ella sube, lista y borra. Nunca se imprime. |
+| `SUPABASE_PROJECT_REF` | Opcional                                   | Si está, tiene que ser el proyecto de la base; si no, la carga no empieza.                                                                                                                                                                                             |
+| `ORKI_STORAGE_URL`     | Solo con `--ambiente local` y `--escribir` | La URL de una pila local de Supabase (por ejemplo `http://127.0.0.1:54321`): el Postgres desechable de las pruebas no tiene Storage.                                                                                                                                   |
+
+La URL de Storage no se configura en `dev` y `prod`: es la del proyecto de la base (`https://<ref>.supabase.co`), con el identificador que ya comprobó la protección de ambiente. Una clave publicable, una heredada que no es `service_role` o una heredada de otro proyecto se rechazan antes de conectar. La clave no se lee de ningún archivo: ponla en la terminal con `read -rs SUPABASE_SECRET_KEY && export SUPABASE_SECRET_KEY` y quítala al terminar (`unset SUPABASE_SECRET_KEY`). **Riesgo:** se salta RLS y puede leer y borrar todo el proyecto; tenla solo mientras cargas.
+
+### Qué hace, paso a paso
+
+1. **Comprueba** el ambiente, la URL y, al escribir, la clave de servicio, antes de conectar a nada.
+2. **Lee la base** (en una transacción que solo lee y se revierte): las especies con su género, sus sinónimos y cuántas plantas tienen, las fotos actuales y **todas** las retiradas. Si la base no tiene `species_photos` (migración `20261124110000_fotos_de_referencia.sql` sin aplicar) o el usuario no puede leer todas las retiradas, se niega.
+3. **Lee iNaturalist** con el cliente de `emparejar-inaturalist` (`GET` a `api.inaturalist.org`, una petición por segundo, 9 000 al día contadas en la caché, reintentos ante 429 y 5xx, `User-Agent` genérico): los géneros, sus taxones y, en lotes de 30, las fotos de los taxones que hacen falta. Empareja con las mismas reglas (ver [Reglas](#reglas)).
+4. **Elige la foto** de cada especie (ver abajo).
+5. **Descarga y convierte** cada foto nueva: la versión `medium` (500 px de lado mayor) del bucket abierto de iNaturalist (`inaturalist-open-data.s3.amazonaws.com`, donde están las fotos con licencia abierta), nunca el original. Como mucho una descarga por segundo, el mismo `User-Agent`, reintentos con espera ante 429, 5xx y fallos de red, y un tope de 4 GiB por día contado en la caché (iNaturalist puede bloquear a partir de 5 GB por hora o 24 GB por día, ver [docs/inaturalist.md](../../docs/inaturalist.md#2-límites-y-normas-de-uso)). Con Pillow se aplica la orientación EXIF, se pasa a sRGB si trae perfil de color, se reduce sin ampliar a 500 px (la versión media) y de ella a 160 px (la miniatura), y se guardan en WebP **sin metadatos** (ni EXIF, ni XMP, ni perfil de color: nada de la cámara ni de la ubicación). Si un archivo pasara de 256 KiB, el tope del bucket, se baja la calidad hasta que quepa. Si una candidata no se puede descargar (404) o convertir, se prueba la siguiente.
+6. **Sube** (solo con `--escribir`) los dos archivos a `species-photos/<id de la especie>/medium-<id de la foto>.webp` y `thumb-<id de la foto>.webp`, con `x-upsert` (repetir una subida es inofensivo: el nombre depende solo de la foto) y `cache-control: max-age=31536000`.
+7. **Escribe las filas en una transacción**: bloquea `species_photos` y `species_photo_rejections` (`share row exclusive`: nadie retira ni cambia una foto mientras tanto; el catálogo se sigue leyendo), **vuelve a leer** las fotos y las retiradas y replanifica (una foto retirada mientras se descargaba, una especie borrada o una foto que cambió entre medias no se escriben, y salen como `omitida`), deja la fila de resumen en la auditoría y aplica `insert … on conflict (species_id) do update` para las nuevas y sustituidas, `update` de los metadatos y `delete` de las que se quitan. Sin `--escribir`, se revierte.
+8. **Reporte** CSV y resumen por pantalla.
+
+**Simulación.** Sin `--escribir` no se escribe nada en Storage ni en la base: la transacción hace todo (también la fila de la auditoría) y se revierte. Sí lee iNaturalist y **descarga las imágenes a la caché local**: así el reporte dice qué foto, qué medidas y cuántos bytes tendría cada especie, y la carga de verdad ya no las vuelve a pedir. No necesita la clave de servicio.
+
+### Elección de la foto
+
+Las candidatas de una especie son, en este orden, la foto por defecto de su taxón, las demás fotos del taxón (en el orden de la comunidad) y, con `--alternativas observaciones`, la de la observación más votada. Se usa la primera **utilizable**:
+
+- licencia `cc0`, `pd`, `cc-by` o `cc-by-sa` (las de la decisión del #180; la base no admite otras);
+- sin marcas ni oculta;
+- con autor (`attribution_name`, el observador o el nombre del aviso «(c) Nombre, …»);
+- descargable del bucket abierto (una foto de Flickr o de `static.inaturalist.org` no lo es);
+- no retirada para esa especie, y **no retirada a petición de su autor (`author_request`) en ninguna especie**.
+
+Si la especie ya tiene una foto que sigue siendo utilizable, **se conserva** aunque ahora haya otra mejor (no cambia de foto sin motivo): `sin_cambios`, o `actualizada` si cambió su licencia (a otra aceptada), su autor o su atribución, y entonces solo se actualizan esos datos, sin volver a descargarla. Si ya no vale (licencia no aceptada, marcas, retirada a petición del autor, o el taxón ya no la tiene), se sustituye por la siguiente utilizable (`sustituida`) o, si no hay, se quita la fila (`quitada`; no es una retirada del administrador y no se anota en la memoria de retiradas). Una foto actual que salió de una observación y no se puede comprobar (no se buscó en las observaciones o ya no es la más votada) se conserva (`conservada_sin_verificar`), igual que la de una especie que ya no empareja con ningún taxón.
+
+### Atribución
+
+Cada fila guarda el autor (`author_name`), la licencia, el enlace a la página de la foto (`source_url`), `is_modified = true` y este texto en `attribution` (hasta 500 caracteres):
+
+> (c) Ana Pérez, some rights reserved (CC BY-SA). Licencia: CC BY-SA (https://creativecommons.org/licenses/by-sa/4.0/). Original: https://www.inaturalist.org/photos/123, vía iNaturalist. Modificada: reducida y convertida a WebP. La versión reducida se publica con la misma licencia, CC BY-SA.
+
+Es el aviso de derechos tal como lo da iNaturalist (con el nombre del autor delante si el aviso no lo trae, como en las fotos CC0 de observaciones), la licencia con su enlace, el enlace a la original y que está modificada, que es lo que piden CC BY y CC BY-SA (sección 3(a)). Con CC0 y dominio público no hace falta, pero se da igual. La API no dice la versión de la licencia: se enlaza la 4.0, y la página de la foto muestra la exacta (ver [docs/inaturalist.md](../../docs/inaturalist.md#3-licencias-y-atribución)).
+
+**CC BY-SA.** Las versiones reducidas (la media y la miniatura) son adaptaciones y **se publican con la misma licencia, CC BY-SA**, como exige su sección 3(b) y decidió el responsable (#180). Lo dice el propio texto de atribución de cada foto BY-SA, y la app tiene que mostrar la licencia junto a la foto (lo hace con la columna `license`).
+
+### Reanudar y limpiar
+
+Si la API, el bucket de imágenes o Storage siguen fallando tras los reintentos, o se llega a un tope, la carga **se para antes de la transacción** con el código de salida 3, sin escribir ninguna fila. Lo leído y descargado queda en las cachés y los archivos ya subidos se reutilizan: al volver a ejecutarla, no repite peticiones ni descargas, repite las subidas (mismo nombre y contenido) y escribe todas las filas. Un error de la base en la transacción la revierte entera: ninguna fila a medias, y los archivos subidos quedan sin citar hasta la siguiente carga o la limpieza. Si Storage rechaza un archivo concreto (un 4xx, por ejemplo por tamaño), esa especie se queda sin foto nueva (`error`, o `quitada` si la que tenía ya no valía) y las demás siguen.
+
+`orki-catalogo limpiar-fotos-referencia --ambiente dev|prod|local` lista los archivos del bucket que no cita ninguna fila de `species_photos` (de fotos sustituidas, quitadas o retiradas, de especies borradas o absorbidas en una fusión y de cargas que fallaron), comparando por la ruta y no por la carpeta (tras una fusión, la fila de la conservada cita archivos de la carpeta de la absorbida). Por defecto solo lista; con `--borrar` borra, en lotes de 100, los que tienen al menos `--antiguedad-minima-horas` (24 por defecto), para no llevarse los de una carga en curso. Un archivo sin fecha no se borra nunca. Informa también de las filas que citan un archivo que no existe, sin tocarlas. Borrar en producción exige `--confirmar-produccion`. Necesita `ORKI_CATALOG_DB_URL` y `SUPABASE_SECRET_KEY`.
+
+### Reporte y auditoría
+
+El CSV (UTF-8 con BOM) tiene una fila por especie del alcance: `especie_id`, `nombre`, `genero`, `plantas`, `emparejamiento`, `inat_id`, `inat_nombre`, `resultado` (`nueva`, `sustituida`, `actualizada`, `sin_cambios`, `quitada`, `conservada_sin_verificar`, `sin_foto`, `sin_taxon`, `ambigua`, `error` u `omitida`), `detalle`, `foto_id`, `seleccion` (`taxon_default`, `taxon_photo` u `observation`), `licencia`, `autor`, `atribucion`, `foto_pagina`, `observacion`, `medium_path`, `medium_medidas`, `thumbnail_path`, `thumbnail_medidas`, `bytes`, `foto_anterior` (la que se sustituyó o quitó) y `descartadas` (las candidatas que no valieron, por motivo: `licencia_no_aceptada`, `con_marcas`, `retirada`, `peticion_del_autor`, `sin_autor`, `url_no_admitida`, `error_descarga`, `error_conversion`, `error_subida`).
+
+El resumen por pantalla (y en JSON con `--resumen-json`) da cuántas especies hay en el alcance, cómo emparejaron, cuántas tienen foto, por licencia y por selección, los resultados, las candidatas descartadas por motivo, cuántas especies tenían alguna foto retirada, las peticiones a la API, las descargas y sus bytes, los archivos y bytes subidos y las filas escritas (o simuladas).
+
+Con `--escribir`, la carga deja **una** fila en `public.catalog_audit_log` en la misma transacción (`action = catalog_import`, el identificador de la carga como `actor`, ver [Resumen en la auditoría](#resumen-en-la-auditoría)) con `details.load_type = fotos_referencia`, `environment`, `source` (iNaturalist, la API, el bucket de imágenes, las licencias, las alternativas, el alcance y los taxones leídos), `counts.species_photos` (`created`, `replaced`, `updated`, `unchanged`, `removed`), `in_scope`, `omitted_by_rejection` (especies con alguna candidata descartada por una retirada), `without_photo`, `unmatched`, `kept_unverified`, `uploaded_files`, `uploaded_bytes` y `run`. Las filas de `species_photos` no se auditan una a una.
+
+### Primera carga en desarrollo
+
+Con un alcance pequeño, desde tu máquina y contra el proyecto de desarrollo, que tiene que tener aplicada la migración de las fotos de referencia (`npm run db:status`):
+
+```sh
+cd scripts/catalog-import
+read -rs ORKI_CATALOG_DB_URL && export ORKI_CATALOG_DB_URL   # la URL de la base de desarrollo
+uv run orki-catalogo cargar-fotos-inaturalist --ambiente dev --max-especies 20
+# revisa el resumen y el CSV
+read -rs SUPABASE_SECRET_KEY && export SUPABASE_SECRET_KEY   # la clave secreta del proyecto de desarrollo
+uv run orki-catalogo cargar-fotos-inaturalist --ambiente dev --max-especies 20 --escribir
+uv run orki-catalogo limpiar-fotos-referencia --ambiente dev
+unset ORKI_CATALOG_DB_URL SUPABASE_SECRET_KEY
+```
+
+Cómo revisar el resultado:
+
+- **El reporte:** filtra por `resultado`. Mira las `nueva` y `sustituida` (foto, licencia, autor y atribución), las `sin_foto` con sus `descartadas`, y las de `seleccion = observation`, que conviene abrir una a una (`foto_pagina`).
+- **Las imágenes:** cada una está en `https://xaitolsnmjlpyptntfwi.supabase.co/storage/v1/object/public/species-photos/<medium_path>` (o `<thumbnail_path>`).
+- **La base:** `select s.scientific_name, p.license, p.author_name, p.source_url, p.medium_width, p.medium_height from public.species_photos p join public.species s on s.id = p.species_id order by 1;` y la fila de la auditoría: `select actor, details from public.catalog_audit_log where details ->> 'load_type' = 'fotos_referencia' order by id desc limit 1;`.
+- **La app:** la ficha pública de una de esas especies (`get_public_species()` ya devuelve `reference_photo`).
+- **Repetirla** con el mismo alcance tiene que dar todo `sin_cambios`, sin descargas ni subidas.
+
+Después, para seguir, se sube `--max-especies` o se quita. Producción no se carga desde una máquina (ver [Ejecución por ambiente](#ejecución-por-ambiente)); para ella hace falta un workflow con la clave de servicio, que no existe todavía.
+
+### Pruebas
+
+Sin red y sin Storage reales. `tests/test_reference_photos.py` prueba la elección (orden y licencias, marcas, autor, URL, foto retirada para una especie y no para otra, `author_request` en todas, especie que ya tiene la foto, cambio de metadatos, foto actual que deja de valer, de observación sin comprobar, sin taxón), el texto de atribución de cada licencia y su longitud, el alcance, el replanificado de la transacción y la búsqueda de archivos sin citar; `tests/test_reference_images.py`, la conversión de una foto grande generada en la prueba (3000 × 2000, con EXIF, GPS, orientación y perfil de color: sale de 333 × 500 y 107 × 160, por debajo de 256 KiB y sin ningún metadato), que no amplía, que cabe aun con ruido, la transparencia, la descarga solo del bucket abierto, la caché, el ritmo, los reintentos, el tope diario y `--sin-red`; `tests/test_species_storage.py`, las credenciales y las peticiones a Storage (cabeceras, reintentos, errores sin la clave, listado por carpetas, borrado por lotes). `tests/test_reference_photos_db.py` ejecuta la carga de principio a fin contra la base desechable (con la muestra de COL cargada), con las respuestas grabadas de iNaturalist, imágenes generadas y un doble del bucket: simulación sin efectos, escritura y repetición sin cambios, fallo de subida a mitad y reanudación, retiradas y `author_request`, foto que cambió de licencia, la fila de la auditoría, la negativa sin clave de servicio, las observaciones, un fallo de la API antes de escribir y la limpieza.
 
 ## Ejecución por ambiente
 

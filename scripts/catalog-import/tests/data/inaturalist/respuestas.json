@@ -1,8 +1,8 @@
 {
-  "https://api.inaturalist.org/v1/observations?order=desc&order_by=votes&per_page=10&photo_license=cc-by,cc0&photos=true&quality_grade=research&taxon_id=1127035": {
+  "https://api.inaturalist.org/v1/observations?order=desc&order_by=votes&per_page=10&photo_license=cc-by,cc-by-sa,cc0&photos=true&quality_grade=research&taxon_id=1127035": {
     "results": []
   },
-  "https://api.inaturalist.org/v1/observations?order=desc&order_by=votes&per_page=10&photo_license=cc-by,cc0&photos=true&quality_grade=research&taxon_id=864477": {
+  "https://api.inaturalist.org/v1/observations?order=desc&order_by=votes&per_page=10&photo_license=cc-by,cc-by-sa,cc0&photos=true&quality_grade=research&taxon_id=864477": {
     "results": [
       {
         "id": 138235668,

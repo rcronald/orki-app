@@ -6,8 +6,11 @@ readme = "README.md"
 requires-python = ">=3.13,<3.14"
 # La lectura, el filtrado y la normalización usan solo la biblioteca estándar. La carga en la
 # base de datos usa psycopg 3; el extra «binary» trae libpq compilada, así que no hace falta
-# tener instalado el cliente de PostgreSQL.
+# tener instalado el cliente de PostgreSQL. La carga de fotos de referencia usa Pillow para
+# reducir las imágenes de iNaturalist y convertirlas a WebP sin metadatos (la biblioteca
+# estándar no lee JPEG ni escribe WebP); sus ruedas traen libwebp y littlecms compiladas.
 dependencies = [
+    "pillow==13.0.0",
     "psycopg[binary]==3.3.8",
 ]
 

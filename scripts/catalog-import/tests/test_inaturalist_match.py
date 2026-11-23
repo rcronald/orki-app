@@ -254,7 +254,7 @@ def test_photo_choice() -> None:
     flagged = taxon(4, 'A d', default=photo(40, 'cc0', flagged=True))
     no_obs = taxon(5, 'A e', default=photo(50, None), observations=0)
     taxon_photos = {
-        2: [photo(21, 'cc-by-sa'), photo(22, 'cc0')],
+        2: [photo(21, 'cc-by-nc-sa'), photo(22, 'cc-by-sa')],
         3: [photo(31, 'cc-by-nc')],
         4: [],
         5: [],
@@ -283,6 +283,8 @@ def test_attribution_text() -> None:
     assert attribution(photo(1, 'cc0', 'ana')) == (
         'Foto: ana, sin derechos reservados (CC0), vía iNaturalist'
     )
+    assert attribution(photo(1, 'pd', 'ana')) == 'Foto: ana, dominio público, vía iNaturalist'
+    assert attribution(photo(1, 'cc-by-sa', 'ana')) == 'Foto: © ana, CC BY-SA, vía iNaturalist'
 
 
 # Reporte y resumen --------------------------------------------------------------------------

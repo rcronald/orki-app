@@ -14,6 +14,10 @@ Uso::
 
     # Emparejamiento de solo lectura con los taxones de iNaturalist (sin descargar imágenes).
     uv run orki-catalogo emparejar-inaturalist --catalogo data/hibridos.csv [--genero G]
+
+    # Fotos de referencia desde iNaturalist (simulación por defecto) y limpieza del bucket.
+    uv run orki-catalogo cargar-fotos-inaturalist --ambiente local|dev|prod [--escribir]
+    uv run orki-catalogo limpiar-fotos-referencia --ambiente local|dev|prod [--borrar]
 """
 
 from __future__ import annotations
@@ -98,6 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         from .inaturalist_cli import main as inaturalist_main
 
         return inaturalist_main(args_list[1:])
+    if args_list[:1] == ['cargar-fotos-inaturalist']:
+        from .reference_photos_cli import main as photos_main
+
+        return photos_main(args_list[1:])
+    if args_list[:1] == ['limpiar-fotos-referencia']:
+        from .reference_photos_cli import cleanup_main
+
+        return cleanup_main(args_list[1:])
     if args_list[:1] == ['validar-hibridos']:
         from .hybrids_cli import validate_main
 
@@ -110,7 +122,9 @@ def main(argv: list[str] | None = None) -> int:
             'Para cargar el catálogo en la base: orki-catalogo cargar --help. Para la lista '
             'curada de híbridos: orki-catalogo validar-hibridos --help y '
             'orki-catalogo cargar-hibridos --help. Para emparejar con iNaturalist: '
-            'orki-catalogo emparejar-inaturalist --help.'
+            'orki-catalogo emparejar-inaturalist --help. Para las fotos de referencia: '
+            'orki-catalogo cargar-fotos-inaturalist --help y '
+            'orki-catalogo limpiar-fotos-referencia --help.'
         ),
     )
     parser.add_argument('archivo', type=Path, help='export.zip de ChecklistBank o su TSV.')

@@ -420,7 +420,7 @@ LICENSE_LABELS = {
     'cc-by-nd': 'CC BY-ND',
     'cc-by-nc-sa': 'CC BY-NC-SA',
     'cc-by-nc-nd': 'CC BY-NC-ND',
-    # Marca de dominio público: no está entre las aceptadas (solo CC0 y CC BY).
+    # Marca de dominio público: aceptada desde la decisión del 23 de noviembre de 2026 (#180).
     'pd': 'dominio público (PD)',
 }
 
@@ -434,11 +434,14 @@ def license_label(code: str | None) -> str:
 def attribution(photo: Photo) -> str:
     """Texto de atribución propuesto (ver docs/inaturalist.md): autor, licencia y origen.
 
-    Con CC0 no hace falta, pero se da igual. Si no se conoce el autor, el de iNaturalist.
+    Con CC0 y dominio público no hace falta, pero se da igual. Si no se conoce el autor, el de
+    iNaturalist.
     """
     author = photo.author or photo.attribution or 'autor desconocido'
     if photo.license == 'cc0':
         return f'Foto: {author}, sin derechos reservados (CC0), vía iNaturalist'
+    if photo.license == 'pd':
+        return f'Foto: {author}, dominio público, vía iNaturalist'
     return f'Foto: © {author}, {license_label(photo.license)}, vía iNaturalist'
 
 
