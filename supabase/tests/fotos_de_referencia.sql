@@ -122,6 +122,10 @@ create type pg_temp.fila_foto as (
   source_url text, license text, author_name text, attribution text, obtained_at timestamptz
 );
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: restricciones: solo las cuatro licencias aceptadas, con los códigos de iNaturalist
 select pruebas.debe_funcionar('cc0', $$select pg_temp.foto('Phalaenopsis amabilis', '1', 'cc0')$$);
 select pruebas.debe_funcionar('pd', $$select pg_temp.foto('Phalaenopsis aphrodite', '2', 'pd')$$);
@@ -705,6 +709,7 @@ create function pg_temp.marcar() returns void language sql as $$
   from unnest(array['species_photos_species_id_key', 'species_photos_pkey', 'species_photo_rejections_pkey']) i;
 $$;
 grant select, insert, delete on pg_temp.recorridos to anon, authenticated;
+grant execute on function pg_temp.marcar(), pg_temp.recorridos_desde_la_marca() to public;
 set local enable_seqscan = off;
 set local role anon;
 set local request.jwt.claims = '{"role": "anon"}';

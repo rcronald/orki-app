@@ -69,6 +69,10 @@ as $$
   from public.search_genera(consulta, maximo) g
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: normalización: el signo × se quita, pegado o separado
 select pruebas.iguales('× separado', public.normalize_search_text('× Rhyncholaeliocattleya'), 'rhyncholaeliocattleya');
 select pruebas.iguales('× pegado', public.normalize_search_text('×Rhyncholaeliocattleya'), 'rhyncholaeliocattleya');

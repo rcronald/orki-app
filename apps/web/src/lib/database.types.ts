@@ -812,7 +812,6 @@ export type Database = {
         }[]
       }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
-      is_pending_plant: { Args: { target_plant_id: string }; Returns: boolean }
       is_pending_plant_photo: {
         Args: { object_name: string }
         Returns: boolean

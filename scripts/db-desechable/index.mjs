@@ -15,7 +15,11 @@
 //   - Un clúster temporal, si no se define ORKI_TEST_DB_URL: se crea con initdb y pg_ctl en
 //     un directorio temporal, escucha solo en 127.0.0.1 en un puerto libre, con contraseña
 //     aleatoria, y se destruye al terminar. Los binarios se buscan en ORKI_PG_BINDIR, en el
-//     directorio que indica pg_config --bindir y en el PATH.
+//     PostgreSQL 17 de Homebrew (/opt/homebrew/opt/postgresql@17/bin o /usr/local/...), en
+//     el directorio que indica pg_config --bindir y en el PATH.
+//
+// El servidor tiene que ser PostgreSQL 17 o posterior, como el CI y Supabase; con uno anterior
+// falla con un mensaje que dice cómo instalarlo, salvo con ORKI_PERMITIR_PG_ANTIGUO=1.
 //
 // Uso desde otro script:
 //   import { conBaseDesechable } from './db-desechable/index.mjs'
@@ -65,6 +69,40 @@ const dominiosSupabase = ['supabase.co', 'supabase.com', 'supabase.net']
 
 // Error que se explica solo: el mensaje basta, sin traza.
 export class ErrorDeBaseDesechable extends Error {}
+
+// Versión mínima del servidor: la del CI y la de los proyectos de Supabase. Con una anterior,
+// algo puede pasar en local y fallar en el CI (en el 17, "text || char" no se resuelve solo;
+// en el 14 no existen security_invoker ni nulls not distinct y PUBLIC puede crear en public).
+export const versionMinimaPostgres = 17
+
+// Falla con un mensaje claro si el servidor es anterior a la versión mínima, salvo con
+// ORKI_PERMITIR_PG_ANTIGUO=1, que solo avisa. "numero" es server_version_num (170012).
+export function comprobarVersionPostgres(
+  numero,
+  version,
+  entorno = process.env,
+  avisar = console.warn,
+) {
+  if (Math.floor(Number(numero) / 10000) >= versionMinimaPostgres) return
+  const motivo =
+    `el servidor es PostgreSQL ${version} y hace falta el ${versionMinimaPostgres} o posterior, ` +
+    'la misma versión mayor que el CI y Supabase: con otra, una prueba puede pasar aquí y fallar en el CI.'
+  if (entorno.ORKI_PERMITIR_PG_ANTIGUO === '1') {
+    avisar(
+      `Aviso: ${motivo} Se sigue porque ORKI_PERMITIR_PG_ANTIGUO=1; el resultado del CI es el que cuenta.`,
+    )
+    return
+  }
+  throw new ErrorDeBaseDesechable(
+    `${motivo}\n` +
+      `  - En macOS: "brew install postgresql@${versionMinimaPostgres}". El script usa sus binarios aunque ` +
+      `no estén en el PATH (/opt/homebrew/opt/postgresql@${versionMinimaPostgres}/bin); si están en otro ` +
+      'sitio, indica el directorio en ORKI_PG_BINDIR.\n' +
+      `  - O un contenedor desechable con postgres:${versionMinimaPostgres} y su URL en ORKI_TEST_DB_URL ` +
+      '(ver "Pruebas de la base de datos" en el README).\n' +
+      '  - Para usar esta versión de todos modos (sin garantías), ORKI_PERMITIR_PG_ANTIGUO=1.',
+  )
+}
 
 // Conexión al servidor -------------------------------------------------------------------
 
@@ -167,8 +205,21 @@ function directorioDePgConfig() {
   return directorioPgConfig
 }
 
+// Directorios de Homebrew donde queda PostgreSQL 17 con "brew install postgresql@17". Es un
+// paquete keg-only: no se enlaza en el PATH, así que si convive con otra versión (por ejemplo,
+// la 14 enlazada), pg_config y el PATH darían la otra. Se prueban antes que ellos para usar la
+// misma versión mayor que el CI y Supabase sin tener que tocar el PATH.
+const directoriosHomebrewPg17 = [
+  '/opt/homebrew/opt/postgresql@17/bin',
+  '/usr/local/opt/postgresql@17/bin',
+]
+
 export function buscarBinario(nombre) {
-  const candidatos = [process.env.ORKI_PG_BINDIR, directorioDePgConfig()]
+  const candidatos = [
+    process.env.ORKI_PG_BINDIR,
+    ...directoriosHomebrewPg17,
+    directorioDePgConfig(),
+  ]
   for (const directorio of candidatos) {
     if (directorio && existsSync(join(directorio, nombre)))
       return join(directorio, nombre)
@@ -520,10 +571,11 @@ export async function conBaseDesechable(
   limpiezasPendientes.add(limpiar)
 
   try {
-    const [version, superusuario] = consultar(
+    const [version, numeroVersion, superusuario] = consultar(
       servidor.conexion,
-      "select current_setting('server_version') || '|' || case when rolsuper then 't' else 'f' end from pg_roles where rolname = current_user",
+      "select current_setting('server_version') || '|' || current_setting('server_version_num') || '|' || case when rolsuper then 't' else 'f' end from pg_roles where rolname = current_user",
     )[0].split('|')
+    comprobarVersionPostgres(numeroVersion, version, entorno)
     if (superusuario !== 't') {
       throw new ErrorDeBaseDesechable(
         `el usuario "${servidor.conexion.user}" de ORKI_TEST_DB_URL no es superusuario; ` +
