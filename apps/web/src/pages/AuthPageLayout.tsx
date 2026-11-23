@@ -33,8 +33,13 @@ export function AuthPageLayout({
   return (
     <div className="flex min-h-dvh flex-col bg-neutral-0 text-neutral-900">
       <header className="px-space-4 py-space-3">
-        {/* Nombre accesible: «Volver al inicio de orqui.app» (el logotipo). */}
-        <Link to={PATHS.home} className="inline-block rounded-md">
+        {/* Nombre accesible: «Volver al inicio de orqui.app» (el logotipo).
+            44 px de alto (#174) sin mover nada: el margen negativo compensa
+            lo que crece sobre el logotipo de 40 px. */}
+        <Link
+          to={PATHS.home}
+          className="-my-[2px] inline-flex min-h-[44px] items-center rounded-md"
+        >
           <span className="sr-only">Volver al inicio de</span>{' '}
           <Logo className="block h-[40px] w-auto" />
         </Link>
@@ -50,10 +55,12 @@ export function AuthPageLayout({
           {/* Antes de crear la cuenta, qué datos se guardan (#111), junto al
               formulario (#202). */}
           <p className="text-sm">
+            {/* 44 px de alto (#174); el margen negativo lo deja en su línea
+                de 20 px, así el diseño no cambia. */}
             <Link
               to={PATHS.privacy}
               state={textPageState(privacyOrigin)}
-              className="text-neutral-700 underline"
+              className="-my-[12px] inline-flex min-h-[44px] items-center text-neutral-700 underline"
             >
               Privacidad
             </Link>

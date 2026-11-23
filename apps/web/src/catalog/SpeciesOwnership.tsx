@@ -63,7 +63,10 @@ export function SpeciesOwnership({ species }: { species: PublicSpecies }) {
           title={CATALOG_TEXT.owned}
           detail={CATALOG_TEXT.ownedDetail(count)}
           action={
-            <Link to={collectionLink} className="orki-link orki-answer__action">
+            <Link
+              to={collectionLink}
+              className="orki-link orki-answer__action min-h-[44px] publico-estrecho:-mt-[2px] publico-estrecho:-mb-[10px]"
+            >
               {CATALOG_TEXT.viewInCollection}
               <Icon name="arrow-right" />
             </Link>

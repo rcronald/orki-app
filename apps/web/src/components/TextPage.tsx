@@ -73,7 +73,9 @@ export function TextPage({
   return (
     <div className="orki-textpage">
       <div className="orki-textpage__header">
-        <Link to={back.to} className="orki-link">
+        {/* 44 px de alto (#174) en el mismo sitio: el margen negativo
+            descuenta lo que crece sobre la línea de 24 px. */}
+        <Link to={back.to} className="orki-link -my-[10px] min-h-[44px]">
           <Icon name="arrow-left" />
           {back.label}
         </Link>

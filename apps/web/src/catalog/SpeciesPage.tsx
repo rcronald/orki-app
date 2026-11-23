@@ -104,9 +104,10 @@ function SpeciesDetail({ species }: { species: PublicSpecies }) {
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-space-4 gap-y-space-2 text-md">
           <dt className="text-neutral-700">{CATALOG_TEXT.genus}</dt>
           <dd>
+            {/* 44 px de alto (#174); el margen negativo lo deja en su línea. */}
             <Link
               to={catalogGenusPath(species.genus.id)}
-              className="orki-link scientific-name"
+              className="orki-link scientific-name -my-[9px] min-h-[44px]"
             >
               <ScientificName name={species.genus.name} />
             </Link>

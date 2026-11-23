@@ -37,8 +37,13 @@ export function AppBar({ account }: AppBarProps) {
 
   return (
     <header className="orki-appbar">
-      {/* Nombre accesible: «Inicio de orqui.app» (el logotipo). */}
-      <Link to={PATHS.home} className="orki-appbar__brand">
+      {/* Nombre accesible: «Inicio de orqui.app» (el logotipo). Hasta 720 px
+          la flor mide 28 px de ancho: el enlace se ensancha a 44 px (#174)
+          con el margen negativo justo para que nada se mueva. */}
+      <Link
+        to={PATHS.home}
+        className="orki-appbar__brand publico-estrecho:-mx-[8px] publico-estrecho:min-w-[44px] publico-estrecho:justify-center"
+      >
         <span className="sr-only">Inicio de</span>{' '}
         <Logo variant="compact" className="orki-appbar__logo" />
       </Link>
