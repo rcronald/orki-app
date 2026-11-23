@@ -356,10 +356,13 @@ export function plantFormValuesFrom(plant: CollectionPlant): PlantFormValues {
  * Columnas que la edición puede cambiar. Como en la inserción, nunca lleva
  * `validation` ni `user_id`: al quitar la especie, el disparador de la base
  * devuelve la planta a "por validar" (y con especie, pone su género y su tipo).
+ * `notes` (#266) no sale del formulario del registro: la edición la añade
+ * aparte (editing/EditPlantForm.tsx).
  */
 export type PlantPatch = Partial<
   Pick<
     PlantUpdate,
+    | 'notes'
     | 'entered_name'
     | 'species_id'
     | 'genus_id'
@@ -373,7 +376,8 @@ export type PlantPatch = Partial<
   >
 >
 
-type PlantPatchColumn = keyof PlantPatch
+// Las notas no salen del formulario del registro (ver PlantPatch).
+type PlantPatchColumn = Exclude<keyof PlantPatch, 'notes'>
 
 /** Todas las columnas editables de un formulario ya validado; vacío es null. */
 function toPlantColumns(
