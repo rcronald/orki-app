@@ -147,7 +147,9 @@ function sections(state: unknown): TextPageSection[] {
           </ul>
           <p>
             El catálogo de especies que usa el buscador es común para todos y no
-            contiene datos personales. Su fuente y su licencia están en{' '}
+            contiene datos de quienes usan orqui.app. Las fotos de referencia de
+            las especies muestran el nombre de su autor, como exige su licencia.
+            La fuente del catálogo y las licencias están en{' '}
             <Link to={PATHS.credits} state={state}>
               Créditos y fuentes
             </Link>
