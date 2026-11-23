@@ -248,6 +248,7 @@ test('registrar un nombre por validar con seis fotos, recargando a mitad', async
 
 test('en celular, el aviso de registro no se aplasta con un nombre largo', async ({
   page,
+  supabase,
 }) => {
   await page.setViewportSize({ width: 360, height: 780 })
   await page.goto('/coleccion/nueva')
@@ -268,13 +269,23 @@ test('en celular, el aviso de registro no se aplasta con un nombre largo', async
   await expect(page).toHaveURL(/\/coleccion$/)
   const aviso = page.getByRole('status').filter({ hasText: 'Registraste' })
   await expect(aviso).toContainText(`Registraste ${largo} en tu colección.`)
-  // El texto ocupa el ancho del aviso y las acciones van debajo, no al lado.
+  // El texto ocupa el ancho del aviso y las acciones («Ver ficha», #296, y
+  // «Registrar otra») van debajo, no al lado; cada una de 44 px de alto y sin
+  // salirse del aviso.
   const texto = await aviso.locator('p').boundingBox()
-  const otra = await aviso
-    .getByRole('link', { name: 'Registrar otra' })
-    .boundingBox()
+  const caja = await aviso.locator('> div').boundingBox()
   expect(texto?.width).toBeGreaterThanOrEqual(240)
-  expect(otra?.y).toBeGreaterThanOrEqual((texto?.y ?? 0) + (texto?.height ?? 0))
+  for (const nombre of ['Ver ficha', 'Registrar otra']) {
+    const accion = await aviso.getByRole('link', { name: nombre }).boundingBox()
+    expect(accion?.y).toBeGreaterThanOrEqual(
+      (texto?.y ?? 0) + (texto?.height ?? 0),
+    )
+    expect(Math.round(accion?.height ?? 0)).toBeGreaterThanOrEqual(44)
+    expect(Math.round(accion?.width ?? 0)).toBeGreaterThanOrEqual(44)
+    expect(
+      Math.round((accion?.x ?? 0) + (accion?.width ?? 0)),
+    ).toBeLessThanOrEqual(Math.round((caja?.x ?? 0) + (caja?.width ?? 0)))
+  }
   // La insignia de estado, en una sola línea.
   const insignia = await aviso.getByText('Nombre por validar').boundingBox()
   expect(insignia?.height).toBeLessThan(40)
@@ -283,6 +294,15 @@ test('en celular, el aviso de registro no se aplasta con un nombre largo', async
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true)
+
+  // «Ver ficha» abre el ejemplar recién creado.
+  const nueva = supabase
+    .plantasDe(USUARIO)
+    .find((planta) => planta.entered_name === largo)
+  await aviso.getByRole('link', { name: 'Ver ficha' }).click()
+  await expect(page).toHaveURL(
+    new RegExp(`/coleccion/${nueva?.id ?? 'falta'}$`),
+  )
 })
 
 test(
