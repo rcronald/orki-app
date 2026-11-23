@@ -8,7 +8,7 @@ import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
-import { plant } from '../test/collection.ts'
+import { CATTLEYA, plant } from '../test/collection.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -603,6 +603,117 @@ describe('ficha de la especie', () => {
           genus: { id: GENUS.cattleya, name: 'Cattleya' },
           type: 'species',
         },
+      })
+    })
+
+    describe('ejemplares pendientes de validar (#296)', () => {
+      /** Una planta registrada con un nombre y sin enlazar a una especie. */
+      function pending(
+        enteredName: string,
+        overrides: Partial<CollectionPlant> = {},
+      ) {
+        return plant({
+          displayName: enteredName,
+          displayNameIsScientific: false,
+          enteredName,
+          species: null,
+          validation: 'pending',
+          ...overrides,
+        })
+      }
+
+      const linkedAmabilis = () =>
+        plant({
+          species: {
+            id: SPECIES.amabilis,
+            scientificName: 'Phalaenopsis amabilis',
+            type: 'species',
+            status: 'imported',
+          },
+        })
+
+      it('«Podrías tenerla» con un ejemplar del mismo nombre sin enlazar, y acceso a su ficha', async () => {
+        renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+        await screen.findByRole('heading', { level: 1, name: /amabilis/ })
+        const unlinked = pending('Phalaenopsis amabilis')
+        await resolveCollection([unlinked])
+
+        expect(screen.queryByText('Aún no la tienes')).toBeNull()
+        expect(screen.getByText('Podrías tenerla')).toBeInTheDocument()
+        expect(
+          screen.getByText(
+            'Tienes 1 ejemplar con ese nombre, pendiente de validar.',
+          ),
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole('link', { name: /Ver el ejemplar/ }),
+        ).toHaveAttribute('href', `/coleccion/${unlinked.id}`)
+        // Registrar sigue ahí, pero no es la acción destacada.
+        const register = screen.getByRole('link', {
+          name: 'Registrar esta especie',
+        })
+        expect(register).toHaveClass('orki-btn--secondary')
+        expect(register).not.toHaveClass('orki-btn--primary')
+        await expectNoAxeViolations()
+      })
+
+      it('coincide por abreviatura, sinónimo y epíteto con el género; no por otra especie', async () => {
+        renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+        await screen.findByRole('heading', { level: 1, name: /amabilis/ })
+        await resolveCollection([
+          pending('Phal. amabilis'),
+          pending('Phalaenopsis grandiflora'),
+          pending('amabilis'),
+          pending('Phalaenopsis schilleriana'),
+          pending('amabilis', { genus: CATTLEYA }),
+        ])
+
+        expect(screen.getByText('Podrías tenerla')).toBeInTheDocument()
+        expect(
+          screen.getByText(
+            'Tienes 3 ejemplares con ese nombre, pendientes de validar.',
+          ),
+        ).toBeInTheDocument()
+        const link = screen.getByRole('link', { name: /Ver los ejemplares/ })
+        expect(link.getAttribute('href')).toMatch(/^\/coleccion\?/)
+        expect(link.getAttribute('href')).toContain('validacion=pending')
+      })
+
+      it('«La tienes» con los enlazados y una mención a los pendientes', async () => {
+        renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+        await screen.findByRole('heading', { level: 1, name: /amabilis/ })
+        await resolveCollection([
+          linkedAmabilis(),
+          pending('Phalaenopsis amabilis'),
+        ])
+
+        expect(screen.getByText('La tienes')).toBeInTheDocument()
+        expect(
+          screen.getByText('1 ejemplar en tu colección'),
+        ).toBeInTheDocument()
+        expect(
+          screen.getByText(
+            'Además, tienes 1 ejemplar con ese nombre, pendiente de validar.',
+          ),
+        ).toBeInTheDocument()
+      })
+
+      it('los dados de baja no cuentan: «la tuviste», como en «¿Ya la tengo?»', async () => {
+        renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+        await screen.findByRole('heading', { level: 1, name: /amabilis/ })
+        await resolveCollection([
+          pending('Phalaenopsis amabilis', { status: 'lost' }),
+          { ...linkedAmabilis(), status: 'gifted' },
+        ])
+
+        expect(screen.queryByText('Podrías tenerla')).toBeNull()
+        expect(screen.queryByText('La tienes')).toBeNull()
+        expect(screen.getByText('No, pero la tuviste')).toBeInTheDocument()
+        expect(
+          screen.getByText(
+            'La tuviste: 1 ejemplar perdido y 1 ejemplar regalado.',
+          ),
+        ).toBeInTheDocument()
       })
     })
 
