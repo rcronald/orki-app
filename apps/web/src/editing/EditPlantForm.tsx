@@ -372,9 +372,15 @@ export function EditPlantForm({
     if (userId === null) return
     let active = true
     const plantId = plant.id.toLowerCase()
-    const recent =
+    const remembered =
       storedAttempt === 0
         ? recentPlantPhotos(services.rows, userId, plantId, EDIT_REUSE_MS)
+        : null
+    // Solo si su principal es la de la planta: si no, algo cambió después.
+    const recent =
+      remembered &&
+      (remembered[0]?.photoPath ?? null) === (plant.photoPath ?? null)
+        ? remembered
         : null
     const read = recent
       ? Promise.resolve(recent)
