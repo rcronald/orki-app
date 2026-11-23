@@ -77,41 +77,45 @@ test('géneros: al escribir deprisa tecla a tecla no se pierden letras', async (
   await expect(generos.getByRole('rowheader')).toHaveText(['Phalaenopsis'])
 })
 
-test('la dirección manda al abrir, al volver con «atrás» y al limpiar', async ({
-  page,
-}) => {
-  // Abrir con ?q= rellena el campo y busca.
-  await abrir(page, '?q=cattleya')
-  await expect(buscadorDeEspecies(page)).toHaveValue('cattleya')
-  await expect(resultados(page, 'cattleya').getByRole('rowheader')).toHaveCount(
-    2,
-  )
+test(
+  'la dirección manda al abrir, al volver con «atrás» y al limpiar',
+  { tag: '@logica' },
+  async ({ page }) => {
+    // Abrir con ?q= rellena el campo y busca.
+    await abrir(page, '?q=cattleya')
+    await expect(buscadorDeEspecies(page)).toHaveValue('cattleya')
+    await expect(
+      resultados(page, 'cattleya').getByRole('rowheader'),
+    ).toHaveCount(2)
 
-  // Abrir un detalle añade una entrada; en ella se cambia la búsqueda.
-  await resultados(page, 'cattleya')
-    .getByRole('link', { name: 'Cattleya trianae' })
-    .click()
-  await expect(page).toHaveURL(
-    new RegExp(`especie=${ESPECIES.cattleyaTrianae}`),
-  )
-  await buscadorDeEspecies(page).fill('vanda')
-  await expect(page).toHaveURL(/q=vanda/)
-  await expect(resultados(page, 'vanda').getByRole('rowheader')).toHaveCount(1)
+    // Abrir un detalle añade una entrada; en ella se cambia la búsqueda.
+    await resultados(page, 'cattleya')
+      .getByRole('link', { name: 'Cattleya trianae' })
+      .click()
+    await expect(page).toHaveURL(
+      new RegExp(`especie=${ESPECIES.cattleyaTrianae}`),
+    )
+    await buscadorDeEspecies(page).fill('vanda')
+    await expect(page).toHaveURL(/q=vanda/)
+    await expect(resultados(page, 'vanda').getByRole('rowheader')).toHaveCount(
+      1,
+    )
 
-  // «Atrás» vuelve a la entrada anterior, con su búsqueda.
-  await page.goBack()
-  await expect(page).not.toHaveURL(/especie=/)
-  await expect(buscadorDeEspecies(page)).toHaveValue('cattleya')
-  await expect(resultados(page, 'cattleya').getByRole('rowheader')).toHaveCount(
-    2,
-  )
+    // «Atrás» vuelve a la entrada anterior, con su búsqueda.
+    await page.goBack()
+    await expect(page).not.toHaveURL(/especie=/)
+    await expect(buscadorDeEspecies(page)).toHaveValue('cattleya')
+    await expect(
+      resultados(page, 'cattleya').getByRole('rowheader'),
+    ).toHaveCount(2)
 
-  // «Limpiar» vacía el campo y la dirección.
-  await page
-    .getByRole('button', { name: 'Limpiar búsqueda y filtros' })
-    .first()
-    .click()
-  await expect(buscadorDeEspecies(page)).toHaveValue('')
-  await expect(page).toHaveURL(/\/administracion\/catalogo$/)
-  await expect(listado(page).getByRole('rowheader')).toHaveCount(6)
-})
+    // «Limpiar» vacía el campo y la dirección.
+    await page
+      .getByRole('button', { name: 'Limpiar búsqueda y filtros' })
+      .first()
+      .click()
+    await expect(buscadorDeEspecies(page)).toHaveValue('')
+    await expect(page).toHaveURL(/\/administracion\/catalogo$/)
+    await expect(listado(page).getByRole('rowheader')).toHaveCount(6)
+  },
+)

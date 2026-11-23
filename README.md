@@ -909,15 +909,34 @@ Las fotos de referencia (#234) tienen su apartado: vienen de iNaturalist, cada u
 
 ## Pruebas de extremo a extremo
 
-Los flujos principales de la Fase 1 (#148) se prueban con [Playwright](https://playwright.dev) en un navegador real: acceso, registro (con y sin foto, y con un nombre por validar), inventario (lista, cuadrícula, búsqueda y filtros), «¿Ya la tengo?», edición y baja, backoffice del catálogo y la PWA (manifiesto, service worker y arranque sin conexión). Cada pantalla recorrida pasa además por [axe](https://github.com/dequelabs/axe-core) con las reglas de nivel A y AA de WCAG 2.0, 2.1 y 2.2; la app no tiene tema oscuro, así que se revisa solo el claro. Lo que axe no ve se prueba aparte: `e2e/foco-no-tapado.spec.ts` comprueba, con el tabulador en una pantalla de celular, que el registro, la edición y el inventario siguen sin barras fijas (nada con `position: fixed` o `sticky`; las quitaron el #208 y el #221) y que el control con el foco queda a la vista (WCAG 2.4.11, #151). WebKit solo tabula a los campos de formulario, así que las comprobaciones que llegan a botones y enlaces no corren en los perfiles `webkit` y `celular`.
+Los flujos principales de la Fase 1 (#148) se prueban con [Playwright](https://playwright.dev) en un navegador real: acceso, registro (con y sin foto, y con un nombre por validar), inventario (lista, cuadrícula, búsqueda y filtros), «¿Ya la tengo?», edición y baja, backoffice del catálogo y la PWA (manifiesto, service worker y arranque sin conexión). Cada pantalla recorrida pasa además por [axe](https://github.com/dequelabs/axe-core) (en Chromium, ver [Qué corre en cada perfil](#qué-corre-en-cada-perfil)) con las reglas de nivel A y AA de WCAG 2.0, 2.1 y 2.2; la app no tiene tema oscuro, así que se revisa solo el claro. Lo que axe no ve se prueba aparte: `e2e/foco-no-tapado.spec.ts` comprueba, con el tabulador en una pantalla de celular, que el registro, la edición y el inventario siguen sin barras fijas (nada con `position: fixed` o `sticky`; las quitaron el #208 y el #221) y que el control con el foco queda a la vista (WCAG 2.4.11, #151). WebKit solo tabula a los campos de formulario, así que las comprobaciones que llegan a botones y enlaces no corren en los perfiles `webkit` y `celular`.
 
 `e2e/portada.spec.ts` revisa la portada a 360 px (una columna, logotipo centrado, sin desplazamiento horizontal, acciones y enlaces del pie de al menos 44 px, foto 2:1) y en escritorio a 1536 px (dos columnas, foto a toda la altura hasta el borde, ventajas en fila y enlaces del pie a la derecha), las dos con axe.
 
-`e2e/barra.spec.ts` revisa la barra de la app y el menú «Tu cuenta» (#207) a 1440 y 360 px, con el menú abierto y axe: sin desplazamiento horizontal, objetivos de 44 px, teclado, la opción de administración solo con el rol y una cuenta sin nombre.
+`e2e/barra.spec.ts` revisa la barra de la app y el menú «Tu cuenta» (#207) a 1440 y 360 px, con el menú abierto y axe: sin desplazamiento horizontal, el orden de los controles, teclado, la opción de administración solo con el rol y una cuenta sin nombre.
 
 `e2e/cuenta.spec.ts` revisa «Tu cuenta» (#214) a 1440 y 360 px con axe: se abre desde el menú, «Editar perfil» abre el editor (el del Clerk simulado) y el nombre nuevo se ve sin recargar, el CSV descargado es idéntico al de «Mi colección», la privacidad ofrece «Volver a Tu cuenta», cancelar la eliminación devuelve el foco al botón, «Volver a Mi colección» y «Cerrar sesión», sin desplazamiento horizontal y con objetivos de 44 px; y una cuenta sin nombre.
 
 Corren en cuatro perfiles: Chromium, Firefox y WebKit de escritorio, y `celular`, un iPhone 15 (WebKit, pantalla pequeña y táctil). Las pruebas están en `apps/web/e2e/` y la configuración en `apps/web/playwright.config.ts`.
+
+### Qué corre en cada perfil
+
+No todo se repite en los cuatro perfiles (#259): lo que no depende del navegador se prueba una vez por motor, y el perfil `celular` se queda con lo que cambia en un iPhone.
+
+|                                                                                                                               | chromium | firefox | webkit | celular                             |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ------ | ----------------------------------- |
+| Pruebas sin etiqueta (diseño, medidas y 44 px, foco y teclado, puntero y toque, fotos, service worker, portada prerrenderada) | sí       | sí      | sí     | sí                                  |
+| `@logica`: flujos que no dependen del motor (rutas y sesión, lo que se guarda en Supabase, respuestas de la app)              | sí       | sí      | sí     | no: es el mismo motor que `webkit`  |
+| `@escritorio`: variantes a 1440 o 1536 px                                                                                     | sí       | sí      | sí     | no: no es un caso real en un iPhone |
+| axe                                                                                                                           | sí       | no      | no     | no                                  |
+
+- **Etiquetas.** Van en el título con la opción de Playwright: `test('…', { tag: '@logica' }, async …)`, o en un `test.describe`. En las pruebas que recorren varios anchos, `{ tag: ancho > 720 ? '@escritorio' : [] }`. El perfil `celular` las excluye con `grepInvert` en `playwright.config.ts`. **Una prueba sin etiqueta corre en los cuatro perfiles**: olvidar la etiqueta solo cuesta tiempo, nunca cobertura. Ante la duda, sin etiqueta. `@logica` no va en una prueba que mida el diseño, mueva el foco, use el teclado o el puntero, prepare fotos o dependa del service worker o de la portada prerrenderada, aunque además recorra un flujo.
+- **axe solo en Chromium.** Lo decide la fixture `revisarAccesibilidad` (`e2e/soporte/fixtures.ts`), no cada prueba: fuera de Chromium no hace nada y deja una anotación. Las pautas que comprueba axe (estructura, nombres, roles, contraste) no dependen del motor; lo que sí cambia con el motor (medidas, foco, desplazamiento) lo comprueban las propias pruebas en todos los perfiles. En Firefox, además, el Firefox de Playwright cerraba la pestaña («Page crashed») de forma intermitente mientras axe recorría la página (#170).
+- **Firefox** corre todo salvo axe: es su único perfil.
+- **Saltos dentro de una prueba** (`test.skip` con su motivo): las comprobaciones de foco en botones y enlaces de `foco-no-tapado.spec.ts` no corren en WebKit, que solo tabula a los campos de formulario; las pruebas sin conexión que necesitan el service worker y el Supabase simulado a la vez solo corren en Chromium (ver los límites más abajo); y limitar la CPU (`backoffice-buscadores.spec.ts`) solo se puede en Chromium.
+- **«¿Ya la tengo?»** se prueba a 360 px; solo la primera respuesta, también a 1440. La lógica de cada respuesta está en `OwnershipCheckPage.test.tsx`.
+
+Para ver qué corre en un perfil: `npm run test:e2e:sin-build -- --list --project=celular`.
 
 ### Lanzarlas en local
 
@@ -940,7 +959,7 @@ En Linux, la primera vez hace falta `npx playwright install --with-deps` (instal
 
 Límites: no se prueba la interfaz real de Clerk (inicio de sesión con Google o correo), ni Supabase o Storage reales, ni Sentry. En Firefox, el modo sin conexión de Playwright no deja responder al service worker, así que la prueba del arranque sin conexión corta el servidor de la app en su lugar; y la del inventario sin conexión solo corre en Chromium, porque en los demás motores Playwright no intercepta la red de una página que controla un service worker.
 
-En Firefox no se pasa axe (#170): el Firefox de Playwright cerraba la pestaña («Page crashed») de forma intermitente mientras axe recorría la página. Las pautas que comprueba axe no dependen del motor y se revisan en los otros tres perfiles; el resto de cada prueba sí corre en Firefox.
+axe corre solo en Chromium (ver [Qué corre en cada perfil](#qué-corre-en-cada-perfil)); el resto de cada prueba sí corre en Firefox.
 
 ### A mano, contra el ambiente de desarrollo
 

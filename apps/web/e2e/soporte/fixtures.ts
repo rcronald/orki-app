@@ -153,14 +153,16 @@ export const test = base.extend<Opciones & Fixtures>({
 
   revisarAccesibilidad: async ({ page, browserName }, use, testInfo) => {
     await use(async (pantalla) => {
-      // En Firefox no se pasa axe (#170): el Firefox de Playwright cierra la
-      // pestaña ("Page crashed") mientras axe recorre la página, de forma
-      // intermitente y en pantallas distintas. Las pautas que comprueba axe
-      // no dependen del motor y se revisan en los otros tres perfiles.
-      if (browserName === 'firefox') {
+      // axe solo en Chromium (#259): las pautas que comprueba (estructura,
+      // nombres, roles, contraste) no dependen del motor, y pasarlo en los
+      // demás perfiles repetía lo mismo sobre las mismas pantallas. En
+      // Firefox, además, el Firefox de Playwright cerraba la pestaña («Page
+      // crashed») mientras axe recorría la página (#170). El diseño que sí
+      // cambia con el motor lo miden las propias pruebas.
+      if (browserName !== 'chromium') {
         testInfo.annotations.push({
           type: 'accesibilidad',
-          description: `Sin axe en Firefox (#170): ${pantalla}`,
+          description: `axe solo en Chromium: ${pantalla}`,
         })
         return
       }
