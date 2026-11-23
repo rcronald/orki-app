@@ -183,13 +183,17 @@ describe('PhotoGallery', () => {
       </main>,
     )
     expect(screen.getByText('Guardada')).toBeInTheDocument()
-    expect(screen.getByText('Subiendo… 42 %')).toBeInTheDocument()
+    // Espacio duro antes de «%»: la cifra no se separa de su signo (#247).
+    expect(
+      screen.getByText('Subiendo… 42\u00a0%', { normalizer: (t) => t }),
+    ).toBeInTheDocument()
     expect(screen.getByText('No se subió')).toBeInTheDocument()
     expect(screen.getByText('Preparando…')).toBeInTheDocument()
-    // La que se prepara aún no tiene imagen, pero sí nombre.
-    expect(
-      screen.getByRole('img', { name: 'Foto 4 de 4' }),
-    ).not.toHaveAttribute('src')
+    // La que se prepara aún no tiene imagen, pero sí nombre y el hueco
+    // cuadrado de la foto (en celular, el estado va debajo, #247).
+    const placeholder = screen.getByRole('img', { name: 'Foto 4 de 4' })
+    expect(placeholder).not.toHaveAttribute('src')
+    expect(placeholder).toHaveClass('orki-gallery__photo')
     // Ni subiendo ni guardada se pueden quitar.
     expect(
       screen.queryByRole('button', { name: 'Quitar foto principal' }),

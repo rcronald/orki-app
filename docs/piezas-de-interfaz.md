@@ -628,7 +628,9 @@ interface PhotoGalleryProps {
   píldora (`orki-gallery__count`, `color-secondary-strong` sobre
   `color-secondary-soft`).
 - Cuadrícula de tres columnas (`orki-gallery__grid`, lista «Fotos elegidas»)
-  con miniaturas cuadradas (`orki-gallery__item`). Cada imagen tiene nombre:
+  con miniaturas cuadradas (`orki-gallery__item`); hasta 720 px, dos columnas
+  (a 360 px la miniatura de tres columnas medía unos 70 px y el estado no
+  cabía, #247). Cada imagen tiene nombre:
   «Foto principal», «Foto 2 de 3» (`galleryPhotoLabel` en
   `components/ui/gallery-label.ts`). «Principal» (`orki-gallery__badge`) es
   visual (`aria-hidden`) y se aparta cuando la miniatura muestra un estado.
@@ -640,7 +642,11 @@ interface PhotoGalleryProps {
   `orki-gallery__state` abajo): preparando (hueco con el texto), subiendo
   (texto y `orki-gallery__bar`), guardada, y error (`color-danger` sobre
   `color-danger-soft`, la foto atenuada y `orki-gallery__retry`, «Reintentar
-  foto 2 de 3»).
+  foto 2 de 3»). En escritorio el estado va sobre el borde inferior de la
+  miniatura (preparando la cubre entera); hasta 720 px va en una franja bajo
+  ella, a todo el ancho, para que se lea entero y no se solape con quitar ni
+  con «Principal». El hueco sin imagen también lleva `orki-gallery__photo`.
+  En «Subiendo… 40 %» hay un espacio duro antes de «%».
 - Acciones: «Tomar foto» (`camera`) y «Elegir fotos» (`image`), botones
   secundarios en `orki-gallery__actions` (columnas automáticas). Llena, las dos
   quedan con `aria-disabled` y su descripción es el motivo, que sustituye a la
