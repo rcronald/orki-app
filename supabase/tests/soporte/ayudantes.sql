@@ -149,11 +149,15 @@ $$;
 
 -- Atajos para los datos de partida -------------------------------------------------------
 
--- Id de un género por nombre (sin distinguir mayúsculas); falla si no existe.
+-- Id de un género por nombre (sin distinguir mayúsculas); falla si no existe. Las dos son
+-- security definer (como el dueño de las tablas) para poder usarlas también con "set local role
+-- anon", que desde #231 no lee las tablas del catálogo.
 create function pruebas.genero(nombre text)
 returns uuid
 language plpgsql
 stable
+security definer
+set search_path = ''
 as $$
 declare
   resultado uuid;
@@ -171,6 +175,8 @@ create function pruebas.especie(nombre text)
 returns uuid
 language plpgsql
 stable
+security definer
+set search_path = ''
 as $$
 declare
   resultado uuid;
@@ -249,9 +255,55 @@ begin
 end;
 $$;
 
+-- Patrón de lectura pública del catálogo (#231, ver "Catálogo público" en supabase/README.md):
+-- una función security definer que pueden ejecutar anon y authenticated sin guardián, porque
+-- solo lee el catálogo. Por qué no la incumple, o null si la cumple:
+--   - language sql con cuerpo estándar (begin atomic): Postgres registra en pg_depend las
+--     tablas y funciones que usa (con un cuerpo entre $$, prosqlbody es null y no registra nada);
+--   - no volatile: Postgres no deja escribir a una función stable o immutable;
+--   - search_path vacío;
+--   - solo depende de las cuatro tablas del catálogo y de normalize_search_text() y
+--     search_species(), que leen solo el catálogo. Cualquier otra tabla, vista o función en
+--     pg_depend la incumple.
+-- A diferencia de la del guardián, esta comprobación no mira el texto: lo que usa la función lo
+-- dice Postgres. Pero no ve dentro de search_species() (plpgsql): si un día leyera otra cosa,
+-- habría que quitarla de la lista.
+create function pruebas.incumple_lectura_publica(funcion oid)
+returns text
+language sql
+stable
+as $$
+  select case
+    when l.lanname <> 'sql' or p.prosqlbody is null then 'no es sql con cuerpo estándar (begin atomic)'
+    when p.provolatile = 'v' then 'es volatile'
+    when not coalesce('search_path=""' = any (p.proconfig), false) then 'sin search_path vacío'
+    else (
+      select 'depende de ' || string_agg(distinct d.objeto, ', ' order by d.objeto)
+      from (
+        select pg_describe_object(dep.refclassid, dep.refobjid, 0) as objeto
+        from pg_depend dep
+        where dep.classid = 'pg_proc'::regclass
+          and dep.objid = p.oid
+          and (
+            (dep.refclassid = 'pg_class'::regclass
+             and dep.refobjid not in ('public.genera'::regclass, 'public.genus_abbreviations'::regclass,
+                                      'public.species'::regclass, 'public.species_names'::regclass))
+            or (dep.refclassid = 'pg_proc'::regclass
+                and dep.refobjid not in ('public.normalize_search_text(text)'::regprocedure,
+                                         'public.search_species(text, integer)'::regprocedure))
+          )
+      ) d
+    )
+  end
+  from pg_proc p
+  join pg_language l on l.oid = p.prolang
+  where p.oid = funcion
+$$;
+
 -- Funciones security definer de public que la API expone sin seguir el patrón, con el motivo,
--- o "ninguna". anon no puede ejecutar ninguna; authenticated, solo las que fijan un search_path
--- vacío y llaman primero al guardián.
+-- o "ninguna". anon solo puede ejecutar las de lectura pública del catálogo; authenticated, esas
+-- y las que fijan un search_path vacío y llaman primero al guardián. Si una función con cuerpo
+-- estándar que anon puede ejecutar incumple el patrón de lectura pública, el motivo lo dice.
 create function pruebas.funciones_definer_expuestas()
 returns text
 language sql
@@ -262,9 +314,12 @@ as $$
     select p.oid::regprocedure::text as funcion, m.motivo
     from pg_proc p
     join pg_language l on l.oid = p.prolang
+    cross join lateral (select pruebas.incumple_lectura_publica(p.oid) as incumple) lp
     cross join lateral (
-      select 'la puede ejecutar anon' as motivo
+      select 'la puede ejecutar anon'
+          || case when p.prosqlbody is not null then ' (' || lp.incumple || ')' else '' end as motivo
       where has_function_privilege('anon', p.oid, 'execute')
+        and lp.incumple is not null
       union all
       select 'la puede ejecutar authenticated sin search_path vacío'
       where has_function_privilege('authenticated', p.oid, 'execute')
@@ -273,6 +328,7 @@ as $$
       select 'la puede ejecutar authenticated sin llamar primero a private.require_catalog_admin()'
       where has_function_privilege('authenticated', p.oid, 'execute')
         and not pruebas.llama_primero_al_guardian(l.lanname, p.prosrc)
+        and lp.incumple is not null
     ) m
     where p.pronamespace = 'public'::regnamespace
       and p.prosecdef

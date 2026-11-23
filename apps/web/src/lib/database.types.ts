@@ -185,8 +185,9 @@ export type Database = {
           updated_at: string
           user_id: string
           validation: Database['public']['Enums']['plant_validation']
+          photo_count: number | null
         }
-        ComputedFields: never
+        ComputedFields: 'photo_count'
         Insert: {
           acquired_on?: string
           created_at?: string
@@ -573,6 +574,22 @@ export type Database = {
         Args: { target_name_id: string }
         Returns: undefined
       }
+      get_public_species: {
+        Args: { target_species_id: string }
+        Returns: {
+          common_name_count: number
+          common_names: Json
+          genus_id: string
+          genus_name: string
+          id: string
+          scientific_name: string
+          source: Database['public']['Enums']['species_source']
+          source_ref: string
+          synonym_count: number
+          synonyms: string[]
+          type: Database['public']['Enums']['species_type']
+        }[]
+      }
       is_catalog_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       is_pending_plant: { Args: { target_plant_id: string }; Returns: boolean }
       is_pending_plant_photo: {
@@ -649,6 +666,32 @@ export type Database = {
           type: Database['public']['Enums']['plant_type']
         }[]
       }
+      list_public_genera: {
+        Args: { page_number?: number; page_size?: number }
+        Returns: {
+          current_page: number
+          id: string
+          name: string
+          species_count: number
+          total_count: number
+        }[]
+      }
+      list_public_genus_species: {
+        Args: {
+          page_number?: number
+          page_size?: number
+          target_genus_id: string
+        }
+        Returns: {
+          current_page: number
+          genus_id: string
+          genus_name: string
+          id: string
+          scientific_name: string
+          total_count: number
+          type: Database['public']['Enums']['species_type']
+        }[]
+      }
       mark_proposal_unidentifiable: {
         Args: { group_genus_id: string; group_name_key: string }
         Returns: {
@@ -668,6 +711,15 @@ export type Database = {
         }[]
       }
       normalize_search_text: { Args: { value: string }; Returns: string }
+      photo_count: {
+        Args: {
+          plant: Omit<
+            Database['public']['Tables']['plants']['Row'],
+            Database['public']['Tables']['plants']['ComputedFields']
+          >
+        }
+        Returns: number
+      }
       preview_species_merge: {
         Args: { kept_species_id: string; merged_species_id: string }
         Returns: {
@@ -693,6 +745,27 @@ export type Database = {
         }[]
       }
       record_product_events: { Args: { events: Json }; Returns: undefined }
+      reorder_plant_photos: {
+        Args: { photo_ids: string[]; target_plant_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          in_bloom: boolean
+          note: string | null
+          photo_path: string
+          plant_id: string
+          position: number
+          taken_at: string | null
+          thumbnail_path: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'plant_photos'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
       search_catalog_species: {
         Args: {
@@ -730,6 +803,18 @@ export type Database = {
           is_quick_access: boolean
           matched_abbreviation: string
           name: string
+        }[]
+      }
+      search_public_species: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          genus_id: string
+          genus_name: string
+          id: string
+          matched_name: string
+          matched_name_type: Database['public']['Enums']['species_match_type']
+          scientific_name: string
+          type: Database['public']['Enums']['species_type']
         }[]
       }
       search_species: {

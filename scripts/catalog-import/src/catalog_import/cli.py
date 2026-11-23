@@ -11,6 +11,9 @@ Uso::
     # Lista curada de híbridos: validación sin conexión y carga (mismo flujo y opciones).
     uv run orki-catalogo validar-hibridos data/hibridos.csv
     uv run orki-catalogo cargar-hibridos data/hibridos.csv --ambiente local|dev|prod [--escribir]
+
+    # Emparejamiento de solo lectura con los taxones de iNaturalist (sin descargar imágenes).
+    uv run orki-catalogo emparejar-inaturalist --catalogo data/hibridos.csv [--genero G]
 """
 
 from __future__ import annotations
@@ -91,6 +94,10 @@ def main(argv: list[str] | None = None) -> int:
         from .hybrids_cli import load_main as load_hybrids_main
 
         return load_hybrids_main(args_list[1:])
+    if args_list[:1] == ['emparejar-inaturalist']:
+        from .inaturalist_cli import main as inaturalist_main
+
+        return inaturalist_main(args_list[1:])
     if args_list[:1] == ['validar-hibridos']:
         from .hybrids_cli import validate_main
 
@@ -102,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             'y muestra un resumen. Solo lectura: no se conecta a ninguna base de datos. '
             'Para cargar el catálogo en la base: orki-catalogo cargar --help. Para la lista '
             'curada de híbridos: orki-catalogo validar-hibridos --help y '
-            'orki-catalogo cargar-hibridos --help.'
+            'orki-catalogo cargar-hibridos --help. Para emparejar con iNaturalist: '
+            'orki-catalogo emparejar-inaturalist --help.'
         ),
     )
     parser.add_argument('archivo', type=Path, help='export.zip de ChecklistBank o su TSV.')

@@ -758,7 +758,11 @@ export interface ProposalGroup extends ProposalGroupKey {
   /** El tipo más frecuente de sus plantas. */
   type: PlantType
   plantCount: number
-  /** Hasta cuatro fotos, de la más reciente a la más antigua. */
+  /**
+   * Hasta seis fotos de las plantas del grupo (#184): primero la principal de
+   * cada planta, de la más reciente a la más antigua; después la segunda de
+   * cada una, y así.
+   */
   photos: ProposalPhoto[]
 }
 
