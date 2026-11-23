@@ -97,12 +97,181 @@ export function esperarFotoDePortadaPrevia(
   })
 }
 
+// Una pulsación que empieza en la portada prerrenderada y termina en la de la
+// app. Al retirarla, el enlace pulsado sale del documento: el navegador ya no
+// dispara el clic, porque el botón se soltó sobre otro elemento (el mismo
+// enlace, pero el de React), y el clic se perdía. Pasaba de verdad: la app
+// sustituye la portada en cuanto llega su chunk, sin mirar si hay un dedo o el
+// ratón encima.
+//
+// seguirPulsacionesEnPortadaPrevia() anota la pulsación sobre un enlace de la
+// prerrenderada; quitarPortadaPrevia() busca su equivalente en la de la app
+// (mismo destino, mismo texto y mismo orden: las dos salen de PublicHome) y,
+// si se suelta sobre él y el navegador no lo pulsa, lo pulsa la app. Si se
+// suelta en otro sitio, nada: igual que en un enlace que no cambia.
+interface Pulsacion {
+  pointerId: number
+  enlace: HTMLAnchorElement
+  /** El enlace de la app que sustituye al pulsado, ya retirada la portada. */
+  sustituto: HTMLAnchorElement | null
+}
+
+interface Seguimiento {
+  pulsacion: Pulsacion | null
+  retirada: boolean
+  terminar: () => void
+}
+
+const seguimientos = new WeakMap<Document, Seguimiento>()
+
+function enlaceDe(objetivo: EventTarget | null): HTMLAnchorElement | null {
+  return objetivo instanceof Element
+    ? objetivo.closest<HTMLAnchorElement>('a[href]')
+    : null
+}
+
+/**
+ * En la portada de la app, el enlace que hace de `enlace` (de la
+ * prerrenderada `contenedor`): mismo destino y texto, en el mismo orden.
+ */
+function enlaceEquivalente(
+  doc: Document,
+  contenedor: Element,
+  enlace: Element,
+): HTMLAnchorElement | null {
+  const igual = (a: Element) =>
+    a.getAttribute('href') === enlace.getAttribute('href') &&
+    a.textContent === enlace.textContent
+  const previos = [...contenedor.querySelectorAll('a[href]')].filter(igual)
+  const raiz = doc.getElementById('root')
+  if (raiz === null) return null
+  const nuevos = [
+    ...raiz.querySelectorAll<HTMLAnchorElement>('a[href]'),
+  ].filter(igual)
+  return nuevos[previos.indexOf(enlace)] ?? null
+}
+
+/** Cuánto se espera un clic del navegador que llega tarde, para no repetirlo. */
+export const ESPERA_CLIC_TARDIO_MS = 1000
+
+/**
+ * Tras soltar sobre `enlace`: con el ratón, el navegador no da el clic (se
+ * pulsó otro elemento); con el dedo, unos lo dan (el clic de un toque va a lo
+ * que haya debajo al levantarlo) y otros no. Si al terminar la tarea del
+ * pointerup no ha llegado, lo da la app; y un clic del navegador que llegue
+ * después se descarta, para no navegar dos veces.
+ */
+function pulsarSiElNavegadorNoLoHace(doc: Document, enlace: HTMLAnchorElement) {
+  let pulsado = false
+  let propio = false
+  const alHacerClic = (clic: Event) => {
+    if (propio || !(clic.target instanceof Node)) return
+    if (!enlace.contains(clic.target)) return
+    if (pulsado) {
+      clic.preventDefault()
+      clic.stopPropagation()
+    }
+    pulsado = true
+  }
+  doc.addEventListener('click', alHacerClic, true)
+  setTimeout(() => {
+    if (!pulsado && enlace.isConnected) {
+      pulsado = true
+      propio = true
+      enlace.click()
+      propio = false
+    }
+    setTimeout(
+      () => doc.removeEventListener('click', alHacerClic, true),
+      ESPERA_CLIC_TARDIO_MS,
+    )
+  }, 0)
+}
+
+/**
+ * Empieza a anotar las pulsaciones sobre los enlaces de la portada
+ * prerrenderada, para que quitarPortadaPrevia() no las pierda. La llama
+ * main.tsx al arrancar; sin portada prerrenderada no hace nada.
+ */
+export function seguirPulsacionesEnPortadaPrevia(
+  doc: Document = document,
+): void {
+  if (seguimientos.has(doc) || doc.getElementById(PORTADA_PREVIA_ID) === null)
+    return
+  const seguimiento: Seguimiento = {
+    pulsacion: null,
+    retirada: false,
+    terminar,
+  }
+  seguimientos.set(doc, seguimiento)
+
+  function alPulsar(evento: PointerEvent) {
+    const enlace = enlaceDe(evento.target)
+    const enLaPrevia =
+      evento.isPrimary &&
+      evento.button === 0 &&
+      enlace !== null &&
+      enlace.closest(`#${PORTADA_PREVIA_ID}`) !== null
+    seguimiento.pulsacion = enLaPrevia
+      ? { pointerId: evento.pointerId, enlace, sustituto: null }
+      : null
+  }
+
+  function alSoltar(evento: PointerEvent) {
+    const pulsacion = seguimiento.pulsacion
+    if (pulsacion === null || evento.pointerId !== pulsacion.pointerId) return
+    seguimiento.pulsacion = null
+    const sustituto = pulsacion.sustituto
+    if (
+      evento.type === 'pointerup' &&
+      sustituto !== null &&
+      enlaceDe(evento.target) === sustituto
+    ) {
+      pulsarSiElNavegadorNoLoHace(doc, sustituto)
+    }
+    if (seguimiento.retirada) terminar()
+  }
+
+  function terminar() {
+    seguimientos.delete(doc)
+    doc.removeEventListener('pointerdown', alPulsar, true)
+    doc.removeEventListener('pointerup', alSoltar, true)
+    doc.removeEventListener('pointercancel', alSoltar, true)
+  }
+
+  doc.addEventListener('pointerdown', alPulsar, true)
+  doc.addEventListener('pointerup', alSoltar, true)
+  doc.addEventListener('pointercancel', alSoltar, true)
+}
+
 /**
  * Retira la portada prerrenderada, si está. La llaman la app al montar sus
- * rutas (en un efecto de diseño: antes del siguiente pintado), la pantalla de
- * fallo y la de configuración inválida.
+ * rutas (en un efecto de diseño: antes del siguiente pintado, con la portada
+ * de la app ya en el documento), la pantalla de fallo y la de configuración
+ * inválida.
+ *
+ * Lo que el usuario tenía entre manos pasa a la portada de la app: el foco,
+ * al enlace equivalente, y una pulsación en curso, como se explica arriba.
  */
 export function quitarPortadaPrevia(doc: Document = document): void {
-  doc.getElementById(PORTADA_PREVIA_ID)?.remove()
+  const contenedor = doc.getElementById(PORTADA_PREVIA_ID)
+  if (contenedor !== null) {
+    const seguimiento = seguimientos.get(doc)
+    const pulsacion = seguimiento?.pulsacion ?? null
+    if (pulsacion !== null && contenedor.contains(pulsacion.enlace)) {
+      pulsacion.sustituto = enlaceEquivalente(doc, contenedor, pulsacion.enlace)
+    }
+    const enfocado = doc.activeElement
+    const conFoco =
+      enfocado !== null && contenedor.contains(enfocado)
+        ? enlaceEquivalente(doc, contenedor, enfocado)
+        : null
+    contenedor.remove()
+    conFoco?.focus({ preventScroll: true })
+    if (seguimiento !== undefined) {
+      seguimiento.retirada = true
+      if (seguimiento.pulsacion === null) seguimiento.terminar()
+    }
+  }
   doc.documentElement.removeAttribute(ATRIBUTO_PORTADA_PREVIA)
 }

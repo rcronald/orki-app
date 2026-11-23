@@ -3,7 +3,9 @@ import {
   ATRIBUTO_PORTADA_PREVIA,
   esperarFotoDePortadaPrevia,
   PORTADA_PREVIA_ID,
+  ESPERA_CLIC_TARDIO_MS,
   quitarPortadaPrevia,
+  seguirPulsacionesEnPortadaPrevia,
 } from './portada-previa.ts'
 
 // Portada prerrenderada (#204): cuándo la app deja de esperar a su foto y
@@ -81,5 +83,101 @@ describe('quitarPortadaPrevia', () => {
 
   it('sin portada prerrenderada no hace nada', () => {
     expect(() => quitarPortadaPrevia()).not.toThrow()
+  })
+})
+
+describe('una interacción en curso al retirar la portada prerrenderada', () => {
+  const PIE =
+    '<a href="/registro">Crear cuenta</a><footer><a href="/privacidad">Privacidad</a><a href="/creditos">Créditos</a></footer>'
+
+  // La prerrenderada y, en #root, la de la app (como en la confirmación en
+  // que AppRouter llama a quitarPortadaPrevia).
+  function dosPortadas() {
+    const previa = document.createElement('div')
+    previa.id = PORTADA_PREVIA_ID
+    previa.innerHTML = PIE
+    const raiz = document.createElement('div')
+    raiz.id = 'root'
+    document.body.append(previa, raiz)
+    seguirPulsacionesEnPortadaPrevia()
+    raiz.innerHTML = PIE
+    const deLaApp = raiz.querySelector<HTMLAnchorElement>(
+      'a[href="/privacidad"]',
+    )!
+    const clics = vi.fn((evento: Event) => evento.preventDefault())
+    deLaApp.addEventListener('click', clics)
+    return {
+      previo: previa.querySelector<HTMLAnchorElement>('a[href="/privacidad"]')!,
+      deLaApp,
+      clics,
+    }
+  }
+
+  function puntero(tipo: string, destino: Element) {
+    destino.dispatchEvent(
+      new PointerEvent(tipo, {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 1,
+        button: 0,
+      }),
+    )
+  }
+
+  it('el foco pasa al mismo enlace de la portada de la app', () => {
+    const { previo, deLaApp } = dosPortadas()
+    previo.focus()
+    quitarPortadaPrevia()
+    expect(deLaApp).toHaveFocus()
+  })
+
+  it('pulsado en la prerrenderada y soltado en la de la app, la app da el clic', async () => {
+    vi.useFakeTimers()
+    const { previo, deLaApp, clics } = dosPortadas()
+    puntero('pointerdown', previo)
+    quitarPortadaPrevia()
+    puntero('pointerup', deLaApp)
+    expect(clics).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clics).toHaveBeenCalledOnce()
+    // Un clic del navegador que llega tarde (el de un toque) no se repite.
+    deLaApp.click()
+    expect(clics).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(ESPERA_CLIC_TARDIO_MS)
+    deLaApp.click()
+    expect(clics).toHaveBeenCalledTimes(2)
+  })
+
+  it('si el navegador da el clic, la app no lo repite', async () => {
+    vi.useFakeTimers()
+    const { previo, deLaApp, clics } = dosPortadas()
+    puntero('pointerdown', previo)
+    quitarPortadaPrevia()
+    puntero('pointerup', deLaApp)
+    deLaApp.click()
+    await vi.advanceTimersByTimeAsync(ESPERA_CLIC_TARDIO_MS)
+    expect(clics).toHaveBeenCalledOnce()
+  })
+
+  it('soltado en otro sitio o cancelado, no hay clic', async () => {
+    vi.useFakeTimers()
+    const { previo, deLaApp, clics } = dosPortadas()
+    puntero('pointerdown', previo)
+    quitarPortadaPrevia()
+    puntero('pointerup', document.body)
+    puntero('pointerdown', deLaApp)
+    puntero('pointerup', deLaApp)
+    await vi.advanceTimersByTimeAsync(ESPERA_CLIC_TARDIO_MS)
+    expect(clics).not.toHaveBeenCalled()
+  })
+
+  it('una pulsación que empieza en la de la app no se toca', async () => {
+    vi.useFakeTimers()
+    const { deLaApp, clics } = dosPortadas()
+    quitarPortadaPrevia()
+    puntero('pointerdown', deLaApp)
+    puntero('pointerup', deLaApp)
+    await vi.advanceTimersByTimeAsync(ESPERA_CLIC_TARDIO_MS)
+    expect(clics).not.toHaveBeenCalled()
   })
 })
