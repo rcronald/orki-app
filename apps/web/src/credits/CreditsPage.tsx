@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { CATALOGUE_OF_LIFE_ATTRIBUTION } from '../backoffice/attribution.ts'
 import { TextPage, type TextPageSection } from '../components/TextPage.tsx'
+import { REFERENCE_LICENSES } from '../lib/referencePhotos.ts'
 
 // Créditos y fuentes (/creditos, #203): lo que la app usa de otros y con qué
 // licencia, con el diseño de página de texto (TextPage). Pública, en su propio
@@ -17,8 +18,11 @@ import { TextPage, type TextPageSection } from '../components/TextPage.tsx'
 //   (SIL Open Font License 1.1, con sus titulares).
 // - Iconos: LICENSE de lucide-react (ISC; los derivados de Feather, MIT).
 //
-// Cuando lleguen las fotos de iNaturalist (#180), sus créditos van aquí, en
-// una sección propia con el autor y la licencia de cada foto.
+// - Fotos de referencia (#234): de iNaturalist, con las cuatro licencias que
+//   acepta la base (species_photos_license_accepted, lib/referencePhotos.ts) y
+//   la decisión del #180 sobre las versiones reducidas de las CC BY-SA. El
+//   autor y la licencia de cada foto van junto a la foto, no aquí. Solo eso:
+//   nada sobre derechos más allá de lo que dicen las licencias.
 
 function External({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -50,6 +54,59 @@ function sections(): TextPageSection[] {
             <span lang="en">Catalogue of Life</span> casi no trae, salen de una
             lista curada por el responsable del proyecto, con los nombres con
             los que se venden.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: 'creditos-referencia',
+      title: 'Fotos de referencia',
+      summary:
+        'Las fotos de referencia de las especies vienen de iNaturalist, cada una con su autor y su licencia.',
+      children: (
+        <>
+          <p>
+            Algunas especies del catálogo tienen una foto de referencia que
+            enseña cómo es la especie. No son fotos de las plantas de ninguna
+            colección. Vienen de{' '}
+            <External href="https://www.inaturalist.org">
+              <span lang="en">iNaturalist</span>
+            </External>{' '}
+            y cada una lleva, junto a la foto, su autor, su licencia y el enlace
+            a la foto original.
+          </p>
+          <p>Solo se usan fotos con una de estas licencias:</p>
+          <ul>
+            <li>
+              <External href={REFERENCE_LICENSES.cc0.url}>
+                {REFERENCE_LICENSES.cc0.label}
+              </External>{' '}
+              (dedicación al dominio público).
+            </li>
+            <li>
+              Fotos en{' '}
+              <External href={REFERENCE_LICENSES.pd.url}>
+                {REFERENCE_LICENSES.pd.label}
+              </External>
+              .
+            </li>
+            <li>
+              <External href={REFERENCE_LICENSES['cc-by'].url}>
+                {REFERENCE_LICENSES['cc-by'].label}
+              </External>{' '}
+              (Atribución).
+            </li>
+            <li>
+              <External href={REFERENCE_LICENSES['cc-by-sa'].url}>
+                {REFERENCE_LICENSES['cc-by-sa'].label}
+              </External>{' '}
+              (Atribución-CompartirIgual).
+            </li>
+          </ul>
+          <p>
+            orqui.app guarda una versión reducida de cada foto, y así lo indica
+            («reducida») junto a ella. Las versiones reducidas de fotos con
+            licencia CC BY-SA se comparten con esa misma licencia.
           </p>
         </>
       ),
@@ -114,7 +171,7 @@ export default function CreditsPage() {
   return (
     <TextPage
       title="Créditos y fuentes"
-      lead="De dónde salen el catálogo, las imágenes, las tipografías y los iconos de orqui.app, y con qué licencia."
+      lead="De dónde salen el catálogo, las fotos de referencia, las imágenes, las tipografías y los iconos de orqui.app, y con qué licencia."
       sections={sections()}
     />
   )

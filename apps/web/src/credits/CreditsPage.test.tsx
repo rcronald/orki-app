@@ -46,11 +46,51 @@ describe('CreditsPage', () => {
       within(toc)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Catálogo de especies', 'Imágenes', 'Tipografías', 'Iconos'])
+    ).toEqual([
+      'Catálogo de especies',
+      'Fotos de referencia',
+      'Imágenes',
+      'Tipografías',
+      'Iconos',
+    ])
     expect(
       screen.getByRole('link', { name: 'Volver al inicio' }),
     ).toHaveAttribute('href', '/')
     await expectNoAxeViolations()
+  })
+
+  it('las fotos de referencia: iNaturalist, sus cuatro licencias y CC BY-SA (#234)', async () => {
+    renderAt('/creditos')
+    await findTitle()
+    const photos = section('Fotos de referencia')
+    expect(
+      within(photos).getByRole('link', { name: /iNaturalist/ }),
+    ).toHaveAttribute('href', 'https://www.inaturalist.org')
+    expect(photos).toHaveTextContent(
+      'cada una lleva, junto a la foto, su autor, su licencia',
+    )
+    for (const [name, href] of [
+      [
+        'CC0 1.0',
+        'https://creativecommons.org/publicdomain/zero/1.0/legalcode.es',
+      ],
+      [
+        'dominio público',
+        'https://creativecommons.org/publicdomain/mark/1.0/deed.es',
+      ],
+      ['CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/legalcode.es'],
+      [
+        'CC BY-SA 4.0',
+        'https://creativecommons.org/licenses/by-sa/4.0/legalcode.es',
+      ],
+    ] as const) {
+      expect(
+        within(photos).getByRole('link', { name: new RegExp(`^${name} `) }),
+      ).toHaveAttribute('href', href)
+    }
+    expect(photos).toHaveTextContent(
+      'Las versiones reducidas de fotos con licencia CC BY-SA se comparten con esa misma licencia.',
+    )
   })
 
   it('también se abre si Clerk no carga', async () => {

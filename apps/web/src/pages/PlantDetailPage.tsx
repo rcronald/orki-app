@@ -28,6 +28,7 @@ import { usePlantLookup } from '../detail/usePlantLookup.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { deletePlantWithPhotos } from '../photos/delete.ts'
 import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
+import { useReferencePhoto } from '../lib/useReferencePhoto.ts'
 import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
 import { updatePlant } from '../registration/save-plant.ts'
 import { PATHS } from '../routes/paths.ts'
@@ -36,7 +37,8 @@ import { PATHS } from '../routes/paths.ts'
 // su propio chunk (App.tsx lo carga de forma diferida). Los datos salen de la
 // colección en memoria (usePlantLookup); las fotos, de plant_photos
 // (usePlantGallery, #183), con la principal de la colección mientras tanto o
-// sin conexión.
+// sin conexión; sin fotos propias, la foto de referencia de su especie
+// (useReferencePhoto, #234).
 //
 // Diseño (#183): la cabecera de pantalla (PageHeader) con «Volver a Mi
 // colección», el nombre como título y el apodo debajo; la galería a la
@@ -235,6 +237,16 @@ function PlantDetailContent({
   actions,
 }: PlantDetailContentProps) {
   const gallery = usePlantGallery(plant, userId)
+  // Sin fotos propias, la foto de referencia de su especie (#234): una
+  // consulta solo aquí, no en la colección (pesaría en «Mi colección» y en
+  // su copia del dispositivo). Con fotos propias no se pide.
+  const reference = useReferencePhoto(
+    plant.species !== null &&
+      plant.photoPath === null &&
+      gallery.photos.length === 0
+      ? plant.species.id
+      : null,
+  )
   const rows = usePlantPhotoRows()
   const owner = userId ?? ''
   const services: PlantGalleryServices = {
@@ -270,6 +282,7 @@ function PlantDetailContent({
           readOnly={readOnly}
           services={services}
           onPlantUpdated={onPlantUpdated}
+          reference={reference}
         />
       }
       actions={actions}

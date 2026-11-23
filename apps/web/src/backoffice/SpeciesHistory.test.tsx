@@ -41,6 +41,7 @@ const SPECIES: CatalogSpeciesDetail = {
   names: [
     { id: 'n1', name: 'orquídea mariposa', type: 'common', language: 'es' },
   ],
+  referencePhoto: null,
 }
 
 function entry(
@@ -247,6 +248,38 @@ describe('Historial de una especie', () => {
     expect(removal).toHaveTextContent('Nombre quitado: «moth orchid»')
 
     await expectNoAxeViolations()
+  })
+
+  it('una foto de referencia retirada, con el motivo y la foto (#234)', async () => {
+    render(
+      <Harness
+        source={sourceWith(() =>
+          Promise.resolve({
+            hasMore: false,
+            entries: [
+              entry(7, {
+                action: 'retire_species_photo',
+                changes: [],
+                details: {
+                  reason: 'author_request',
+                  source_photo_id: '12345',
+                  author_name: 'Ana Pérez',
+                  license: 'cc-by-sa',
+                },
+              }),
+            ],
+          }),
+        )}
+      />,
+    )
+    expect(
+      await within(historySection()).findByText('Foto de referencia retirada'),
+    ).toBeInTheDocument()
+    expect(
+      within(historySection()).getByText(
+        'Motivo: a petición del autor. Foto 12345 de iNaturalist, de Ana Pérez (CC BY-SA 4.0).',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('vacío: sin cambios registrados', async () => {

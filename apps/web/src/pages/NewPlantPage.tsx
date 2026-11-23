@@ -1,3 +1,4 @@
+import { getSpeciesReferencePhoto } from '../lib/referencePhotos.ts'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useCollection } from '../collection/useCollection.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
@@ -34,6 +35,8 @@ const SUPABASE_SERVICES: PlantFormServices = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
+  loadReferencePhoto: (speciesId, options) =>
+    getSpeciesReferencePhoto(speciesId, options),
   savePlant: (insert) => insertPlant(insert),
   // Con la planta ya guardada: sube las fotos y crea sus filas en orden.
   uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),

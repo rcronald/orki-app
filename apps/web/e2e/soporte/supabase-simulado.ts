@@ -6,6 +6,7 @@ import {
   catalogoInicial,
   type Catalogo,
   type Especie,
+  type FotoDeReferencia,
   type Planta,
 } from './datos.ts'
 
@@ -46,6 +47,14 @@ import {
 // token (la app no lo envía nunca). Como en la base desde el #231,
 // search_species y search_genera exigen sesión.
 //
+// Fotos de referencia (#234): species_photos (`datos.fotosDeReferencia`) sale
+// en las funciones públicas (reference_photo y reference_thumbnail), en la
+// tabla con sesión (consulta por clave) y embebida en el detalle de una
+// especie; retire_species_photo la retira (solo el administrador, con sus
+// errores) y la anota en `fotosRetiradas`. El bucket público species-photos
+// responde sin token con dos ilustraciones WebP locales (e2e/soporte), y
+// cada descarga queda en `descargasDeReferencia`.
+//
 // Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
 // 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
 // pida algo nuevo no pasa desapercibido.
@@ -64,6 +73,55 @@ const FIXTURES = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../src/photos/fixtures',
 )
+
+const SOPORTE = path.dirname(fileURLToPath(import.meta.url))
+
+/** Las dos imágenes de las fotos de referencia simuladas (#234). */
+const REFERENCIA = {
+  medium: readFileSync(path.join(SOPORTE, 'foto-de-referencia-media.webp')),
+  thumb: readFileSync(path.join(SOPORTE, 'foto-de-referencia-miniatura.webp')),
+}
+
+/** Columnas de reference_thumbnail (search_public_species y list_public_genus_species). */
+function miniaturaDeReferencia(foto: FotoDeReferencia | undefined) {
+  if (!foto) return null
+  return {
+    thumbnail_path: foto.thumbnail_path,
+    thumbnail_width: foto.thumbnail_width,
+    thumbnail_height: foto.thumbnail_height,
+    author_name: foto.author_name,
+    license: foto.license,
+    source: foto.source,
+    source_url: foto.source_url,
+    is_modified: foto.is_modified,
+  }
+}
+
+/** Columnas de reference_photo (get_public_species). */
+function fotoPublica(foto: FotoDeReferencia | undefined) {
+  if (!foto) return null
+  return {
+    ...miniaturaDeReferencia(foto),
+    medium_path: foto.medium_path,
+    medium_width: foto.medium_width,
+    medium_height: foto.medium_height,
+    attribution: foto.attribution,
+    source_observation_id: foto.source_observation_id,
+    obtained_at: foto.obtained_at,
+  }
+}
+
+/** Solo las columnas pedidas en `select` (sin embebidos ni alias). */
+function columnas(fila: Record<string, unknown>, select: string | null) {
+  if (!select || select.trim() === '*') return fila
+  return Object.fromEntries(
+    select
+      .split(',')
+      .map((columna) => columna.trim())
+      .filter((columna) => columna in fila)
+      .map((columna) => [columna, fila[columna]]),
+  )
+}
 
 interface Identidad {
   usuario: string | null
@@ -265,6 +323,14 @@ export class SupabaseSimulado {
    * token de una sesión: la app las hace siempre sin él.
    */
   readonly llamadasPublicas: { funcion: string; conToken: boolean }[] = []
+  /** Fotos de referencia retiradas con retire_species_photo (#234). */
+  readonly fotosRetiradas: {
+    species_id: string
+    source_photo_id: string
+    reason: string
+  }[] = []
+  /** Descargas de imágenes del bucket público species-photos (#234). */
+  readonly descargasDeReferencia: string[] = []
   /** Subidas cuyo archivo no se pudo leer del cuerpo (se guardó uno de muestra). */
   subidasSinCuerpo = 0
   private reloj = Date.parse('2026-11-21T15:00:00.000Z')
@@ -469,6 +535,21 @@ export class SupabaseSimulado {
         ).length
         return { status: 200, headers: { 'content-range': `*/${total}` } }
       }
+      case 'GET species_photos':
+        // Con sesión, lectura pública como el resto del catálogo; sin ella,
+        // nada (anon solo llega por las funciones públicas).
+        if (yo.usuario === null) return sinPermiso()
+        return filas(
+          this.datos.fotosDeReferencia
+            .filter((f) => coincide(f as unknown as Record<string, unknown>))
+            .map((f) =>
+              columnas(
+                f as unknown as Record<string, unknown>,
+                parametros.get('select'),
+              ),
+            ),
+          cabeceras,
+        )
       case 'GET plants':
       case 'PATCH plants':
       case 'DELETE plants':
@@ -484,10 +565,18 @@ export class SupabaseSimulado {
     }
   }
 
+  /** La foto de referencia de una especie, si tiene. */
+  private fotoDe(especieId: string): FotoDeReferencia | undefined {
+    return this.datos.fotosDeReferencia.find((f) => f.species_id === especieId)
+  }
+
   private detalleDeEspecie(especie: Especie) {
     const genero = this.datos.generos.find((g) => g.id === especie.genus_id)
+    const foto = this.fotoDe(especie.id)
     return {
       ...especie,
+      // Embebida en el detalle del backoffice: uno a uno, objeto o null.
+      species_photos: foto ?? null,
       genera: { name: genero?.name ?? '' },
       species_names: this.datos.nombres
         .filter((n) => n.species_id === especie.id)
@@ -1119,6 +1208,9 @@ export class SupabaseSimulado {
               type: especie.type,
               matched_name: coincidencia,
               matched_name_type: tipo,
+              reference_thumbnail: miniaturaDeReferencia(
+                this.fotoDe(especie.id),
+              ),
             })),
         )
       }
@@ -1165,6 +1257,7 @@ export class SupabaseSimulado {
             genus_name: g.name,
             total_count: especies.length,
             current_page: actual,
+            reference_thumbnail: miniaturaDeReferencia(this.fotoDe(e.id)),
           })),
         )
       }
@@ -1196,6 +1289,7 @@ export class SupabaseSimulado {
               .slice(0, 100)
               .map((n) => ({ name: n.name, language: n.language })),
             common_name_count: comunes.length,
+            reference_photo: fotoPublica(this.fotoDe(especie.id)),
           },
         ])
       }
@@ -1423,6 +1517,8 @@ export class SupabaseSimulado {
       }
       case 'create_catalog_species':
         return json(this.crearEspecie(argumentos, 'curated'))
+      case 'retire_species_photo':
+        return this.retirarFoto(argumentos)
       case 'create_species_from_proposal': {
         const grupo = this.grupoPedido(argumentos)
         if (!grupo) {
@@ -1452,6 +1548,68 @@ export class SupabaseSimulado {
     }
   }
 
+  /**
+   * retire_species_photo (#234): con un motivo válido y la foto que tiene la
+   * especie, la borra y la anota; si no, los errores de la base.
+   */
+  private retirarFoto(argumentos: Record<string, unknown>): Respuesta {
+    const motivos = [
+      'misidentified',
+      'inappropriate',
+      'author_request',
+      'other',
+    ]
+    const motivo = String(argumentos.retire_reason)
+    if (!motivos.includes(motivo)) {
+      return json(
+        {
+          code: '22023',
+          message: 'Elige por qué se retira la foto (simulado)',
+          details: JSON.stringify({ reason: 'reason_required' }),
+          hint: null,
+        },
+        400,
+      )
+    }
+    const especieId = String(argumentos.target_species_id)
+    const foto = this.fotoDe(especieId)
+    if (
+      !foto ||
+      foto.source_photo_id !== String(argumentos.target_source_photo_id)
+    ) {
+      return json(
+        {
+          code: 'P0002',
+          message:
+            'La foto de referencia de esta especie ya no es la que se quería retirar. (simulado)',
+          details: JSON.stringify({
+            reason: 'species_photo_not_found',
+            species_id: especieId,
+            source_photo_id: argumentos.target_source_photo_id,
+            current_source_photo_id: foto?.source_photo_id ?? null,
+          }),
+          hint: null,
+        },
+        404,
+      )
+    }
+    this.datos.fotosDeReferencia = this.datos.fotosDeReferencia.filter(
+      (f) => f !== foto,
+    )
+    this.fotosRetiradas.push({
+      species_id: especieId,
+      source_photo_id: foto.source_photo_id,
+      reason: motivo,
+    })
+    return json([
+      {
+        action_id: crypto.randomUUID(),
+        medium_path: foto.medium_path,
+        thumbnail_path: foto.thumbnail_path,
+      },
+    ])
+  }
+
   // Storage ---------------------------------------------------------------------
 
   private storage(
@@ -1462,6 +1620,25 @@ export class SupabaseSimulado {
   ): Respuesta {
     const errorDeStorage = (status: number, error: string) =>
       json({ statusCode: String(status), error, message: error }, status)
+
+    // Bucket público de las fotos de referencia (#234): sin token, cualquier
+    // ruta <especie>/(medium|thumb)-<id>.webp; los archivos siguen ahí tras
+    // retirar la foto, como en el bucket real.
+    const publica =
+      /^object\/public\/species-photos\/[0-9a-f-]{36}\/(medium|thumb)-[0-9]+\.webp$/.exec(
+        ruta,
+      )
+    if (metodo === 'GET' && publica) {
+      this.descargasDeReferencia.push(ruta)
+      return {
+        status: 200,
+        body: publica[1] === 'medium' ? REFERENCIA.medium : REFERENCIA.thumb,
+        headers: {
+          'content-type': 'image/webp',
+          'cache-control': 'public, max-age=31536000',
+        },
+      }
+    }
     if (yo.usuario === null) return errorDeStorage(401, 'InvalidJWT')
     const propia = (archivo: string) => archivo.startsWith(`${yo.usuario}/`)
     const esAdmin = yo.rol === 'catalog_admin'

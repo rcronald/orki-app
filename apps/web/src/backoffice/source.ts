@@ -26,6 +26,7 @@ import {
   markProposalUnidentifiable,
   mergeCatalogSpecies,
   previewSpeciesMerge,
+  retireSpeciesPhoto,
   setCatalogSpeciesStatus,
   updateCatalogGenus,
   updateCatalogSpecies,
@@ -80,6 +81,8 @@ export interface CatalogAdminSource {
   linkProposal: typeof linkProposalGroup
   createSpeciesFromProposal: typeof createSpeciesFromProposal
   markProposalUnidentifiable: typeof markProposalUnidentifiable
+  /** Retira la foto de referencia de una especie (#234; CatalogWriteError). */
+  retireSpeciesPhoto: typeof retireSpeciesPhoto
   /** De dónde salen las fotos de las propuestas (ver proposalImages abajo). */
   proposalImages: () => PlantImageSource
 }
@@ -127,5 +130,6 @@ export const supabaseCatalogAdminSource: CatalogAdminSource = {
   linkProposal: linkProposalGroup,
   createSpeciesFromProposal,
   markProposalUnidentifiable,
+  retireSpeciesPhoto,
   proposalImages: supabaseProposalImages,
 }

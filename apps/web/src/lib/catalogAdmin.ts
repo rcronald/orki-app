@@ -10,6 +10,11 @@ import type {
   PlantType,
 } from './database.ts'
 import { prepareSearchQuery } from './catalogSearch.ts'
+import {
+  publicPhotoUrl,
+  toReferencePicture,
+  type ReferencePicture,
+} from './referencePhotos.ts'
 import { getSupabase, sessionTokenFailure } from './supabase.ts'
 import type { OrkiSupabaseClient } from './supabase.ts'
 
@@ -146,6 +151,8 @@ export interface CatalogSpeciesDetail {
   updatedAt: string
   /** Sinónimos y nombres comunes, en orden alfabético. */
   names: CatalogSpeciesName[]
+  /** La foto de referencia (#234), con su crédito, o null si no tiene. */
+  referencePhoto: ReferencePicture | null
 }
 
 /** Entradas por página del historial de una especie. La base admite hasta 100. */
@@ -510,8 +517,12 @@ export async function getCatalogSummary({
   return toSummary(row)
 }
 
+// La foto de referencia (#234) va embebida: PostgREST ve species_photos como
+// uno a uno (species_id es única) y devuelve un objeto o null. Mismas columnas
+// que SPECIES_PHOTO_SELECT (lib/referencePhotos.ts), escritas aquí para que
+// el cliente tipado infiera la forma.
 const DETAIL_SELECT =
-  'id, scientific_name, genus_id, type, status, source, source_ref, created_at, updated_at, genera(name), species_names(id, name, type, language)'
+  'id, scientific_name, genus_id, type, status, source, source_ref, created_at, updated_at, genera(name), species_names(id, name, type, language), species_photos(medium_path, medium_width, medium_height, thumbnail_path, thumbnail_width, thumbnail_height, author_name, license, source, source_url, is_modified)'
 
 /**
  * Detalle de una especie, con sus sinónimos y nombres comunes; null si no
@@ -548,6 +559,10 @@ export async function getSpeciesDetail(
         language: name.language,
       }))
       .sort((a, b) => collator.compare(a.name, b.name)),
+    referencePhoto: toReferencePicture(
+      row.species_photos,
+      publicPhotoUrl(supabase),
+    ),
   }
 }
 

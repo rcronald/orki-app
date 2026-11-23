@@ -60,11 +60,63 @@ export interface Planta {
   updated_at: string
 }
 
+/** Una fila de species_photos (#234), con las columnas que lee la app. */
+export interface FotoDeReferencia {
+  species_id: string
+  medium_path: string
+  medium_width: number
+  medium_height: number
+  thumbnail_path: string
+  thumbnail_width: number
+  thumbnail_height: number
+  source: 'inaturalist'
+  source_photo_id: string
+  source_observation_id: string | null
+  source_url: string
+  license: 'cc0' | 'pd' | 'cc-by' | 'cc-by-sa'
+  author_name: string
+  attribution: string
+  is_modified: boolean
+  obtained_at: string
+}
+
 export interface Catalogo {
   generos: Genero[]
   especies: Especie[]
   nombres: NombreDeEspecie[]
   plantas: Planta[]
+  /** Fotos de referencia: una por especie, como mucho. */
+  fotosDeReferencia: FotoDeReferencia[]
+}
+
+/**
+ * La foto de referencia de una especie (las imágenes las sirve el Storage
+ * simulado: una ilustración WebP local, nunca la red).
+ */
+export function fotoDeReferencia(
+  speciesId: string,
+  fotoId: string,
+  datos: Partial<FotoDeReferencia> = {},
+): FotoDeReferencia {
+  return {
+    species_id: speciesId,
+    medium_path: `${speciesId}/medium-${fotoId}.webp`,
+    medium_width: 480,
+    medium_height: 360,
+    thumbnail_path: `${speciesId}/thumb-${fotoId}.webp`,
+    thumbnail_width: 160,
+    thumbnail_height: 120,
+    source: 'inaturalist',
+    source_photo_id: fotoId,
+    source_observation_id: null,
+    source_url: `https://www.inaturalist.org/photos/${fotoId}`,
+    license: 'cc-by',
+    author_name: 'Ana Pérez',
+    attribution: '(c) Ana Pérez, some rights reserved (CC BY)',
+    is_modified: true,
+    obtained_at: '2026-11-23T12:00:00.000Z',
+    ...datos,
+  }
 }
 
 const uuid = (grupo: number, n: number) =>
@@ -226,6 +278,15 @@ export function catalogoInicial(): Catalogo {
         type: 'common',
         language: 'es',
       },
+    ],
+    // Con foto de referencia, dos especies; las demás, sin ella (#234).
+    fotosDeReferencia: [
+      fotoDeReferencia(ESPECIES.phalaenopsisAmabilis, '1001'),
+      fotoDeReferencia(ESPECIES.cattleyaMaxima, '1002', {
+        license: 'cc-by-sa',
+        author_name: 'Luis Quispe',
+        attribution: '(c) Luis Quispe, some rights reserved (CC BY-SA)',
+      }),
     ],
     plantas: [
       planta({

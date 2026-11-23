@@ -85,6 +85,9 @@ export const GALLERY_TEXT = {
   manage: 'Añadir o quitar fotos',
   addPhotos: 'Añadir fotos',
   noPhoto: 'Sin foto',
+  /** Bajo la foto de referencia de su especie, sin fotos propias (#234). */
+  referenceNote:
+    'Aún no tienes fotos de esta planta. Esta es una foto de referencia de su especie, no de tu ejemplar.',
   offline:
     'Sin conexión: cambiar la fecha, la nota o el orden necesita conexión.',
   unverified:

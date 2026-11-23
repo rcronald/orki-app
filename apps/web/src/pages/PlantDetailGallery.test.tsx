@@ -7,6 +7,8 @@ import {
   GALLERY_ERROR_TEXT,
   GALLERY_TEXT,
 } from '../detail/texts.ts'
+import type { ReferencePicture } from '../lib/referencePhotos.ts'
+import { forgetReferencePhotos } from '../lib/useReferencePhoto.ts'
 import { PhotoStorageError } from '../photos/storage.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -18,6 +20,27 @@ import {
 } from '../test/plant-routes.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
+
+// La foto de referencia de la especie (#234), sin red: un doble.
+const loadReference = vi.hoisted(() =>
+  vi.fn<(speciesId: string) => Promise<ReferencePicture | null>>(),
+)
+vi.mock('../lib/referencePhotos.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/referencePhotos.ts')>()),
+  getSpeciesReferencePhoto: loadReference,
+}))
+
+const REFERENCE: ReferencePicture = {
+  medium: { src: '/referencia-media.webp', width: 480, height: 360 },
+  thumbnail: { src: '/referencia-miniatura.webp', width: 160, height: 120 },
+  credit: {
+    author: 'Ana Pérez',
+    license: 'cc-by',
+    sourceUrl: 'https://www.inaturalist.org/photos/12345',
+    modified: true,
+  },
+  sourcePhotoId: '12345',
+}
 
 // Galería del detalle (#183): ver las fotos, el visor, la fecha y la nota,
 // la principal y el orden, sin conexión y con axe.
@@ -89,6 +112,9 @@ const tool = (name: string) => within(gallery()).getByRole('button', { name })
 const status = () => within(gallery()).getByRole('status')
 
 beforeEach(() => {
+  forgetReferencePhotos()
+  loadReference.mockReset()
+  loadReference.mockResolvedValue(null)
   document.documentElement.lang = 'es'
   resetFakeClerk()
   setFakeClerk({ signedIn: true, userId: USER })
@@ -97,6 +123,69 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+})
+
+describe('foto de referencia de la especie (#234)', () => {
+  it('sin fotos propias, la de su especie en lugar del hueco, rotulada y sin contar', async () => {
+    loadReference.mockResolvedValue(REFERENCE)
+    await renderDetail({ photos: 0 })
+    const image = await within(gallery()).findByRole('img', {
+      name: 'Foto de referencia de Phalaenopsis amabilis',
+    })
+    expect(image).toHaveAttribute('src', '/referencia-media.webp')
+    expect(loadReference).toHaveBeenCalledTimes(1)
+    expect(loadReference.mock.calls[0]?.[0]).toBe('species-amabilis')
+    expect(gallery()).toHaveTextContent('Foto de referencia')
+    expect(gallery()).toHaveTextContent(GALLERY_TEXT.referenceNote)
+    expect(gallery()).toHaveTextContent('Foto: Ana Pérez')
+    // Ni principal, ni «N de 6», ni visor, ni herramientas.
+    expect(gallery()).not.toHaveTextContent(/de 6/)
+    expect(gallery()).not.toHaveTextContent('Principal')
+    expect(
+      within(gallery()).queryByRole('button', { name: /^Ver en grande/ }),
+    ).toBeNull()
+    expect(
+      within(gallery()).queryByRole('button', {
+        name: GALLERY_TEXT.editDetails,
+      }),
+    ).toBeNull()
+    expect(
+      within(gallery()).getByRole('link', { name: GALLERY_TEXT.addPhotos }),
+    ).toBeVisible()
+    await expectNoAxeViolations()
+  })
+
+  it('si la imagen no carga, el marcador de siempre', async () => {
+    loadReference.mockResolvedValue(REFERENCE)
+    await renderDetail({ photos: 0 })
+    const image = await within(gallery()).findByRole('img', {
+      name: /Foto de referencia/,
+    })
+    act(() => {
+      image.dispatchEvent(new Event('error'))
+    })
+    expect(
+      within(gallery()).getByRole('img', { name: GALLERY_TEXT.noPhoto }),
+    ).toBeVisible()
+  })
+
+  it('con fotos propias no se pide ni se muestra', async () => {
+    loadReference.mockResolvedValue(REFERENCE)
+    await renderDetail({ photos: 2 })
+    expect(loadReference).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Foto de referencia/)).toBeNull()
+  })
+
+  it('sin especie del catálogo no se pide', async () => {
+    await renderDetail({ photos: 0, base: { ...AMABILIS, species: null } })
+    expect(loadReference).not.toHaveBeenCalled()
+  })
+
+  it('sin conexión no se pide', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    await renderDetail({ photos: 0 })
+    expect(loadReference).not.toHaveBeenCalled()
+  })
 })
 
 describe('galería del detalle', () => {

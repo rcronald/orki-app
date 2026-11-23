@@ -1,3 +1,4 @@
+import { getSpeciesReferencePhoto } from '../lib/referencePhotos.ts'
 import { useRef } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
@@ -44,6 +45,8 @@ const SERVICES: PlantFormBaseServices = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
+  loadReferencePhoto: (speciesId, options) =>
+    getSpeciesReferencePhoto(speciesId, options),
   uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),
 }
 

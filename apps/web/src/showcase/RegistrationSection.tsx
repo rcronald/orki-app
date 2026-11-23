@@ -27,6 +27,8 @@ import {
 } from '../registration/save-plant.ts'
 import { SAMPLE_COLLECTION } from './inventory-data.ts'
 import { Example, Section } from './layout.tsx'
+import type { ReferencePicture } from '../lib/referencePhotos.ts'
+import samplePhoto from './foto-muestra.svg'
 
 // El formulario de registro (/coleccion/nueva) con datos fijos, para revisarlo
 // sin base de datos ni sesión. Guardar no escribe nada: dice qué se enviaría o
@@ -194,6 +196,20 @@ async function searchGenera(
 
 const loadQuickGenera = () => Promise.resolve(QUICK_GENERA)
 
+/** «Así es esta especie» (#234): todas las especies, con la foto de muestra. */
+const loadReferencePhoto = (): Promise<ReferencePicture> =>
+  Promise.resolve({
+    medium: { src: samplePhoto, width: 400, height: 300 },
+    thumbnail: { src: samplePhoto, width: 400, height: 300 },
+    credit: {
+      author: 'Autora de muestra',
+      license: 'cc-by',
+      sourceUrl: 'https://www.inaturalist.org/photos/12345',
+      modified: true,
+    },
+    sourcePhotoId: '12345',
+  })
+
 const OUTCOMES = [
   { id: 'ok', label: 'Guarda bien' },
   { id: 'offline', label: 'Falla sin conexión' },
@@ -271,6 +287,7 @@ export function RegistrationSection() {
     searchSpecies,
     searchGenera,
     loadQuickGenera,
+    loadReferencePhoto,
     savePlant: async (insert) => {
       setLastInsert(insert)
       await delay(DELAY_MS * 2)

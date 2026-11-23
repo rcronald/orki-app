@@ -1,6 +1,7 @@
 import type {
   PlantType,
   SpeciesNameType,
+  SpeciesPhotoRejectionReason,
   SpeciesSource,
   SpeciesStatus,
   SpeciesType,
@@ -136,6 +137,18 @@ const AUDIT_ACTION_LABEL: Partial<Record<string, string>> = {
   link_proposal_group: 'Propuesta de usuarios enlazada',
   create_species_from_proposal: 'Alta desde una propuesta de usuarios',
   mark_proposal_unidentifiable: 'Propuesta marcada como no identificable',
+  retire_species_photo: 'Foto de referencia retirada',
+}
+
+/** Por qué se retiró una foto de referencia (#234), en palabras. */
+export const PHOTO_REJECTION_REASON_LABEL: Record<
+  SpeciesPhotoRejectionReason,
+  string
+> = {
+  misidentified: 'Mal identificada',
+  inappropriate: 'Inapropiada',
+  author_request: 'A petición del autor',
+  other: 'Otro motivo',
 }
 
 /** Una acción con sentido propio en palabras; una desconocida, con su nombre. */

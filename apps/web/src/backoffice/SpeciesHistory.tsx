@@ -17,6 +17,7 @@ import {
   type SpeciesHistoryEntry,
   type SpeciesHistoryPage,
 } from '../lib/catalogAdmin.ts'
+import { REFERENCE_LICENSES } from '../lib/referencePhotos.ts'
 import { LoadError } from './parts.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import {
@@ -27,6 +28,7 @@ import {
   formatCount,
   formatDateTime,
   NAME_TYPE_LABEL,
+  PHOTO_REJECTION_REASON_LABEL,
   rowChangeLabel,
   SOURCE_LABEL,
   STATUS_LABEL,
@@ -271,6 +273,9 @@ function HistoryItem({
       {entry.action === 'merge_species' && (
         <MergeSummary details={entry.details} />
       )}
+      {entry.action === 'retire_species_photo' && (
+        <RetiredPhotoSummary details={entry.details} />
+      )}
       {main && <ChangeValues change={main} genusNames={entry.genusNames} />}
       {rest.length > 0 && (
         <ul className="flex flex-col gap-space-1">
@@ -320,6 +325,35 @@ function MergeSummary({ details }: { details: AuditValues | null }) {
         <ScientificName name={kept} />
       </span>
       »{parts.length > 0 ? ` (${parts.join('; ')}).` : '.'}
+    </p>
+  )
+}
+
+/**
+ * Qué foto se retiró (#234), de los detalles de la acción: «Motivo: mal
+ * identificada. Foto 12345 de Ana Pérez (CC BY 4.0).»
+ */
+function RetiredPhotoSummary({ details }: { details: AuditValues | null }) {
+  const reason = details?.reason
+  const author = details?.author_name
+  const photo = details?.source_photo_id
+  const license = details?.license
+  const reasonText =
+    typeof reason === 'string' && reason in PHOTO_REJECTION_REASON_LABEL
+      ? PHOTO_REJECTION_REASON_LABEL[
+          reason as keyof typeof PHOTO_REJECTION_REASON_LABEL
+        ].toLowerCase()
+      : null
+  const licenseText =
+    typeof license === 'string' && license in REFERENCE_LICENSES
+      ? REFERENCE_LICENSES[license as keyof typeof REFERENCE_LICENSES].label
+      : null
+  if (reasonText === null && typeof photo !== 'string') return null
+  return (
+    <p className="text-sm text-neutral-900 [overflow-wrap:anywhere]">
+      {reasonText !== null && `Motivo: ${reasonText}. `}
+      {typeof photo === 'string' &&
+        `Foto ${photo} de iNaturalist${typeof author === 'string' ? `, de ${author}` : ''}${licenseText ? ` (${licenseText})` : ''}.`}
     </p>
   )
 }
