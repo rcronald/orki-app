@@ -64,20 +64,8 @@ export const PLANT_FORM_TEXT = {
     `Foto añadida: ${String(count)} de ${String(max)}.`,
   photoRemoved: (count: number, max: number, wasMain: boolean) =>
     `Foto quitada: quedan ${String(count)} de ${String(max)}.${wasMain && count > 0 ? ' La siguiente pasa a ser la principal.' : ''}`,
-  /** Al editar: la foto ya guardada se borra al guardar los cambios. */
-  storedPhotoRemoved: (count: number, max: number) =>
-    `Foto quitada: quedan ${String(count)} de ${String(max)}. Se borrará al guardar los cambios.`,
-  storedPhotoRestored: 'Foto recuperada.',
-  storedPhotosPending: (count: number) =>
-    count === 1
-      ? 'Una foto guardada se borrará al guardar los cambios.'
-      : `${String(count)} fotos guardadas se borrarán al guardar los cambios.`,
-  undoRemove: 'Deshacer',
   photoPrepareFailed: (fileName: string, message: string) =>
     `No se pudo preparar «${fileName}». ${message}`,
-  photosLoading: 'Cargando las fotos de la planta…',
-  photosLoadFailed: 'No se pudieron cargar las fotos de la planta.',
-  photosLoadRetry: 'Volver a cargar las fotos',
   /** Lo que ya quedó guardado antes de subir las fotos. */
   savedPrefix: 'Tu orquídea quedó registrada',
   photosUploading: (prefix: string, done: number, total: number) =>
@@ -87,8 +75,6 @@ export const PLANT_FORM_TEXT = {
     labels.length === 1
       ? `${prefix}, pero no se pudo subir ${photoList(labels)}.`
       : `${prefix}, pero no se pudieron subir ${photoCount(labels.length)}: ${photoList(labels)}.`,
-  photosRemoveFailed: (prefix: string, count: number) =>
-    `${prefix}, pero no se ${count === 1 ? 'pudo quitar 1 foto' : `pudieron quitar ${String(count)} fotos`}.`,
   photosCancelled: (prefix: string) =>
     `${prefix}, pero se canceló la subida de las fotos.`,
   photosRetryHint:
@@ -136,35 +122,6 @@ export const PLANT_FORM_TEXT = {
   offline:
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
 } as const
-
-/** Textos del formulario, con las mismas claves para registrar y editar. */
-export type PlantFormTexts = {
-  [Key in keyof typeof PLANT_FORM_TEXT]: (typeof PLANT_FORM_TEXT)[Key] extends (
-    ...args: infer Args
-  ) => string
-    ? (...args: Args) => string
-    : string
-}
-
-/**
- * El mismo formulario al editar una planta (#16). Tras guardar los datos, las
- * fotos quitadas se borran y las nuevas se suben aparte: si eso falla, los
- * cambios ya están guardados.
- */
-export const PLANT_EDIT_TEXT: PlantFormTexts = {
-  ...PLANT_FORM_TEXT,
-  title: 'Editar orquídea',
-  back: 'Volver a la planta',
-  savedPrefix: 'Los cambios quedaron guardados',
-  photosContinueWithout: 'Continuar sin ellas',
-  duplicateAfter: '. Puedes guardarla igualmente.',
-  submit: 'Guardar cambios',
-  submitting: 'Guardando…',
-  confirmDiscard:
-    '¿Salir sin guardar? Se perderán los cambios que hiciste en el formulario.',
-  offline:
-    'Sin conexión. Editar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
-}
 
 /** Avisos propios de la edición. */
 export const PLANT_EDIT_NOTICE_TEXT = {

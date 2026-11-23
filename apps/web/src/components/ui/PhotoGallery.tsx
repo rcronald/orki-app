@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from './Button.tsx'
 import { galleryPhotoLabel } from './gallery-label.ts'
-import { Icon } from './Icon.tsx'
+import { Icon, type IconName } from './Icon.tsx'
 
 /** Estado de una miniatura de la galería. */
 export type GalleryPhotoState =
@@ -42,6 +42,15 @@ export interface PhotoGalleryProps {
   onTakePhoto?: () => void
   /** «Elegir fotos»: abre el selector de archivos con selección múltiple. */
   onChoosePhotos: () => void
+  /** Texto de «Elegir fotos» (la edición, #266: «Añadir fotos»). */
+  chooseLabel?: string
+  /** Icono de «Elegir fotos»; por defecto, image. */
+  chooseIcon?: IconName
+  /**
+   * Más botones tras «Elegir fotos», en la misma fila (la edición, #266:
+   * «Gestionar fotos»). No se desactivan con la galería llena.
+   */
+  extraActions?: ReactNode
   /**
    * Sin añadir ni quitar (guardando, sin conexión). Las acciones quedan con
    * aria-disabled y siguen recibiendo el foco; «Reintentar» sigue activo.
@@ -102,6 +111,9 @@ export function PhotoGallery({
   onRetry,
   onTakePhoto,
   onChoosePhotos,
+  chooseLabel = 'Elegir fotos',
+  chooseIcon = 'image',
+  extraActions,
   disabled = false,
   help,
   notice,
@@ -269,15 +281,16 @@ export function PhotoGallery({
         )}
         <Button
           ref={fallbackRef}
-          icon="image"
+          icon={chooseIcon}
           aria-disabled={blocked || undefined}
           aria-describedby={full ? helpId : undefined}
           onClick={() => {
             if (!blocked) onChoosePhotos()
           }}
         >
-          Elegir fotos
+          {chooseLabel}
         </Button>
+        {extraActions}
       </div>
       <p id={helpId} className="orki-gallery__help">
         {helpText}

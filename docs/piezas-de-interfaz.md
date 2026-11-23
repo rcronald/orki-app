@@ -614,6 +614,9 @@ interface PhotoGalleryProps {
   onRetry?: (id: string) => void // «Reintentar» en las que tienen error
   onTakePhoto?: () => void // «Tomar foto»; sin él, no se muestra
   onChoosePhotos: () => void // «Elegir fotos»
+  chooseLabel?: string // la edición (#266): «Añadir fotos»
+  chooseIcon?: IconName // por defecto image; la edición, plus
+  extraActions?: ReactNode // tras «Elegir fotos» (la edición: «Gestionar fotos»)
   disabled?: boolean // nada que añadir ni quitar (aria-disabled)
   help?: ReactNode // por defecto «Puedes añadir hasta 6 fotos.»
   notice?: ReactNode // aviso bajo el título; describe el recuadro
@@ -652,6 +655,12 @@ interface PhotoGalleryProps {
   quedan con `aria-disabled` y su descripción es el motivo, que sustituye a la
   ayuda: «Ya tienes 6 fotos. Quita una para añadir otra.».
 - Vacía: `orki-gallery__empty`, recuadro discontinuo con `image` y el texto.
+- La edición (#266, `editing/`) la usa con «Añadir fotos» y «Gestionar fotos»
+  (cada uno a todo el ancho, con la utilidad
+  `[&_.orki-gallery\_\_actions]:grid-cols-[minmax(0,1fr)]`, sin reglas nuevas)
+  y sin quitar en las miniaturas: quitar, ordenar, la principal, la fecha y la
+  nota van en «Gestionar fotos» (`editing/PhotoManager.tsx`), un modo del
+  mismo recuadro con una ficha por foto, hecho con utilidades.
 - No sabe de archivos: quien la usa abre sus `<input type="file">`, prepara las
   fotos y anuncia los cambios en su región `role="status"`. «Tomar foto» solo
   donde hay pantalla táctil: `useTouchDevice()` (`photos/useCoarsePointer.ts`).
