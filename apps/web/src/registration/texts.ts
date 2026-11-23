@@ -135,6 +135,36 @@ export const PLANT_FORM_TEXT = {
   flowerColorLabel: 'Color de la flor',
   draftRestored: 'Recuperamos lo que estabas escribiendo.',
   draftDiscard: 'Descartar borrador',
+  /**
+   * Otro borrador guardado mientras se registra uno (#296): «Tu borrador de
+   * Cattleya maxima (2 fotos) sigue guardado.», con «Continuar ese borrador».
+   */
+  otherDraftBefore: 'Tu borrador de ',
+  otherDraftAfter: ' sigue guardado.',
+  otherDraftContinue: 'Continuar ese borrador',
+  /** Un borrador sin nombre (solo fotos u otros datos). */
+  draftUnnamed: 'sin nombre',
+  /** « (2 fotos)» tras el nombre de un borrador; nada sin fotos. */
+  draftPhotos: (count: number) =>
+    count === 0 ? '' : ` (${photoCount(count)})`,
+  /**
+   * Elegir entre un borrador y lo que llega de la ficha del catálogo o de
+   * «¿Ya la tengo?» (#296).
+   */
+  choiceTitle: '¿Qué quieres registrar?',
+  choiceOneBefore: 'Tienes un borrador guardado de ',
+  choiceOneMiddle: '. Puedes continuarlo o registrar ',
+  choiceOneAfter: '; el borrador se conserva hasta que lo descartes.',
+  choiceFullBefore: 'Tienes dos borradores guardados. Para registrar ',
+  choiceFullAfter: ', continúa uno o descarta uno de ellos.',
+  choiceContinue: 'Continuar borrador',
+  choiceRegister: (name: string) => `Registrar ${name}`,
+  choiceRegisterHint: 'Tu borrador queda guardado para retomarlo después.',
+  choiceRegisterFull:
+    'Ya tienes dos borradores guardados: descarta uno para empezar otro.',
+  choiceDiscard: (name: string) => `Descartar el borrador de ${name}`,
+  /** Anuncio al descartar un borrador desde la elección. */
+  choiceDiscarded: (name: string) => `Borrador de ${name} descartado.`,
   submit: 'Registrar orquídea',
   submitting: 'Registrando…',
   cancel: 'Cancelar',
