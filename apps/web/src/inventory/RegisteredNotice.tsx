@@ -14,7 +14,8 @@ interface RegisteredNoticeProps {
 /**
  * Aviso de confirmación tras registrar una planta, sobre el inventario, con
  * su etiqueta de validación ("Validada" o "Nombre por validar", #12) y
- * "Registrar otra". La región role="status" se pinta vacía y el texto llega
+ * "Registrar otra". El texto pide al menos 240 px: si no caben a su lado, las
+ * acciones bajan a otra línea en vez de aplastarlo (celular). La región role="status" se pinta vacía y el texto llega
  * en el pintado siguiente: un lector de pantalla anuncia un cambio dentro de
  * una región ya presente, no una región que aparece con su contenido.
  */
@@ -29,12 +30,12 @@ export function RegisteredNotice({ plant, onDismiss }: RegisteredNoticeProps) {
     <div role="status">
       {visible && (
         <div className="flex flex-wrap items-center gap-space-3 rounded-lg bg-neutral-50 p-space-4">
-          <p className="flex min-w-[0] flex-1 items-start gap-space-2 text-md text-neutral-900">
+          <p className="flex min-w-[0] flex-[1_1_240px] items-start gap-space-2 text-md text-neutral-900">
             <Icon
               name="circle-check"
               className="mt-[2px] size-[20px] flex-none text-success"
             />
-            <span className="[overflow-wrap:anywhere]">
+            <span className="min-w-[0] break-words">
               Registraste{' '}
               {plant.scientific ? (
                 <span className="font-display italic">
@@ -47,7 +48,10 @@ export function RegisteredNotice({ plant, onDismiss }: RegisteredNoticeProps) {
               {plant.status && (
                 <>
                   {' '}
-                  <StatusBadge status={plant.status} className="align-middle" />
+                  <StatusBadge
+                    status={plant.status}
+                    className="align-middle whitespace-nowrap"
+                  />
                 </>
               )}
             </span>
