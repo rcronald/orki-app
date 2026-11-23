@@ -764,6 +764,56 @@ página en el centro, siguiente a la derecha); hasta 720 px, la página arriba a
 todo el ancho y los dos enlaces debajo, cada uno en su mitad. La pantalla lleva
 el foco al título de la lista al cambiar de página.
 
+### Foto de referencia (#234)
+
+`components/ui/ReferencePhoto.tsx`: la foto de iNaturalist que enseña cómo es
+una especie (nunca la planta de nadie). Recibe un `ReferencePicture` de
+`lib/referencePhotos.ts`, con las direcciones públicas ya resueltas y el
+crédito. **No añade CSS al sistema**: se compone con utilidades y el rótulo es
+la píldora `orki-gallery__count`.
+
+```ts
+interface ReferencePhotoProps {
+  picture: ReferencePicture // medium (o null), thumbnail, credit, sourcePhotoId
+  scientificName: string // alt: «Foto de referencia de Cattleya maxima»
+  variant?: 'figure' | 'viewer' | 'compact'
+  title?: ReactNode // solo compact: «Así es esta especie»
+  fallback?: ReactNode // si la imagen no carga; por defecto, nada
+  className?: string
+}
+```
+
+- Siempre rotulada «Foto de referencia» y con su crédito visible
+  (`ReferenceCreditText`): «Foto: autor, licencia[, reducida]. Ver el original
+  en iNaturalist.», con la licencia enlazada a su texto legal en Creative
+  Commons (`REFERENCE_LICENSES`) y los dos enlaces en otra pestaña.
+- `figure` (ficha del catálogo, backoffice): la media (o la miniatura) hasta
+  480 px de ancho (`max-w-[480px]`, `radius-lg`, fondo `color-neutral-50`),
+  el rótulo arriba a la izquierda (`absolute left-space-2 top-space-2`) y el
+  crédito debajo (`text-sm`, `color-neutral-700`).
+- `viewer` (detalle de una planta sin fotos propias): lo mismo dentro del
+  recuadro 4:3 de la galería (`orki-viewer__main` > `orki-viewer__photo`),
+  que no cambia de tamaño al llegar la imagen.
+- `compact` (registro): la miniatura de 88 px a la izquierda y, a la
+  derecha, el título, el rótulo y el crédito, sobre `color-neutral-50`.
+- La imagen lleva `width` y `height`, `loading="lazy"`, `decoding="async"` y
+  `referrerPolicy="no-referrer"`. Si no carga, la pieza se retira entera (o
+  pinta `fallback`).
+- `ReferenceThumb`: la miniatura de 44 px de las filas del catálogo
+  (decorativa, `alt=""`; el crédito va en el texto de la fila con
+  `referenceCreditPlain`, sin enlaces porque la fila ya es uno). Con
+  `reserve`, sin miniatura deja un hueco del mismo tamaño para alinear los
+  nombres. `SpeciesRow` (`catalog/SearchResults.tsx`) la usa con sus props
+  `reference` y `reserve`.
+
+```tsx
+<ReferencePhoto picture={species.reference} scientificName={species.scientificName} />
+<ReferencePhoto picture={picture} scientificName={name} variant="compact" title="Así es esta especie" />
+```
+
+Para pedirla con sesión, `useReferencePhoto(speciesId)` (`lib/useReferencePhoto.ts`):
+una consulta por especie, recordada en memoria; ninguna sin conexión.
+
 ## Galería del detalle y visor (#183)
 
 Para el detalle de una planta (`/coleccion/:id`). En `/muestra`, sección

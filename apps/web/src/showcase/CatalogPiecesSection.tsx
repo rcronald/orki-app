@@ -3,7 +3,24 @@ import { Pager } from '../catalog/Pager.tsx'
 import { ActionList } from '../components/ui/ActionRow.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
+import { SpeciesRow } from '../catalog/SearchResults.tsx'
+import { ReferencePhoto } from '../components/ui/ReferencePhoto.tsx'
+import type { ReferencePicture } from '../lib/referencePhotos.ts'
+import samplePhoto from './foto-muestra.svg'
 import { Example, Section } from './layout.tsx'
+
+/** Una foto de referencia de muestra (la ilustración de la muestra). */
+const REFERENCE: ReferencePicture = {
+  medium: { src: samplePhoto, width: 400, height: 300 },
+  thumbnail: { src: samplePhoto, width: 400, height: 300 },
+  credit: {
+    author: 'Autora de muestra',
+    license: 'cc-by-sa',
+    sourceUrl: 'https://www.inaturalist.org/photos/12345',
+    modified: true,
+  },
+  sourcePhotoId: '12345',
+}
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'G', 'L', 'M', 'O', 'P', 'R', 'V']
 
@@ -62,6 +79,42 @@ export function CatalogPiecesSection() {
             </li>
           ))}
         </ActionList>
+      </Example>
+      <Example
+        title="Foto de referencia (ReferencePhoto, #234)"
+        description="Una foto de iNaturalist que enseña cómo es la especie: siempre con el rótulo «Foto de referencia» y su crédito (autor, licencia enlazada a su texto legal, «reducida» y el original). Sin CSS propio. Si la imagen no carga, se retira."
+      >
+        <div className="flex flex-col gap-space-5">
+          <ReferencePhoto
+            picture={REFERENCE}
+            scientificName="Phalaenopsis amabilis"
+          />
+          <ReferencePhoto
+            picture={REFERENCE}
+            scientificName="Phalaenopsis amabilis"
+            variant="compact"
+            title="Así es esta especie"
+          />
+          <ActionList>
+            <li>
+              <SpeciesRow
+                to="#catalogo-piezas"
+                name="Phalaenopsis amabilis"
+                details={['Phalaenopsis']}
+                reference={REFERENCE}
+                reserve
+              />
+            </li>
+            <li>
+              <SpeciesRow
+                to="#catalogo-piezas"
+                name="Phalaenopsis equestris"
+                details={['Phalaenopsis']}
+                reserve
+              />
+            </li>
+          </ActionList>
+        </div>
       </Example>
       <Example
         title="Paginación (orki-pager)"
