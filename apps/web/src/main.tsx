@@ -6,10 +6,17 @@ import { ConfigError } from './components/ConfigError.tsx'
 import { EnvironmentBadge } from './components/EnvironmentBadge.tsx'
 import { parseEnv } from './config/env.ts'
 import { initSupabase } from './lib/supabase.ts'
-import { quitarPortadaPrevia } from './prerender/portada-previa.ts'
+import {
+  quitarPortadaPrevia,
+  seguirPulsacionesEnPortadaPrevia,
+} from './prerender/portada-previa.ts'
 import { ErrorBoundary } from './observability/ErrorBoundary.tsx'
 import { errorReporter, readRelease } from './observability/reporter.ts'
 import { AppRouter } from './routes/AppRouter.tsx'
+
+// Un enlace de la portada prerrenderada pulsado mientras la app la sustituye
+// no pierde el clic (#204; ver portada-previa.ts).
+seguirPulsacionesEnPortadaPrevia()
 
 const env = parseEnv(import.meta.env)
 const root = createRoot(document.getElementById('root')!)

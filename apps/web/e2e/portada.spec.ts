@@ -298,6 +298,85 @@ test.describe('portada prerrenderada', () => {
     })
   }
 
+  // Lo que el usuario tiene entre manos cuando la app sustituye la portada
+  // prerrenderada pasa a la de la app. Antes, un enlace pulsado en ese
+  // momento perdía el clic: el botón se soltaba sobre el enlace de React,
+  // otro elemento, y el navegador no lo daba (la prueba de la privacidad
+  // desde el pie fallaba así de vez en cuando en el CI).
+  test.describe('al sustituirla con una interacción en curso', () => {
+    async function conLaAppRetenida(page: Page) {
+      let soltar = () => {}
+      const suelto = new Promise<void>((resolver) => {
+        soltar = resolver
+      })
+      await page.route(/\/assets\/App-[\w-]+\.js$/, async (ruta) => {
+        await suelto
+        await ruta.continue()
+      })
+      // Sin el chunk, WebKit no llega a disparar «load».
+      await page.goto('/', { waitUntil: 'domcontentloaded' })
+      await expect(page.locator('#portada-previa')).toHaveCount(1)
+      return soltar
+    }
+
+    const privacidadDelPie = (page: Page) =>
+      page.getByRole('contentinfo').getByRole('link', { name: 'Privacidad' })
+
+    async function pulsarEnLaPrevia(page: Page) {
+      await privacidadDelPie(page).scrollIntoViewIfNeeded()
+      const caja = await privacidadDelPie(page).boundingBox()
+      if (caja === null) throw new Error('El enlace no tiene caja')
+      await page.mouse.move(
+        Math.round(caja.x + caja.width / 2),
+        Math.round(caja.y + caja.height / 2),
+      )
+      await page.mouse.down()
+    }
+
+    test('un enlace pulsado antes y soltado después navega', async ({
+      page,
+    }) => {
+      const soltar = await conLaAppRetenida(page)
+      await pulsarEnLaPrevia(page)
+      soltar()
+      await expect(page.locator('#portada-previa')).toHaveCount(0)
+      await page.mouse.up()
+      await expect(
+        page.getByRole('heading', { name: 'Privacidad', level: 1 }),
+      ).toBeVisible()
+      await expect(page).toHaveURL(/\/privacidad$/)
+      await expect(
+        page.getByRole('link', { name: 'Volver al inicio' }),
+      ).toHaveAttribute('href', '/')
+      // Una sola navegación: volver atrás lleva a la portada.
+      await page.goBack()
+      await expect(page).toHaveURL(/\/$/)
+    })
+
+    test('soltado fuera del enlace, no navega', async ({ page }) => {
+      const soltar = await conLaAppRetenida(page)
+      await pulsarEnLaPrevia(page)
+      soltar()
+      await expect(page.locator('#portada-previa')).toHaveCount(0)
+      await page.mouse.move(10, 10)
+      await page.mouse.up()
+      await expect(
+        page.getByRole('heading', { name: TITULO, level: 1 }),
+      ).toBeVisible()
+      await expect(page).toHaveURL(/\/$/)
+    })
+
+    test('el foco pasa al mismo enlace de la portada de la app', async ({
+      page,
+    }) => {
+      const soltar = await conLaAppRetenida(page)
+      await privacidadDelPie(page).focus()
+      soltar()
+      await expect(page.locator('#portada-previa')).toHaveCount(0)
+      await expect(privacidadDelPie(page)).toBeFocused()
+    })
+  })
+
   test('al llegar la app queda una sola portada, sin volver a pedir la foto', async ({
     page,
   }) => {
