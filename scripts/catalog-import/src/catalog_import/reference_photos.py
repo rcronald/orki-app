@@ -722,8 +722,14 @@ def write_rows(
     audit: LoadAudit,
     extra: dict[str, Any],
     source: dict[str, Any],
+    audit_when_empty: bool = True,
 ) -> WriteResult:
-    """La transacción de la carga. Sin ``write`` hace todo y lo revierte."""
+    """La transacción de la carga. Sin ``write`` hace todo y lo revierte.
+
+    Con ``audit_when_empty`` falso (la carga tuvo errores de subida), si no queda ninguna fila
+    que escribir no se deja la fila de la auditoría y la transacción se revierte: una carga que
+    no escribió nada por culpa de los errores no se registra, como una que falla antes.
+    """
     if conn.autocommit:
         raise LoadError('La conexión no debe estar en autocommit: la carga es una transacción.')
     try:
@@ -741,6 +747,9 @@ def write_rows(
         )
         plan = plan_rows(decisions, read_photo_state(conn))
         action_id = None
+        if write and not audit_when_empty and not plan.ops:
+            conn.rollback()
+            return WriteResult(plan, write, ready, None)
         if ready:
             row = conn.execute(
                 'select private.log_catalog_action(%s, %s::jsonb, null, null, %s)',

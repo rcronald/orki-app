@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -26,8 +27,24 @@ from catalog_import.reference_photos import (
     select_scope,
     stored_attribution,
 )
-from catalog_import.reference_photos_cli import find_orphans
-from catalog_import.species_storage import StoredObject
+from catalog_import.reference_photos_cli import (
+    INCOMPLETE,
+    MAX_SAME_FAILURES,
+    STORAGE_REJECTED,
+    StorageRefused,
+    UploadGuard,
+    cleanup_main,
+    find_orphans,
+    main,
+)
+from catalog_import.species_storage import (
+    StorageAuthError,
+    StorageBucketMissing,
+    StorageConfig,
+    StorageError,
+    StorageUnavailable,
+    StoredObject,
+)
 
 SPECIES = '0f6c1b6e-8b5a-4c3e-9b1a-2d3e4f5a6b7c'
 OTHER = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
@@ -324,3 +341,144 @@ def test_orphans_compare_paths_and_respect_age() -> None:
     )
     assert [o.path for o in old] == ['b/medium-2.webp']
     assert [o.path for o in recent] == ['b/thumb-2.webp', 'c/thumb-3.webp']
+
+
+# Errores de Storage en la carga, sin base -----------------------------------------------------
+
+
+def rejection(path: str, status: int, detail: str) -> StorageError:
+    return StorageError(
+        f'Storage respondió {status} a POST object/{path}: {detail}', status, detail
+    )
+
+
+def test_guard_stops_on_repeated_identical_failures_whatever_the_file() -> None:
+    guard = UploadGuard()
+    decision = run(photo(1, 'cc-by'), [])
+    for i in range(MAX_SAME_FAILURES - 1):
+        guard.failed(decision, rejection(f'{i}/medium.webp', 400, 'Algo del servidor'))
+    with pytest.raises(StorageRefused) as raised:
+        guard.failed(decision, rejection('x/medium.webp', 400, 'Algo del servidor'))
+    assert raised.value.repeated == MAX_SAME_FAILURES
+
+
+def test_guard_lets_isolated_failures_through() -> None:
+    guard = UploadGuard()
+    decision = run(photo(1, 'cc-by'), [])
+    for i in range(3 * MAX_SAME_FAILURES):
+        # Una subida buena entre medias reinicia la cuenta; un mensaje distinto, también.
+        guard.failed(decision, rejection(f'{i}/m.webp', 413, 'Demasiado grande'))
+        if i % 2:
+            guard.succeeded()
+        guard.failed(decision, rejection(f'{i}/t.webp', 415, 'Tipo no admitido'))
+    assert len(guard.failures) == 6 * MAX_SAME_FAILURES
+
+
+@pytest.mark.parametrize('kind', [StorageAuthError, StorageBucketMissing])
+def test_guard_stops_at_once_when_the_key_or_the_bucket_is_wrong(
+    kind: type[StorageError],
+) -> None:
+    with pytest.raises(StorageRefused):
+        UploadGuard().failed(run(photo(1, 'cc-by'), []), kind('Invalid Compact JWS', 400, 'x'))
+
+
+class RefusingStorage:
+    def __init__(self, problem: Exception) -> None:
+        self.problem = problem
+        self.checks = 0
+
+    def factory(self, _config: StorageConfig) -> RefusingStorage:
+        return self
+
+    def check(self) -> None:
+        self.checks += 1
+        raise self.problem
+
+
+@pytest.fixture
+def no_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Una URL de base válida que no se puede usar: conectar hace fallar la prueba."""
+    monkeypatch.setenv('ORKI_CATALOG_DB_URL', 'postgresql://nadie:x@127.0.0.1:1/nada')
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError('No debe conectarse a la base.')
+
+    monkeypatch.setattr('catalog_import.reference_photos_cli.psycopg.connect', refuse)
+
+
+STORAGE_ENV = {
+    'SUPABASE_SECRET_KEY': 'sb_secret_de_prueba',
+    'ORKI_STORAGE_URL': 'http://127.0.0.1:54321',
+}
+
+
+def nothing(_url: str) -> bytes:
+    raise AssertionError('No debe pedir nada a iNaturalist.')
+
+
+@pytest.mark.usefixtures('no_database')
+@pytest.mark.parametrize(
+    ('problem', 'code', 'message'),
+    [
+        (
+            StorageAuthError('x', 400, 'Invalid Compact JWS'),
+            STORAGE_REJECTED,
+            'rechazó la clave (respondió 400: Invalid Compact JWS)',
+        ),
+        (
+            StorageBucketMissing('x', 404, 'Bucket not found'),
+            STORAGE_REJECTED,
+            'no tiene el bucket species-photos',
+        ),
+        (StorageUnavailable('Storage respondió 503 a GET bucket.'), INCOMPLETE, '503'),
+    ],
+)
+def test_load_checks_storage_before_anything_else(
+    problem: Exception,
+    code: int,
+    message: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    storage = RefusingStorage(problem)
+    result = main(
+        ['--ambiente', 'local', '--escribir', '--cache', str(tmp_path / 'c'),
+         '--cache-imagenes', str(tmp_path / 'i'), '--reporte', str(tmp_path / 'r.csv')],
+        fetch=nothing,
+        image_fetch=nothing,
+        storage_factory=storage.factory,
+        environ=STORAGE_ENV,
+    )  # fmt: skip
+    assert (result, storage.checks) == (code, 1)
+    assert not (tmp_path / 'r.csv').exists()
+    err = capsys.readouterr().err
+    assert message in err
+    assert STORAGE_ENV['SUPABASE_SECRET_KEY'] not in err
+
+
+@pytest.mark.usefixtures('no_database')
+def test_simulation_needs_no_key_and_no_check(tmp_path: Path) -> None:
+    def no_storage(_config: StorageConfig) -> RefusingStorage:
+        raise AssertionError('La simulación no debe usar Storage.')
+
+    # Sin base no llega lejos, pero sale por la base, no por Storage.
+    with pytest.raises(AssertionError, match='No debe conectarse a la base'):
+        main(
+            ['--ambiente', 'local', '--cache', str(tmp_path / 'c')],
+            fetch=nothing,
+            image_fetch=nothing,
+            storage_factory=no_storage,
+            environ={},
+        )
+
+
+@pytest.mark.usefixtures('no_database')
+def test_cleanup_checks_the_key_before_reading_the_database(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    storage = RefusingStorage(StorageAuthError('x', 400, 'Invalid Compact JWS'))
+    code = cleanup_main(
+        ['--ambiente', 'local'], storage_factory=storage.factory, environ=STORAGE_ENV
+    )
+    assert code == STORAGE_REJECTED
+    assert 'botón de copiar' in capsys.readouterr().err

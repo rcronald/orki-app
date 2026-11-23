@@ -11,6 +11,8 @@ import pytest
 
 from catalog_import.inaturalist import BACKOFF, NO_RESPONSE, USER_AGENT
 from catalog_import.species_storage import (
+    StorageAuthError,
+    StorageBucketMissing,
     StorageClient,
     StorageConfig,
     StorageConfigError,
@@ -150,3 +152,59 @@ def test_list_walks_the_folders_and_delete_goes_in_batches() -> None:
     client(deleting).delete(f'p/{i}.webp' for i in range(150))
     assert [len(json.loads(c[3] or b'{}')['prefixes']) for c in deleting.calls] == [100, 50]
     assert all(c[0] == 'DELETE' for c in deleting.calls)
+
+
+INVALID_JWS = b'{"statusCode": "403", "error": "Unauthorized", "message": "Invalid Compact JWS"}'
+
+
+def test_check_reads_the_bucket() -> None:
+    send = Send((200, b'{"id": "species-photos", "name": "species-photos", "public": true}'))
+    client(send).check()
+    [(method, url, headers, body)] = send.calls
+    assert (method, body) == ('GET', None)
+    assert url == 'https://ref.supabase.co/storage/v1/bucket/species-photos'
+    assert headers['Authorization'] == f'Bearer {SECRET}'
+
+
+@pytest.mark.parametrize(
+    ('answer', 'kind'),
+    [
+        # Clave de otro proyecto o mal copiada: Storage responde 400 con el 403 en el cuerpo.
+        ((400, INVALID_JWS), StorageAuthError),
+        ((400, b'{"statusCode": "400", "error": "invalid_jwt", "message": "jwt malformed"}'),
+         StorageAuthError),
+        ((401, b'{"message": "Invalid API key"}'), StorageAuthError),
+        ((403, b''), StorageAuthError),
+        ((400, b'{"statusCode": "404", "error": "Bucket not found", "message": "no existe"}'),
+         StorageBucketMissing),
+        ((404, b'{"message": "not found"}'), StorageBucketMissing),
+    ],
+)  # fmt: skip
+def test_check_tells_a_bad_key_from_a_missing_bucket(
+    answer: tuple[int, bytes], kind: type[StorageError]
+) -> None:
+    with pytest.raises(StorageError) as raised:
+        client(Send(answer)).check()
+    assert type(raised.value) is kind
+    assert raised.value.status == answer[0]
+    assert SECRET not in str(raised.value)
+
+
+def test_check_retries_and_then_gives_up() -> None:
+    with pytest.raises(StorageUnavailable):
+        client(Send(*[(503, b'')] * (len(BACKOFF) + 1))).check()
+
+
+def test_upload_rejected_for_the_key_is_an_auth_error_without_the_key() -> None:
+    echoed = json.dumps({'statusCode': '403', 'message': f'bad token {SECRET}'}).encode()
+    with pytest.raises(StorageAuthError) as raised:
+        client(Send((400, echoed))).upload('a/b.webp', b'x')
+    assert SECRET not in str(raised.value)
+    assert raised.value.detail == 'bad token [clave]'
+    with pytest.raises(StorageAuthError, match='Invalid Compact JWS'):
+        client(Send((400, INVALID_JWS))).upload('a/b.webp', b'x')
+    # Un rechazo del archivo no es de la clave.
+    too_big = (413, b'{"message": "The object exceeded the maximum allowed size"}')
+    with pytest.raises(StorageError) as raised:
+        client(Send(too_big)).upload('a/b.webp', b'x')
+    assert type(raised.value) is StorageError
