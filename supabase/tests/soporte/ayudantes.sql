@@ -262,9 +262,12 @@ $$;
 --     tablas y funciones que usa (con un cuerpo entre $$, prosqlbody es null y no registra nada);
 --   - no volatile: Postgres no deja escribir a una función stable o immutable;
 --   - search_path vacío;
---   - solo depende de las cuatro tablas del catálogo y de normalize_search_text() y
+--   - solo depende de las cuatro tablas del catálogo, de species_photos (las fotos de referencia,
+--     #234: imágenes con licencia abierta y su atribución, sin datos de usuarios; las funciones
+--     solo las sacan unidas a una especie pública) y de normalize_search_text() y
 --     search_species(), que leen solo el catálogo. Cualquier otra tabla, vista o función en
---     pg_depend la incumple.
+--     pg_depend la incumple. species_photo_rejections no está en la lista: es información
+--     interna del backoffice.
 -- A diferencia de la del guardián, esta comprobación no mira el texto: lo que usa la función lo
 -- dice Postgres. Pero no ve dentro de search_species() (plpgsql): si un día leyera otra cosa,
 -- habría que quitarla de la lista.
@@ -287,7 +290,8 @@ as $$
           and (
             (dep.refclassid = 'pg_class'::regclass
              and dep.refobjid not in ('public.genera'::regclass, 'public.genus_abbreviations'::regclass,
-                                      'public.species'::regclass, 'public.species_names'::regclass))
+                                      'public.species'::regclass, 'public.species_names'::regclass,
+                                      'public.species_photos'::regclass))
             or (dep.refclassid = 'pg_proc'::regclass
                 and dep.refobjid not in ('public.normalize_search_text(text)'::regprocedure,
                                          'public.search_species(text, integer)'::regprocedure))

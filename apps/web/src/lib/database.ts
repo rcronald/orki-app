@@ -47,6 +47,38 @@ export type CatalogAuditLogRow = Tables<'catalog_audit_log'>
 // La memoria de las fusiones de especies solo se lee: la escribe merge_species().
 export type SpeciesMergeKey = Tables<'species_merge_keys'>
 
+// Fotos de referencia de las especies (#234): una por especie, con licencia abierta. Con sesión
+// se leen de la tabla; nadie las escribe por la API (las escribe la carga) y el administrador
+// solo las retira con retire_species_photo(). Ver «Fotos de referencia» en supabase/README.md.
+
+/** Licencias aceptadas, con los códigos de iNaturalist (restricción species_photos_license_accepted). */
+export const speciesPhotoLicenses = ['cc0', 'pd', 'cc-by', 'cc-by-sa'] as const
+export type SpeciesPhotoLicense = (typeof speciesPhotoLicenses)[number]
+/** Cómo eligió la carga la foto: la foto por defecto del taxón, otra del taxón o una de observación. */
+export type SpeciesPhotoSelection =
+  'taxon_default' | 'taxon_photo' | 'observation'
+/** Por qué se retiró una foto (restricción species_photo_rejections_reason_valid). */
+export type SpeciesPhotoRejectionReason =
+  'misidentified' | 'inappropriate' | 'author_request' | 'other'
+
+/**
+ * Una fila de species_photos. Los tipos generados no saben que license y source_selection son
+ * listas cerradas (son texto con una restricción), así que aquí se precisan.
+ */
+export type SpeciesPhoto = Omit<
+  Tables<'species_photos'>,
+  'license' | 'source_selection'
+> & {
+  license: SpeciesPhotoLicense
+  source_selection: SpeciesPhotoSelection | null
+}
+
+// La memoria de las fotos retiradas solo se lee (solo la ven los administradores).
+export type SpeciesPhotoRejection = Omit<
+  Tables<'species_photo_rejections'>,
+  'reason'
+> & { reason: SpeciesPhotoRejectionReason }
+
 export type Plant = Tables<'plants'>
 export type PlantInsert = TablesInsert<'plants'>
 export type PlantUpdate = TablesUpdate<'plants'>
@@ -81,6 +113,10 @@ export type ProductEventPayload = Omit<
 export type SpeciesHistoryRow =
   Database['public']['Functions']['species_history']['Returns'][number]
 
+/** El resultado de retirar la foto de referencia de una especie (retire_species_photo). */
+export type RetireSpeciesPhotoResult =
+  Database['public']['Functions']['retire_species_photo']['Returns'][number]
+
 /** La vista previa de una fusión de especies (preview_species_merge). */
 export type SpeciesMergePreviewRow =
   Database['public']['Functions']['preview_species_merge']['Returns'][number]
@@ -92,17 +128,57 @@ export type SpeciesMergeResultRow =
 // Catálogo público (#231): las cuatro funciones que pueden llamar los visitantes sin sesión
 // (anon) y los usuarios con sesión. Ver "Catálogo público" en supabase/README.md.
 
+/**
+ * La miniatura de referencia de una especie en la búsqueda y en las especies de un género
+ * (columna reference_thumbnail, #234). Las rutas son del bucket público species-photos, sin el
+ * nombre del bucket (supabase.storage.from('species-photos').getPublicUrl(thumbnail_path)).
+ * Se muestra siempre como foto de referencia, con el autor y la licencia, enlazando a source_url.
+ */
+export type ReferenceThumbnail = {
+  thumbnail_path: string
+  thumbnail_width: number
+  thumbnail_height: number
+  author_name: string
+  license: SpeciesPhotoLicense
+  source: SpeciesPhotoSource
+  /** Página de la foto en la fuente (https://www.inaturalist.org/photos/<id>). */
+  source_url: string
+  /** Si la imagen está adaptada (reducida y convertida): la atribución lo dice. */
+  is_modified: boolean
+}
+
+/** La foto de referencia de la ficha (columna reference_photo de get_public_species, #234). */
+export type ReferencePhoto = ReferenceThumbnail & {
+  medium_path: string
+  medium_width: number
+  medium_height: number
+  /** El texto de atribución que da la fuente («(c) Ana Pérez, some rights reserved (CC BY)»). */
+  attribution: string
+  /** Si la foto salió de una observación de iNaturalist, su id (https://www.inaturalist.org/observations/<id>). */
+  source_observation_id: string | null
+  /** Cuándo la obtuvo la carga (ISO 8601). */
+  obtained_at: string
+}
+
+// Las columnas de la foto (#234) se añadieron al final de tres funciones. Aquí son opcionales,
+// para que el código y los datos de prueba escritos antes sigan compilando sin cambios: la base
+// siempre las devuelve, nulas si la especie no tiene foto.
+
 /** Un resultado de la búsqueda pública (search_public_species): como search_species, sin el estado. */
-export type PublicSpeciesSearchRow =
-  Database['public']['Functions']['search_public_species']['Returns'][number]
+export type PublicSpeciesSearchRow = Omit<
+  Database['public']['Functions']['search_public_species']['Returns'][number],
+  'reference_thumbnail'
+> & { reference_thumbnail?: ReferenceThumbnail | null }
 
 /** Un género con su número de especies públicas, en una página de list_public_genera. */
 export type PublicGenusRow =
   Database['public']['Functions']['list_public_genera']['Returns'][number]
 
 /** Una especie de un género, en una página de list_public_genus_species. */
-export type PublicGenusSpeciesRow =
-  Database['public']['Functions']['list_public_genus_species']['Returns'][number]
+export type PublicGenusSpeciesRow = Omit<
+  Database['public']['Functions']['list_public_genus_species']['Returns'][number],
+  'reference_thumbnail'
+> & { reference_thumbnail?: ReferenceThumbnail | null }
 
 /** Un nombre común de la ficha pública: el idioma es opcional («es», «en», «pt-BR»). */
 export type PublicCommonName = { name: string; language: string | null }
@@ -114,10 +190,11 @@ export type PublicCommonName = { name: string; language: string | null }
  */
 export type PublicSpeciesDetail = Omit<
   Database['public']['Functions']['get_public_species']['Returns'][number],
-  'source_ref' | 'common_names'
+  'source_ref' | 'common_names' | 'reference_photo'
 > & {
   source_ref: string | null
   common_names: PublicCommonName[]
+  reference_photo?: ReferencePhoto | null
 }
 
 // Enumerados ---------------------------------------------------------------------------
@@ -126,6 +203,8 @@ export type SpeciesType = Enums<'species_type'>
 export type SpeciesStatus = Enums<'species_status'>
 export type SpeciesSource = Enums<'species_source'>
 export type SpeciesNameType = Enums<'species_name_type'>
+/** Fuente de una foto de referencia (hoy solo iNaturalist). */
+export type SpeciesPhotoSource = Enums<'species_photo_source'>
 /** Por qué nombre coincidió una especie en la búsqueda: científico, sinónimo o común. */
 export type SpeciesMatchType = Enums<'species_match_type'>
 export type PlantType = Enums<'plant_type'>

@@ -433,6 +433,132 @@ export type Database = {
           },
         ]
       }
+      species_photo_rejections: {
+        Row: {
+          action_id: string
+          author_name: string
+          reason: string
+          rejected_at: string
+          rejected_by: string
+          source: Database['public']['Enums']['species_photo_source']
+          source_photo_id: string
+          source_url: string
+          species_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          action_id: string
+          author_name: string
+          reason: string
+          rejected_at?: string
+          rejected_by: string
+          source: Database['public']['Enums']['species_photo_source']
+          source_photo_id: string
+          source_url: string
+          species_id: string
+        }
+        Update: {
+          action_id?: string
+          author_name?: string
+          reason?: string
+          rejected_at?: string
+          rejected_by?: string
+          source?: Database['public']['Enums']['species_photo_source']
+          source_photo_id?: string
+          source_url?: string
+          species_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'species_photo_rejections_species_id_fkey'
+            columns: ['species_id']
+            isOneToOne: false
+            referencedRelation: 'species'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      species_photos: {
+        Row: {
+          attribution: string
+          author_name: string
+          created_at: string
+          id: string
+          is_modified: boolean
+          license: string
+          medium_height: number
+          medium_path: string
+          medium_width: number
+          obtained_at: string
+          source: Database['public']['Enums']['species_photo_source']
+          source_observation_id: string | null
+          source_photo_id: string
+          source_selection: string | null
+          source_taxon_id: string | null
+          source_url: string
+          species_id: string
+          thumbnail_height: number
+          thumbnail_path: string
+          thumbnail_width: number
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          attribution: string
+          author_name: string
+          created_at?: string
+          id?: string
+          is_modified?: boolean
+          license: string
+          medium_height: number
+          medium_path: string
+          medium_width: number
+          obtained_at: string
+          source: Database['public']['Enums']['species_photo_source']
+          source_observation_id?: string | null
+          source_photo_id: string
+          source_selection?: string | null
+          source_taxon_id?: string | null
+          source_url: string
+          species_id: string
+          thumbnail_height: number
+          thumbnail_path: string
+          thumbnail_width: number
+          updated_at?: string
+        }
+        Update: {
+          attribution?: string
+          author_name?: string
+          created_at?: string
+          id?: string
+          is_modified?: boolean
+          license?: string
+          medium_height?: number
+          medium_path?: string
+          medium_width?: number
+          obtained_at?: string
+          source?: Database['public']['Enums']['species_photo_source']
+          source_observation_id?: string | null
+          source_photo_id?: string
+          source_selection?: string | null
+          source_taxon_id?: string | null
+          source_url?: string
+          species_id?: string
+          thumbnail_height?: number
+          thumbnail_path?: string
+          thumbnail_width?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'species_photos_species_id_fkey'
+            columns: ['species_id']
+            isOneToOne: true
+            referencedRelation: 'species'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -582,6 +708,7 @@ export type Database = {
           genus_id: string
           genus_name: string
           id: string
+          reference_photo: Json
           scientific_name: string
           source: Database['public']['Enums']['species_source']
           source_ref: string
@@ -687,6 +814,7 @@ export type Database = {
           genus_id: string
           genus_name: string
           id: string
+          reference_thumbnail: Json
           scientific_name: string
           total_count: number
           type: Database['public']['Enums']['species_type']
@@ -767,6 +895,18 @@ export type Database = {
         }
       }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
+      retire_species_photo: {
+        Args: {
+          retire_reason: string
+          target_source_photo_id: string
+          target_species_id: string
+        }
+        Returns: {
+          action_id: string
+          medium_path: string
+          thumbnail_path: string
+        }[]
+      }
       search_catalog_species: {
         Args: {
           filter_genus_id?: string
@@ -813,6 +953,7 @@ export type Database = {
           id: string
           matched_name: string
           matched_name_type: Database['public']['Enums']['species_match_type']
+          reference_thumbnail: Json
           scientific_name: string
           type: Database['public']['Enums']['species_type']
         }[]
@@ -953,6 +1094,7 @@ export type Database = {
       product_event_type: 'plant_registered' | 'have_it_search'
       species_match_type: 'scientific' | 'synonym' | 'common'
       species_name_type: 'synonym' | 'common'
+      species_photo_source: 'inaturalist'
       species_source: 'gbif' | 'curated' | 'user_proposal' | 'col'
       species_status: 'imported' | 'validated' | 'observed'
       species_type: 'species' | 'hybrid'
@@ -1088,6 +1230,7 @@ export const Constants = {
       product_event_type: ['plant_registered', 'have_it_search'],
       species_match_type: ['scientific', 'synonym', 'common'],
       species_name_type: ['synonym', 'common'],
+      species_photo_source: ['inaturalist'],
       species_source: ['gbif', 'curated', 'user_proposal', 'col'],
       species_status: ['imported', 'validated', 'observed'],
       species_type: ['species', 'hybrid'],

@@ -4,14 +4,14 @@
 -- orden sobre una base vacía. Estas pruebas comprueban además que el resultado tiene las
 -- piezas que el resto de pruebas y la app dan por hechas.
 
--- prueba: existen las diez tablas del esquema en public
+-- prueba: existen las doce tablas del esquema en public
 select pruebas.iguales(
   'tablas de public',
   (select string_agg(c.relname, ', ' order by c.relname)
      from pg_class c
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')),
   'catalog_audit_log, genera, genus_abbreviations, plant_photos, plants, product_events, profiles, species, species_merge_keys, '
-    || 'species_names'
+    || 'species_names, species_photo_rejections, species_photos'
 );
 
 -- prueba: los enumerados tienen los valores acordados, en orden
@@ -19,6 +19,7 @@ select pruebas.iguales('species_type', enum_range(null::public.species_type)::te
 select pruebas.iguales('species_status', enum_range(null::public.species_status)::text, '{imported,validated,observed}');
 select pruebas.iguales('species_source', enum_range(null::public.species_source)::text, '{gbif,curated,user_proposal,col}');
 select pruebas.iguales('species_name_type', enum_range(null::public.species_name_type)::text, '{synonym,common}');
+select pruebas.iguales('species_photo_source', enum_range(null::public.species_photo_source)::text, '{inaturalist}');
 select pruebas.iguales('species_match_type', enum_range(null::public.species_match_type)::text, '{scientific,synonym,common}');
 select pruebas.iguales('plant_type', enum_range(null::public.plant_type)::text, '{species,hybrid,unknown}');
 select pruebas.iguales('plant_status', enum_range(null::public.plant_status)::text, '{active,lost,gifted}');
@@ -53,7 +54,7 @@ select pruebas.iguales(
     || 'plants.sync_with_species:O, profiles.delete_product_events:O, profiles.set_updated_at:O, species.audit_change:O, '
     || 'species.propagate_to_plants:O, species.set_updated_at:O, '
     || 'species.validate_edited_imported:O, species_names.audit_change:O, '
-    || 'species_names.set_updated_at:O'
+    || 'species_names.set_updated_at:O, species_photos.check_not_rejected:O, species_photos.set_updated_at:O'
 );
 
 -- prueba: las funciones de los disparadores y el guardián de administrador viven en private y fijan un search_path vacío
@@ -69,6 +70,7 @@ select pruebas.iguales(
     || 'check_plant_owner_change definer=true search_path=""; '
     || 'check_plant_photo definer=true search_path=""; '
     || 'check_species_name_free definer=false search_path=""; '
+    || 'check_species_photo_not_rejected definer=false search_path=""; '
     || 'clean_abbreviation definer=false search_path=""; '
     || 'clean_catalog_text definer=false search_path=""; '
     || 'clean_genus_name definer=false search_path=""; '
