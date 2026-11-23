@@ -7,9 +7,12 @@
 //   npm run build:e2e
 //
 // Deja el resultado en apps/web/dist-medicion/e2e, que sirve
-// scripts/servir-e2e.mjs.
+// scripts/servir-e2e.mjs, y a la vez, en paralelo, la «versión B» en
+// apps/web/dist-medicion/e2e-b (#278): el mismo build con un texto de los
+// créditos cambiado, para la prueba de la actualización tras un despliegue
+// (apps/web/e2e/actualizacion.spec.ts; ver apps/web/medicion/version-b.ts).
 
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { entornoDeBuild } from './medicion/entorno.mjs'
@@ -19,14 +22,28 @@ const WEB = path.resolve(
   '../apps/web',
 )
 
-const resultado = spawnSync(
-  'npx',
-  ['vite', 'build', '--config', 'medicion/vite.config.e2e.ts'],
-  {
-    cwd: WEB,
-    env: entornoDeBuild(),
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  },
-)
-process.exitCode = resultado.status ?? 1
+function construir(version) {
+  return new Promise((resolver) => {
+    const proceso = spawn(
+      'npx',
+      ['vite', 'build', '--config', 'medicion/vite.config.e2e.ts'],
+      {
+        cwd: WEB,
+        env: {
+          ...entornoDeBuild(),
+          ...(version !== undefined && { ORKI_E2E_VERSION: version }),
+        },
+        // B en silencio salvo errores: la salida de A es la que se lee.
+        stdio:
+          version === undefined ? 'inherit' : ['ignore', 'ignore', 'inherit'],
+        shell: process.platform === 'win32',
+      },
+    )
+    proceso.on('close', (codigo) => resolver(codigo ?? 1))
+  })
+}
+
+const [a, b] = await Promise.all([construir(), construir('b')])
+if (b !== 0)
+  console.error('Falló el build de la versión B (dist-medicion/e2e-b).')
+process.exitCode = a !== 0 ? a : b

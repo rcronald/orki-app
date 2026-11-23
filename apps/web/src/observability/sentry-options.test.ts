@@ -23,11 +23,13 @@ const SETTINGS = {
 const decoder = new TextDecoder()
 let sent: string[] = []
 let online = true
+let reloading = false
 
 function start() {
   init(
     buildSentryOptions(SETTINGS, {
       isOnline: () => online,
+      isReloadingForUpdate: () => reloading,
       transport: (options) =>
         createTransport(options, (request) => {
           sent.push(
@@ -49,6 +51,7 @@ function sentEvents(): string[] {
 beforeEach(() => {
   sent = []
   online = true
+  reloading = false
   window.history.replaceState(null, '', '/coleccion?q=masdevallia#arriba')
   start()
 })
@@ -119,6 +122,30 @@ describe('evento saliente', () => {
 
   it('con conexión, un fallo de red sí se envía', async () => {
     captureException(new TypeError('Failed to fetch'))
+    await flush(2000)
+
+    expect(sentEvents()).toHaveLength(1)
+  })
+
+  it('un chunk que no llegó mientras la página se recarga por una versión nueva no se envía (#278)', async () => {
+    reloading = true
+
+    captureException(
+      new TypeError(
+        'Failed to fetch dynamically imported module: https://orqui.app/assets/CreditsPage-BJFUgrOu.js',
+      ),
+    )
+    await flush(2000)
+
+    expect(sentEvents()).toEqual([])
+  })
+
+  it('el mismo chunk sin recarga en curso (fallo repetido) sí se envía', async () => {
+    captureException(
+      new TypeError(
+        'Failed to fetch dynamically imported module: https://orqui.app/assets/CreditsPage-BJFUgrOu.js',
+      ),
+    )
     await flush(2000)
 
     expect(sentEvents()).toHaveLength(1)

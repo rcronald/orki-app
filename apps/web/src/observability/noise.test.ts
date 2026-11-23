@@ -4,6 +4,7 @@ import { SessionTokenError } from '../lib/supabase.ts'
 import {
   comesFromBrowserExtension,
   isNoise,
+  isUpdateReload,
   isOfflineFailure,
 } from './noise.ts'
 
@@ -82,5 +83,34 @@ describe('isNoise', () => {
     expect(
       isNoise(eventFrom('chrome-extension://x/a.js'), new Error('x'), true),
     ).toBe(true)
+  })
+})
+
+describe('isUpdateReload', () => {
+  const chunk = new TypeError(
+    'Failed to fetch dynamically imported module: https://orqui.app/assets/CreditsPage-BJFUgrOu.js',
+  )
+
+  it('un chunk que no llegó mientras la página se recarga por una versión nueva es ruido', () => {
+    expect(isUpdateReload(chunk, true)).toBe(true)
+    expect(
+      isNoise(
+        eventFrom('https://orqui.app/assets/index.js'),
+        chunk,
+        true,
+        true,
+      ),
+    ).toBe(true)
+  })
+
+  it('sin recarga en curso (fallo repetido), con conexión, sí se envía', () => {
+    expect(isUpdateReload(chunk, false)).toBe(false)
+    expect(
+      isNoise(eventFrom('https://orqui.app/assets/index.js'), chunk, true),
+    ).toBe(false)
+  })
+
+  it('otro error durante la recarga sí se envía', () => {
+    expect(isUpdateReload(new Error('fallo real'), true)).toBe(false)
   })
 })
