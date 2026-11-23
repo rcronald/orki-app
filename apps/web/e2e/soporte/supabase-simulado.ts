@@ -430,6 +430,9 @@ export class SupabaseSimulado {
       photo_in_bloom: planta.photo_in_bloom,
       photo_path: planta.photo_path,
       thumbnail_path: planta.thumbnail_path,
+      // Identificador y notas (#264): code lo pone la base y no cambia.
+      code: this.codigoDe(planta),
+      notes: planta.notes ?? null,
       // Campo calculado photo_count (#184): las filas de plant_photos.
       photo_count: this.fotos.filter((foto) => foto.plant_id === planta.id)
         .length,
@@ -445,6 +448,43 @@ export class SupabaseSimulado {
         : null,
       genus: { id: genero.id, name: genero.name },
     }
+  }
+
+  /**
+   * Como el disparador tag_code (#264): tres letras del género con el que se
+   * dio de alta y el correlativo por persona y prefijo, por orden de alta. El
+   * prefijo se recuerda al calcularlo la primera vez: cambiar el género
+   * después no lo cambia.
+   */
+  private readonly prefijos = new Map<string, string>()
+  private codigoDe(planta: Planta): string {
+    const prefijoDe = (otra: Planta) => {
+      let prefijo = this.prefijos.get(otra.id)
+      if (prefijo === undefined) {
+        const genero = this.datos.generos.find((g) => g.id === otra.genus_id)
+        prefijo = normalizar(genero?.name ?? '')
+          .replace(/[^a-z]/g, '')
+          .slice(0, 3)
+          .toUpperCase()
+          .padEnd(3, 'X')
+        this.prefijos.set(otra.id, prefijo)
+      }
+      return prefijo
+    }
+    const prefijo = prefijoDe(planta)
+    const numero =
+      this.datos.plantas
+        .filter(
+          (otra) =>
+            otra.user_id === planta.user_id && prefijoDe(otra) === prefijo,
+        )
+        .sort(
+          (a, b) =>
+            a.created_at.localeCompare(b.created_at) ||
+            a.id.localeCompare(b.id),
+        )
+        .findIndex((otra) => otra.id === planta.id) + 1
+    return `${prefijo}-${String(numero).padStart(3, '0')}`
   }
 
   /** Lo que hace el disparador de plants al insertar o cambiar la especie. */

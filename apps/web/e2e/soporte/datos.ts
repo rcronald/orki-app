@@ -56,6 +56,8 @@ export interface Planta {
   photo_in_bloom: boolean
   photo_path: string | null
   thumbnail_path: string | null
+  /** Notas libres (#264); sin la clave, null. */
+  notes?: string | null
   created_at: string
   updated_at: string
 }
