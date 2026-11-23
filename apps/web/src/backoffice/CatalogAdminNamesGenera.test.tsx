@@ -346,22 +346,24 @@ describe('Backoffice: nombres de una especie', () => {
     await waitFor(() =>
       expect(requestsTo('rpc/species_history')).toHaveLength(2),
     )
-    // Las lecturas que salieron tras la escritura, por ruta.
+    // Lo que pudiera salir aún tras el historial.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Las lecturas que salieron tras la escritura, por ruta. Antes del #285,
+    // seis: también el número de propuestas y el de plantas enlazadas, que
+    // un nombre no cambia.
     const reads = fetchMock.mock.calls
       .slice(before)
       .map((call) => requestOf(call).path)
       .filter((path) => path !== 'rpc/add_species_name')
       .sort()
-    expect(reads).toMatchInlineSnapshot(`
-      [
-        "rpc/catalog_summary",
-        "rpc/count_proposal_groups",
-        "rpc/count_species_plants",
-        "rpc/list_catalog_species",
-        "rpc/species_history",
-        "species",
-      ]
-    `)
+    expect(reads).toEqual([
+      'rpc/catalog_summary',
+      'rpc/list_catalog_species',
+      'rpc/species_history',
+      'species',
+    ])
+    // Y lo releído se ve: el nombre nuevo en el detalle.
+    expect(requestsTo('species')).toHaveLength(2)
   })
 
   it('un nombre común con idioma mal escrito: el error va junto al idioma', async () => {
