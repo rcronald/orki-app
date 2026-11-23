@@ -703,6 +703,27 @@ export type Database = {
         }[]
       }
       record_product_events: { Args: { events: Json }; Returns: undefined }
+      reorder_plant_photos: {
+        Args: { photo_ids: string[]; target_plant_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          in_bloom: boolean
+          note: string | null
+          photo_path: string
+          plant_id: string
+          position: number
+          taken_at: string | null
+          thumbnail_path: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'plant_photos'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       requesting_user_id: { Args: Record<PropertyKey, never>; Returns: string }
       search_catalog_species: {
         Args: {

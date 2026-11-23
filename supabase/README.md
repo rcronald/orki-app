@@ -581,6 +581,8 @@ Desde el #182 (parte del #181) cada planta tiene de 0 a 6 fotos en `public.plant
 
 Retirada (#186): cuando ninguna versión instalada de la app lea ni escriba las columnas de foto de `plants`, y la tarjeta del inventario, `list_proposal_groups()` e `is_pending_plant_photo()` lean `plant_photos`, una migración quitará los disparadores de sincronización y las tres columnas.
 
+**Reordenar** (#183): `public.reorder_plant_photos(target_plant_id uuid, photo_ids uuid[])` recibe los ids de todas las fotos de la planta en el orden nuevo y las recoloca con un solo `UPDATE` (la unicidad de la posición es diferible y se comprueba al final de la sentencia); la primera pasa a ser la principal y `sync_plant` la copia a `plants`. Es `security invoker`: valen la RLS y los privilegios por columna. Una lista incompleta, con repetidos o con fotos de otra planta o de otra persona se rechaza con `22023`. Migración `20261124100000_reordenar_fotos.sql`, pruebas en `tests/reordenar_fotos.sql`.
+
 ## Eventos de producto
 
 Los dos eventos con los que se miden los objetivos de la Fase 1 (#24) viven en `public.product_events`, de la migración `20261121170000_eventos_de_producto.sql` (#145), donde están explicadas las decisiones. Los envía la app (#146).
