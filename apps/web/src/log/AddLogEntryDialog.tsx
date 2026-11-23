@@ -303,7 +303,7 @@ export function AddLogEntryDialog({
       initialFocus={() => firstType.current?.focus()}
       onCancel={requestClose}
       overlayClassName="fixed inset-[0] z-50 flex items-center justify-center bg-neutral-900/40 p-space-4 publico-estrecho:p-[0]"
-      panelClassName="relative flex max-h-[100%] w-[100%] max-w-[560px] flex-col gap-space-4 overflow-y-auto rounded-lg bg-neutral-0 p-space-5 shadow-card publico-estrecho:h-[100%] publico-estrecho:max-w-none publico-estrecho:rounded-none publico-estrecho:p-space-4 publico-estrecho:pb-[calc(var(--space-5)_+_env(safe-area-inset-bottom))]"
+      panelClassName="relative flex max-h-[100%] w-[100%] max-w-[560px] flex-col gap-space-4 overflow-y-auto rounded-lg bg-neutral-0 p-space-5 pb-[calc(var(--space-5)_+_env(safe-area-inset-bottom))] shadow-card publico-estrecho:h-[100%] publico-estrecho:max-w-none publico-estrecho:rounded-none"
       titleClassName="flex flex-col gap-space-1 pr-[48px] font-display text-display font-semibold text-neutral-900 publico-estrecho:pr-[0] publico-estrecho:text-xl"
     >
       <button
@@ -495,7 +495,7 @@ export function AddLogEntryDialog({
           <legend className="orki-field__label mb-space-2">
             {LOG_FORM_TEXT.bloom}
           </legend>
-          <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-space-3 publico-estrecho:gap-space-2">
+          <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-space-2">
             {BLOOM_OPTIONS.map((option) => (
               <label
                 key={option.value}

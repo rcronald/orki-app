@@ -49,7 +49,7 @@ function EntryPhoto({ entry }: { entry: LogEntry }) {
       <button
         ref={button}
         type="button"
-        className="orki-viewer__thumb mt-space-2 size-[72px] cursor-pointer overflow-hidden rounded-md bg-neutral-50"
+        className="orki-viewer__thumb mt-space-2 size-[72px]"
         aria-label={LOG_TEXT.openPhoto(entry.title)}
         onClick={() => setOpen(true)}
       >
@@ -109,7 +109,7 @@ export function LogEntryItem({
         ref={articleRef}
         tabIndex={-1}
         aria-labelledby={titleId}
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-space-4 gap-y-space-2 rounded-lg border border-neutral-200 bg-neutral-0 p-space-4 publico-estrecho:grid-cols-[auto_minmax(0,1fr)_auto] publico-estrecho:gap-x-space-3"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-space-4 gap-y-space-2 rounded-lg border border-neutral-200 bg-neutral-0 p-space-4 publico-estrecho:grid-cols-[auto_minmax(0,1fr)_auto]"
       >
         <span className="flex size-[48px] items-center justify-center rounded-pill bg-secondary-soft text-secondary-strong [grid-row:1/span_2] [&_svg]:size-[24px]">
           <Icon name={LOG_TYPE_ICON[entry.type]} />
@@ -137,7 +137,7 @@ export function LogEntryItem({
           )}
           {entry.thumbnailPath !== null && <EntryPhoto entry={entry} />}
         </div>
-        <p className="flex items-center gap-space-2 pt-[2px] text-md whitespace-nowrap text-neutral-900 [grid-column:3] [grid-row:1] publico-estrecho:text-sm publico-estrecho:text-neutral-700 publico-estrecho:[grid-column:2] publico-estrecho:[grid-row:2] [&_svg]:size-[20px] publico-estrecho:[&_svg]:size-[16px]">
+        <p className="flex items-center gap-space-2 pt-[2px] text-md whitespace-nowrap text-neutral-900 [grid-column:3] [grid-row:1] publico-estrecho:text-sm publico-estrecho:text-neutral-700 publico-estrecho:[grid-column:2] publico-estrecho:[grid-row:2] [&_svg]:size-[16px]">
           <Icon name="calendar" />
           <time dateTime={entry.createdAt}>
             {formatLogDateTime(entry.createdAt)}
