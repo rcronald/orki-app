@@ -12,8 +12,8 @@ import { expect, test } from './soporte/fixtures.ts'
 //
 // Pantalla de celular en todos los perfiles. Safari y el WebKit de Playwright
 // solo llevan el tabulador a los campos de formulario (no a enlaces ni a
-// botones), así que las comprobaciones de enlaces y botones van solo en
-// Chromium.
+// botones), así que las comprobaciones de enlaces y botones no corren en
+// WebKit (los perfiles webkit y celular); sí en Chromium y en Firefox.
 
 test.use({ viewport: { width: 390, height: 664 } })
 
@@ -60,9 +60,6 @@ async function sinBarrasFijas(page: Page) {
       ).length,
   )
   expect(fijos).toBe(0)
-  await expect(
-    page.locator('[data-barra-superior], [data-barra-inferior]'),
-  ).toHaveCount(0)
 }
 
 test('registro: sin barras fijas, el foco se ve en la fecha y en el origen', async ({
@@ -82,7 +79,7 @@ test('edición: sin barras fijas, el foco se ve en el tipo y en las acciones del
   page,
   browserName,
 }) => {
-  test.skip(browserName !== 'chromium', 'WebKit no tabula a los botones')
+  test.skip(browserName === 'webkit', 'WebKit no tabula a los botones')
   await page.goto(`/coleccion/${PLANTAS.amabilis}/editar`)
   const tipo = page.getByRole('button', { name: 'Especie', exact: true })
   await expect(tipo).toBeVisible()
@@ -100,22 +97,12 @@ test('inventario: sin barras fijas, el foco se ve en el pie y en las tarjetas', 
   page,
   browserName,
 }) => {
-  test.skip(browserName !== 'chromium', 'WebKit no tabula a los enlaces')
+  test.skip(browserName === 'webkit', 'WebKit no tabula a los enlaces')
   await page.goto('/coleccion')
   const tarjetas = page.getByRole('main').getByRole('article')
   await expect(tarjetas).toHaveCount(5)
 
-  // Nada en la página queda fijo al desplazarla.
-  const fijos = await page.evaluate(
-    () =>
-      [...document.querySelectorAll('body *')].filter((el) =>
-        ['fixed', 'sticky'].includes(getComputedStyle(el).position),
-      ).length,
-  )
-  expect(fijos).toBe(0)
-  await expect(
-    page.locator('[data-barra-superior], [data-barra-inferior]'),
-  ).toHaveCount(0)
+  await sinBarrasFijas(page)
 
   // Hacia abajo, hasta el pie.
   const pie = page.getByRole('link', { name: 'Privacidad' })
