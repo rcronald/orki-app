@@ -3,6 +3,7 @@ import { AccountMenu } from '../auth/AccountMenu.tsx'
 import { AuthNotice } from '../auth/AuthStatus.tsx'
 import { useAppIdentity } from '../auth/useAppIdentity.ts'
 import { useAuthAvailability } from '../auth/useAuthAvailability.ts'
+import { UpdateNotice } from '../pwa/UpdateNotice.tsx'
 import { PATHS } from '../routes/paths.ts'
 import {
   textPageOrigin,
@@ -34,6 +35,8 @@ export function AppShell() {
         Saltar al contenido
       </a>
       <AppHeader />
+      {/* «Hay una versión nueva» (#278), en el flujo: no tapa el foco. */}
+      <UpdateNotice />
       <main
         id="contenido"
         tabIndex={-1}

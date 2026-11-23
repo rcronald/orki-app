@@ -4,7 +4,8 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    // virtual:pwa-register (registro del service worker, src/pwa/actualizacion.ts).
+    "types": ["vite/client", "vite-plugin-pwa/vanillajs"],
     "allowArbitraryExtensions": true,
     // Para leer scripts/catalog-import/fuente.json (atribución del backoffice).
     "resolveJsonModule": true,
