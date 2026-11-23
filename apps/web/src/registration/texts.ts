@@ -32,6 +32,8 @@ export const PLANT_FORM_TEXT = {
   nameHint: 'Busca por nombre científico, sinónimo o nombre común.',
   /** Insignia bajo el nombre con una especie del catálogo elegida (#221). */
   nameMatch: 'Coincidencia en el catálogo',
+  /** Título de la foto de referencia de la especie elegida (#234). */
+  speciesPreview: 'Así es esta especie',
   /** Qué pasará con un nombre que no está en el catálogo (#12). */
   namePendingHint:
     'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',

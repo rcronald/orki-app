@@ -49,6 +49,7 @@ import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { plant } from '../test/collection.ts'
 import { processedPhoto } from '../test/photos.ts'
+import { fakeReferencePhoto } from '../test/public-catalog.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -250,6 +251,11 @@ function respond(...args: FetchArgs): Promise<Response> {
   }
   if (pathname === '/rest/v1/plant_photos') {
     return photoRowsResponder(request)
+  }
+  // La foto de referencia de la especie elegida (#234): solo amabilis tiene.
+  if (pathname === '/rest/v1/species_photos') {
+    const id = request.url.searchParams.get('species_id')?.replace(/^eq\./, '')
+    return json(id === AMABILIS.id ? [fakeReferencePhoto(AMABILIS.id)] : [])
   }
   const storagePath = pathname.match(
     /^\/storage\/v1\/object\/plant-photos\/(.+)$/,
@@ -568,6 +574,40 @@ describe('NewPlantPage', () => {
     )
     expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
     expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('al elegir una especie con foto de referencia, «Así es esta especie» con su crédito (#234)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await chooseAmabilis(user)
+
+    const image = await screen.findByRole('img', {
+      name: 'Foto de referencia de Phalaenopsis amabilis',
+    })
+    expect(image).toHaveAttribute(
+      'src',
+      `https://ejemplo.supabase.co/storage/v1/object/public/species-photos/${AMABILIS.id}/thumb-12345.webp`,
+    )
+    const preview = image.closest('figure') as HTMLElement
+    expect(preview).toHaveTextContent(PLANT_FORM_TEXT.speciesPreview)
+    expect(preview).toHaveTextContent('Foto: Ana Pérez')
+    const lookups = () =>
+      requests().filter((r) => r.url.pathname === '/rest/v1/species_photos')
+    expect(lookups()).toHaveLength(1)
+    await expectNoAxeViolations()
+
+    // Cambiar el nombre desenlaza la especie: la vista se va.
+    await user.type(nameInput(), ' x')
+    expect(screen.queryByText(PLANT_FORM_TEXT.speciesPreview)).toBeNull()
+
+    // Una especie sin foto no enseña nada.
+    await user.clear(nameInput())
+    await user.type(nameInput(), 'wakanki')
+    await user.click(
+      await screen.findByRole('option', { name: /^Masdevallia veitchiana,/ }),
+    )
+    await waitFor(() => expect(lookups()).toHaveLength(2))
+    expect(screen.queryByText(PLANT_FORM_TEXT.speciesPreview)).toBeNull()
   })
 
   it('guardar con especie envía species_id, sin validation ni user_id, y vuelve al inventario con la planta', async () => {
@@ -1091,6 +1131,16 @@ describe('NewPlantPage', () => {
     await screen.findByRole('option', { name: 'Phalaenopsis amabilis' })
     await user.keyboard('{ArrowDown}{Enter}')
     expect(nameInput()).toHaveValue('Phalaenopsis amabilis')
+
+    // Los enlaces del crédito de «Así es esta especie» (#234) van detrás del
+    // nombre.
+    await screen.findByText(PLANT_FORM_TEXT.speciesPreview)
+    await user.tab()
+    expect(screen.getByRole('link', { name: /CC BY 4.0/ })).toHaveFocus()
+    await user.tab()
+    expect(
+      screen.getByRole('link', { name: /Ver el original en iNaturalist/ }),
+    ).toHaveFocus()
 
     // Género y tipo bloqueados siguen en el orden del tabulador.
     await user.tab()

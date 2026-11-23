@@ -95,6 +95,7 @@ import {
   PLANT_TYPE_LABEL,
   type PlantFormTexts,
 } from './texts.ts'
+import { SpeciesPreview, type LoadReferencePhoto } from './SpeciesPreview.tsx'
 import {
   newPhotoEntry,
   storedPhotoEntry,
@@ -122,6 +123,11 @@ export interface PlantFormBaseServices {
   searchGenera: CatalogSearchFunction<GenusSearchResult>
   /** Géneros de acceso rápido; se rechaza con CatalogSearchError. */
   loadQuickGenera: () => Promise<readonly FormGenus[]>
+  /**
+   * La foto de referencia de la especie elegida (#234), para «Así es esta
+   * especie»; sin ella, no se muestra.
+   */
+  loadReferencePhoto?: LoadReferencePhoto
   /**
    * Sube las fotos a la planta ya guardada (uploadPlantPhotos): no duplica
    * las que ya subió un intento anterior.
@@ -1177,6 +1183,17 @@ export function PlantForm(props: PlantFormProps) {
           knownPlants={duplicateCandidates}
           after={text.duplicateAfter}
         />
+        {/*
+          «Así es esta especie» (#234): al elegirla (al editar, solo si cambia).
+        */}
+        {duplicateSpecies !== null && services.loadReferencePhoto && (
+          <SpeciesPreview
+            speciesId={duplicateSpecies.id}
+            scientificName={duplicateSpecies.scientificName}
+            online={online}
+            load={services.loadReferencePhoto}
+          />
+        )}
         {/*
           Al editar, quitar la especie la devuelve a "por validar" (lo hace
           la base): se avisa antes de guardar, en una región ya montada.
