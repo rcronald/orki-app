@@ -413,8 +413,8 @@ select pruebas.iguales(
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "app_role": "catalog_admin"}';
 select * from public.merge_species(pruebas.especie('Doritis pulcherrima'), pruebas.especie('Phalaenopsis pulcherrima'));
-set local role anon;
-set local request.jwt.claims = '{"role": "anon"}';
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
 select pruebas.iguales(
   'Doritis pulcherrima',
   (select r.scientific_name || ' por ' || r.matched_name || ':' || r.matched_name_type
@@ -499,8 +499,8 @@ select pruebas.iguales(
   'Doritis buyssoniana:synonym, Doritis esmeralda:synonym, Doritis pulcherrima:synonym, '
   'Orquidea Joya:common:en, Phalaenopsis esmeralda:synonym, Phalaenopsis pulcherrima:synonym'
 );
-set local role anon;
-set local request.jwt.claims = '{"role": "anon"}';
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
 select pruebas.iguales(
   'la búsqueda del primer nombre absorbido llega a C',
   (select r.scientific_name from public.search_species('Doritis pulcherrima') r limit 1),

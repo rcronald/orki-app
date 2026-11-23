@@ -27,9 +27,13 @@ async function tabularHasta(page: Page, destino: Locator, tecla = 'Tab') {
 }
 
 /**
- * El elemento con el foco está entero dentro de la ventana. Se espera a que
- * lo esté: el navegador lo desplaza a la vista después de darle el foco, y en
- * el WebKit del celular ese desplazamiento puede llegar un momento después.
+ * El elemento con el foco se ve: al menos la mitad de su alto queda dentro de
+ * la ventana. WCAG 2.4.11 pide que no quede tapado del todo por contenido de
+ * la página; sin barras fijas, lo único que puede recortarlo es el borde de
+ * la ventana. No se exige que quepa entero: Firefox y WebKit en Linux no
+ * desplazan la página si el control ya asoma casi completo por abajo (visto
+ * en el CI, #237), y eso no es un fallo de la app. Se espera a que se cumpla
+ * porque el desplazamiento puede llegar un momento después del foco.
  */
 async function focoALaVista(page: Page) {
   await expect
@@ -37,7 +41,10 @@ async function focoALaVista(page: Page) {
       () =>
         page.evaluate(() => {
           const r = document.activeElement?.getBoundingClientRect()
-          return r ? r.top >= 0 && r.bottom <= window.innerHeight : false
+          if (!r || r.height === 0) return false
+          const visible =
+            Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)
+          return visible / r.height >= 0.5
         }),
       { message: 'el control con el foco queda fuera de la vista' },
     )

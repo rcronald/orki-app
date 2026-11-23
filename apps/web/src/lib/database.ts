@@ -89,6 +89,37 @@ export type SpeciesMergePreviewRow =
 export type SpeciesMergeResultRow =
   Database['public']['Functions']['merge_species']['Returns'][number]
 
+// Catálogo público (#231): las cuatro funciones que pueden llamar los visitantes sin sesión
+// (anon) y los usuarios con sesión. Ver "Catálogo público" en supabase/README.md.
+
+/** Un resultado de la búsqueda pública (search_public_species): como search_species, sin el estado. */
+export type PublicSpeciesSearchRow =
+  Database['public']['Functions']['search_public_species']['Returns'][number]
+
+/** Un género con su número de especies públicas, en una página de list_public_genera. */
+export type PublicGenusRow =
+  Database['public']['Functions']['list_public_genera']['Returns'][number]
+
+/** Una especie de un género, en una página de list_public_genus_species. */
+export type PublicGenusSpeciesRow =
+  Database['public']['Functions']['list_public_genus_species']['Returns'][number]
+
+/** Un nombre común de la ficha pública: el idioma es opcional («es», «en», «pt-BR»). */
+export type PublicCommonName = { name: string; language: string | null }
+
+/**
+ * La ficha de una especie (get_public_species). Los tipos generados no saben que source_ref
+ * es nulo salvo en las fuentes externas (col, gbif) ni la forma de common_names (jsonb), así
+ * que aquí se precisan.
+ */
+export type PublicSpeciesDetail = Omit<
+  Database['public']['Functions']['get_public_species']['Returns'][number],
+  'source_ref' | 'common_names'
+> & {
+  source_ref: string | null
+  common_names: PublicCommonName[]
+}
+
 // Enumerados ---------------------------------------------------------------------------
 
 export type SpeciesType = Enums<'species_type'>

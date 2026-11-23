@@ -170,10 +170,14 @@ select pruebas.iguales(
   1::bigint
 );
 
--- prueba: especies: anon busca con abreviaturas
+-- prueba: especies: la búsqueda pública (anon) también expande las abreviaturas
 set local role anon;
 set local request.jwt.claims = '{"role": "anon"}';
-select pruebas.iguales('anon: Phal. amab', pg_temp.primera('Phal. amab'), 'Phalaenopsis amabilis');
+select pruebas.iguales(
+  'anon: Phal. amab',
+  (select s.scientific_name from public.search_public_species('Phal. amab', 1) s),
+  'Phalaenopsis amabilis'
+);
 
 -- prueba: géneros: un error de tipeo encuentra el género
 select pruebas.iguales('masdevalia', (select g.name from public.search_genera('masdevalia', 1) g), 'Masdevallia');
@@ -275,10 +279,14 @@ set local pg_trgm.word_similarity_threshold = 0.95;
 select pruebas.iguales('con umbral 0,95', (select g.name from public.search_genera('masdevalia', 1) g), 'Masdevallia');
 select pruebas.iguales('umbral de la sesión tras la búsqueda', current_setting('pg_trgm.word_similarity_threshold'), '0.95');
 
--- prueba: géneros: anon, authenticated y service_role pueden buscar; PUBLIC no tiene permiso
+-- prueba: géneros: authenticated y service_role pueden buscar; anon (desde #231) y PUBLIC no
 set local role anon;
 set local request.jwt.claims = '{"role": "anon"}';
-select pruebas.iguales('anon', pg_temp.generos('Mps.', 1), 'Miltoniopsis (Mps.)');
+select pruebas.debe_fallar('anon', $$select * from public.search_genera('Mps.', 1)$$, '42501');
+set local role postgres;
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
+select pruebas.iguales('abreviatura', pg_temp.generos('Mps.', 1), 'Miltoniopsis (Mps.)');
 set local role postgres;
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_a", "role": "authenticated"}';
@@ -291,7 +299,7 @@ select pruebas.iguales(
   'permiso de ejecución por rol',
   (select string_agg(r.rol || ':' || has_function_privilege(r.rol, 'public.search_genera(text, integer)', 'execute'), ', ' order by r.rol)
      from (values ('anon'), ('authenticated'), ('service_role')) r (rol)),
-  'anon:true, authenticated:true, service_role:true'
+  'anon:false, authenticated:true, service_role:true'
 );
 select pruebas.iguales(
   'PUBLIC en los permisos de search_genera y search_species',
@@ -303,12 +311,13 @@ select pruebas.iguales(
   0::bigint
 );
 
--- prueba: géneros: anon no lee nada fuera del catálogo a través de la búsqueda
+-- prueba: géneros: la búsqueda no devuelve nada fuera del catálogo
 -- El nombre que un usuario escribe en su planta (entered_name) no es del catálogo.
 insert into public.profiles (id) values ('user_a');
 insert into public.plants (user_id, entered_name, genus_id, type)
 values ('user_a', 'Secretissima rara', pruebas.genero('Vanda'), 'unknown');
-set local role anon;
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "user_b", "role": "authenticated"}';
 select pruebas.iguales('secretissima', pg_temp.generos('secretissima'), 'ninguno');
 select pruebas.iguales(
   'resultados que no son géneros del catálogo',
@@ -330,15 +339,15 @@ select pruebas.iguales(
 -- prueba: las búsquedas usan los índices de genera y de las abreviaturas
 -- Con los recorridos secuenciales desactivados, Postgres usa un índice si la consulta es
 -- indexable (la misma expresión que el índice). Se cuentan los recorridos de cada índice en
--- esta transacción antes y después de buscar como anon.
+-- esta transacción antes y después de buscar como authenticated.
 create temp table recorridos_antes as
   select c.relname::text as indice, pg_stat_get_xact_numscans(c.oid) as recorridos
   from pg_class c
   where c.relname in ('genera_name_trgm_idx', 'genus_abbreviations_search_key');
-grant select on recorridos_antes to anon;
+grant select on recorridos_antes to authenticated;
 set local enable_seqscan = off;
-set local role anon;
-select pruebas.iguales('busca géneros como anon', pg_temp.generos('masdevalia', 1), 'Masdevallia');
+set local role authenticated;
+select pruebas.iguales('busca géneros como authenticated', pg_temp.generos('masdevalia', 1), 'Masdevallia');
 set local role postgres;
 select pruebas.iguales(
   'índices recorridos por search_genera',
@@ -349,9 +358,9 @@ select pruebas.iguales(
 -- search_species resuelve la abreviatura con el mismo índice.
 create temp table recorridos_especies as
   select pg_stat_get_xact_numscans('public.genus_abbreviations_search_key'::regclass) as recorridos;
-grant select on recorridos_especies to anon;
-set local role anon;
-select pruebas.iguales('busca especies como anon', pg_temp.primera('Paph. ins'), 'Paphiopedilum insigne');
+grant select on recorridos_especies to authenticated;
+set local role authenticated;
+select pruebas.iguales('busca especies como authenticated', pg_temp.primera('Paph. ins'), 'Paphiopedilum insigne');
 set local role postgres;
 select pruebas.comprobar(
   'índice de abreviaturas recorrido por search_species',

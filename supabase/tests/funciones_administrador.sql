@@ -244,3 +244,123 @@ as $$
 $$;
 revoke all on function public.prueba_solo_servicio() from public, anon, authenticated;
 select pruebas.iguales('funciones expuestas sin el patrón', pruebas.funciones_definer_expuestas(), 'ninguna');
+
+-- prueba: la regla general acepta una función de lectura pública del catálogo que solo lee el catálogo
+-- Patrón del catálogo público (#231): sql con cuerpo estándar, stable, search_path vacío y
+-- dependencias solo del catálogo, de normalize_search_text() y de search_species().
+-- En estos archivos el "end;" de un cuerpo begin atomic va en la línea de la última sentencia:
+-- el ejecutor de pruebas rechaza una línea que solo dice "end;" (la toma por el fin de la
+-- transacción).
+create function public.prueba_lectura_publica(objetivo uuid)
+returns table (nombre text, sinonimos bigint, encontrada bigint)
+language sql
+stable
+security definer
+set search_path = ''
+begin atomic
+  select s.scientific_name,
+    (select count(*) from public.species_names n where n.species_id = s.id),
+    (select count(*) from public.search_species(s.scientific_name, 1))
+  from public.species s
+  join public.genera g on g.id = s.genus_id
+  where s.id = prueba_lectura_publica.objetivo
+    and public.normalize_search_text(g.name) <> ''; end;
+revoke all on function public.prueba_lectura_publica(uuid) from public, service_role;
+grant execute on function public.prueba_lectura_publica(uuid) to anon, authenticated;
+select pruebas.iguales('funciones expuestas sin el patrón', pruebas.funciones_definer_expuestas(), 'ninguna');
+select pruebas.iguales(
+  'qué incumple la función conforme',
+  coalesce(pruebas.incumple_lectura_publica('public.prueba_lectura_publica(uuid)'::regprocedure), 'nada'),
+  'nada'
+);
+
+-- prueba: la regla general rechaza una función de lectura pública que lee plantas, perfiles u otra función
+create function public.prueba_lectura_de_plantas()
+returns bigint
+language sql
+stable
+security definer
+set search_path = ''
+begin atomic
+  select count(*) from public.species s
+  where exists (select from public.plants p where p.species_id = s.id); end;
+create function public.prueba_lectura_de_perfiles()
+returns bigint
+language sql
+stable
+security definer
+set search_path = ''
+begin atomic
+  select count(*) from public.profiles; end;
+create function public.prueba_lectura_con_funcion()
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+begin atomic
+  select public.requesting_user_id(); end;
+revoke all on function public.prueba_lectura_de_plantas(), public.prueba_lectura_de_perfiles(),
+  public.prueba_lectura_con_funcion() from public, service_role;
+grant execute on function public.prueba_lectura_de_plantas(), public.prueba_lectura_de_perfiles(),
+  public.prueba_lectura_con_funcion() to anon, authenticated;
+select pruebas.iguales(
+  'funciones expuestas sin el patrón',
+  pruebas.funciones_definer_expuestas(),
+  'prueba_lectura_con_funcion(): la puede ejecutar anon (depende de function requesting_user_id()); '
+    || 'prueba_lectura_con_funcion(): la puede ejecutar authenticated sin llamar primero a private.require_catalog_admin(); '
+    || 'prueba_lectura_de_perfiles(): la puede ejecutar anon (depende de table profiles); '
+    || 'prueba_lectura_de_perfiles(): la puede ejecutar authenticated sin llamar primero a private.require_catalog_admin(); '
+    || 'prueba_lectura_de_plantas(): la puede ejecutar anon (depende de table plants); '
+    || 'prueba_lectura_de_plantas(): la puede ejecutar authenticated sin llamar primero a private.require_catalog_admin()'
+);
+
+-- prueba: la regla general rechaza una lectura pública en plpgsql, con el cuerpo como texto, volatile o sin search_path vacío
+-- En plpgsql o con el cuerpo como texto (entre dólares) Postgres no registra lo que usa la
+-- función, así que la regla no puede saber qué lee.
+create function public.prueba_lectura_plpgsql()
+returns bigint
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  return (select count(*) from public.species); end;
+$$;
+create function public.prueba_lectura_entre_dolares()
+returns bigint
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select count(*) from public.species;
+$$;
+create function public.prueba_lectura_volatile()
+returns bigint
+language sql
+volatile
+security definer
+set search_path = ''
+begin atomic
+  select count(*) from public.species; end;
+create function public.prueba_lectura_sin_search_path()
+returns bigint
+language sql
+stable
+security definer
+begin atomic
+  select count(*) from public.species; end;
+revoke all on function public.prueba_lectura_plpgsql(), public.prueba_lectura_entre_dolares(),
+  public.prueba_lectura_volatile(), public.prueba_lectura_sin_search_path() from public, authenticated, service_role;
+grant execute on function public.prueba_lectura_plpgsql(), public.prueba_lectura_entre_dolares(),
+  public.prueba_lectura_volatile(), public.prueba_lectura_sin_search_path() to anon;
+select pruebas.iguales(
+  'funciones expuestas sin el patrón',
+  pruebas.funciones_definer_expuestas(),
+  'prueba_lectura_entre_dolares(): la puede ejecutar anon; '
+    || 'prueba_lectura_plpgsql(): la puede ejecutar anon; '
+    || 'prueba_lectura_sin_search_path(): la puede ejecutar anon (sin search_path vacío); '
+    || 'prueba_lectura_volatile(): la puede ejecutar anon (es volatile)'
+);
