@@ -1,5 +1,4 @@
-import { getSpeciesReferencePhoto } from '../lib/referencePhotos.ts'
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
@@ -9,45 +8,39 @@ import { cameFromDetail } from '../detail/navigation.ts'
 import { leavePlantNotice } from '../detail/notice.ts'
 import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
+import {
+  EditPlantForm,
+  type EditPlantServices,
+} from '../editing/EditPlantForm.tsx'
+import { usePlantExtras } from '../editing/plant-extras.ts'
+import { EDIT_TEXT } from '../editing/texts.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
-import {
-  listPlantPhotos,
-  removeStoredPlantPhoto,
-  uploadPlantPhotos,
-} from '../photos/gallery.ts'
-import {
-  PlantForm,
-  type PlantFormBaseServices,
-} from '../registration/PlantForm.tsx'
+import { getSpeciesReferencePhoto } from '../lib/referencePhotos.ts'
+import { appPhotoStorage } from '../photos/storage.ts'
+import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
+import type { PlantPatch } from '../registration/form-state.ts'
 import { loadQuickAccessGenera } from '../registration/quick-genera.ts'
 import { updatePlant } from '../registration/save-plant.ts'
-import { PLANT_EDIT_TEXT } from '../registration/texts.ts'
 import { plantDetailPath } from '../routes/paths.ts'
 
-// Edición de una planta (#16), en /coleccion/:plantId/editar. Exige sesión y
-// va en su propio chunk, que comparte con el registro el formulario
-// (PlantForm) y su estado: es el mismo formulario, precargado con la planta.
+// Edición de una planta (#16, rediseñada en el #266), en
+// /coleccion/:plantId/editar. Exige sesión y va en su propio chunk. El
+// formulario (editing/EditPlantForm.tsx) reutiliza los campos y la
+// validación del registro; nada se guarda hasta «Guardar cambios» (ver
+// editing/edit-plan.ts).
 //
-// - Sin borrador: los datos ya están en la base; uno propio se mezclaría con
-//   el del registro, que es de una planta nueva.
-// - Se guarda solo lo que cambió (plantPatch), sin validation ni user_id; con
-//   la planta devuelta se actualiza la colección en memoria (upsertPlant).
-// - Las fotos (#221): la galería muestra las guardadas (listPlantPhotos). Las
-//   que se quitan se borran al guardar (removeStoredPlantPhoto; hasta
-//   entonces, "Deshacer" o "Cancelar" las conservan) y las nuevas se suben
-//   después (uploadPlantPhotos), hasta 6 en total.
-// - Al terminar o cancelar se vuelve al detalle: con "atrás" si se llegó
-//   desde él, para no apilar otra entrada en el historial. El enlace de volver
-//   de la cabecera hace lo mismo que "Cancelar" (pregunta si hay cambios).
+// - La cabecera: «Volver a la ficha» (hace lo mismo que «Cancelar»: pregunta
+//   si hay cambios), «Editar planta» y el identificador (CAT-012), que no se
+//   edita y se lee aparte con las notas (editing/plant-extras.ts).
+// - Al terminar o cancelar se vuelve a la ficha: con «atrás» si se llegó
+//   desde ella, para no apilar otra entrada en el historial.
 
-const SERVICES: PlantFormBaseServices = {
+const SEARCH = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
-  loadReferencePhoto: (speciesId, options) =>
-    getSpeciesReferencePhoto(speciesId, options),
-  uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),
+  loadReferencePhoto: getSpeciesReferencePhoto,
 }
 
 export default function EditPlantPage() {
@@ -61,6 +54,19 @@ export default function EditPlantPage() {
   const location = useLocation()
   const fromDetail = cameFromDetail(location.state)
   const cancelRef = useRef<(() => void) | null>(null)
+  const rows = usePlantPhotoRows()
+  const found = lookup.status === 'found' ? lookup.plant : null
+  const [extras, retryExtras] = usePlantExtras(found?.id ?? null, userId)
+  const services = useMemo<EditPlantServices>(
+    () => ({
+      ...SEARCH,
+      rows,
+      storage: appPhotoStorage(),
+      updatePlant: (id: string, patch: PlantPatch) =>
+        updatePlant(id, userId ?? '', patch),
+    }),
+    [rows, userId],
+  )
 
   const backToDetail = (id: string) => {
     if (fromDetail) void navigate(-1)
@@ -70,7 +76,7 @@ export default function EditPlantPage() {
   switch (lookup.status) {
     case 'loading':
       return (
-        <Page title={PLANT_EDIT_TEXT.title}>
+        <Page title={EDIT_TEXT.title}>
           <p role="status" className="text-md text-neutral-700">
             {DETAIL_TEXT.loading}
           </p>
@@ -78,7 +84,7 @@ export default function EditPlantPage() {
       )
     case 'error':
       return (
-        <Page title={PLANT_EDIT_TEXT.title}>
+        <Page title={EDIT_TEXT.title}>
           <LoadErrorPanel error={lookup.error} onRetry={collection.reload} />
         </Page>
       )
@@ -90,42 +96,47 @@ export default function EditPlantPage() {
       )
     case 'found': {
       const { plant } = lookup
-      const owner = userId ?? ''
+      const code = extras.status === 'ready' ? extras.extras.code : null
       return (
         <Page
-          title={PLANT_EDIT_TEXT.title}
+          title={EDIT_TEXT.title}
           width="wide"
           header={{
             art: false,
+            meta:
+              code !== null ? (
+                <>
+                  <span className="sr-only">{EDIT_TEXT.codePrefix} </span>
+                  {code}
+                </>
+              ) : undefined,
             back: (
               <Link
                 to={plantDetailPath(plant.id)}
                 className="orki-link orki-pagehead__back"
+                // Lo gestiona el formulario: es «Cancelar».
+                data-sin-aviso=""
                 onClick={(event) => {
-                  // Como "Cancelar": pregunta antes de perder los cambios.
                   event.preventDefault()
                   cancelRef.current?.()
                 }}
               >
                 <Icon name="arrow-left" />
-                {PLANT_EDIT_TEXT.back}
+                {EDIT_TEXT.back}
               </Link>
             ),
           }}
         >
-          <PlantForm
+          <EditPlantForm
             // Se precarga al montarse: con otra planta, otro formulario.
             key={plant.id}
-            services={SERVICES}
-            editing={{
-              plant,
-              updatePlant: (id, patch) => updatePlant(id, owner, patch),
-              listPhotos: (options) => listPlantPhotos(options),
-              removePhoto: (options) => removeStoredPlantPhoto(options),
-            }}
+            plant={plant}
+            userId={userId}
+            extras={extras}
+            onRetryExtras={retryExtras}
+            services={services}
             online={online}
             knownPlants={status === 'loading' ? null : plants}
-            draftUserId={userId}
             onPlantStored={upsertPlant}
             cancelRef={cancelRef}
             onSaved={(saved: CollectionPlant, { changed }) => {

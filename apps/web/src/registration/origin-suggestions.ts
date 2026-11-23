@@ -31,13 +31,18 @@ interface Group extends OriginSuggestion {
   lastUsed: number
 }
 
-/** Los orígenes distintos del usuario, de más a menos usado. */
+/**
+ * Los orígenes distintos del usuario, de más a menos usado. Con `pick`, otro
+ * texto de la planta con las mismas reglas: la edición (#266) sugiere así las
+ * ubicaciones que ya usaste.
+ */
 export function knownOrigins(
   plants: readonly CollectionPlant[],
+  pick: (plant: CollectionPlant) => string | null = (plant) => plant.origin,
 ): OriginSuggestion[] {
   const groups = new Map<string, Group>()
   for (const plant of plants) {
-    const label = plant.origin?.trim().replace(/\s+/g, ' ')
+    const label = pick(plant)?.trim().replace(/\s+/g, ' ')
     if (!label) continue
     const key = normalizeSearchText(label)
     if (key === '') continue

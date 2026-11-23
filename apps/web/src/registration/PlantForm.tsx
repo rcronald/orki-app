@@ -6,7 +6,6 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
-  type RefObject,
 } from 'react'
 import { flushSync } from 'react-dom'
 import { Link } from 'react-router'
@@ -25,30 +24,25 @@ import {
   PhotoGallery,
   type GalleryPhoto,
 } from '../components/ui/PhotoGallery.tsx'
-import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
-import {
-  catalogSearchFailure,
-  type CatalogSearchFunction,
-  type GenusSearchResult,
-  type SpeciesSearchResult,
+import type {
+  CatalogSearchFunction,
+  GenusSearchResult,
+  SpeciesSearchResult,
 } from '../lib/catalogSearch.ts'
 import { enumValues, type PlantType } from '../lib/database.ts'
 import { localDateString } from '../lib/localDate.ts'
 import type {
   NewPlantPhoto,
   PlantPhotosProgress,
-  RemoveStoredPlantPhotoResult,
   UploadPlantPhotosResult,
 } from '../photos/gallery.ts'
 import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
-import type { StoredPlantPhoto } from '../photos/photo-rows.ts'
 import { PhotoStorageError, photoStorageErrorFrom } from '../photos/storage.ts'
 import { useTouchDevice } from '../photos/useCoarsePointer.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { canRetryUpload } from '../photos/usePhotoUpload.ts'
-import { useStoredThumbnails } from '../photos/useStoredThumbnails.ts'
-import { PATHS, plantEditPath, signInPathFor } from '../routes/paths.ts'
+import { PATHS, signInPathFor } from '../routes/paths.ts'
 import {
   ChoiceField,
   FORM_CHIP_CLASSES,
@@ -71,34 +65,28 @@ import {
   PLANT_FORM_FIELDS,
   PLANT_TEXT_MAX_LENGTH,
   plantFormReducer,
-  plantFormValuesFrom,
-  plantPatch,
   toPlantInsert,
-  unlinksSpecies,
   validatePlantForm,
   type FormGenus,
   type FormSpecies,
   type NewPlantInsert,
   type PlantFormField,
   type PlantFormValues,
-  type PlantPatch,
 } from './form-state.ts'
-import { GenusField, type QuickGeneraState } from './GenusField.tsx'
+import { GenusField } from './GenusField.tsx'
 import { NameField } from './NameField.tsx'
 import { OriginField } from './OriginField.tsx'
+import { PendingPhotoNotice } from './PendingPhotoNotice.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
 import {
   FLOWER_COLOR_LABEL,
-  PLANT_EDIT_NOTICE_TEXT,
-  PLANT_EDIT_TEXT,
   PLANT_FORM_TEXT,
   PLANT_TYPE_LABEL,
-  type PlantFormTexts,
 } from './texts.ts'
 import { SpeciesPreview, type LoadReferencePhoto } from './SpeciesPreview.tsx'
+import { useQuickGenera } from './useQuickGenera.ts'
 import {
   newPhotoEntry,
-  storedPhotoEntry,
   usePhotoEntries,
   type NewPhotoEntry,
   type PhotoEntry,
@@ -115,8 +103,8 @@ export interface PlantPhotosUploadOptions {
 }
 
 /**
- * De dónde saca el formulario los datos y dónde sube las fotos, al registrar
- * y al editar. Deben ser estables entre pintados (funciones de módulo).
+ * De dónde saca el formulario los datos y dónde sube las fotos. Deben ser
+ * estables entre pintados (funciones de módulo).
  */
 export interface PlantFormBaseServices {
   searchSpecies: CatalogSearchFunction<SpeciesSearchResult>
@@ -147,39 +135,12 @@ export interface PlantFormServices extends PlantFormBaseServices {
   savePlant: (insert: NewPlantInsert) => Promise<CollectionPlant>
 }
 
-/** Edición de una planta ya guardada (#16). */
-export interface PlantFormEditing {
-  /**
-   * La planta tal como está al abrir la edición: precarga el formulario y es
-   * la referencia de lo que cambió. Se lee al montarse.
-   */
-  plant: CollectionPlant
-  /**
-   * Guarda los cambios (solo las columnas que cambiaron) y devuelve la planta
-   * actualizada; se rechaza con PlantSaveError.
-   */
-  updatePlant: (plantId: string, patch: PlantPatch) => Promise<CollectionPlant>
-  /** Las fotos guardadas, en orden (listPlantPhotos). */
-  listPhotos: (options: {
-    userId: string
-    plantId: string
-  }) => Promise<StoredPlantPhoto[]>
-  /** Borra una foto guardada (removeStoredPlantPhoto). */
-  removePhoto: (options: {
-    userId: string
-    plantId: string
-    photo: StoredPlantPhoto
-    onPlantUpdated: (plant: CollectionPlant) => void
-  }) => Promise<RemoveStoredPlantPhotoResult>
-}
-
 interface PlantFormCommonProps {
   /** Si hay conexión (useOnlineStatus). Sin ella, el formulario se desactiva. */
   online: boolean
   /**
-   * El registro (o la edición) terminó: la planta está guardada y sus fotos
-   * subidas (o la persona eligió seguir sin las que fallaron). Para salir del
-   * formulario. Al editar, `changed` es false si no se escribió nada.
+   * El registro terminó: la planta está guardada y sus fotos subidas (o la
+   * persona eligió seguir sin las que fallaron). Para salir del formulario.
    * `photos` es cuántas fotos quedaron guardadas con la planta.
    */
   onSaved: (
@@ -196,14 +157,14 @@ interface PlantFormCommonProps {
    * Nombre con el que empieza el registro, como si se hubiera escrito en el
    * campo: lo buscado en "¿Ya la tengo?" (#123, ?nombre=). Si hay un borrador
    * guardado, gana el borrador; al descartarlo, el formulario vuelve a
-   * empezar con este nombre. Al editar no se usa.
+   * empezar con este nombre.
    */
   initialName?: string
   /**
    * Especie del catálogo con la que empieza el registro, ya elegida como si se
    * hubiera escogido en el autocompletado: «Registrar esta especie» de la
    * ficha del catálogo (#232). Gana a initialName y, como él, pierde ante un
-   * borrador guardado y vuelve al descartarlo. Al editar no se usa.
+   * borrador guardado y vuelve al descartarlo.
    */
   initialSpecies?: FormSpecies | null
   /** Dónde se guardan las fotos pendientes del borrador; por defecto, IndexedDB. */
@@ -214,23 +175,17 @@ interface PlantFormCommonProps {
    */
   onCancel: () => void
   /**
-   * Se rellena con la función de "Cancelar" (pregunta si hay cambios): para
-   * que el enlace de volver de la cabecera haga lo mismo al editar.
-   */
-  cancelRef?: RefObject<(() => void) | null>
-  /**
    * Plantas del usuario ya cargadas (la colección en memoria), para las
    * sugerencias de origen y el aviso de duplicado; null o sin indicar si aún
    * no están (el formulario funciona igual, sin ellos).
    */
   knownPlants?: readonly CollectionPlant[] | null
   /**
-   * Usuario activo (id de Clerk): dueño de las fotos y, al registrar, del
-   * borrador. Al registrar, lo escrito y las fotos se guardan en el
-   * dispositivo y se recuperan al volver a abrir el formulario (draft.ts y
-   * draft-photo.ts); sin usuario, no hay borrador. Si cambia, hay que volver
-   * a montar el formulario (key), porque el borrador se lee al montarse. Al
-   * editar no hay borrador.
+   * Usuario activo (id de Clerk): dueño de las fotos y del borrador. Lo
+   * escrito y las fotos se guardan en el dispositivo y se recuperan al volver
+   * a abrir el formulario (draft.ts y draft-photo.ts); sin usuario, no hay
+   * borrador. Si cambia, hay que volver a montar el formulario (key), porque
+   * el borrador se lee al montarse.
    */
   draftUserId?: string | null
   /** Reloj, para las pruebas. Por defecto, la hora del dispositivo. */
@@ -243,15 +198,13 @@ interface PlantFormCommonProps {
 }
 
 /**
- * Registrar (services con savePlant) o editar una planta (editing, #16). Es
- * el mismo formulario, con los mismos campos y el mismo estado; al editar se
- * precarga con la planta y sus fotos y guarda solo lo que cambió.
+ * Registrar una planta. La edición (#16, rediseñada en el #266) tiene su
+ * propio formulario (editing/EditPlantForm.tsx), que reutiliza los campos,
+ * el reductor y la validación de este.
  */
-export type PlantFormProps = PlantFormCommonProps &
-  (
-    | { editing?: undefined; services: PlantFormServices }
-    | { editing: PlantFormEditing; services: PlantFormBaseServices }
-  )
+export type PlantFormProps = PlantFormCommonProps & {
+  services: PlantFormServices
+}
 
 const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
 
@@ -293,14 +246,9 @@ type PhotoPhase =
   | { status: 'working' }
   | {
       status: 'failed'
-      /** Fotos guardadas que no se pudieron quitar (al editar). */
-      removeFailures: number
       /** El primer motivo de fallo. */
       error: PhotoStorageError
     }
-
-/** Al editar: las fotos guardadas, cargando o con fallo. */
-type StoredLoad = 'loading' | 'ready' | 'error'
 
 function newPlantId(): string {
   return crypto.randomUUID()
@@ -308,40 +256,6 @@ function newPlantId(): string {
 
 function isNew(entry: PhotoEntry): entry is NewPhotoEntry {
   return entry.kind === 'new'
-}
-
-function useQuickGenera(
-  load: () => Promise<readonly FormGenus[]>,
-  online: boolean,
-): [QuickGeneraState, () => void] {
-  const [state, setState] = useState<QuickGeneraState>({ status: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-
-  // Se vuelve a pedir al recuperar la conexión; la carga está en caché, así
-  // que si ya llegó no sale ninguna petición.
-  useEffect(() => {
-    let active = true
-    load().then(
-      (genera) => {
-        if (active) setState({ status: 'ready', genera })
-      },
-      (error: unknown) => {
-        if (!active) return
-        const reason =
-          catalogSearchFailure(error) === 'offline' ? 'offline' : 'failed'
-        setState({ status: 'error', reason })
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [load, attempt, online])
-
-  const retry = () => {
-    setState({ status: 'loading' })
-    setAttempt((value) => value + 1)
-  }
-  return [state, retry]
 }
 
 /**
@@ -373,45 +287,6 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
 }
 
 /**
- * Aviso de la galería con un nombre por validar (#12, #210, #221): el equipo
- * del catálogo podrá ver las fotos para validar el nombre, como dice la
- * página de privacidad. Sin fotos, las recomienda; con fotos, avisa. Describe
- * la galería (aria-describedby), no es un paso más: registrar sin fotos sigue
- * igual.
- *
- * El enlace a Privacidad no pierde lo escrito: al registrar, el borrador se
- * conserva al salir por un enlace de la app y se recupera al volver; al
- * editar no hay borrador, así que se abre en otra pestaña y lo dice.
- */
-function PendingPhotoNotice({
-  text,
-  count,
-  newTab,
-}: {
-  text: PlantFormTexts
-  count: number
-  newTab: boolean
-}) {
-  return (
-    <>
-      {count > 0 ? text.pendingPhotoNotice(count) : text.pendingPhotoHint}{' '}
-      {text.pendingPhotoMore}{' '}
-      {newTab ? (
-        <a href={PATHS.privacy} target="_blank" rel="noopener noreferrer">
-          {text.privacyLink}{' '}
-          <span className="sr-only">
-            {PLANT_EDIT_NOTICE_TEXT.privacyNewTab}
-          </span>
-        </a>
-      ) : (
-        <Link to={PATHS.privacy}>{text.privacyLink}</Link>
-      )}
-      .
-    </>
-  )
-}
-
-/**
  * Formulario de registro de una planta (#85, rediseñado en el #221): los
  * cuatro campos obligatorios (nombre, género, tipo y fecha de adquisición),
  * el aviso de duplicado (#88), el origen, la galería de 0 a 6 fotos y la
@@ -432,8 +307,7 @@ function PendingPhotoNotice({
  * (uploadPlantPhotos), con el progreso de cada una en su miniatura. Si alguna
  * falla, la planta ya existe: el formulario se queda con las fotos, dice
  * cuáles fallaron y deja reintentar solo esas (la API no duplica las que ya
- * subió) o continuar sin ellas. Al editar, las fotos quitadas se borran al
- * guardar, antes de subir las nuevas.
+ * subió) o continuar sin ellas.
  */
 export function PlantForm(props: PlantFormProps) {
   const {
@@ -442,7 +316,6 @@ export function PlantForm(props: PlantFormProps) {
     onSaved,
     onCancel,
     onPlantStored,
-    cancelRef,
     knownPlants = null,
     draftUserId = null,
     initialName = '',
@@ -451,38 +324,18 @@ export function PlantForm(props: PlantFormProps) {
     now = deviceNow,
     camera = 'auto',
   } = props
-  // Lo que se lee una sola vez al montarse: al registrar, el formulario
-  // vacío de hoy y el borrador, si lo hay; al editar, la planta y el
-  // formulario con sus datos.
+  // Lo que se lee una sola vez al montarse: el formulario vacío de hoy y el
+  // borrador, si lo hay.
   const [start] = useState(() => {
-    if (props.editing !== undefined) {
-      const values = plantFormValuesFrom(props.editing.plant)
-      return {
-        fresh: values,
-        draft: null,
-        values,
-        editing: props.editing,
-      }
-    }
     const fresh = initialPlantFormValues(localDateString(now()))
     const draft = draftUserId ? readPlantDraft(draftUserId, now()) : null
     const prefilled = withStart(fresh, initialName, initialSpecies)
-    return {
-      fresh,
-      draft,
-      values: draft?.values ?? prefilled,
-      editing: null,
-    }
+    return { fresh, draft, values: draft?.values ?? prefilled }
   })
-  // Con qué se abrió el formulario: vacío (registro) o con los datos de la
-  // planta (edición). Es la referencia de "hay cambios".
+  // El formulario vacío: la referencia de "hay cambios".
   const initial = start.fresh
-  const edit = start.editing
-  const editingPlant = edit?.plant ?? null
-  const editing = edit !== null
-  const text: PlantFormTexts = editing ? PLANT_EDIT_TEXT : PLANT_FORM_TEXT
-  // Al editar no hay borrador; el usuario sigue siendo el dueño de las fotos.
-  const draftOwner = editing ? null : draftUserId
+  const text = PLANT_FORM_TEXT
+  const draftOwner = draftUserId
   const [values, dispatch] = useReducer(plantFormReducer, start.values)
   const [submitted, setSubmitted] = useState(false)
   const [save, setSave] = useState<SaveState>({ status: 'idle' })
@@ -491,16 +344,13 @@ export function PlantForm(props: PlantFormProps) {
   // respuesta, el siguiente no crea otra planta (ver save-plant.ts). Solo
   // cambia al descartar el borrador.
   const [plantId, setPlantId] = useState(
-    () => editingPlant?.id ?? start.draft?.plantId ?? newPlantId(),
+    () => start.draft?.plantId ?? newPlantId(),
   )
   const [draftRestored, setDraftRestored] = useState(start.draft !== null)
   // Cerrada por defecto; abierta si el borrador traía algo dentro.
   const [detailsOpen, setDetailsOpen] = useState(() => hasDetails(start.values))
   // Evita el doble envío antes de que React pinte el estado "guardando".
   const savingRef = useRef(false)
-  // Si ya se escribió algo en la base (al registrar, siempre; al editar, si
-  // los datos cambiaron), para onSaved.
-  const changedRef = useRef(true)
   const [quickGenera, retryQuickGenera] = useQuickGenera(
     services.loadQuickGenera,
     online,
@@ -535,15 +385,6 @@ export function PlantForm(props: PlantFormProps) {
   // después (IndexedDB es asíncrono), ya no las sustituyen; y desde entonces
   // cada cambio de las fotos se guarda en el borrador.
   const photosTouched = useRef(false)
-  // Al editar: fotos guardadas que se borrarán al guardar, con su lugar, para
-  // "Deshacer".
-  const [removedStored, setRemovedStored] = useState<
-    { entry: PhotoEntry; index: number }[]
-  >([])
-  const [storedLoad, setStoredLoad] = useState<StoredLoad>(
-    editingPlant !== null ? 'loading' : 'ready',
-  )
-  const [storedAttempt, setStoredAttempt] = useState(0)
   const preparing = entries.some((entry) => entry.kind === 'preparing')
   const photoCount = entries.length
   const newPhotos = entries.filter(isNew)
@@ -634,30 +475,6 @@ export function PlantForm(props: PlantFormProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftPhotosKey])
 
-  // Al editar, las fotos ya guardadas. Se piden siempre: la planta en memoria
-  // puede venir de la copia sin conexión, sin la foto que se añadió después.
-  useEffect(() => {
-    if (edit === null || draftUserId === null) return
-    let active = true
-    edit.listPhotos({ userId: draftUserId, plantId: edit.plant.id }).then(
-      (stored) => {
-        if (!active) return
-        if (!photosTouched.current) {
-          photos.replace(stored.map(storedPhotoEntry))
-        }
-        setStoredLoad('ready')
-      },
-      () => {
-        if (active) setStoredLoad('error')
-      },
-    )
-    return () => {
-      active = false
-    }
-    // photos.replace es estable; se vuelve a pedir con "Volver a cargar".
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edit, draftUserId, storedAttempt])
-
   const offlineId = useId()
   const nameRef = useRef<HTMLInputElement>(null)
   const genusRef = useRef<HTMLDivElement>(null)
@@ -706,9 +523,9 @@ export function PlantForm(props: PlantFormProps) {
   }
 
   /**
-   * Fotos tras guardar la planta: al editar, primero borra las quitadas y
-   * después sube las nuevas que faltan (todas, o solo `onlyKeys`). Termina
-   * el registro si todo salió bien; si no, deja el formulario con los fallos.
+   * Fotos tras guardar la planta: sube las nuevas que faltan (todas, o solo
+   * `onlyKeys`). Termina el registro si todo salió bien; si no, deja el
+   * formulario con los fallos.
    */
   const runPhotoPhase = async (plant: CollectionPlant, onlyKeys?: string[]) => {
     uploadController.current?.abort()
@@ -726,27 +543,7 @@ export function PlantForm(props: PlantFormProps) {
       firstError = new PhotoStorageError('session-ended')
     }
 
-    // 1. Las guardadas que se quitaron (al editar).
-    let removeFailures = 0
-    if (edit !== null && firstError === null) {
-      for (const removal of removedStored) {
-        if (removal.entry.kind !== 'stored' || draftUserId === null) continue
-        try {
-          await edit.removePhoto({
-            userId: draftUserId,
-            plantId: plant.id,
-            photo: removal.entry.stored,
-            onPlantUpdated,
-          })
-          setRemovedStored((list) => list.filter((item) => item !== removal))
-        } catch (error) {
-          removeFailures += 1
-          firstError ??= photoStorageErrorFrom(error)
-        }
-      }
-    }
-
-    // 2. Las nuevas que aún no están guardadas.
+    // Las nuevas que aún no están guardadas.
     const all = photos.current()
     const pending = all.filter(
       (entry): entry is NewPhotoEntry =>
@@ -824,7 +621,7 @@ export function PlantForm(props: PlantFormProps) {
     const failedNow = photos
       .current()
       .some((entry) => isNew(entry) && entry.upload.status !== 'saved')
-    if (firstError === null && !failedNow && removeFailures === 0) {
+    if (firstError === null && !failedNow) {
       onSaved(latestPlant.current ?? plant, {
         changed: true,
         photos: photos.current().length,
@@ -833,46 +630,8 @@ export function PlantForm(props: PlantFormProps) {
     }
     setPhase({
       status: 'failed',
-      removeFailures,
       error: firstError ?? new PhotoStorageError('failed'),
     })
-  }
-
-  /**
-   * Guarda la edición (#16): primero los datos que cambiaron (si cambió
-   * alguno) y después las fotos, como al registrar: un fallo de las fotos no
-   * pierde los cambios. Sin cambios, sale sin escribir nada.
-   */
-  const saveEdit = async (current: PlantFormEditing) => {
-    // Si las fotos guardadas no llegaron a cargarse, se da por hecho que
-    // siguen ahí: "en floración" no se toca.
-    const anyPhoto = photoCount > 0 || storedLoad !== 'ready'
-    const patch = plantPatch(
-      { ...values, photoInBloom: values.photoInBloom && anyPhoto },
-      initial,
-    )
-    let plant = current.plant
-    changedRef.current = Object.keys(patch).length > 0
-    if (changedRef.current) {
-      savingRef.current = true
-      setSave({ status: 'saving' })
-      try {
-        plant = await current.updatePlant(current.plant.id, patch)
-      } catch (error) {
-        savingRef.current = false
-        setSave({ status: 'error', error: plantSaveErrorFrom(error) })
-        return
-      }
-      savingRef.current = false
-      setSave({ status: 'idle' })
-      onPlantStored?.(plant)
-    }
-    if (newPhotos.length > 0 || removedStored.length > 0) {
-      latestPlant.current = plant
-      await runPhotoPhase(plant)
-    } else {
-      onSaved(plant, { changed: changedRef.current, photos: photoCount })
-    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -893,10 +652,6 @@ export function PlantForm(props: PlantFormProps) {
       return
     }
 
-    if (props.editing !== undefined) {
-      await saveEdit(props.editing)
-      return
-    }
     savingRef.current = true
     setSave({ status: 'saving' })
     let plant: CollectionPlant
@@ -961,7 +716,7 @@ export function PlantForm(props: PlantFormProps) {
         (entry) => !isNew(entry) || entry.upload.status === 'saved',
       ).length
     onSaved(latestPlant.current ?? registered, {
-      changed: changedRef.current,
+      changed: true,
       photos: savedCount,
     })
   }
@@ -991,34 +746,15 @@ export function PlantForm(props: PlantFormProps) {
     photosTouched.current = true
     setLeftOutNotice(null)
     const left = photos.current().length
-    if (removed.kind === 'stored') {
-      setRemovedStored((list) => [...list, { entry: removed, index }])
-      setPhotoStatus(text.storedPhotoRemoved(left, MAX_PLANT_PHOTOS))
-    } else {
-      setPhotoStatus(text.photoRemoved(left, MAX_PLANT_PHOTOS, index === 0))
-    }
+    setPhotoStatus(text.photoRemoved(left, MAX_PLANT_PHOTOS, index === 0))
     // Sin fotos, "en floración" no tiene sentido.
     if (left === 0 && values.photoInBloom) {
       dispatch({ type: 'photoInBloomChanged', photoInBloom: false })
     }
   }
 
-  const undoRemove = () => {
-    const last = removedStored.at(-1)
-    if (!last || registered !== null) return
-    setRemovedStored((list) => list.slice(0, -1))
-    photos.insert(last.entry, last.index)
-    setPhotoStatus(text.storedPhotoRestored)
-  }
-
-  // Si hay algo que se perdería al salir: al registrar, lo escrito o las
-  // fotos; al editar, cualquier cambio respecto de la planta.
-  const dirty = editing
-    ? Object.keys(plantPatch(values, initial)).length > 0 ||
-      newPhotos.length > 0 ||
-      entries.some((entry) => entry.kind === 'preparing') ||
-      removedStored.length > 0
-    : isPlantFormDirty(values, initial) || photoCount > 0
+  // Si hay algo que se perdería al salir: lo escrito o las fotos.
+  const dirty = isPlantFormDirty(values, initial) || photoCount > 0
 
   const cancel = () => {
     if (saving || registered !== null) return
@@ -1029,13 +765,6 @@ export function PlantForm(props: PlantFormProps) {
     }
     onCancel()
   }
-  useEffect(() => {
-    if (!cancelRef) return
-    cancelRef.current = cancel
-    return () => {
-      cancelRef.current = null
-    }
-  })
 
   // Empieza de cero: formulario vacío con la fecha de hoy, sin fotos y otro
   // id de planta (el del borrador pudo llegar a la base en un intento
@@ -1068,25 +797,17 @@ export function PlantForm(props: PlantFormProps) {
     nameRef.current?.focus()
   }
 
-  // Miniaturas: las nuevas, de su Blob; las guardadas, de Storage.
+  // Miniaturas de las fotos nuevas, de su Blob.
   const thumbnailUrls = useObjectUrls(
     newPhotos.map((entry) => entry.photo.thumbnail.blob),
-  )
-  const storedUrls = useStoredThumbnails(
-    entries.flatMap((entry) =>
-      entry.kind === 'stored' ? [entry.stored.thumbnailPath] : [],
-    ),
   )
   const galleryPhotos: GalleryPhoto[] = entries.map((entry) => {
     switch (entry.kind) {
       case 'preparing':
         return { id: entry.key, state: { status: 'preparing' } }
+      // Solo las usa la edición (editing/), que tiene su galería.
       case 'stored':
-        return {
-          id: entry.key,
-          src: storedUrls.get(entry.stored.thumbnailPath),
-          state: { status: 'ready' },
-        }
+        return { id: entry.key, state: { status: 'ready' } }
       case 'new': {
         const src = thumbnailUrls.get(entry.photo.thumbnail.blob)
         const { upload } = entry
@@ -1146,23 +867,8 @@ export function PlantForm(props: PlantFormProps) {
       ? uploading || (canRetry && !online)
       : saving || preparing || !online
 
-  // Al editar, el aviso de duplicado solo sale al cambiar de especie y no
-  // cuenta la propia planta.
-  const duplicateSpecies =
-    editing && values.species?.id === initial.species?.id
-      ? null
-      : values.species
-  const duplicateCandidates =
-    editingPlant === null || knownPlants === null
-      ? knownPlants
-      : knownPlants.filter((known) => known.id !== editingPlant.id)
-  const unlinkedSpecies =
-    editing && unlinksSpecies(values, initial) && isPendingName(values)
-      ? initial.species
-      : null
-
   const fieldsDisabled = !online || registered !== null
-  const galleryDisabled = fieldsDisabled || saving || storedLoad !== 'ready'
+  const galleryDisabled = fieldsDisabled || saving
 
   const main = (
     <fieldset
@@ -1179,42 +885,17 @@ export function PlantForm(props: PlantFormProps) {
           inputRef={nameRef}
         />
         <DuplicateNotice
-          species={duplicateSpecies}
-          knownPlants={duplicateCandidates}
+          species={values.species}
+          knownPlants={knownPlants}
           after={text.duplicateAfter}
         />
-        {/*
-          «Así es esta especie» (#234): al elegirla (al editar, solo si cambia).
-        */}
-        {duplicateSpecies !== null && services.loadReferencePhoto && (
+        {/* «Así es esta especie» (#234): al elegirla. */}
+        {values.species !== null && services.loadReferencePhoto && (
           <SpeciesPreview
-            speciesId={duplicateSpecies.id}
-            scientificName={duplicateSpecies.scientificName}
+            speciesId={values.species.id}
+            scientificName={values.species.scientificName}
             load={services.loadReferencePhoto}
           />
-        )}
-        {/*
-          Al editar, quitar la especie la devuelve a "por validar" (lo hace
-          la base): se avisa antes de guardar, en una región ya montada.
-        */}
-        {editing && (
-          <div role="status">
-            {unlinkedSpecies !== null && (
-              <p className="mt-space-2 flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-3 text-sm text-neutral-900">
-                <Icon
-                  name="triangle-alert"
-                  className="mt-[2px] size-[16px] flex-none"
-                />
-                <span className="[overflow-wrap:anywhere]">
-                  {PLANT_EDIT_NOTICE_TEXT.unlinkBefore}
-                  <em className="font-display">
-                    <ScientificName name={unlinkedSpecies.scientificName} />
-                  </em>
-                  {PLANT_EDIT_NOTICE_TEXT.unlinkAfter}
-                </span>
-              </p>
-            )}
-          </div>
         )}
       </div>
 
@@ -1302,7 +983,7 @@ export function PlantForm(props: PlantFormProps) {
       onChoosePhotos={() => openPicker(filesInput.current)}
       notice={
         isPendingName(values) ? (
-          <PendingPhotoNotice text={text} count={photoCount} newTab={editing} />
+          <PendingPhotoNotice count={photoCount} newTab={false} />
         ) : undefined
       }
     >
@@ -1333,36 +1014,10 @@ export function PlantForm(props: PlantFormProps) {
         las fotos (la galería ya lo muestra con el contador y las miniaturas).
       */}
       <p role="status" className="sr-only">
-        {storedLoad === 'loading' ? text.photosLoading : photoStatus}
+        {photoStatus}
       </p>
-      {storedLoad === 'loading' && (
-        <p className="orki-gallery__notice">{text.photosLoading}</p>
-      )}
       {leftOutNotice !== null && (
         <p className="orki-gallery__notice">{leftOutNotice}</p>
-      )}
-      {removedStored.length > 0 && registered === null && (
-        <div className="flex flex-wrap items-center gap-space-3">
-          <p className="orki-gallery__notice">
-            {text.storedPhotosPending(removedStored.length)}
-          </p>
-          <Button onClick={undoRemove}>{text.undoRemove}</Button>
-        </div>
-      )}
-      {storedLoad === 'error' && (
-        <div className="flex flex-col items-start gap-space-2">
-          <p role="alert" className="orki-gallery__notice">
-            {text.photosLoadFailed}
-          </p>
-          <Button
-            onClick={() => {
-              setStoredLoad('loading')
-              setStoredAttempt((value) => value + 1)
-            }}
-          >
-            {text.photosLoadRetry}
-          </Button>
-        </div>
       )}
       {prepareErrors.length > 0 && (
         <div role="alert" className="flex flex-col gap-space-1">
@@ -1517,11 +1172,7 @@ export function PlantForm(props: PlantFormProps) {
             </Button>
             {save.error.reason === 'session-ended' && (
               <Link
-                to={signInPathFor(
-                  editingPlant
-                    ? plantEditPath(editingPlant.id)
-                    : PATHS.newPlant,
-                )}
+                to={signInPathFor(PATHS.newPlant)}
                 className="orki-btn orki-btn--secondary"
               >
                 {PLANT_FORM_TEXT.signIn}
@@ -1557,12 +1208,7 @@ export function PlantForm(props: PlantFormProps) {
             />
             {failure.error.reason === 'aborted'
               ? text.photosCancelled(text.savedPrefix)
-              : failedLabels.length > 0
-                ? text.photosFailed(text.savedPrefix, failedLabels)
-                : text.photosRemoveFailed(
-                    text.savedPrefix,
-                    failure.removeFailures,
-                  )}
+              : text.photosFailed(text.savedPrefix, failedLabels)}
           </p>
           {failure.error.reason !== 'aborted' && <p>{failure.error.message}</p>}
           {canRetry && <p>{text.photosRetryHint}</p>}
