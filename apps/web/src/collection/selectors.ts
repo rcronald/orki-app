@@ -43,13 +43,16 @@ function searchTextOf(plant: CollectionPlant): string {
   if (text === undefined) {
     // Cada campo normalizado por separado y unidos con un salto de línea, que
     // la normalización nunca deja: una palabra de la búsqueda no puede casar
-    // con el final de un campo y el principio del siguiente.
+    // con el final de un campo y el principio del siguiente. El identificador
+    // no va aquí: se busca aparte, entero (ver codeTermsOf), para que «12» no
+    // encuentre PHA-012, CAT-120 y DEN-112.
     text = [
       plant.displayName,
       plant.enteredName,
       plant.genus.name,
       plant.nickname,
       plant.origin,
+      plant.location,
     ]
       .filter((field): field is string => field !== null)
       .map(normalizeSearchText)
@@ -108,6 +111,75 @@ function matchesWithTypos(
   return true
 }
 
+// Búsqueda por identificador (#292) ------------------------------------------
+//
+// El identificador es «CAT-012» (#264): tres letras y un correlativo de al
+// menos tres cifras. Una palabra de la búsqueda (ya normalizada: minúsculas,
+// sin tildes) cuenta como identificador si son tres letras y un número, con
+// un guion, un espacio o nada entre medio: «CAT-012», «cat-12», «cat 12» y
+// «CAT012» son el mismo, y el número vale por su valor, sin los ceros de
+// delante. Encuentra solo la planta con ese identificador exacto: «cat 1» no
+// encuentra CAT-012 ni CAT-100. Un número suelto («12») no es un
+// identificador y se busca como texto en los demás campos, donde el
+// identificador no está. Mientras se escribe, «cat-» (tres letras y el guion,
+// al final de la búsqueda) enseña todas las de ese prefijo.
+
+/** Un identificador en la búsqueda: el prefijo y, si lo hay, el número. */
+interface CodeTerm {
+  prefix: string
+  number: number | null
+}
+
+const CODE_TERMS = /(?:^| )([a-z]{3})[ -]?(\d+)(?= |$)/g
+const CODE_PREFIX_AT_END = /(?:^| )([a-z]{3})-$/
+const PLANT_CODE = /^([a-z]{3})-(\d+)$/
+
+/**
+ * Los identificadores de una búsqueda normalizada y lo que queda de ella sin
+ * ellos, para buscarlo como texto.
+ */
+function codeTermsOf(normalized: string): {
+  terms: CodeTerm[]
+  rest: string
+} {
+  const terms: CodeTerm[] = []
+  let rest = normalized.replace(CODE_TERMS, (_match, prefix, digits) => {
+    terms.push({ prefix: prefix as string, number: Number(digits) })
+    return ' '
+  })
+  rest = rest.replace(CODE_PREFIX_AT_END, (_match, prefix) => {
+    terms.push({ prefix: prefix as string, number: null })
+    return ' '
+  })
+  return { terms, rest }
+}
+
+const plantCodes = new WeakMap<CollectionPlant, CodeTerm | null>()
+
+/** El identificador de la planta partido; null si no lo tiene (copia antigua). */
+function plantCodeOf(plant: CollectionPlant): CodeTerm | null {
+  let code = plantCodes.get(plant)
+  if (code === undefined) {
+    const parts =
+      plant.code === null
+        ? null
+        : PLANT_CODE.exec(normalizeSearchText(plant.code))
+    code = parts ? { prefix: parts[1], number: Number(parts[2]) } : null
+    plantCodes.set(plant, code)
+  }
+  return code
+}
+
+function matchesCode(plant: CollectionPlant, terms: readonly CodeTerm[]) {
+  const code = plantCodeOf(plant)
+  if (code === null) return false
+  return terms.some(
+    (term) =>
+      term.prefix === code.prefix &&
+      (term.number === null || term.number === code.number),
+  )
+}
+
 export interface TextFilterOptions extends StatusOptions {
   /**
    * Las coincidencias de "¿Ya la tengo?" por nombre, por id de planta
@@ -118,11 +190,16 @@ export interface TextFilterOptions extends StatusOptions {
 
 /**
  * Filtra por texto sobre el nombre mostrado, el nombre ingresado, el género, el
- * apodo y el origen, sin distinguir mayúsculas, tildes ni el signo de híbrido
- * (ver normalize.ts). Cada palabra de la búsqueda tiene que aparecer en alguno
- * de esos campos, en cualquier posición: "phal amab" encuentra "Phalaenopsis
- * amabilis" y "amabilis vivero" la encuentra si su origen es "Vivero Sol". Una
- * búsqueda vacía (o que se queda vacía al normalizar) no filtra por texto.
+ * apodo, el origen y la ubicación, sin distinguir mayúsculas, tildes ni el
+ * signo de híbrido (ver normalize.ts). Cada palabra de la búsqueda tiene que
+ * aparecer en alguno de esos campos, en cualquier posición: "phal amab"
+ * encuentra "Phalaenopsis amabilis" y "amabilis vivero" la encuentra si su
+ * origen es "Vivero Sol". Una búsqueda vacía (o que se queda vacía al
+ * normalizar) no filtra por texto.
+ *
+ * Encuentra también por el identificador («CAT-012», «cat 12», «cat012»; la
+ * regla está en codeTermsOf), solo entero: es una búsqueda del inventario,
+ * no de nombres, y no la usa "¿Ya la tengo?" (ownership.ts no pasa por aquí).
  *
  * Con nameMatches, coinciden también las plantas que "¿Ya la tengo?" encuentra
  * por sus nombres, entre ellos los sinónimos y nombres comunes de su especie
@@ -143,8 +220,25 @@ export function filterByText(
   { nameMatches, ...options }: TextFilterOptions = {},
 ): readonly CollectionPlant[] {
   const candidates = plantsByStatus(plants, options)
-  const words = normalizeSearchText(query).split(' ').filter(Boolean)
+  const normalized = normalizeSearchText(query)
+  const words = normalized.split(' ').filter(Boolean)
   if (words.length === 0) return candidates
+
+  // Con un identificador, las plantas que lo tienen (con varios, las que
+  // tienen cualquiera de ellos) y en las que el resto de la búsqueda aparece
+  // tal cual. Si no hay ninguna, se busca todo como texto: un nombre que
+  // lleve «abc 12» se sigue encontrando.
+  const codes = codeTermsOf(normalized)
+  if (codes.terms.length > 0) {
+    const rest = codes.rest.split(' ').filter(Boolean)
+    const byCode = candidates.filter((plant) => {
+      if (!matchesCode(plant, codes.terms)) return false
+      const text = searchTextOf(plant)
+      return rest.every((word) => text.includes(word))
+    })
+    if (byCode.length > 0) return byCode
+  }
+
   const byName = (plant: CollectionPlant) => nameMatches?.get(plant.id)?.quality
   const matches = candidates.filter((plant) => {
     const quality = byName(plant)

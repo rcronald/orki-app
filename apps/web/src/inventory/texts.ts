@@ -79,7 +79,12 @@ export const COLLECTION_ACTIONS_TEXT = {
 /** Buscador único de «Mi colección» (#208). */
 export const SEARCH_TEXT = {
   label: 'Buscar en mi colección',
-  placeholder: 'Nombre, género, apodo u origen',
+  /**
+   * Corto para que quepa entero a 360 px (#292): el de antes, «Nombre,
+   * género, apodo u origen», se cortaba. El género, el apodo y el origen se
+   * siguen buscando; lo nuevo es el identificador y la ubicación.
+   */
+  placeholder: 'Nombre, código o ubicación',
   /** El mismo texto que el botón de «sin coincidencias». */
   clear: 'Limpiar la búsqueda',
 } as const

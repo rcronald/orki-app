@@ -332,6 +332,93 @@ describe('filterByText', () => {
   })
 })
 
+describe('filterByText por identificador y ubicación (#292)', () => {
+  const pha1 = plant({ code: 'PHA-001', location: 'Ventana de la sala' })
+  const pha12 = plant({ code: 'PHA-012', location: 'Balcón' })
+  const pha120 = plant({ code: 'PHA-120' })
+  const cat12 = plant({
+    displayName: 'Cattleya maxima',
+    enteredName: 'Cattleya maxima',
+    genus: CATTLEYA,
+    code: 'CAT-012',
+    location: 'Invernadero, mesa 2',
+  })
+  const cat1000 = plant({
+    displayName: 'Cattleya trianae',
+    enteredName: 'Cattleya trianae',
+    genus: CATTLEYA,
+    code: 'CAT-1000',
+  })
+  // Una copia sin conexión guardada antes del #265: sin identificador.
+  const old = plant({ code: null, nickname: 'Plántula 12' })
+  const plants = [pha1, pha12, pha120, cat12, cat1000, old]
+
+  it.each([
+    ['tal cual', 'CAT-012', [cat12]],
+    ['en minúsculas y sin los ceros', 'cat-12', [cat12]],
+    ['con un espacio', 'cat 12', [cat12]],
+    ['sin separador', 'CAT012', [cat12]],
+    ['con los ceros y espacios de más', '  cat  012 ', [cat12]],
+    ['de cuatro cifras', 'cat-1000', [cat1000]],
+    ['otro prefijo, el mismo número', 'PHA-012', [pha12]],
+    ['el número entero, no el comienzo', 'pha 1', [pha1]],
+    ['varios, cualquiera de ellos', 'PHA-001 CAT-012', [pha1, cat12]],
+    ['con más palabras, que tienen que estar', 'cat 12 maxima', [cat12]],
+    ['con una palabra que no está', 'cat 12 trianae', []],
+    ['a medio escribir, el prefijo con su guion', 'cat-', [cat12, cat1000]],
+  ])('%s: "%s"', (_case, query, expected) => {
+    expect(filterByText(plants, query)).toEqual(expected)
+  })
+
+  it('un número suelto no busca en los identificadores', () => {
+    // Solo el apodo de la planta sin identificador lleva un 12.
+    expect(filterByText(plants, '12')).toEqual([old])
+    expect(filterByText(plants, '001')).toEqual([])
+    // Tres letras sin número son texto: el género.
+    expect(filterByText(plants, 'cat')).toEqual([cat12, cat1000])
+  })
+
+  it('un identificador que nadie tiene se busca como texto, como antes', () => {
+    expect(filterByText(plants, 'DEN-001')).toEqual([])
+    // Ninguna es PHA-002: «pha» y «2» como texto, en el género y el apodo.
+    expect(filterByText(plants, 'pha 2')).toEqual([old])
+  })
+
+  it('una planta sin identificador no coincide por identificador', () => {
+    expect(filterByText([old], 'PHA-001')).toEqual([])
+  })
+
+  it('si no hay ese identificador, la búsqueda vale como texto', () => {
+    const grex = plant({ displayName: 'Vanda Abc 12', code: 'VAN-003' })
+    expect(filterByText([grex, pha1], 'abc 12')).toEqual([grex])
+  })
+
+  it.each([
+    ['una palabra', 'balcon', [pha12]],
+    ['sin tildes ni mayúsculas', 'VENTANA de la SALA', [pha1]],
+    ['con números', 'mesa 2', [cat12]],
+    ['junto al nombre', 'maxima invernadero', [cat12]],
+  ])('por ubicación, %s: "%s"', (_case, query, expected) => {
+    expect(filterByText(plants, query)).toEqual(expected)
+  })
+
+  it('«¿Ya la tengo?» no da por tenida una planta por su identificador ni por su ubicación', () => {
+    const index = ownershipIndexFor(plants)
+    for (const query of [
+      'CAT-012',
+      'cat 12',
+      'PHA001',
+      'Balcón',
+      'invernadero',
+    ]) {
+      expect(matchPlantNames(index, query)?.size ?? 0, query).toBe(0)
+      expect(answerOwnership(index, query)?.outcome, query).toBe('not-owned')
+    }
+    // Por el nombre sigue respondiendo como siempre.
+    expect(answerOwnership(index, 'Cattleya maxima')?.outcome).toBe('owned')
+  })
+})
+
 describe('filterByText con los nombres de "¿Ya la tengo?"', () => {
   // Plantas con su especie enlazada, como las da toCollectionPlant: el nombre
   // mostrado es el científico de la especie.
