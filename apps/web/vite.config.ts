@@ -134,6 +134,32 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        // Atajos de la app instalada (#292): mantener pulsado el icono (Android)
+        // o el menú contextual (escritorio) abre directamente «¿Ya la tengo?»,
+        // la consulta rápida delante de una planta en un vivero, o el registro.
+        // Iconos: el de la app, que ya está; el formato pide al menos 96 px.
+        // Rutas con sesión: sin ella, la app lleva a iniciar sesión y vuelve.
+        // iOS no muestra atajos de una PWA.
+        shortcuts: [
+          {
+            name: '¿Ya la tengo?',
+            short_name: '¿Ya la tengo?',
+            description: 'Comprueba si una orquídea ya está en tu colección.',
+            url: '/ya-la-tengo',
+            icons: [
+              { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            ],
+          },
+          {
+            name: 'Registrar orquídea',
+            short_name: 'Registrar',
+            description: 'Registra una orquídea nueva en tu colección.',
+            url: '/coleccion/nueva',
+            icons: [
+              { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            ],
+          },
+        ],
       },
       workbox: {
         // JS, CSS, HTML y fuentes (woff2) del build; los iconos y el manifest los

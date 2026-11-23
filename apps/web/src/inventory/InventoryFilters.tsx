@@ -16,6 +16,8 @@ import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
+import type { PlantSort } from '../collection/selectors.ts'
+import { SortSelect } from './SortSelect.tsx'
 import {
   countPanelFilters,
   withoutPanelFilters,
@@ -56,14 +58,21 @@ interface FiltersPanelProps {
   /** Agrupar por género (preferencia recordada, no un filtro). */
   grouped: boolean
   onGroupedChange: (grouped: boolean) => void
+  /**
+   * Orden (preferencia recordada, #292). En el panel solo hasta 720 px: en
+   * escritorio está en la barra del buscador.
+   */
+  sort: PlantSort
+  onSortChange: (sort: PlantSort) => void
   /** Cierra el panel; quien lo usa devuelve el foco al botón "Filtros". */
   onClose: () => void
 }
 
 /**
  * Panel de filtros: estado (uno solo), color, origen y validación del nombre
- * (varios), y cómo se organiza la lista (agrupar por género). Un grupo sin
- * opciones (nadie registró el color) no aparece. Escape lo cierra.
+ * (varios), y cómo se organiza la lista (agrupar por género y, hasta 720 px,
+ * el orden). Un grupo sin opciones (nadie registró el color) no aparece.
+ * Escape lo cierra.
  */
 export function FiltersPanel({
   id,
@@ -73,6 +82,8 @@ export function FiltersPanel({
   onChange,
   grouped,
   onGroupedChange,
+  sort,
+  onSortChange,
   onClose,
 }: FiltersPanelProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -164,7 +175,17 @@ export function FiltersPanel({
           ))}
         </FilterGroup>
       )}
-      <FilterGroup label={FILTERS_TEXT.arrange}>
+      <FilterGroup
+        label={FILTERS_TEXT.arrange}
+        before={
+          <SortSelect
+            layout="stacked"
+            className="min-[721px]:hidden"
+            value={sort}
+            onChange={onSortChange}
+          />
+        }
+      >
         <Chip
           className={PANEL_CHIP}
           selected={grouped}
@@ -192,11 +213,14 @@ function FilterGroup({
   label,
   id,
   children,
+  before,
   after,
 }: {
   label: string
   id?: string
   children: ReactNode
+  /** Entre el título del grupo y sus chips (el orden, en «Organizar»). */
+  before?: ReactNode
   after?: ReactNode
 }) {
   const labelId = useId()
@@ -205,6 +229,7 @@ function FilterGroup({
       <p id={labelId} className="text-sm font-semibold text-neutral-900">
         {label}
       </p>
+      {before}
       <ChipGroup id={id} aria-labelledby={labelId}>
         {children}
       </ChipGroup>

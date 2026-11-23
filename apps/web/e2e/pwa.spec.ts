@@ -48,6 +48,12 @@ test('manifiesto instalable', { tag: '@logica' }, async ({ page, request }) => {
     display: string
     theme_color: string
     icons: { src: string; sizes: string; purpose?: string }[]
+    shortcuts?: {
+      name: string
+      short_name?: string
+      url: string
+      icons?: { src: string; sizes: string; type?: string }[]
+    }[]
   }
   expect(manifiesto).toMatchObject({
     name: 'orqui.app',
@@ -69,6 +75,27 @@ test('manifiesto instalable', { tag: '@logica' }, async ({ page, request }) => {
     const imagen = await request.get(new URL(icono.src, direccion).toString())
     expect(imagen.ok(), icono.src).toBe(true)
     expect(imagen.headers()['content-type']).toBe('image/png')
+  }
+
+  // Atajos (#292): «¿Ya la tengo?» primero, y el registro.
+  expect(manifiesto.shortcuts?.map(({ name, url }) => ({ name, url }))).toEqual(
+    [
+      { name: '¿Ya la tengo?', url: '/ya-la-tengo' },
+      { name: 'Registrar orquídea', url: '/coleccion/nueva' },
+    ],
+  )
+  for (const atajo of manifiesto.shortcuts ?? []) {
+    // Cada uno con un icono de 96 px o más, que existe.
+    expect(atajo.icons?.length, atajo.name).toBeGreaterThan(0)
+    for (const icono of atajo.icons ?? []) {
+      expect(
+        Number(icono.sizes.split('x')[0]),
+        icono.src,
+      ).toBeGreaterThanOrEqual(96)
+      const imagen = await request.get(new URL(icono.src, direccion).toString())
+      expect(imagen.ok(), icono.src).toBe(true)
+      expect(imagen.headers()['content-type']).toBe('image/png')
+    }
   }
 })
 

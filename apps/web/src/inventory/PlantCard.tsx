@@ -19,7 +19,10 @@ interface PlantCardProps {
 // marcador sin foto, nombre (en cursiva si es del catálogo; el ingresado, sin
 // cursiva, si está por validar), apodo y ubicación si los hay, e insignia solo
 // cuando el nombre pide atención: «Nombre por validar» o «No identificable».
-// Con más de una foto, el número sobre la esquina de la foto (#181).
+// Con más de una foto, el número sobre la esquina de la foto (#181). Bajo el
+// nombre, el identificador («PHA-001», #292), que distingue las tarjetas de
+// varias plantas de la misma especie; una copia sin conexión anterior al
+// #265 no lo trae y no se pinta.
 // Las validadas no llevan insignia: es lo normal. La miniatura se pide solo
 // cuando la tarjeta está cerca de la pantalla (usePlantThumbnail).
 //
@@ -49,6 +52,7 @@ export const PlantCard = memo(function PlantCard({
       nameStyle={plant.displayNameIsScientific ? 'scientific' : 'plain'}
       nickname={plant.nickname ?? undefined}
       location={plant.location ?? undefined}
+      code={plant.code ?? undefined}
       badge={
         status === 'validated' ? undefined : <StatusBadge status={status} />
       }

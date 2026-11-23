@@ -24,6 +24,13 @@ export type CollectionCardProps = Omit<
   badge?: ReactNode
   /** Ubicación, con el icono map-pin; sin ella no hay fila. */
   location?: ReactNode
+  /**
+   * Identificador del ejemplar («PHA-001», #292): una línea discreta bajo el
+   * nombre, que el lector lee como «Identificador PHA-001.» en la
+   * descripción de la tarjeta (el nombre sigue siendo el del encabezado). Sin
+   * él, nada.
+   */
+  code?: string
   /** Sin foto se muestra el marcador sin-foto.svg del sistema. */
   photo?: SpecimenPhoto
   /**
@@ -70,6 +77,7 @@ export function CollectionCard({
   nickname,
   badge,
   location,
+  code,
   photo,
   photoCount = 0,
   headingLevel = 3,
@@ -80,7 +88,12 @@ export function CollectionCard({
 }: CollectionCardProps) {
   const headingId = useId()
   const photoCountId = useId()
+  const codeId = useId()
   const showPhotoCount = photoCount > 1
+  const describedBy =
+    [code != null && codeId, showPhotoCount && photoCountId]
+      .filter(Boolean)
+      .join(' ') || undefined
   const Heading = `h${headingLevel}` as const
   const classes = [
     'orki-card orki-card--outline',
@@ -99,7 +112,7 @@ export function CollectionCard({
   return (
     <article
       aria-labelledby={headingId}
-      aria-describedby={showPhotoCount ? photoCountId : undefined}
+      aria-describedby={describedBy}
       {...props}
       className={classes}
     >
@@ -121,6 +134,18 @@ export function CollectionCard({
         >
           {renderName ? renderName(name) : name}
         </Heading>
+        {code != null && (
+          <p className="orki-card__meta mt-[0]">
+            {/* El espacio fuera del rótulo: dentro, el cálculo del texto
+                accesible lo recorta y se leería «IdentificadorPHA-001». */}
+            <span className="sr-only">Identificador</span> {code}
+            {/* La descripción, de una pieza: armada con los trozos de
+                arriba, los navegadores la leen «PHA-001 .» o sin punto. */}
+            <span id={codeId} hidden>
+              {`Identificador ${code}.`}
+            </span>
+          </p>
+        )}
         {nickname != null && <p className="orki-card__common">{nickname}</p>}
         {badge}
         {location != null && (
