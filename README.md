@@ -550,7 +550,7 @@ Tras un despliegue, una pestaña abierta (o la app instalada, que en un celular 
 
 **Configuración de Workbox** (`apps/web/vite.config.ts`): `skipWaiting: false` (el nuevo espera a que se acepte o a que no queden pestañas); `clientsClaim: true` (la primera vez que se instala toma el control de la pestaña abierta sin recargar, para que la app funcione sin conexión desde la primera visita; en una actualización no cambia nada, porque al activarse el nuevo pasa a controlar las pestañas igual); `cleanupOutdatedCaches: true` (borra las cachés de formatos viejos de Workbox; el precaché en uso lo limpia el service worker nuevo al activarse, y por eso lo que se retrasa es la activación). El registro lo hace la app con `virtual:pwa-register` (`injectRegister: false`: ya no hay `registerSW.js`) cuando llega el chunk de la app, después del primer pintado. La recarga tras el cambio de service worker la decide `actualizacion.ts` (evento `controllerchange`) y no `vite-plugin-pwa`, que en la primera sesión tras instalar no la avisa.
 
-**Migraciones.** Que una pestaña pueda seguir días con el código anterior significa que, durante ese tiempo, **código viejo habla con el esquema nuevo**. Cada migración tiene que ser compatible hacia atrás con la versión anterior de la app: añadir columnas que admitan nulos o tengan valor por defecto, y tablas y funciones nuevas, sin cambiar las que ya se usan; y retirar o renombrar columnas, funciones, vistas o políticas en un despliegue posterior, cuando la versión que las usaba ya no esté en circulación (ver #186). Como no hay plazo máximo, ese segundo paso asume que una PWA dormida más tiempo verá errores de Supabase en esas pantallas (los avisos de error de siempre, no la pantalla de fallo) hasta que la persona pulse «Actualizar» o cierre la app.
+**Migraciones.** Que una pestaña pueda seguir días con el código anterior significa que, durante ese tiempo, **código viejo habla con el esquema nuevo**. Cada migración tiene que ser compatible hacia atrás con la versión anterior de la app: añadir columnas que admitan nulos o tengan valor por defecto, y tablas y funciones nuevas, sin cambiar las que ya se usan; y retirar o renombrar columnas, funciones, vistas o políticas en un despliegue posterior, cuando la versión que las usaba ya no esté en circulación (ver #186). Como no hay plazo máximo, ese segundo paso asume que una PWA dormida más tiempo verá errores de Supabase en esas pantallas (los avisos de error de siempre, no la pantalla de fallo) hasta que la persona pulse «Actualizar» o cierre la app. La regla escrita, con el plazo y la comprobación del CI, es [Expandir y contraer](supabase/README.md#expandir-y-contraer).
 
 **Skew Protection de Vercel** (servir los assets del despliegue con el que se cargó la página) no está activada. Sería una red más para las pestañas sin service worker; con el aviso y la recarga única no hace falta para evitar la pantalla de fallo.
 
@@ -1045,7 +1045,7 @@ Los scripts y el workflow usan las mismas tres variables:
 | `SUPABASE_DB_PASSWORD`  | Contraseña de la base de datos del proyecto.       | Se define al crear el proyecto; se puede restablecer en Project Settings > Database.                 |
 | `SUPABASE_PROJECT_REF`  | Identificador del proyecto (20 letras minúsculas). | En Project Settings > General (Project ID); también es el subdominio de `https://<ref>.supabase.co`. |
 
-El token puede ser de alcance limitado a los dos proyectos de Orki. Necesita, como mínimo, lectura del proyecto y lectura de la configuración del pooler de conexiones (`database_pooling_config_read`).
+El token puede ser de alcance limitado a un proyecto, y en GitHub se usa uno por ambiente (ver [Producción](#producción)): el de desarrollo no tiene acceso a producción. Necesita, como mínimo, lectura del proyecto y lectura de la configuración del pooler de conexiones (`database_pooling_config_read`). Los permisos que pide cada orden están en su ayuda, sección PERMISSIONS (`npx supabase link --help`, `npx supabase db push --help`, `npx supabase db dump --help`).
 
 El segundo permiso hace falta porque la conexión directa a la base de datos solo funciona por IPv6, que no está disponible en muchas redes ni en los ejecutores de GitHub Actions. Los scripts enlazan el proyecto antes de cada comando (`supabase link`), y el enlace guarda la dirección del pooler, que sí funciona por IPv4, en `supabase/.temp` (ignorado por git). Sin ese permiso el enlace no guarda la dirección y la CLI falla con "IPv6 is not supported on your current network".
 
@@ -1175,18 +1175,39 @@ Una limitación: al generar desde una URL de base de datos, la CLI no añade la 
 
 ### Producción
 
-Las migraciones nunca se aplican en producción desde una máquina local. El workflow `.github/workflows/migraciones.yml` las aplica:
+Las migraciones nunca se aplican en producción desde una máquina local. El workflow `.github/workflows/migraciones.yml` (Actions > Migraciones) las aplica y, en producción, publica después la web (ver [Despliegue ordenado](#despliegue-ordenado)):
 
-- Automáticamente, cuando llega a `main` un cambio en `supabase/migrations/` (al fusionar un pull request). Usa el environment `prod` de GitHub.
-- A mano, desde la pestaña Actions de GitHub con "Run workflow", eligiendo el environment `dev` o `prod`. Producción solo se puede lanzar desde `main`; desarrollo se puede lanzar desde cualquier rama.
+- Automáticamente, en cada push a `main` (al fusionar un pull request), toque o no `supabase/migrations/`. Usa el environment `prod` de GitHub.
+- A mano, desde la pestaña Actions de GitHub con "Run workflow", eligiendo el environment `dev` o `prod`. Con `dev` solo aplica las migraciones y no despliega nada; con `prod`, que solo se puede lanzar desde `main`, aplica y publica la web. Desarrollo se puede lanzar desde cualquier rama, para probar en el proyecto de desarrollo la migración de un pull request antes de fusionarlo.
 
-El workflow instala las dependencias, ejecuta `npm run db:push -- --yes` y después `npm run db:status` para dejar el estado en el registro. Solo aplica las migraciones que faltan en ese ambiente; si no falta ninguna, termina sin cambios. Nunca corren dos ejecuciones a la vez sobre el mismo ambiente: la siguiente espera a que termine la que está en curso.
+En cada ejecución, por este orden:
 
-Las credenciales están registradas en GitHub (Settings > Secrets and variables > Actions, y Settings > Environments):
+1. Comprueba la rama (producción, solo `main`), el identificador del proyecto y, en producción, que existe el secreto del Deploy Hook de Vercel. Si algo falta, termina con un error que dice qué crear y dónde, **antes de tocar la base**: o se aplican las migraciones y se publica la web, o ninguna de las dos cosas.
+2. Simula (`db push --dry-run`) y deja en el resumen de la ejecución la lista de migraciones pendientes, o «Ninguna».
+3. Si hay alguna pendiente, guarda una copia del esquema de la base tal como está (`node scripts/supabase-db.mjs esquema <archivo>`, que llama a `supabase db dump`: solo estructura, sin filas ni roles) como artefacto `esquema-previo-<ambiente>-...` de la ejecución, que se conserva 14 días. Antes de subirla comprueba que no contiene la contraseña ni el token. Si la copia falla, no aplica nada. El repositorio es público: cualquiera con cuenta de GitHub puede descargar los artefactos. El esquema es el de las migraciones, que ya son públicas, más lo que se haya cambiado a mano en el panel.
+4. Aplica las pendientes (`npm run db:push -- --yes`) y deja el estado en el registro (`npm run db:status`). Si no falta ninguna, no cambia nada.
+5. Solo en producción: publica la web, y la prueba de humo comprueba que se publicó (ver [Despliegue ordenado](#despliegue-ordenado)).
 
-- `SUPABASE_ACCESS_TOKEN`: secreto del repositorio, compartido por los dos ambientes.
-- `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
-- `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
+Nunca corren dos ejecuciones a la vez sobre el mismo ambiente: la siguiente espera a que termine la que está en curso.
+
+Las credenciales están en GitHub, en Settings > Environments, cada una en su environment (`dev` y `prod`):
+
+| Nombre                     | Tipo     | Qué es                                                                                                                                          |
+| -------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_ACCESS_TOKEN`    | Secreto  | Token de la API de gestión de Supabase, **uno por ambiente**, limitado a su proyecto (ver [Credenciales](#credenciales)).                       |
+| `SUPABASE_DB_PASSWORD`     | Secreto  | Contraseña de la base de datos del proyecto del ambiente.                                                                                       |
+| `SUPABASE_PROJECT_REF`     | Variable | Identificador del proyecto del ambiente.                                                                                                        |
+| `VERCEL_DEPLOY_HOOK_URL`   | Secreto  | Solo en `prod`: URL del Deploy Hook de producción de Vercel. Nunca como secreto del repositorio, para que un job de `dev` no pueda usarlo.      |
+| `APP_URL`                  | Variable | Solo en `prod`, opcional: URL pública de la app (`https://...`), para la prueba de humo.                                                        |
+| `SUPABASE_PUBLISHABLE_KEY` | Variable | Solo en `prod`, opcional: la clave publicable del proyecto de producción (la misma de `VITE_SUPABASE_PUBLISHABLE_KEY`), para la prueba de humo. |
+
+Hasta el #281, `SUPABASE_ACCESS_TOKEN` era un único secreto del repositorio con acceso a la cuenta: cualquier job lo leía, también uno de `dev` lanzado desde una rama con el workflow cambiado. Un secreto de environment tiene prioridad sobre uno del repositorio con el mismo nombre, así que, una vez creados los dos de environment, hay que **borrar el del repositorio** para que deje de estar al alcance de los jobs sin environment o de `dev`.
+
+Protección de los environments (Settings > Environments, la configura el responsable):
+
+- `prod`: «Deployment branches and tags» limitado a `main`. Así ningún workflow lanzado desde otra rama, aunque lo hayan cambiado en ella, recibe los secretos de producción. Es la protección de verdad; la comprobación de rama del propio workflow solo evita equivocarse.
+- `prod`, opcional: «Required reviewers». Cada push a `main` esperaría entonces a que alguien apruebe en Actions antes de migrar y publicar, también los cambios que solo tocan documentación.
+- `dev` se deja sin restricción de rama: probar la migración de un pull request en el proyecto de desarrollo desde Actions es parte del flujo, y lo mismo hacen «Importar catálogo» y «Fotos de referencia». Con un token limitado al proyecto de desarrollo, lo peor que puede hacer un job de `dev` es tocar desarrollo.
 
 Los workflows manuales de carga usan además `SUPABASE_POOLER_HOST` (variable de cada environment, «Importar catálogo» y «Fotos de referencia») y `SUPABASE_SECRET_KEY` (secreto de cada environment, solo «Fotos de referencia»); ver sus secciones abajo.
 
@@ -1203,9 +1224,55 @@ Las fotos de referencia de las especies (iNaturalist, #234) se cargan con `orki-
 La app web se despliega en Vercel, conectado al repositorio de GitHub:
 
 - Cada pull request genera un despliegue de vista previa (ambiente Preview de Vercel) con su propia URL, y Vercel la publica como comentario en el pull request. Cada commit nuevo en el pull request genera una vista previa nueva. Las vistas previas apuntan al proyecto de Supabase de desarrollo.
-- Cada push a `main` (al fusionar un pull request) despliega en producción (ambiente Production de Vercel), que apunta al proyecto de Supabase de producción.
+- Producción (ambiente Production de Vercel, que apunta al proyecto de Supabase de producción) se publica después de cada push a `main`, pero no la dispara Vercel: la dispara el workflow de migraciones cuando ha terminado de aplicarlas (ver [Despliegue ordenado](#despliegue-ordenado)).
 
 Vercel solo construye y publica. Lint, formato, typecheck y pruebas los ejecuta la [integración continua](#integración-continua) de GitHub, que es la que tiene que pasar antes de fusionar; Vercel no los repite. Las migraciones de la base de datos tampoco pasan por Vercel: las aplica su propio workflow (ver [Producción](#producción)).
+
+### Despliegue ordenado
+
+Hasta el #281, el mismo push a `main` ponía en marcha dos cosas sin orden entre ellas: Vercel publicaba la web y el workflow de migraciones aplicaba las de `supabase/migrations/`. La web nueva podía llegar minutos antes que el esquema que necesita (una columna nueva en una consulta hace que PostgREST rechace la consulta entera: «Mi colección» fallaría para todos), y si la migración fallaba se quedaba así. Ahora:
+
+1. `apps/web/vercel.json` tiene `"git": { "deploymentEnabled": { "main": false } }`: un push a `main` ya no despliega producción. Las vistas previas de los pull requests siguen igual.
+2. El workflow **Migraciones** corre en cada push a `main`, aplica las migraciones pendientes (si no hay, no hace nada) y, solo si termina bien, llama al **Deploy Hook** de producción de Vercel, cuya URL es el secreto `VERCEL_DEPLOY_HOOK_URL` del environment `prod`. Vercel construye y publica entonces la cabeza de `main`. El resumen de la ejecución deja el código HTTP de la respuesta (nunca la URL, que solo llega al script por el entorno y está enmascarada).
+3. Si una migración falla, el hook no se llama y la web publicada sigue siendo la anterior, que es compatible con el esquema que quedó (ver [Expandir y contraer](supabase/README.md#expandir-y-contraer)).
+4. Si al terminar `main` ya avanzó a otro commit, no llama al hook: el hook publica la cabeza de `main`, y ese commit puede traer migraciones que aún no se han aplicado. Lo publica la ejecución de ese commit, que espera a que termine esta. Queda una ventana de segundos (un push justo entre la comprobación y la llamada) que no se puede cerrar sin la API de Vercel.
+5. Con el hook llamado, la **prueba de humo** (`scripts/despliegue/humo.mjs`, sin sesión ni secretos) espera hasta 15 minutos a que la portada sirva este commit (el build lo escribe en `<meta name="orki-release">`), comprueba que la portada y su script principal responden y que `search_public_species` responde con la clave publicable, como un visitante sin sesión. Si faltan las variables `APP_URL` o `SUPABASE_PUBLISHABLE_KEY` del environment `prod`, se omite con un aviso. No comprueba nada con sesión: haría falta un usuario de prueba de Clerk en producción, que hoy se evita a propósito (#25).
+
+Lanzar el workflow a mano con `prod` (desde `main`) vuelve a publicar la web aunque no haya migraciones: es la forma de republicar sin pasar por el panel de Vercel. Con `dev` no despliega nada.
+
+Si falta el secreto, el workflow termina en el primer paso con un `::error::` que dice qué crear y dónde, sin haber aplicado ninguna migración.
+
+**Puesta en marcha** (una vez; si `vercel.json` llega a `main` sin el secreto, `main` deja de publicarse):
+
+1. En Vercel, proyecto > Settings > Git > Deploy Hooks: crea un hook (por ejemplo «GitHub Actions: producción») con la rama `main`, que es la de producción, y copia su URL. Quien tiene la URL puede desplegar: no la pegues en ningún issue, chat ni registro.
+2. En GitHub, guárdala como secreto del environment `prod` (no del repositorio): `gh secret set VERCEL_DEPLOY_HOOK_URL --env prod -R rcronald/orki-app`, que la pide sin mostrarla.
+3. Opcional, para la prueba de humo: `gh variable set APP_URL --env prod -R rcronald/orki-app --body 'https://<dominio de producción>'` y `gh variable set SUPABASE_PUBLISHABLE_KEY --env prod -R rcronald/orki-app --body '<clave publicable de producción>'`.
+
+### Revertir una migración en producción
+
+No hay migraciones «hacia atrás»: la CLI de Supabase no las tiene y una migración ya aplicada en `main` no se edita ni se borra.
+
+1. **Lo primero, la web.** Si lo que falla es la web nueva y la migración está bien, vuelve a la versión anterior en Vercel (paso 4) y corrige con calma.
+2. **Migración correctiva hacia delante** (lo normal). Crea una migración nueva que deshaga o arregle el cambio (`npm run db:new -- corregir_...`), con sus pruebas, pruébala en desarrollo y fusiónala como cualquier otra: el workflow la aplica y publica la web. Si una migración falló al aplicarse, la CLI la aplica en su propia transacción y no la registra como aplicada, así que producción se queda como estaba: en ese caso se puede corregir el mismo archivo en un pull request nuevo, porque no llegó a aplicarse en producción (si ya estaba aplicado en desarrollo, deja también desarrollo como corresponda), y volver a fusionar. El esquema de antes está en el artefacto `esquema-previo-prod-...` de la ejecución que la aplicó (Actions > Migraciones > la ejecución > Artifacts), para comparar qué cambió.
+3. **Restaurar una copia de Supabase** (último recurso, si se perdieron o se estropearon datos). Qué copias hay depende del plan del proyecto de producción: compruébalo en el panel de Supabase, proyecto de producción > Database > Backups (copias diarias programadas y, si está contratado, Point in Time Recovery), y anota aquí lo que ofrece y cuántos días guarda. Antes de restaurar, ten en cuenta que restaurar devuelve **toda** la base al momento de la copia: se pierde todo lo escrito después (plantas, fotos registradas, bitácora, cambios del catálogo), y según la documentación de Supabase los archivos de Storage no forman parte de la copia de la base, así que pueden quedar fotos sin fila o filas sin foto (ver [Limpieza de fotos huérfanas](supabase/README.md#limpieza-de-fotos-huérfanas)). La propia página de Backups explica el procedimiento y si el proyecto queda sin servicio mientras tanto. Después de restaurar, `npm run db:status` en el workflow (lanzándolo a mano con `prod`) dirá qué migraciones considera aplicadas; las posteriores a la copia se volverán a aplicar en la siguiente ejecución, así que antes hay que retirar o corregir la que causó el problema.
+4. **Volver a un despliegue anterior en Vercel.** Panel de Vercel > proyecto > Deployments, elige el último despliegue de producción bueno > menú > «Instant Rollback» (o «Promote to Production»). Es inmediato y no reconstruye nada. Según la documentación de Vercel, tras un Instant Rollback los despliegues nuevos de producción dejan de asignarse solos al dominio hasta que se deshace («Undo Rollback») o se promueve otro: compruébalo en el panel, porque mientras tanto el Deploy Hook construye pero no publica. La web anterior funciona con el esquema nuevo si las migraciones siguen la regla [Expandir y contraer](supabase/README.md#expandir-y-contraer). Las PWA que ya tenían la versión nueva recibirán la anterior como una versión más, con el aviso de siempre (ver [Service worker: versiones nuevas](#service-worker-versiones-nuevas)).
+
+### Qué hacer si el despliegue no se dispara
+
+Mira la ejecución de **Migraciones** del commit (Actions > Migraciones, o el check del commit en `main`). Su resumen dice qué migraciones había, si se copió el esquema y qué respondió Vercel.
+
+| Lo que ves                                                                                    | Qué pasa y qué hacer                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No hay ninguna ejecución del commit                                                           | El workflow no se lanzó (Actions desactivado, o un error de sintaxis del YAML, que GitHub muestra en la pestaña Actions). Corrige y lánzalo a mano con `prod` desde `main`.                                                                                                                                                                             |
+| «Waiting» o «Queued»                                                                          | Espera la aprobación del environment `prod` (si tiene revisores obligatorios) o a que termine otra ejecución sobre `prod`. Apruébala o espera.                                                                                                                                                                                                          |
+| Falla en «Comprobar la rama y la configuración» con «Falta el secreto VERCEL_DEPLOY_HOOK_URL» | Crea el Deploy Hook y el secreto («Puesta en marcha» en [Despliegue ordenado](#despliegue-ordenado)) y pulsa «Re-run jobs». No se aplicó nada.                                                                                                                                                                                                          |
+| Falla al simular, al copiar el esquema o al aplicar                                           | Una credencial, la conexión o la propia migración. No se publicó la web, y la anterior sigue funcionando. Lee el registro del paso; si es la migración, corrígela con un pull request nuevo ([Revertir una migración en producción](#revertir-una-migración-en-producción)). Si fue algo pasajero (la red, Docker al copiar el esquema), «Re-run jobs». |
+| «No se dispara: main ya está en …»                                                            | Es lo esperado: la ejecución del commit más nuevo publicará la web. Si esa falla, se queda publicada la de antes de los dos.                                                                                                                                                                                                                            |
+| Falla en «Publicar la web» con un código HTTP                                                 | Las migraciones están aplicadas, la web no. Un 404 o un 4xx: el hook se borró o se regeneró en Vercel; crea otro y actualiza el secreto (`gh secret set VERCEL_DEPLOY_HOOK_URL --env prod`). Un 5xx o sin respuesta tras tres intentos: Vercel tenía un problema; «Re-run jobs» (las migraciones ya aplicadas no se repiten).                           |
+| Falla la prueba de humo porque producción no sirve el commit                                  | Vercel recibió el hook pero no publicó: mira el despliegue en su panel (Deployments). Un build que falla, un Instant Rollback sin deshacer o un hook creado para otra rama. Si el build está bien y solo tardó, no hay nada que hacer.                                                                                                                  |
+| Falla la prueba de humo en la portada, el script o `search_public_species`                    | La web publicada o la base no responden como deben: compruébalo en el navegador sin sesión. Si es la web, vuelve al despliegue anterior en Vercel; si es la base, una migración correctiva.                                                                                                                                                             |
+
+**Para publicar de urgencia**, lanza Migraciones a mano con `prod` desde `main`, que aplica lo pendiente antes de publicar. Usar «Redeploy» en el panel de Vercel también publica, pero sin comprobar las migraciones: solo si sabes que no hay ninguna pendiente.
 
 ### Configuración versionada
 
@@ -1253,8 +1320,10 @@ El proyecto sigue GitHub Flow:
 1. `main` siempre está en estado desplegable. No se hacen commits directos en `main`.
 2. Cada cambio se trabaja en una rama creada desde `main` y asociada a un issue, por ejemplo `feat/1-monorepo-base`.
 3. Al terminar se abre un pull request hacia `main`. La integración continua ejecuta lint, verificación de formato, typecheck, pruebas y build, y tiene que pasar antes de fusionar.
-4. Tras la revisión, el pull request se fusiona en `main` y la rama se borra.
+4. Tras la revisión, el pull request se fusiona en `main` y la rama se borra. El workflow de migraciones aplica las pendientes y publica la web en producción (ver [Despliegue ordenado](#despliegue-ordenado)).
 
 ## Integración continua
 
 El workflow `.github/workflows/ci.yml` se ejecuta en cada pull request y en cada push a `main`. Instala las dependencias con `npm ci` usando la versión de Node de `.nvmrc` y la caché de npm, y después ejecuta `lint`, `format:check`, `typecheck`, `test` y `build`, en ese orden. Si cualquiera de esos pasos falla, el job falla. Un segundo job, **Pruebas de base de datos**, ejecuta `npm run db:test` y `npm run db:types:check` sobre un Postgres 17 desechable (ver [Pruebas de la base de datos](#pruebas-de-la-base-de-datos) y [Tipos de TypeScript del esquema](#tipos-de-typescript-del-esquema)). Otro, **Pruebas de extremo a extremo (Playwright)**, prueba los flujos principales en un navegador real (ver [Pruebas de extremo a extremo](#pruebas-de-extremo-a-extremo)); todavía no es obligatorio. Cuando se suben nuevos commits a un pull request, la ejecución anterior de ese mismo pull request se cancela.
+
+Otro workflow, `.github/workflows/migraciones-y-codigo.yml` (**Migraciones separadas del código de la app**), comprueba en cada pull request la regla [Expandir y contraer](supabase/README.md#expandir-y-contraer): falla si el pull request toca `supabase/migrations/` y también `apps/web/src`, salvo `lib/database.types.ts`, `lib/database.ts` y `lib/database.test.ts`. Se salta con la etiqueta «migración con código» en el pull request: entonces pasa, con un aviso en la ejecución. Corre también al poner o quitar etiquetas. No es obligatorio para fusionar.

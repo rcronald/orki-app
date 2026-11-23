@@ -67,6 +67,22 @@ Cubre solo al rol `postgres`, que es con el que se aplican las migraciones y con
 - No pongas datos personales ni secretos en las migraciones.
 - Cada migración llega con sus pruebas en `tests/`, y `npm run db:test` debe pasar antes de abrir el pull request.
 - Cada migración llega también con los tipos de TypeScript regenerados: ejecuta `npm run db:types` e incluye `apps/web/src/lib/database.types.ts` en el mismo commit. El CI falla si no coinciden (ver [Tipos de TypeScript](#tipos-de-typescript)).
+- Cada migración es compatible con la versión de la app que está publicada y con las anteriores que siguen abiertas: ver [Expandir y contraer](#expandir-y-contraer).
+
+## Expandir y contraer
+
+En producción, la migración se aplica antes de publicar la web (ver [Despliegue ordenado](../README.md#despliegue-ordenado)), pero eso no basta: una pestaña abierta o una PWA instalada siguen con el código que cargaron, a veces durante días y sin plazo máximo (ver [Service worker: versiones nuevas](../README.md#service-worker-versiones-nuevas)). Así que siempre hay **código viejo hablando con el esquema nuevo**, y si se vuelve a un despliegue anterior en Vercel, también la web anterior. Por eso cada cambio del esquema se hace en dos tiempos:
+
+1. **Expandir: lo que se añade va en un pull request anterior al código que lo usa.** Columnas que admiten nulos o con valor por defecto, tablas, funciones, vistas, valores de enumerado nuevos, permisos nuevos. Ese pull request lleva la migración, sus pruebas y los tipos regenerados (`lib/database.types.ts` y, si hace falta, los alias de `lib/database.ts` y su prueba), y nada del código de la app que lo usa. Se fusiona, el workflow lo aplica, y después llega el pull request de la app. Así lo hicieron #269 (la base del identificador, las notas y la bitácora) y #272 y #273 (las pantallas que los usan). #269 tocaba además `apps/web/src/photos/orphans.ts`, la lógica del script de fotos huérfanas, que tenía que conocer la carpeta nueva de la bitácora y no la usa la app publicada: con la comprobación de abajo habría llevado la etiqueta de excepción (se comprobó pasándole los archivos de ese commit).
+2. **Contraer: retirar o renombrar algo exige que ninguna versión desplegada en los últimos 30 días lo use.** Columnas, funciones, vistas, políticas, valores de enumerado, permisos que la app usaba. Un renombre es añadir lo nuevo (expandir), pasar la app a lo nuevo y, pasado el plazo, retirar lo viejo (contraer); nunca un `rename` en una sola migración. Antes de abrir el pull request que lo retira:
+   - comprueba que el código de `main` ya no lo usa: `git grep -n '<nombre>' -- apps/web/src`, sin resultados;
+   - y que el último cambio que dejó de usarlo lleva más de 30 días en producción: `git log -1 --format='%h %cs %s' -S '<nombre>' -- apps/web/src` da el commit que quitó la última aparición y su fecha, y en Vercel (Deployments) se ve cuándo se publicó.
+
+   El plazo es una decisión, no una garantía: como una PWA dormida puede seguir más tiempo con el código viejo, la que pase de 30 días verá los errores de Supabase de siempre en esas pantallas (no la pantalla de fallo) hasta que se actualice. Lo que el #186 tenga que retirar sigue esta regla.
+
+Lo que hay que evitar en una sola migración: añadir una columna `not null` sin valor por defecto (la versión anterior no la envía al insertar), cambiar el tipo o el significado de una columna, quitar un permiso o endurecer una política que usa la app publicada, o cambiar la firma de una función que llama la app (Postgres la trata como otra función: `create or replace` con otros parámetros deja las dos; si cambias los parámetros, crea la nueva y retira la vieja en un segundo tiempo).
+
+**Comprobación en el CI.** El workflow `.github/workflows/migraciones-y-codigo.yml` falla en un pull request que toca `supabase/migrations/` y también `apps/web/src`, salvo `lib/database.types.ts`, `lib/database.ts` y `lib/database.test.ts` (los tipos del esquema y su prueba, que van con la migración). El script es `scripts/migraciones-y-codigo/index.mjs`, con sus pruebas al lado. Si de verdad tienen que ir juntos (un cambio que la app anterior no usa, por ejemplo), añade al pull request la etiqueta **«migración con código»** y explica por qué en la descripción: el job pasa, pero deja un aviso visible en la ejecución con los archivos que mezcla. No es un check obligatorio para fusionar.
 
 ## Pruebas de base de datos
 
