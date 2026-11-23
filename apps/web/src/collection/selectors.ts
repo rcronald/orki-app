@@ -154,10 +154,16 @@ function codeTermsOf(normalized: string): {
   return { terms, rest }
 }
 
-const plantCodes = new WeakMap<CollectionPlant, CodeTerm | null>()
+/** El identificador de una planta, partido: «CAT-012» es cat y 12. */
+interface PlantCode {
+  prefix: string
+  number: number
+}
+
+const plantCodes = new WeakMap<CollectionPlant, PlantCode | null>()
 
 /** El identificador de la planta partido; null si no lo tiene (copia antigua). */
-function plantCodeOf(plant: CollectionPlant): CodeTerm | null {
+function plantCodeOf(plant: CollectionPlant): PlantCode | null {
   let code = plantCodes.get(plant)
   if (code === undefined) {
     const parts =
@@ -272,28 +278,118 @@ export function compareNames(a: string, b: string): number {
 }
 
 /**
+ * Órdenes de la lista (#292): las más recientes (por fecha de alta, el de
+ * siempre), por nombre (A–Z) y por fecha de adquisición (la más reciente
+ * primero). Sin el inverso de ninguno: para «la más antigua» basta bajar al
+ * final de la lista.
+ */
+export type PlantSort = 'newest' | 'name' | 'acquired'
+
+export const PLANT_SORTS: readonly PlantSort[] = ['newest', 'name', 'acquired']
+
+export function isPlantSort(value: unknown): value is PlantSort {
+  return PLANT_SORTS.includes(value as PlantSort)
+}
+
+// Claves de orden por planta, calculadas una vez por objeto (como el texto
+// de búsqueda): con 2000 plantas, ordenar compara unas 22 000 veces y no
+// conviene normalizar el nombre ni leer la fecha en cada comparación.
+const nameKeys = new WeakMap<CollectionPlant, string>()
+const createdTimes = new WeakMap<CollectionPlant, number>()
+
+function nameKeyOf(plant: CollectionPlant): string {
+  let key = nameKeys.get(plant)
+  if (key === undefined) {
+    key = sortKey(plant.displayName)
+    nameKeys.set(plant, key)
+  }
+  return key
+}
+
+function createdTimeOf(plant: CollectionPlant): number {
+  let time = createdTimes.get(plant)
+  if (time === undefined) {
+    time = Date.parse(plant.createdAt)
+    createdTimes.set(plant, time)
+  }
+  return time
+}
+
+/**
+ * Por identificador, en orden natural (PHA-002 antes que PHA-010); las que
+ * no lo tienen (copia antigua), al final.
+ */
+function compareCodes(a: CollectionPlant, b: CollectionPlant): number {
+  const codeA = plantCodeOf(a)
+  const codeB = plantCodeOf(b)
+  if (codeA === null || codeB === null) {
+    return codeA === codeB ? 0 : codeA === null ? 1 : -1
+  }
+  return compareIds(codeA.prefix, codeB.prefix) || codeA.number - codeB.number
+}
+
+function byName(a: CollectionPlant, b: CollectionPlant): number {
+  return (
+    collator.compare(nameKeyOf(a), nameKeyOf(b)) ||
+    compareCodes(a, b) ||
+    compareIds(a.id, b.id)
+  )
+}
+
+function byNewest(a: CollectionPlant, b: CollectionPlant): number {
+  return createdTimeOf(b) - createdTimeOf(a) || compareIds(a.id, b.id)
+}
+
+// acquiredOn es "AAAA-MM-DD": se compara como texto. Mismo día: la dada de
+// alta más tarde primero.
+function byAcquired(a: CollectionPlant, b: CollectionPlant): number {
+  return compareIds(b.acquiredOn, a.acquiredOn) || byNewest(a, b)
+}
+
+const COMPARATORS: Record<
+  PlantSort,
+  (a: CollectionPlant, b: CollectionPlant) => number
+> = {
+  newest: byNewest,
+  name: byName,
+  acquired: byAcquired,
+}
+
+/**
  * Orden alfabético por nombre mostrado, ignorando el signo de híbrido, las
  * tildes y las mayúsculas ("× Rhyncholaeliocattleya" va con la R). Empates:
- * por id, para que el orden sea siempre el mismo.
+ * por identificador (PHA-001, PHA-002…) y después por id, para que el orden
+ * sea siempre el mismo.
  */
 export function sortByName(
   plants: readonly CollectionPlant[],
 ): CollectionPlant[] {
-  return plants.toSorted(
-    (a, b) =>
-      compareNames(a.displayName, b.displayName) || compareIds(a.id, b.id),
-  )
+  return plants.toSorted(byName)
 }
 
 /** Las más recientes primero, por fecha de alta. Empates: por id. */
 export function sortByNewest(
   plants: readonly CollectionPlant[],
 ): CollectionPlant[] {
-  return plants.toSorted(
-    (a, b) =>
-      Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
-      compareIds(a.id, b.id),
-  )
+  return plants.toSorted(byNewest)
+}
+
+/**
+ * Por fecha de adquisición, la más reciente primero. Empates (el mismo día):
+ * la dada de alta más tarde primero, y después por id.
+ */
+export function sortByAcquired(
+  plants: readonly CollectionPlant[],
+): CollectionPlant[] {
+  return plants.toSorted(byAcquired)
+}
+
+/** Ordena según `sort`, sin cambiar la lista recibida. */
+export function sortPlants(
+  plants: readonly CollectionPlant[],
+  sort: PlantSort,
+): CollectionPlant[] {
+  return plants.toSorted(COMPARATORS[sort])
 }
 
 function compareIds(a: string, b: string): number {
@@ -302,9 +398,14 @@ function compareIds(a: string, b: string): number {
 
 // Agrupación y contadores ------------------------------------------------------
 
+export interface GroupOptions extends StatusOptions {
+  /** Orden de las plantas dentro de cada género; por defecto, por nombre. */
+  sort?: PlantSort
+}
+
 export interface GenusGroup {
   genus: CollectionGenus
-  /** Plantas del género, en orden alfabético por nombre mostrado. */
+  /** Plantas del género, en el orden pedido (por nombre si no se pide). */
   plants: CollectionPlant[]
   /** Número de plantas del grupo. */
   count: number
@@ -314,14 +415,15 @@ export interface GenusGroup {
  * Agrupa por género (el de la planta: el de su especie o, sin especie, el que
  * eligió el usuario). Los grupos van en orden alfabético por nombre del género,
  * ignorando el signo de híbrido, y las plantas de cada grupo por nombre
- * mostrado. Solo activas por defecto.
+ * mostrado o en el orden de `sort` (el que se eligió en «Mi colección»).
+ * Solo activas por defecto.
  */
 export function groupByGenus(
   plants: readonly CollectionPlant[],
-  options?: StatusOptions,
+  { sort = 'name', ...options }: GroupOptions = {},
 ): GenusGroup[] {
   const groups = new Map<string, GenusGroup>()
-  for (const plant of sortByName(plantsByStatus(plants, options))) {
+  for (const plant of sortPlants(plantsByStatus(plants, options), sort)) {
     const group = groups.get(plant.genus.id)
     if (group) {
       group.plants.push(plant)

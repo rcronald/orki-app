@@ -13,6 +13,112 @@ const tarjetas = (page: Page) => page.getByRole('main').getByRole('article')
 const buscador = (page: Page) =>
   page.getByRole('searchbox', { name: 'Buscar en mi colección' })
 
+const nombres = (page: Page) => tarjetas(page).getByRole('heading')
+
+async function sinDesplazamientoHorizontal(page: Page) {
+  const anchos = await page.evaluate(() => ({
+    documento: document.documentElement.scrollWidth,
+    ventana: document.documentElement.clientWidth,
+  }))
+  expect(anchos.documento).toBeLessThanOrEqual(anchos.ventana)
+}
+
+/**
+ * «Ordenar»: en escritorio, en la barra del buscador; hasta 720 px, dentro
+ * del panel de filtros. En cada ancho solo uno es accesible.
+ */
+async function ordenar(page: Page, opcion: string) {
+  const control = page.getByRole('combobox', { name: 'Ordenar' })
+  if ((page.viewportSize()?.width ?? 0) <= 720) {
+    await expect(
+      page.getByRole('search').getByRole('combobox', { name: 'Ordenar' }),
+    ).toHaveCount(0)
+    const filtros = page.getByRole('button', { name: /^Filtros/ })
+    if ((await filtros.getAttribute('aria-expanded')) !== 'true') {
+      await filtros.click()
+    }
+    await expect(
+      page
+        .getByRole('region', { name: 'Filtros de la colección' })
+        .getByRole('combobox', { name: 'Ordenar' }),
+    ).toBeVisible()
+  }
+  await expect(control).toHaveCount(1)
+  await control.selectOption({ label: opcion })
+  await expect(control.locator('option:checked')).toHaveText(opcion)
+}
+
+const POR_ALTA = [
+  'Phalaenopsis amabilis',
+  'Oncidium Sharry Baby',
+  'Masdevallia veitchiana',
+  'Dendrobium nobile',
+  'Cattleya maxima',
+]
+const POR_NOMBRE = [
+  'Cattleya maxima',
+  'Dendrobium nobile',
+  'Masdevallia veitchiana',
+  'Oncidium Sharry Baby',
+  'Phalaenopsis amabilis',
+]
+const POR_ADQUISICION = [
+  'Oncidium Sharry Baby',
+  'Masdevallia veitchiana',
+  'Dendrobium nobile',
+  'Cattleya maxima',
+  'Phalaenopsis amabilis',
+]
+
+for (const ancho of [360, 1440]) {
+  test(
+    `ordenar a ${String(ancho)} px y recordarlo al volver`,
+    { tag: ancho > 720 ? '@escritorio' : [] },
+    async ({ page, supabase, revisarAccesibilidad }) => {
+      // La amabilis se compró en marzo pero se registró la última: el orden
+      // por alta y el de adquisición no coinciden.
+      const amabilis = supabase.datos.plantas.find(
+        (p) => p.id === PLANTAS.amabilis,
+      )
+      if (amabilis) amabilis.created_at = '2026-10-20T12:00:00.000Z'
+      await page.setViewportSize({ width: ancho, height: 900 })
+      await page.goto('/coleccion')
+
+      await expect(nombres(page)).toHaveText(POR_ALTA)
+      await ordenar(page, 'Nombre (A–Z)')
+      await expect(nombres(page)).toHaveText(POR_NOMBRE)
+      await sinDesplazamientoHorizontal(page)
+      await revisarAccesibilidad(`inventario ordenado a ${String(ancho)} px`)
+
+      await ordenar(page, 'Fecha de adquisición')
+      await expect(nombres(page)).toHaveText(POR_ADQUISICION)
+
+      // En lista, el mismo orden y el identificador en cada tarjeta.
+      await page
+        .getByRole('group', { name: 'Vista' })
+        .getByRole('button', { name: 'Lista' })
+        .click()
+      await expect(nombres(page)).toHaveText(POR_ADQUISICION)
+      await expect(
+        page.getByRole('article', { name: 'Oncidium Sharry Baby' }),
+      ).toContainText('ONC-001')
+      await sinDesplazamientoHorizontal(page)
+      await revisarAccesibilidad(`inventario en lista a ${String(ancho)} px`)
+
+      // Se recuerda con la vista (preferencias del dispositivo), no en la
+      // dirección.
+      expect(new URL(page.url()).search).toBe('')
+      await page.reload()
+      await expect(nombres(page)).toHaveText(POR_ADQUISICION)
+      await expect(
+        page
+          .getByRole('group', { name: 'Vista' })
+          .getByRole('button', { name: 'Lista' }),
+      ).toHaveAttribute('aria-pressed', 'true')
+    },
+  )
+}
+
 test('el identificador en la tarjeta, en cuadrícula y en lista', async ({
   page,
 }) => {

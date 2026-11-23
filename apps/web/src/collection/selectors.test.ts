@@ -20,8 +20,11 @@ import {
   filterByText,
   groupByGenus,
   plantsByStatus,
+  isPlantSort,
+  sortByAcquired,
   sortByName,
   sortByNewest,
+  sortPlants,
 } from './selectors.ts'
 
 const amabilis = plant({
@@ -242,6 +245,143 @@ describe('orden', () => {
 
     expect(sortByNewest([utc, lima, later])).toEqual([later, lima, utc])
   })
+
+  it('con el mismo nombre, por identificador en orden natural (#292)', () => {
+    const p10 = plant({ id: 'a', code: 'PHA-010' })
+    const p2 = plant({ id: 'b', code: 'PHA-002' })
+    const old = plant({ id: 'c', code: null })
+    const p1000 = plant({ id: 'd', code: 'PHA-1000' })
+    expect(sortByName([old, p10, p1000, p2])).toEqual([p2, p10, p1000, old])
+  })
+
+  it('por fecha de adquisición, la más reciente primero; el mismo día, la dada de alta más tarde', () => {
+    const march = plant({
+      acquiredOn: '2026-03-14',
+      createdAt: '2026-11-20T10:00:00+00:00',
+    })
+    const mayEarly = plant({
+      acquiredOn: '2026-05-02',
+      createdAt: '2026-10-01T10:00:00+00:00',
+    })
+    const mayLate = plant({
+      acquiredOn: '2026-05-02',
+      createdAt: '2026-10-02T10:00:00+00:00',
+    })
+    const lastYear = plant({
+      acquiredOn: '2025-12-01',
+      createdAt: '2026-11-21T10:00:00+00:00',
+    })
+    const input = [march, lastYear, mayEarly, mayLate]
+    expect(sortByAcquired(input)).toEqual([mayLate, mayEarly, march, lastYear])
+    // La fecha de alta no manda: la última dada de alta va al final.
+    expect(sortByNewest(input)[0]).toBe(lastYear)
+    expect(input).toEqual([march, lastYear, mayEarly, mayLate])
+  })
+
+  it('sortPlants con cada orden', () => {
+    expect(sortPlants(collection, 'newest')).toEqual(sortByNewest(collection))
+    expect(sortPlants(collection, 'name')).toEqual(sortByName(collection))
+    expect(sortPlants(collection, 'acquired')).toEqual(
+      sortByAcquired(collection),
+    )
+    expect(isPlantSort('acquired')).toBe(true)
+    expect(isPlantSort('precio')).toBe(false)
+    expect(isPlantSort(undefined)).toBe(false)
+  })
+
+  it('agrupada, cada género en el orden pedido', () => {
+    const older = plant({
+      displayName: 'Phalaenopsis zeta',
+      createdAt: '2026-01-01T10:00:00+00:00',
+    })
+    const newer = plant({
+      displayName: 'Phalaenopsis alfa',
+      createdAt: '2026-02-01T10:00:00+00:00',
+    })
+    const [byName] = groupByGenus([older, newer])
+    expect(byName.plants).toEqual([newer, older])
+    const [byNewest] = groupByGenus([newer, older], { sort: 'newest' })
+    expect(byNewest.plants).toEqual([newer, older])
+    const [byNewestReversed] = groupByGenus(
+      [{ ...older, createdAt: '2026-03-01T10:00:00+00:00' }, newer],
+      { sort: 'newest' },
+    )
+    expect(byNewestReversed.plants.map((p) => p.displayName)).toEqual([
+      'Phalaenopsis zeta',
+      'Phalaenopsis alfa',
+    ])
+  })
+})
+
+describe('rendimiento con colecciones grandes (#292)', () => {
+  // Colección sintética: nombres, géneros, ubicaciones e identificadores
+  // variados, como una colección real grande.
+  const GENERA = [PHALAENOPSIS, CATTLEYA, RHYNCHOLAELIOCATTLEYA]
+  const EPITHETS = ['amabilis', 'maxima', 'trianae', 'nobile', 'Memoria Helen']
+  function synthetic(count: number): CollectionPlant[] {
+    return Array.from({ length: count }, (_, i) => {
+      const genus = GENERA[i % GENERA.length]
+      const name = `${genus.name} ${EPITHETS[i % EPITHETS.length]} ${String(i)}`
+      return plant({
+        displayName: name,
+        enteredName: name,
+        genus,
+        code: `${genus.name
+          .replace(/[^A-Za-z]/g, '')
+          .slice(0, 3)
+          .toUpperCase()}-${String(i + 1).padStart(3, '0')}`,
+        location: `Estante ${String(i % 20)}`,
+        nickname: i % 7 === 0 ? `Apodo ${String(i)}` : null,
+        acquiredOn: `202${String(i % 6)}-0${String((i % 9) + 1)}-1${String(i % 10)}`,
+        createdAt: new Date(Date.UTC(2026, 0, 1) + i * 3_600_000).toISOString(),
+      })
+    })
+  }
+
+  /** Mediana de varias pasadas, con objetos nuevos (sin claves en caché). */
+  function median(run: () => void, times = 5): number {
+    const samples: number[] = []
+    for (let i = 0; i < times; i += 1) {
+      const start = performance.now()
+      run()
+      samples.push(performance.now() - start)
+    }
+    return samples.sort((a, b) => a - b)[Math.floor(times / 2)]
+  }
+
+  it.each([500, 2000])(
+    'con %i plantas, ordenar y buscar no se nota',
+    (count) => {
+      const times: Record<string, number> = {}
+      for (const sort of ['newest', 'name', 'acquired'] as const) {
+        times[sort] = median(() => sortPlants(synthetic(count), sort))
+      }
+      // Buscar la primera vez (plantas nuevas: sin el texto normalizado en
+      // caché) y las siguientes, como al escribir letra a letra.
+      const plants = synthetic(count)
+      for (const query of ['amabilis', 'PHA-013', 'estante 3', 'amabils']) {
+        times[`${query} (primera)`] = median(() =>
+          filterByText(synthetic(count), query),
+        )
+        times[query] = median(() => filterByText(plants, query))
+      }
+      times['crear las plantas'] = median(() => synthetic(count))
+      // Lo que mide la prueba, para el informe del issue.
+      console.info(
+        `${String(count)} plantas (ms; ordenar y «primera» incluyen crear las plantas):`,
+        JSON.stringify(
+          Object.fromEntries(
+            Object.entries(times).map(([key, ms]) => [key, ms.toFixed(1)]),
+          ),
+        ),
+      )
+      // Umbral holgado (un fotograma largo), para que la prueba no falle
+      // con la máquina cargada; los tiempos reales están muy por debajo.
+      for (const [key, ms] of Object.entries(times)) {
+        expect(ms, key).toBeLessThan(count <= 500 ? 50 : 150)
+      }
+    },
+  )
 })
 
 describe('filterByText', () => {

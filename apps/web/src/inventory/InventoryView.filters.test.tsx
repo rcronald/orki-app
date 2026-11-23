@@ -192,8 +192,14 @@ describe('InventoryView: filtros', () => {
     expect(toggle()).toHaveFocus()
 
     await openPanel(user)
-    // Con el teclado: del botón, por la vista (en la misma barra), al panel,
-    // que va justo después de la barra.
+    // Con el teclado: del botón, por «Ordenar» y la vista (en la misma
+    // barra), al panel, que va justo después de la barra.
+    await user.tab()
+    expect(
+      within(screen.getByRole('search')).getByRole('combobox', {
+        name: 'Ordenar',
+      }),
+    ).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveFocus()
     await user.tab()

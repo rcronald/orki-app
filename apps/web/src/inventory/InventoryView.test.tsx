@@ -151,6 +151,13 @@ const cardNames = () =>
 const searchbox = () =>
   screen.getByRole('searchbox', { name: 'Buscar en mi colección' })
 
+/**
+ * «Ordenar» de la barra del buscador. Hay otro en el panel de filtros, el del
+ * celular; en jsdom no hay CSS y se ven los dos.
+ */
+const sortSelect = () =>
+  within(screen.getByRole('search')).getByRole('combobox', { name: 'Ordenar' })
+
 /** Abre el panel «Filtros» (ahí está «Agrupar por género»). */
 async function openFilters(user: ReturnType<typeof userEvent.setup>) {
   const toggle = screen.getByRole('button', { name: /^Filtros/ })
@@ -181,9 +188,94 @@ describe('InventoryView', () => {
     ])
   })
 
+  describe('ordenar (#292)', () => {
+    it('«Más recientes» por defecto; por nombre y por fecha de adquisición', async () => {
+      const user = userEvent.setup()
+      const bought = (plant: CollectionPlant, acquiredOn: string) => ({
+        ...plant,
+        acquiredOn,
+      })
+      renderInventory([
+        bought(amabilis, '2026-06-01'),
+        bought(schilleriana, '2025-01-10'),
+        bought(maxima, '2026-08-15'),
+        bought(memoria, '2024-03-02'),
+        bought(pending, '2026-06-01'),
+      ])
+      expect(sortSelect()).toHaveValue('newest')
+      expect(
+        within(sortSelect())
+          .getAllByRole('option')
+          .map((option) => option.textContent),
+      ).toEqual(['Más recientes', 'Nombre (A–Z)', 'Fecha de adquisición'])
+
+      await user.selectOptions(sortSelect(), 'Nombre (A–Z)')
+      // Sin el «×»: el híbrido va con la R.
+      expect(cardNames()).toEqual([
+        'Cattleya maxima',
+        'la naranja del mercado',
+        'Phalaenopsis amabilis',
+        'Phalaenopsis schilleriana',
+        '× Rhyncholaeliocattleya Memoria Anna Balmores',
+      ])
+
+      await user.selectOptions(sortSelect(), 'Fecha de adquisición')
+      // El mismo día: la dada de alta más tarde primero.
+      expect(cardNames()).toEqual([
+        'Cattleya maxima',
+        'Phalaenopsis amabilis',
+        'la naranja del mercado',
+        'Phalaenopsis schilleriana',
+        '× Rhyncholaeliocattleya Memoria Anna Balmores',
+      ])
+    })
+
+    it('se recuerda con la vista y vuelve al montar la pantalla', async () => {
+      const user = userEvent.setup()
+      const { unmount } = renderInventory(COLLECTION)
+      await user.selectOptions(sortSelect(), 'Nombre (A–Z)')
+      expect(
+        JSON.parse(window.localStorage.getItem(PREFERENCES_KEY) ?? ''),
+      ).toEqual({ view: 'grid', grouped: false, sort: 'name' })
+
+      unmount()
+      renderInventory(COLLECTION)
+      expect(sortSelect()).toHaveValue('name')
+      expect(cardNames()[0]).toBe('Cattleya maxima')
+    })
+
+    it('el del panel de filtros (el del celular) es el mismo orden', async () => {
+      const user = userEvent.setup()
+      renderInventory(COLLECTION)
+      const panel = await openFilters(user)
+      const inPanel = within(panel).getByRole('combobox', { name: 'Ordenar' })
+      expect(inPanel.closest('.min-\\[721px\\]\\:hidden')).not.toBeNull()
+      expect(sortSelect().closest('.publico-estrecho\\:hidden')).not.toBeNull()
+
+      await user.selectOptions(inPanel, 'Nombre (A–Z)')
+      expect(sortSelect()).toHaveValue('name')
+      expect(cardNames()[0]).toBe('Cattleya maxima')
+    })
+
+    it('una preferencia de orden que no se entiende se ignora', () => {
+      window.localStorage.setItem(
+        PREFERENCES_KEY,
+        JSON.stringify({ view: 'list', grouped: false, sort: 'precio' }),
+      )
+      renderInventory(COLLECTION)
+      expect(sortSelect()).toHaveValue('newest')
+      expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+    })
+  })
+
   it('agrupa por género con su contador y en orden alfabético', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
+    // Dentro de cada género, el orden elegido (#292): aquí, por nombre.
+    await user.selectOptions(sortSelect(), 'Nombre (A–Z)')
 
     const panel = await openFilters(user)
     const toggle = within(panel).getByRole('button', {
@@ -389,7 +481,7 @@ describe('InventoryView', () => {
     )
     expect(
       JSON.parse(window.localStorage.getItem(PREFERENCES_KEY) ?? ''),
-    ).toEqual({ view: 'list', grouped: true })
+    ).toEqual({ view: 'list', grouped: true, sort: 'newest' })
 
     // Como al recargar: la pantalla se vuelve a montar y lee la preferencia.
     unmount()
@@ -463,7 +555,7 @@ describe('InventoryView', () => {
     expect(screen.queryByRole('link', { name: /Registrar/ })).toBeNull()
   })
 
-  it('el orden del tabulador va del buscador a «Filtros», la vista y los géneros', async () => {
+  it('el orden del tabulador va del buscador a «Filtros», «Ordenar», la vista y los géneros', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
@@ -471,6 +563,8 @@ describe('InventoryView', () => {
     expect(searchbox()).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Filtros' })).toHaveFocus()
+    await user.tab()
+    expect(sortSelect()).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveFocus()
     await user.tab()

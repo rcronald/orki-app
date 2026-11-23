@@ -1,3 +1,4 @@
+import type { PlantSort } from '../collection/selectors.ts'
 import type { CollectionErrorReason } from '../collection/source.ts'
 import type { PlantStatus, PlantValidation } from '../lib/database.ts'
 
@@ -87,6 +88,16 @@ export const SEARCH_TEXT = {
   placeholder: 'Nombre, código o ubicación',
   /** El mismo texto que el botón de «sin coincidencias». */
   clear: 'Limpiar la búsqueda',
+} as const
+
+/** «Ordenar» de «Mi colección» (#292). */
+export const SORT_TEXT = {
+  label: 'Ordenar',
+  options: {
+    newest: 'Más recientes',
+    name: 'Nombre (A–Z)',
+    acquired: 'Fecha de adquisición',
+  } satisfies Record<PlantSort, string>,
 } as const
 
 export const FILTERS_TEXT = {

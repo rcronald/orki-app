@@ -176,7 +176,8 @@ posición), usa la misma técnica que el detalle (`detail/navigation.ts`,
 ## Barra de búsqueda del inventario
 
 Tres piezas dentro de `<div className="orki-toolbar">` (fila que se parte; el
-primer hijo, el campo, ocupa lo que sobra):
+primer hijo, el campo, ocupa lo que sobra), y en escritorio «Ordenar» entre
+«Filtros» y la vista (ver más abajo):
 
 ### `SearchField` (`components/ui/SearchField.tsx`)
 
@@ -263,6 +264,25 @@ verde. 44 × 44 px. Marcado: `div.orki-segmented[role=group]` >
   />
 </div>
 ```
+
+### «Ordenar» (`inventory/SortSelect.tsx`, #292)
+
+Un `select` nativo con la etiqueta visible «Ordenar» (`orki-field__label`) y
+las opciones «Más recientes», «Nombre (A–Z)» y «Fecha de adquisición». Sin CSS
+nuevo: el mismo patrón que el filtro de la bitácora (`orki-field__input`,
+`appearance-none`, 48 px de alto como mínimo y `chevron-down` encima, porque
+Safari ignora el alto de un `select` nativo). Dos disposiciones:
+
+- `layout="inline"`: la etiqueta a la izquierda, en la barra del buscador
+  entre `FiltersButton` y `SegmentedControl`, solo desde 721 px
+  (`publico-estrecho:hidden`).
+- `layout="stacked"`: la etiqueta encima, dentro del panel de filtros, en
+  «Organizar», solo hasta 720 px (`min-[721px]:hidden`). A 360 px, junto a
+  «Filtros» (126 px) y la vista (96 px) le quedarían unos 80 px y pasaría a
+  otra fila antes de la primera tarjeta.
+
+Los dos cambian la misma preferencia; en cada ancho solo uno está en el
+documento accesible (el otro va con `display: none`).
 
 ## Fila de chips desplazable
 
