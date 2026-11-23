@@ -150,6 +150,11 @@ export function createCachedCollectionSource({
         throw error
       }
 
+      // Las plantas de la red se entregan ya: los extras solo le hacen falta
+      // a "¿Ya la tengo?" y son varias consultas más (#169). Mientras llegan,
+      // valen los de la copia anterior.
+      provide(plants)
+
       let extras = copy?.extras ?? NO_EXTRAS
       try {
         extras = await fetchExtras(plants, signal)

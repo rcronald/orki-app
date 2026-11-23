@@ -158,4 +158,33 @@ describe('extras de la colección para "¿Ya la tengo?"', () => {
       createExtrasFetcher(client)([plant()], signal()),
     ).rejects.toBeDefined()
   })
+
+  it('pide todos los grupos a la vez, no uno tras otro (#169)', async () => {
+    let enCurso = 0
+    let maximo = 0
+    fetchMock.mockImplementation(async (input) => {
+      enCurso += 1
+      maximo = Math.max(maximo, enCurso)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      enCurso -= 1
+      return respond(input)
+    })
+    const plants = Array.from({ length: 120 }, (_, index) =>
+      plant({
+        id: `p${index}`,
+        species: {
+          id: `sp-${index}`,
+          scientificName: `Especie ${index}`,
+          type: 'species',
+          status: 'validated',
+        },
+      }),
+    )
+
+    await createExtrasFetcher(client)(plants, signal())
+
+    // 120 especies son 3 grupos de sinónimos, más el de las abreviaturas.
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(maximo).toBe(4)
+  })
 })

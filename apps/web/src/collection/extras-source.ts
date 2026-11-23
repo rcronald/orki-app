@@ -78,42 +78,49 @@ export function createExtrasFetcher(
     const supabase = await getClient()
     signal.throwIfAborted()
 
-    for (const ids of chunks(speciesIds, IDS_PER_REQUEST)) {
-      const rows = await readAll((after) => {
-        let query = supabase
-          .from('species_names')
-          .select('id, species_id, name, type')
-          .in('species_id', ids)
-        if (after !== null) query = query.gt('id', after)
-        return query
-          .order('id', { ascending: true })
-          .limit(PAGE_SIZE)
-          .abortSignal(signal)
-      })
-      for (const row of rows) {
-        const list = speciesNames.get(row.species_id) ?? []
-        list.push({ name: row.name, type: row.type })
-        speciesNames.set(row.species_id, list)
-      }
+    // Todos los grupos a la vez: son consultas independientes y en serie
+    // cada una añadía un viaje de ida y vuelta a la carga (#169).
+    const [nameRows, abbreviationRows] = await Promise.all([
+      Promise.all(
+        chunks(speciesIds, IDS_PER_REQUEST).map((ids) =>
+          readAll((after) => {
+            let query = supabase
+              .from('species_names')
+              .select('id, species_id, name, type')
+              .in('species_id', ids)
+            if (after !== null) query = query.gt('id', after)
+            return query
+              .order('id', { ascending: true })
+              .limit(PAGE_SIZE)
+              .abortSignal(signal)
+          }),
+        ),
+      ),
+      Promise.all(
+        chunks(genusIds, IDS_PER_REQUEST).map((ids) =>
+          readAll((after) => {
+            let query = supabase
+              .from('genus_abbreviations')
+              .select('id, genus_id, abbreviation')
+              .in('genus_id', ids)
+            if (after !== null) query = query.gt('id', after)
+            return query
+              .order('id', { ascending: true })
+              .limit(PAGE_SIZE)
+              .abortSignal(signal)
+          }),
+        ),
+      ),
+    ])
+    for (const row of nameRows.flat()) {
+      const list = speciesNames.get(row.species_id) ?? []
+      list.push({ name: row.name, type: row.type })
+      speciesNames.set(row.species_id, list)
     }
-
-    for (const ids of chunks(genusIds, IDS_PER_REQUEST)) {
-      const rows = await readAll((after) => {
-        let query = supabase
-          .from('genus_abbreviations')
-          .select('id, genus_id, abbreviation')
-          .in('genus_id', ids)
-        if (after !== null) query = query.gt('id', after)
-        return query
-          .order('id', { ascending: true })
-          .limit(PAGE_SIZE)
-          .abortSignal(signal)
-      })
-      for (const row of rows) {
-        const list = genusAbbreviations.get(row.genus_id) ?? []
-        list.push(row.abbreviation)
-        genusAbbreviations.set(row.genus_id, list)
-      }
+    for (const row of abbreviationRows.flat()) {
+      const list = genusAbbreviations.get(row.genus_id) ?? []
+      list.push(row.abbreviation)
+      genusAbbreviations.set(row.genus_id, list)
     }
 
     signal.throwIfAborted()

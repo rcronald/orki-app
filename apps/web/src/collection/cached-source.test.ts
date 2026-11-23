@@ -90,6 +90,27 @@ describe('fuente con copia local', () => {
     expect(onSaved).toHaveBeenCalled()
   })
 
+  it('entrega las plantas de la red sin esperar a los extras (#169)', async () => {
+    let finishExtras: (extras: OwnershipExtras) => void = () => undefined
+    const { network, source } = setup({
+      fetchExtras: () =>
+        new Promise<OwnershipExtras>((resolve) => {
+          finishExtras = resolve
+        }),
+    })
+    source.setActiveUser('user_a')
+    const fresh = [plant({ id: 'nueva' })]
+    const { promise, provided } = load(source, 'user_a')
+    await flush()
+    network.last().resolve(fresh)
+    await flush()
+
+    // Los extras siguen pendientes y las plantas ya están entregadas.
+    expect(provided).toEqual([fresh])
+    finishExtras(EXTRAS)
+    await expect(promise).resolves.toEqual(fresh)
+  })
+
   it('sin copia, no entrega nada provisional', async () => {
     const { network, source } = setup()
     source.setActiveUser('user_a')
