@@ -7,11 +7,13 @@ import { Icon } from './ui/Icon.tsx'
 /** Rutas que cuentan como «Mi colección» en la pestaña de la barra. */
 const COLLECTION_AREA = [PATHS.collection, PATHS.ownershipCheck]
 
+function isIn(pathname: string, area: string): boolean {
+  return pathname === area || pathname.startsWith(`${area}/`)
+}
+
 /** Si `pathname` es «Mi colección» o una de sus pantallas hijas. */
 function isCollectionArea(pathname: string): boolean {
-  return COLLECTION_AREA.some(
-    (area) => pathname === area || pathname.startsWith(`${area}/`),
-  )
+  return COLLECTION_AREA.some((area) => isIn(pathname, area))
 }
 
 export interface AppBarProps {
@@ -20,22 +22,25 @@ export interface AppBarProps {
 }
 
 // Barra de la app con sesión (orki-appbar, #206 y #207): el logotipo, que
-// enlaza al inicio (con sesión lleva a «Mi colección»), la pestaña «Mi
-// colección» con icono, subrayada y con aria-current="page" en la colección y
-// en sus pantallas hijas (detalle, registro, edición y «¿Ya la tengo?»), y a
-// la derecha la cuenta. Sin lupa: «¿Ya la tengo?» se abre desde «Mi
-// colección». Hasta 720 px el logotipo se achica y «Tu cuenta» queda solo
-// para el lector de pantalla: cabe en 360 px sin desbordarse.
+// enlaza al inicio (con sesión lleva a «Mi colección»), las pestañas «Mi
+// colección» y «Catálogo» (#232) con icono, subrayadas y con
+// aria-current="page" en su zona (la colección con sus pantallas hijas:
+// detalle, registro, edición y «¿Ya la tengo?»; el catálogo con sus géneros y
+// fichas), y a la derecha la cuenta. Sin lupa: «¿Ya la tengo?» se abre desde «Mi
+// colección». Hasta 720 px el logotipo queda en la flor (variante compact),
+// las pestañas sin icono y «Tu cuenta» solo para el lector de pantalla: las
+// dos pestañas caben en 360 px sin desbordarse.
 export function AppBar({ account }: AppBarProps) {
   const { pathname } = useLocation()
   const inCollection = isCollectionArea(pathname)
+  const inCatalog = isIn(pathname, PATHS.catalog)
 
   return (
     <header className="orki-appbar">
       {/* Nombre accesible: «Inicio de orqui.app» (el logotipo). */}
       <Link to={PATHS.home} className="orki-appbar__brand">
         <span className="sr-only">Inicio de</span>{' '}
-        <Logo className="orki-appbar__logo" />
+        <Logo variant="compact" className="orki-appbar__logo" />
       </Link>
       <nav aria-label="Principal" className="orki-appbar__nav">
         <ul className="orki-appbar__tabs">
@@ -47,6 +52,16 @@ export function AppBar({ account }: AppBarProps) {
             >
               <Icon name="sprout" />
               Mi colección
+            </Link>
+          </li>
+          <li>
+            <Link
+              to={PATHS.catalog}
+              className="orki-appbar__tab"
+              aria-current={inCatalog ? 'page' : undefined}
+            >
+              <Icon name="book-open" />
+              Catálogo
             </Link>
           </li>
         </ul>

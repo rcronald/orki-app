@@ -294,6 +294,7 @@
   .orki-appbar__logo { height: 28px; }
   .orki-appbar__tabs { gap: var(--space-2); }
   .orki-appbar__tab { padding: 0 var(--space-2); font-size: 14px; line-height: 20px; }
+  .orki-appbar__tab svg { display: none; }
   .orki-menu__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .orki-menu__button { padding-right: var(--space-2); }
   .orki-pagehead { grid-template-columns: minmax(0, 1fr); }

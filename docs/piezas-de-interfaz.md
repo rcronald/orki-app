@@ -45,11 +45,17 @@ ruta dentro de `AppShell` la lleva.
 - Con sesión (o con la sesión recordada sin confirmar): logotipo (a `/`),
   pestaña «Mi colección» con `aria-current="page"` en `/coleccion`, sus hijas
   y `/ya-la-tengo` (`PATHS.ownershipCheck`, la ruta propuesta del #209; si
-  usas otra, avisa: está en `COLLECTION_AREA` de `AppBar.tsx`), y el menú
+  usas otra, avisa: está en `COLLECTION_AREA` de `AppBar.tsx`), pestaña
+  «Catálogo» (#232, icono `book-open`) en todo `/catalogo`, y el menú
   «Tu cuenta» (foto o iniciales; «Mi cuenta», «Administración» solo con
   `catalog_admin`, «Cerrar sesión»).
-- Sin sesión: la barra pública (`PublicHeader`). Mientras Clerk carga, solo el
-  logotipo. Sin Clerk ni sesión: el logotipo y un aviso breve debajo.
+- Hasta 720 px, el logotipo es solo la flor (`Logo variant="compact"`, un
+  `<picture>` con una sola imagen) y las pestañas van sin icono: las dos caben
+  en 360 px junto a la cuenta.
+- Sin sesión: la barra pública (`PublicHeader`), con «Catálogo» en
+  `orki-nav__links` (solo en escritorio). Mientras Clerk carga, el logotipo y
+  «Catálogo», sin los botones de acceso. Sin Clerk ni sesión: lo mismo y un
+  aviso breve debajo.
 - Sin lupa: «¿Ya la tengo?» se abre con un botón desde «Mi colección».
 - El `<main id="contenido">` lleva `pt-space-5`; el pie (`SiteFooter`) y
   «Saltar al contenido» siguen igual.
@@ -561,7 +567,7 @@ import { privacyLinkProps } from '../routes/text-page-origin.ts'
 // o en una fila: <ActionRow to={p.to} state={p.state} … />
 ```
 
-Orígenes: `inicio`, `registro`, `coleccion` y `cuenta`. Para otra página de
+Orígenes: `inicio`, `registro`, `coleccion`, `cuenta` y `catalogo` (#232). Para otra página de
 texto, `textPageState(origen)` como `state` del `Link`. Un origen nuevo se
 añade a `ORIGINS` en ese archivo.
 
@@ -688,6 +694,61 @@ interface FormLayoutProps {
   <Button type="submit" variant="primary">Registrar orquídea</Button>
 </FormActions>
 ```
+
+## Piezas del catálogo público (#232)
+
+Las usan las pantallas de `/catalogo` (`catalog/`). En `/muestra`, sección
+«Catálogo: piezas».
+
+### Índice alfabético (`orki-letters`)
+
+Fila de letras como chips enlace: `ul.orki-letters` > `li` >
+`a.orki-chip.orki-letters__link` (44 × 44 px como mínimo, sin subrayado). La
+elegida lleva `orki-chip--selected` y `aria-current="true"`. Va dentro de un
+`<nav>` con nombre («Géneros por letra»). En escritorio las letras se parten
+en filas; hasta 720 px, una sola fila con desplazamiento horizontal sin barra
+visible, como `orki-chips--scroll` (Tab lleva cada letra a la vista).
+
+```tsx
+<nav aria-label="Géneros por letra">
+  <ul className="orki-letters">
+    <li>
+      <Link to="/catalogo?letra=c" aria-current="true"
+        className="orki-chip orki-letters__link orki-chip--selected">C</Link>
+    </li>
+  </ul>
+</nav>
+```
+
+### Filas de especie o de género
+
+Sin pieza nueva: la fila de `ActionRow` (`orki-action` dentro de
+`ActionList`) escrita a mano para poner el nombre en cursiva botánica, con la
+utilidad `scientific-name` sobre `orki-action__title` y `ScientificName`
+dentro; debajo, `orki-action__desc` con el género, el tipo o por qué nombre
+coincidió. Ver `SpeciesRow` en `catalog/SearchResults.tsx`. La lista de
+géneros va en tres columnas desde `md` (`[columns:3]`, cada fila con
+`break-inside-avoid`).
+
+### Paginación (`orki-pager`, `catalog/Pager.tsx`)
+
+```ts
+interface PagerProps {
+  page: number
+  pageCount: number // con 1 no se pinta
+  pathFor: (page: number) => string // dirección de cada página (?pagina=)
+  label?: string // nombre del <nav>: «Páginas de Cattleya»
+}
+```
+
+`nav.orki-pager` > `a.orki-btn.orki-btn--secondary.orki-pager__prev` +
+`p.orki-pager__status` («Página 2 de 5») + `a.….orki-pager__next`. Son enlaces
+con su dirección, así se abren en otra pestaña y se comparten. En la primera y
+la última página falta el enlace que no lleva a ningún sitio (no hay botones
+desactivados). En escritorio, tres columnas (anterior a la izquierda, la
+página en el centro, siguiente a la derecha); hasta 720 px, la página arriba a
+todo el ancho y los dos enlaces debajo, cada uno en su mitad. La pantalla lleva
+el foco al título de la lista al cambiar de página.
 
 ## Contraste
 

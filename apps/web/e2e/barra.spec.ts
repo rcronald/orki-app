@@ -15,7 +15,7 @@ async function sinDesplazamientoHorizontal(page: Page) {
 }
 
 for (const ancho of [1440, 360]) {
-  test(`a ${ancho} px: logotipo, «Mi colección» y el menú «Tu cuenta»`, async ({
+  test(`a ${ancho} px: logotipo, «Mi colección», «Catálogo» y el menú «Tu cuenta»`, async ({
     page,
     revisarAccesibilidad,
   }) => {
@@ -43,7 +43,22 @@ for (const ancho of [1440, 360]) {
     if (ancho > 720) expect(etiqueta?.width ?? 0).toBeGreaterThan(40)
     else expect(etiqueta?.width ?? 0).toBeLessThanOrEqual(1)
     await sinDesplazamientoHorizontal(page)
-    for (const control of [pestana, cuenta]) {
+    // «Catálogo» (#232), la segunda pestaña: logotipo, pestañas y cuenta caben
+    // sin solaparse, también a 360 px.
+    const catalogo = barra.getByRole('link', { name: 'Catálogo' })
+    await expect(catalogo).toBeVisible()
+    await expect(catalogo).not.toHaveAttribute('aria-current')
+    const logotipo = barra.getByRole('link', { name: 'Inicio de orqui.app' })
+    const enOrden = await Promise.all(
+      [logotipo, pestana, catalogo, cuenta].map((c) => c.boundingBox()),
+    )
+    for (let i = 1; i < enOrden.length; i += 1) {
+      const antes = enOrden[i - 1]
+      expect(
+        Math.round((antes?.x ?? 0) + (antes?.width ?? 0)),
+      ).toBeLessThanOrEqual(Math.round(enOrden[i]?.x ?? 0))
+    }
+    for (const control of [pestana, catalogo, cuenta]) {
       const caja = await control.boundingBox()
       expect(caja?.height ?? 0).toBeGreaterThanOrEqual(44)
     }

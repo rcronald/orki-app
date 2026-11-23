@@ -3,9 +3,9 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { PublicHeader } from './PublicHeader.tsx'
 
-function renderHeader(actions?: boolean) {
+function renderHeader(actions?: boolean, path = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <PublicHeader actions={actions} />
     </MemoryRouter>,
   )
@@ -27,9 +27,24 @@ describe('PublicHeader', () => {
     expect(signUp).toHaveClass('orki-btn', 'orki-btn--strong')
   })
 
-  it('sin acciones, solo el logotipo', () => {
+  it('«Catálogo» como enlace de sección (#232), también sin acciones', () => {
     renderHeader(false)
 
-    expect(screen.getAllByRole('link')).toHaveLength(1)
+    const sections = screen.getByRole('navigation', { name: 'Secciones' })
+    expect(sections).toHaveClass('orki-nav__links')
+    const catalog = screen.getByRole('link', { name: 'Catálogo' })
+    expect(sections).toContainElement(catalog)
+    expect(catalog).toHaveAttribute('href', '/catalogo')
+    expect(catalog).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('link', { name: 'Iniciar sesión' })).toBeNull()
+  })
+
+  it('en el catálogo, «Catálogo» es la página actual', () => {
+    renderHeader(true, '/catalogo/especie/abc')
+
+    expect(screen.getByRole('link', { name: 'Catálogo' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   })
 })
