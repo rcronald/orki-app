@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Locator, Page } from '@playwright/test'
+import { PLANTAS, USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
+import type { SupabaseSimulado } from './soporte/supabase-simulado.ts'
 
 // «Mi colección» (#93, #94, #95, #15, #208): la colección leída de Supabase
 // (simulado) por la fuente real de la app, con la cabecera (contador y
@@ -414,3 +419,112 @@ test.describe('¿Ya la tengo?', () => {
     )
   })
 })
+
+const FOTO = readFileSync(
+  path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../src/photos/fixtures/sin-metadatos.webp',
+  ),
+)
+
+/** La planta con `cuantas` fotos en plant_photos (la primera, la principal). */
+function conFotos(supabase: SupabaseSimulado, planta: string, cuantas: number) {
+  const ruta = (tipo: string, n: number) =>
+    `${USUARIO}/${planta}/${tipo}-${String(n)}.webp`
+  for (let n = 1; n <= cuantas; n += 1) {
+    for (const tipo of ['photo', 'thumb']) {
+      supabase.archivos.set(ruta(tipo, n), { tipo: 'image/webp', bytes: FOTO })
+    }
+    supabase.fotos.push({
+      id: `${planta.slice(0, -2)}${String(n).padStart(2, '0')}`,
+      plant_id: planta,
+      user_id: USUARIO,
+      photo_path: ruta('photo', n),
+      thumbnail_path: ruta('thumb', n),
+      in_bloom: false,
+      taken_at: null,
+      note: null,
+      position: n - 1,
+      created_at: '2026-11-20T12:00:00.000Z',
+    })
+  }
+  Object.assign(supabase.datos.plantas.find((p) => p.id === planta) ?? {}, {
+    photo_path: ruta('photo', 1),
+    thumbnail_path: ruta('thumb', 1),
+  })
+}
+
+for (const ancho of [360, 1440]) {
+  test(`número de fotos en la tarjeta a ${String(ancho)} px, en cuadrícula y en lista`, async ({
+    page,
+    supabase,
+    revisarAccesibilidad,
+  }) => {
+    conFotos(supabase, PLANTAS.maxima, 3)
+    conFotos(supabase, PLANTAS.amabilis, 1)
+    await page.setViewportSize({ width: ancho, height: 900 })
+    await page.goto('/coleccion')
+    await expect(tarjetas(page)).toHaveCount(5)
+
+    const maxima = page.getByRole('article', { name: 'Cattleya maxima' })
+    const amabilis = page.getByRole('article', {
+      name: 'Phalaenopsis amabilis',
+    })
+
+    for (const vista of ['Cuadrícula', 'Lista']) {
+      await page
+        .getByRole('group', { name: 'Vista' })
+        .getByRole('button', { name: vista })
+        .click()
+      await expect(
+        page
+          .getByRole('group', { name: 'Vista' })
+          .getByRole('button', { name: vista }),
+      ).toHaveAttribute('aria-pressed', 'true')
+
+      // Con tres fotos: el número sobre la foto y «3 fotos» para el lector;
+      // el nombre de la tarjeta sigue siendo el de la planta.
+      await expect(maxima).toHaveAccessibleDescription('3 fotos')
+      const numero = maxima.locator('.orki-count')
+      await expect(numero).toBeVisible()
+      await expect(numero.locator('span[aria-hidden="true"]')).toHaveText('3')
+      await expect(
+        maxima.getByRole('img', { name: 'Foto de Cattleya maxima' }),
+      ).toBeVisible()
+      const caja = await numero.boundingBox()
+      const foto = await maxima.locator('.orki-card__photo').boundingBox()
+      expect(caja && foto).toBeTruthy()
+      if (caja && foto) {
+        expect(Math.round(caja.x)).toBeGreaterThanOrEqual(Math.round(foto.x))
+        expect(Math.round(caja.y)).toBeGreaterThanOrEqual(Math.round(foto.y))
+        expect(Math.round(caja.x + caja.width)).toBeLessThanOrEqual(
+          Math.round(foto.x + foto.width),
+        )
+        expect(Math.round(caja.y + caja.height)).toBeLessThanOrEqual(
+          Math.round(foto.y + foto.height),
+        )
+      }
+
+      // Con una foto (o ninguna), nada.
+      await expect(amabilis.locator('.orki-count')).toHaveCount(0)
+      await expect(amabilis).toHaveAccessibleDescription('')
+
+      await sinDesplazamientoHorizontal(page)
+      await revisarAccesibilidad(`número de fotos en ${vista.toLowerCase()}`)
+    }
+
+    // El indicador no tapa el enlace: tocarlo abre el detalle (se pulsa en su
+    // centro, porque no recibe el toque: lo recibe el enlace que hay debajo).
+    const centro = await maxima.locator('.orki-count').boundingBox()
+    expect(centro).toBeTruthy()
+    if (centro) {
+      await page.mouse.click(
+        Math.round(centro.x + centro.width / 2),
+        Math.round(centro.y + centro.height / 2),
+      )
+    }
+    await expect(
+      page.getByRole('heading', { name: 'Cattleya maxima', level: 1 }),
+    ).toBeVisible()
+  })
+}

@@ -163,7 +163,7 @@ export function CollectionPiecesSection() {
       </Example>
       <Example
         title="Tarjeta de ejemplar con borde (CollectionCard)"
-        description="Borde fino color-neutral-200 sobre color-neutral-0, sin sombra; foto 3:2, nombre en cursiva, apodo, insignia solo si aplica y ubicación con map-pin. Con layout «list», la fila de la vista en lista."
+        description="Borde fino color-neutral-200 sobre color-neutral-0, sin sombra; foto 3:2, nombre en cursiva, apodo, insignia solo si aplica y ubicación con map-pin. Con más de una foto (photoCount), el número sobre la esquina de la foto (orki-count con el icono image), descrito como «3 fotos» para el lector. Con layout «list», la fila de la vista en lista."
       >
         <div className="grid grid-cols-2 gap-space-3 md:grid-cols-3">
           <CollectionCard
@@ -181,6 +181,7 @@ export function CollectionPiecesSection() {
             nickname="La del balcón"
             location="Terrario"
             photo={PHOTO}
+            photoCount={3}
           />
           <CollectionCard
             scientificName="Dendrobium Stardust"
@@ -196,6 +197,7 @@ export function CollectionPiecesSection() {
             nickname="Azul"
             location="Colgante de la terraza"
             photo={PHOTO}
+            photoCount={6}
           />
           <CollectionCard layout="list" scientificName="Oncidium sphacelatum" />
         </div>
