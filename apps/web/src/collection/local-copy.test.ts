@@ -94,6 +94,25 @@ describe('copia local en IndexedDB', () => {
     ])
   })
 
+  it('guarda la cobertura de los extras (#274); una copia anterior la deja desconocida', async () => {
+    const storage = createIndexedDbCopyStorage(freshDbName())
+    await storage.write({
+      ...copyFor('user_a'),
+      extrasCoverage: {
+        speciesIds: new Set(['species-amabilis']),
+        genusIds: new Set(['genus-phal']),
+      },
+    })
+    const read = await storage.read('user_a')
+    expect(read?.extrasCoverage?.speciesIds).toEqual(
+      new Set(['species-amabilis']),
+    )
+    expect(read?.extrasCoverage?.genusIds).toEqual(new Set(['genus-phal']))
+
+    await storage.write(copyFor('user_b'))
+    expect((await storage.read('user_b'))?.extrasCoverage).toBeNull()
+  })
+
   it('nunca devuelve la copia de otro usuario', async () => {
     const storage = createIndexedDbCopyStorage(freshDbName())
     await storage.write(copyFor('user_a'))

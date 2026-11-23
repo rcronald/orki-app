@@ -230,9 +230,14 @@ test.describe('solo a 360 px', () => {
         await page.route(esDeExtras, (route) => route.abort('failed'))
         await page.goto('/ya-la-tengo')
         await campo(page).fill('Blc. Waikiki')
+        // supabase-js reintenta un GET que falla por la red tres veces (1, 2
+        // y 4 s) antes de rendirse; mientras tanto, «Comprobando…».
+        await expect(
+          respuesta(page, 'Comprobando sinónimos y abreviaturas…'),
+        ).toBeVisible()
         await expect(
           respuesta(page, 'no pudimos comprobar sinónimos ni abreviaturas'),
-        ).toBeVisible()
+        ).toBeVisible({ timeout: 15_000 })
         await expect(page.getByText('Aún no la tienes')).toHaveCount(0)
 
         // Vuelve la red para esas peticiones: «Reintentar» las pide otra vez.

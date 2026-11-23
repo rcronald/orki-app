@@ -8,6 +8,13 @@ import { OWNERSHIP_TEXT, pastSpecimensText } from '../inventory/texts.ts'
 import { ownershipSubject } from '../inventory/useOwnershipAnswer.ts'
 import { CHECK_TEXT, specimenCountText } from './texts.ts'
 
+/**
+ * Por qué un «no» no es seguro (#274): faltan los sinónimos, nombres comunes o
+ * abreviaturas de alguna planta y se están pidiendo (pending), no se pudieron
+ * pedir (failed) o no hay conexión para pedirlos (offline).
+ */
+export type UnconfirmedNo = 'pending' | 'failed' | 'offline'
+
 interface CheckAnswerProps {
   ownership: Ownership
   /** Lo escrito, sin espacios de sobra. */
@@ -16,6 +23,8 @@ interface CheckAnswerProps {
   catalogName: string | null
   /** «Ver en mi colección»; null sin enlace. */
   collectionLink: string | null
+  /** Si un «no» no es seguro, por qué (#274); null o sin él, lo es. */
+  unconfirmed?: UnconfirmedNo | null
 }
 
 // La respuesta de «¿Ya la tengo?» en su pantalla (#209), con QueryAnswer:
@@ -26,6 +35,11 @@ interface CheckAnswerProps {
 //   errores de tipeo; se muestran para que la persona juzgue.
 // - «No, pero la tuviste» (no): ninguno activo, pero sí perdidos o regalados.
 // - «Aún no la tienes» (no): ninguno.
+// - Si faltan los sinónimos, nombres comunes o abreviaturas de alguna planta
+//   (#274), un «no» no es seguro y no se dice: «Comprobando sinónimos y
+//   abreviaturas…» (tono no, neutro) mientras llegan, que se resuelve solo;
+//   si no se pudieron pedir, «No pudimos comprobarlo todo» (tono notice),
+//   con lo que falta. Las positivas no esperan.
 //
 // Sin región propia (announce={false}): la pantalla la pinta dentro de una
 // región role="status" siempre montada.
@@ -34,6 +48,7 @@ export function CheckAnswer({
   typed,
   catalogName,
   collectionLink,
+  unconfirmed = null,
 }: CheckAnswerProps) {
   const lost = ownership.pastMatches.filter(
     ({ plant }) => plant.status === 'lost',
@@ -56,6 +71,43 @@ export function CheckAnswer({
 
   if (ownership.outcome === 'not-owned') {
     const name = catalogName === null ? `«${typed}»` : italic(catalogName)
+    if (unconfirmed !== null) {
+      const pending = unconfirmed === 'pending'
+      return (
+        <QueryAnswer
+          tone={pending ? 'no' : 'notice'}
+          icon={unconfirmed === 'failed' ? 'triangle-alert' : undefined}
+          announce={false}
+          title={
+            pending
+              ? CHECK_TEXT.unconfirmed.pending
+              : CHECK_TEXT.unconfirmed.unchecked
+          }
+          detail={
+            pending ? (
+              <>No encontramos {name} por su nombre en tu colección.</>
+            ) : unconfirmed === 'offline' ? (
+              <>
+                No encontramos {name} por su nombre, pero sin conexión no
+                podemos comprobar sinónimos ni abreviaturas.
+              </>
+            ) : (
+              <>
+                No encontramos {name} por su nombre, pero no pudimos comprobar
+                sinónimos ni abreviaturas.
+              </>
+            )
+          }
+        >
+          {unconfirmed === 'offline' && (
+            <p className="orki-answer__text">
+              {CHECK_TEXT.unconfirmed.whenOnline}
+            </p>
+          )}
+          {past !== null && <p className="orki-answer__text">{past}</p>}
+        </QueryAnswer>
+      )
+    }
     return (
       <QueryAnswer
         tone="no"

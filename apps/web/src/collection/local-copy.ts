@@ -1,3 +1,4 @@
+import type { ExtrasCoverage } from './extras-state.ts'
 import { photoCountOf, type CollectionPlant } from './model.ts'
 import type { OwnershipExtras, SpeciesExtraName } from './ownership.ts'
 
@@ -20,7 +21,10 @@ import type { OwnershipExtras, SpeciesExtraName } from './ownership.ts'
 //   (photoCountOf: 1 si hay foto, 0 si no) en lugar de descartarla, así quien
 //   abre la app sin conexión tras actualizar sigue viendo su colección.
 //   Lo mismo con code y notes (#265): una copia anterior no los trae y quedan
-//   en null (sin identificador ni notas) hasta la siguiente lectura.
+//   en null (sin identificador ni notas) hasta la siguiente lectura. Y con la
+//   cobertura de los extras (#274, extras-state.ts): de qué especies y
+//   géneros se leyeron. Una copia anterior no la trae y queda desconocida
+//   (null): sus extras no se dan por completos hasta la siguiente lectura.
 // - Todo con try/catch: sin IndexedDB (algunos modos privados) o con un
 //   fallo (sin espacio), no se guarda nada y la app funciona como sin caché.
 
@@ -39,6 +43,11 @@ export interface LocalCopy {
   savedAt: string
   plants: readonly CollectionPlant[]
   extras: OwnershipExtras
+  /**
+   * De qué especies y géneros se leyeron los extras (#274); null o sin el
+   * campo, desconocido (copia de una versión anterior).
+   */
+  extrasCoverage?: ExtrasCoverage | null
 }
 
 /** Dónde se guardan las copias; IndexedDB en la app, en memoria en pruebas. */
@@ -58,6 +67,9 @@ interface StoredCopy {
   plants: CollectionPlant[]
   speciesNames: [string, SpeciesExtraName[]][]
   genusAbbreviations: [string, string[]][]
+  /** Cobertura de los extras (#274); falta en las copias anteriores. */
+  extrasSpeciesIds?: string[]
+  extrasGenusIds?: string[]
 }
 
 const NO_NAMES: ReadonlyMap<string, readonly SpeciesExtraName[]> = new Map()
@@ -75,6 +87,10 @@ export function toStoredCopy(copy: LocalCopy): StoredCopy {
     genusAbbreviations: [
       ...(copy.extras.genusAbbreviations ?? NO_ABBREVIATIONS),
     ].map(([id, abbreviations]) => [id, [...abbreviations]]),
+    ...(copy.extrasCoverage && {
+      extrasSpeciesIds: [...copy.extrasCoverage.speciesIds],
+      extrasGenusIds: [...copy.extrasCoverage.genusIds],
+    }),
   }
 }
 
@@ -99,6 +115,23 @@ export function fromStoredCopy(
       speciesNames: new Map(stored.speciesNames),
       genusAbbreviations: new Map(stored.genusAbbreviations),
     },
+    extrasCoverage: coverageFrom(stored),
+  }
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+/** La cobertura guardada, o null si la copia no la trae o está dañada. */
+function coverageFrom(stored: Partial<StoredCopy>): ExtrasCoverage | null {
+  const { extrasSpeciesIds, extrasGenusIds } = stored
+  if (!isStringList(extrasSpeciesIds) || !isStringList(extrasGenusIds)) {
+    return null
+  }
+  return {
+    speciesIds: new Set(extrasSpeciesIds),
+    genusIds: new Set(extrasGenusIds),
   }
 }
 

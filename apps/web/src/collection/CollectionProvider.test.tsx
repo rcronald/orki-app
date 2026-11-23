@@ -9,12 +9,17 @@ import {
 } from '../test/collection-source.ts'
 import { createCachedCollectionSource } from './cached-source.ts'
 import { CollectionProvider } from './CollectionProvider.tsx'
+import type { ExtrasFetcher } from './extras-source.ts'
 import { createMemoryCopyStorage } from './local-copy.ts'
 import { countPlants } from './selectors.ts'
 import { CollectionLoadError } from './source.ts'
 import { COLLECTION_REFRESH_AFTER_MS } from './store.ts'
 import { useCollection, type CollectionApi } from './useCollection.ts'
-import { useCollectionCopy } from './useCollectionCopy.ts'
+import {
+  useCollectionCopy,
+  useExtrasState,
+  useRetryExtras,
+} from './useCollectionCopy.ts'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
@@ -423,6 +428,105 @@ describe('CollectionProvider con copia local (#18)', () => {
     expect(source.loads).toHaveLength(2)
     await resolveLast([plant(), plant()])
     expect(text('lista')).toBe('ready:2:')
+  })
+
+  describe('sinónimos y abreviaturas que faltan (#274)', () => {
+    const RLC = plant({
+      species: null,
+      genus: { id: 'genus-rlc', name: 'Rhyncholaeliocattleya' },
+    })
+
+    let retry: (() => void) | null = null
+    function RetryProbe() {
+      const current = useRetryExtras()
+      useEffect(() => {
+        retry = current
+      }, [current])
+      return null
+    }
+
+    function ExtrasScreen() {
+      const { plants } = useCollection()
+      return <p data-testid="extras">{useExtrasState(plants)}</p>
+    }
+
+    async function settle() {
+      await act(async () => {
+        for (let index = 0; index < 6; index += 1) await Promise.resolve()
+      })
+    }
+
+    it('una planta registrada de un género nuevo: pide solo sus extras, sin otra lectura', async () => {
+      const fetchExtras = vi.fn<ExtrasFetcher>(() => Promise.resolve({}))
+      const cachedSource = createCachedCollectionSource({
+        network: source,
+        storage: createMemoryCopyStorage(),
+        fetchExtras,
+        onSaved: () => {},
+      })
+      render(
+        <CollectionProvider source={cachedSource} thumbnailSync={null}>
+          <ApiProbe />
+          <ExtrasScreen />
+        </CollectionProvider>,
+      )
+      await settle()
+      const amabilis = plant()
+      await resolveLast([amabilis])
+      await settle()
+      expect(text('extras')).toBe('complete')
+      expect(fetchExtras).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        api?.upsertPlant(RLC)
+        await Promise.resolve()
+      })
+      expect(fetchExtras).toHaveBeenCalledTimes(2)
+      expect(fetchExtras.mock.calls[1]).toEqual([[RLC], expect.anything()])
+      await settle()
+      expect(text('extras')).toBe('complete')
+      expect(source.loads).toHaveLength(1)
+    })
+
+    it('tras un fallo no insiste sola; «Reintentar» (retryExtras) los vuelve a pedir', async () => {
+      const fetchExtras = vi.fn<ExtrasFetcher>(() =>
+        Promise.reject(new TypeError('red')),
+      )
+      const cachedSource = createCachedCollectionSource({
+        network: source,
+        storage: createMemoryCopyStorage(),
+        fetchExtras,
+        onSaved: () => {},
+      })
+      render(
+        <CollectionProvider source={cachedSource} thumbnailSync={null}>
+          <ApiProbe />
+          <RetryProbe />
+          <ExtrasScreen />
+        </CollectionProvider>,
+      )
+      await settle()
+      await resolveLast([plant()])
+      await settle()
+      expect(text('extras')).toBe('failed')
+      expect(fetchExtras).toHaveBeenCalledTimes(1)
+
+      // Otro cambio de la colección no vuelve a pedirlos.
+      await act(async () => {
+        api?.upsertPlant(RLC)
+        await Promise.resolve()
+      })
+      expect(fetchExtras).toHaveBeenCalledTimes(1)
+
+      fetchExtras.mockImplementationOnce(() => Promise.resolve({}))
+      act(() => {
+        retry?.()
+      })
+      expect(text('extras')).toBe('pending')
+      await settle()
+      expect(fetchExtras).toHaveBeenCalledTimes(2)
+      expect(text('extras')).toBe('complete')
+    })
   })
 
   it('el evento online sin colección pedida no lee nada', () => {

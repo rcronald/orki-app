@@ -10,6 +10,7 @@ import {
 } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCachedCollectionSource } from '../collection/cached-source.ts'
+import { coverageOf } from '../collection/extras-state.ts'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import { createMemoryCopyStorage } from '../collection/local-copy.ts'
 import type { CollectionPlant } from '../collection/model.ts'
@@ -397,6 +398,8 @@ describe('OwnershipCheckPage', () => {
         savedAt: '2026-11-20T08:00:00.000Z',
         plants: PLANTS,
         extras: {},
+        // Los extras de todas sus plantas (#274): un «no» es seguro.
+        extrasCoverage: coverageOf(PLANTS),
       })
       const cached = createCachedCollectionSource({
         network: source,
@@ -516,11 +519,11 @@ describe('OwnershipCheckPage', () => {
         fetchExtras: extras.fetchExtras,
         onSaved: () => {},
       })
-      renderAt(['/ya-la-tengo'], cached)
+      const view = renderAt(['/ya-la-tengo'], cached)
       await settle()
       await respond(() => source.last().resolve(plants))
       expect(extras.calls).toHaveLength(1)
-      return extras
+      return { ...extras, view }
     }
 
     it('primera visita, extras pendientes: un sinónimo no responde «Aún no la tienes» y se resuelve solo', async () => {
@@ -629,6 +632,7 @@ describe('OwnershipCheckPage', () => {
         savedAt: '2026-11-20T08:00:00.000Z',
         plants: WITH_RLC,
         extras: { speciesNames: EXTRAS.speciesNames },
+        extrasCoverage: coverageOf(PLANTS),
       })
       const cached = createCachedCollectionSource({
         network: source,
@@ -648,6 +652,113 @@ describe('OwnershipCheckPage', () => {
       expect(answer()).toHaveTextContent(
         'sin conexión no podemos comprobar sinónimos ni abreviaturas',
       )
+      expect(answer()).toHaveTextContent(
+        'Se comprobará solo al volver la conexión.',
+      )
+      // Sin conexión no hay nada que reintentar: se hará al volver.
+      expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
+      // Lo que encuentra por su nombre sigue siendo un «Sí».
+      await ask('maxima')
+      expect(answer()).toHaveTextContent('Sí, la tienes1 ejemplar')
+      await expectNoAxeViolations()
+    })
+
+    it('sin conexión, con la copia de una versión anterior (sin cobertura): tampoco da un «no» seguro', async () => {
+      const storage = createMemoryCopyStorage()
+      await storage.write({
+        userId: 'user_a',
+        savedAt: '2026-11-20T08:00:00.000Z',
+        plants: PLANTS,
+        extras: EXTRAS,
+      })
+      const cached = createCachedCollectionSource({
+        network: source,
+        storage,
+        fetchExtras: () => Promise.resolve({}),
+        onSaved: () => {},
+      })
+      online = false
+      renderAt(['/ya-la-tengo'], cached)
+      await settle()
+      await respond(() =>
+        source.last().reject(new CollectionLoadError('offline')),
+      )
+      await ask('Vanda coerulea')
+      expect(answer()).toHaveTextContent('No pudimos comprobarlo todo')
+      expect(screen.queryByText(/Aún no la tienes/)).toBeNull()
+      // Usa los de la copia: un sinónimo guardado sí responde.
+      await ask('Phalaenopsis grandiflora')
+      expect(answer()).toHaveTextContent('Sí, la tienes')
+    })
+
+    it('«Comprobando…» se anuncia en la región de la respuesta y pasa a definitivo una sola vez', async () => {
+      const extras = await firstVisit()
+      await ask('Vanda coerulea')
+      const region = answer()
+      expect(region).toHaveTextContent('Comprobando sinónimos y abreviaturas…')
+      // Neutra, no un aviso.
+      expect(region.querySelector('.orki-answer--notice')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
+
+      const texts: string[] = []
+      const observer = new MutationObserver(() => {
+        const text = region.textContent
+        if (texts.at(-1) !== text) texts.push(text)
+      })
+      observer.observe(region, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      })
+      await respond(() => extras.calls[0].resolve(EXTRAS))
+      // La copia se guarda y la información se vuelve a publicar: la región
+      // no cambia más.
+      await settle()
+      observer.disconnect()
+      expect(texts).toEqual([
+        'Aún no la tienes«Vanda coerulea» no está en tu colección.',
+      ])
+    })
+
+    it('una positiva no cambia al llegar los extras: nada que volver a anunciar', async () => {
+      const extras = await firstVisit()
+      await ask('Phalaenopsis amabilis')
+      const region = answer()
+      const mutations: MutationRecord[] = []
+      const observer = new MutationObserver((records) =>
+        mutations.push(...records),
+      )
+      observer.observe(region, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+      })
+      await respond(() => extras.calls[0].resolve(EXTRAS))
+      await settle()
+      observer.disconnect()
+      expect(mutations).toHaveLength(0)
+    })
+
+    it('el evento de uso no cuenta el «no» provisional, sino el definitivo', async () => {
+      const extras = await firstVisit()
+      await ask('Rlc. Hsinying')
+      await respond(() => extras.calls[0].resolve(EXTRAS))
+      expect(answer()).toHaveTextContent('Sí, la tienes')
+      // Al salir cuenta la respuesta que se veía: el «Sí».
+      extras.view.unmount()
+      expect(recordProductEvent).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(recordProductEvent).mock.calls[0][0]).toMatchObject({
+        result: 'owned',
+      })
+    })
+
+    it('si sale de la pantalla mientras se comprueba, no cuenta un «no»', async () => {
+      const { view } = await firstVisit()
+      await ask('Vanda coerulea')
+      expect(answer()).toHaveTextContent('Comprobando')
+      view.unmount()
+      expect(recordProductEvent).not.toHaveBeenCalled()
     })
   })
 
