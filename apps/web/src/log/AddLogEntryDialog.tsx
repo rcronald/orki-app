@@ -28,6 +28,7 @@ import {
   normalizeLogText,
   type LogEntry,
 } from './model.ts'
+import { revealInScroller } from './reveal.ts'
 import { saveLogEntry, SaveLogEntryError } from './save.ts'
 import { usePlantLogServices } from './services.ts'
 import { LOG_FORM_TEXT, LOG_SAVE_ERROR_TEXT } from './texts.ts'
@@ -106,6 +107,8 @@ export function AddLogEntryDialog({
   const photoHintId = `${baseId}-foto-ayuda`
   const photoErrorId = `${baseId}-foto-error`
   const offlineId = `${baseId}-sin-conexion`
+  const panelRef = useRef<HTMLDivElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const firstType = useRef<HTMLInputElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
@@ -129,6 +132,24 @@ export function AddLogEntryDialog({
   const uncertain = useRef(false)
   const preparing = useRef<AbortController | null>(null)
   useEffect(() => () => preparing.current?.abort(), [])
+
+  // El control con el foco, siempre a la vista dentro del diálogo (que es lo
+  // que se desplaza a pantalla completa): al recibir el foco (también al ir
+  // al primer error) y cuando el teclado del celular, al abrirse, encoge el
+  // área visible. Un radio oculto se muestra por su tarjeta (su label).
+  const reveal = (element: Element | null) => {
+    const panel = panelRef.current
+    if (!panel || !(element instanceof HTMLElement)) return
+    if (!formRef.current?.contains(element)) return
+    revealInScroller(panel, element.closest('label') ?? element)
+  }
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+    const onResize = () => reveal(document.activeElement)
+    viewport.addEventListener('resize', onResize)
+    return () => viewport.removeEventListener('resize', onResize)
+  }, [])
 
   const thumbnailBlobs =
     photo.status === 'ready' ? [photo.photo.thumbnail.blob] : []
@@ -302,6 +323,7 @@ export function AddLogEntryDialog({
       busy={busy}
       initialFocus={() => firstType.current?.focus()}
       onCancel={requestClose}
+      panelRef={panelRef}
       overlayClassName="fixed inset-[0] z-50 flex items-center justify-center bg-neutral-900/40 p-space-4 publico-estrecho:p-[0]"
       panelClassName="relative flex max-h-[100%] w-[100%] max-w-[560px] flex-col gap-space-4 overflow-y-auto rounded-lg bg-neutral-0 p-space-5 pb-[calc(var(--space-5)_+_env(safe-area-inset-bottom))] shadow-card publico-estrecho:h-[100%] publico-estrecho:max-w-none publico-estrecho:rounded-none"
       titleClassName="flex flex-col gap-space-1 pr-[48px] font-display text-display font-semibold text-neutral-900 publico-estrecho:pr-[0] publico-estrecho:text-xl"
@@ -326,8 +348,10 @@ export function AddLogEntryDialog({
       </button>
 
       <form
+        ref={formRef}
         className="flex flex-col gap-space-4"
         noValidate
+        onFocus={(event) => reveal(event.target)}
         onSubmit={(event) => void submit(event)}
       >
         <fieldset

@@ -930,7 +930,12 @@ utilidades. En `/muestra`, dentro de «Detalle del ejemplar».
   maqueta: `flask-conical` (nutrición), `scissors` (mantenimiento) y `clock`
   (la nota de la fecha). Riego usa `droplets` y sanidad, `shield`.
 - Las acciones van al final del formulario, sin barras fijas: con el
-  teclado del celular abierto se llega a ellas desplazando el diálogo.
+  teclado del celular abierto se llega a ellas desplazando el diálogo. Al
+  recibir el foco, cada campo se lleva a la vista dentro del diálogo
+  (`log/reveal.ts`): entero si cabe, su parte de arriba si no, medido contra
+  el área que de verdad se ve (`visualViewport`), también cuando el teclado
+  la encoge. No todos los motores lo hacen solos: el WebKit de Linux dejaba
+  un campo que ya asomaba visible al 40 %.
 
 ### Diseño del detalle: `orki-detail`
 

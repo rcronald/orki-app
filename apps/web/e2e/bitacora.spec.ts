@@ -472,44 +472,77 @@ test('el diálogo con el teclado: foco al abrir, validación, Escape y foco de v
   await expect(anadir(page)).toBeFocused()
 })
 
-test('celular con el teclado abierto: las acciones se alcanzan y el foco no queda tapado', async ({
-  page,
-}) => {
-  // El teclado del celular deja visible solo la parte de arriba: una
-  // ventana baja lo simula.
-  await page.setViewportSize({ width: 390, height: 420 })
-  await page.goto(ficha)
-  await abrir(page)
-  const panel = await caja(dialogo(page))
-  expect(panel).toMatchObject({ x: 0, y: 0, ancho: 390, alto: 420 })
-  // Dentro del diálogo nada queda fijo al desplazarlo.
-  const fijos = await dialogo(page).evaluate(
-    (caja) =>
-      [...caja.querySelectorAll('*')].filter((el) =>
-        ['fixed', 'sticky'].includes(getComputedStyle(el).position),
-      ).length,
-  )
-  expect(fijos).toBe(0)
-  const titulo = dialogo(page).getByRole('textbox', { name: 'Título' })
-  await titulo.focus()
-  await titulo.fill('Riego')
-  for (const control of [
-    dialogo(page).getByRole('textbox', { name: 'Descripción (opcional)' }),
-    guardar(page),
-  ]) {
-    await control.focus()
-    await expect
-      .poll(() =>
-        control.evaluate((el) => {
-          const r = el.getBoundingClientRect()
-          const visible =
-            Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)
-          return Math.round((visible / r.height) * 10) / 10
-        }),
+/**
+ * Espera a que el diálogo deje de desplazarse (el mismo scrollTop en tres
+ * fotogramas seguidos) y devuelve la fracción visible del control con el
+ * foco (o de su tarjeta, si es un radio oculto) dentro del área que se ve del
+ * diálogo: su caja recortada por el viewport visual.
+ */
+async function fraccionVisibleDelFoco(page: Page) {
+  return page.evaluate(async () => {
+    const dialogo = document.querySelector<HTMLElement>('[role="dialog"]')
+    if (!dialogo) throw new Error('Sin diálogo')
+    const fotograma = () =>
+      new Promise<number>((resolver) =>
+        requestAnimationFrame(() => resolver(dialogo.scrollTop)),
       )
-      .toBeGreaterThanOrEqual(0.5)
-  }
-})
+    let anterior = await fotograma()
+    for (let quietos = 0; quietos < 3;) {
+      const ahora = await fotograma()
+      quietos = ahora === anterior ? quietos + 1 : 0
+      anterior = ahora
+    }
+    const activo = document.activeElement
+    if (!(activo instanceof HTMLElement)) throw new Error('Sin foco')
+    const caja = (activo.closest('label') ?? activo).getBoundingClientRect()
+    const area = dialogo.getBoundingClientRect()
+    const vista = window.visualViewport
+    const arriba = Math.max(area.top, vista ? vista.offsetTop : 0)
+    const abajo = Math.min(
+      area.bottom,
+      vista ? vista.offsetTop + vista.height : window.innerHeight,
+    )
+    const visible = Math.min(caja.bottom, abajo) - Math.max(caja.top, arriba)
+    return Math.round((Math.max(0, visible) / caja.height) * 100) / 100
+  })
+}
+
+// El teclado del celular deja visible solo la parte de arriba: una ventana
+// baja lo simula. Tres alturas, para tener margen frente a las diferencias
+// de medidas entre motores (en el WebKit de Linux, un campo que ya asomaba no
+// se desplazaba y quedaba visible el 40 %).
+for (const alto of [400, 420, 460]) {
+  test(`celular con el teclado abierto (390 × ${String(alto)}): cada campo enfocado se ve entero y las acciones se alcanzan`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: alto })
+    await page.goto(ficha)
+    await abrir(page)
+    const panel = await caja(dialogo(page))
+    expect(panel).toMatchObject({ x: 0, y: 0, ancho: 390, alto })
+    // Dentro del diálogo nada queda fijo al desplazarlo.
+    const fijos = await dialogo(page).evaluate(
+      (caja) =>
+        [...caja.querySelectorAll('*')].filter((el) =>
+          ['fixed', 'sticky'].includes(getComputedStyle(el).position),
+        ).length,
+    )
+    expect(fijos).toBe(0)
+    await dialogo(page).getByRole('textbox', { name: 'Título' }).fill('Riego')
+    for (const control of [
+      dialogo(page).getByRole('textbox', { name: 'Título' }),
+      dialogo(page).getByRole('textbox', { name: 'Descripción (opcional)' }),
+      dialogo(page).getByRole('button', { name: 'Añadir foto' }),
+      dialogo(page).getByRole('radio', { name: 'Sin indicar' }),
+      guardar(page),
+      dialogo(page).getByRole('radio', { name: 'Riego' }),
+    ]) {
+      await control.focus()
+      // Entero: la app lo lleva a la vista (con 8 px de margen) si no se ve.
+      expect(await fraccionVisibleDelFoco(page)).toBeGreaterThanOrEqual(0.99)
+    }
+  })
+}
 
 test.describe('eliminar un registro', () => {
   test(
