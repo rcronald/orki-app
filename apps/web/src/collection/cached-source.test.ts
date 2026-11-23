@@ -3,6 +3,7 @@ import { fakeCollectionSource } from '../test/collection-source.ts'
 import { plant } from '../test/collection.ts'
 import { createCachedCollectionSource } from './cached-source.ts'
 import type { ExtrasFetcher } from './extras-source.ts'
+import { coverageOf, extrasStateOf } from './extras-state.ts'
 import { createMemoryCopyStorage, type LocalCopy } from './local-copy.ts'
 import type { CollectionPlant } from './model.ts'
 import type { OwnershipExtras } from './ownership.ts'
@@ -265,6 +266,198 @@ describe('fuente con copia local', () => {
     await storage.deleteExcept(null)
     await expect(load(source, 'user_a').promise).rejects.toMatchObject({
       reason: 'offline',
+    })
+  })
+
+  // Si los extras están completos para la colección que se ve (#274).
+  describe('estado de los extras (#274)', () => {
+    /** Lector de extras que queda pendiente hasta que la prueba responde. */
+    function heldExtras() {
+      const calls: {
+        plants: readonly CollectionPlant[]
+        resolve: (extras: OwnershipExtras) => void
+        reject: (error: unknown) => void
+      }[] = []
+      const fetchExtras = vi.fn<ExtrasFetcher>(
+        (plants) =>
+          new Promise((resolve, reject) => {
+            calls.push({ plants, resolve, reject })
+          }),
+      )
+      return { calls, fetchExtras }
+    }
+
+    const stateOf = (
+      source: ReturnType<typeof setup>['source'],
+      plants: readonly CollectionPlant[],
+    ) => {
+      const info = source.getInfo()
+      if (info === null) throw new Error('Sin información de la copia.')
+      return extrasStateOf(plants, info.extrasCoverage, info.extrasRequest)
+    }
+
+    const AMABILIS = plant({ id: 'amabilis' })
+    const RLC = plant({
+      id: 'rlc',
+      species: null,
+      genus: { id: 'genus-rlc', name: 'Rhyncholaeliocattleya' },
+    })
+
+    it('primera visita: al entregar las plantas, los extras ya constan como pendientes', async () => {
+      const extras = heldExtras()
+      const { network, source } = setup({ fetchExtras: extras.fetchExtras })
+      source.setActiveUser('user_a')
+      // Lo que sabe una pantalla en el momento de recibir las plantas.
+      const seen: (string | undefined)[] = []
+      const promise = source.load({
+        userId: 'user_a',
+        signal: new AbortController().signal,
+        provide: () => seen.push(source.getInfo()?.extrasRequest),
+      })
+      await flush()
+      network.last().resolve([AMABILIS])
+      await flush()
+      expect(seen).toEqual(['loading'])
+      expect(source.getInfo()?.extrasCoverage).toBeNull()
+      expect(stateOf(source, [AMABILIS])).toBe('pending')
+
+      extras.calls[0].resolve(EXTRAS)
+      await promise
+      expect(source.getInfo()?.extrasRequest).toBe('idle')
+      expect(stateOf(source, [AMABILIS])).toBe('complete')
+    })
+
+    it('si fallan, constan como fallidos y la copia conserva su cobertura anterior', async () => {
+      const extras = heldExtras()
+      const { network, storage, source } = setup({
+        fetchExtras: extras.fetchExtras,
+      })
+      await storage.write({
+        ...copyOf('user_a', [AMABILIS]),
+        extrasCoverage: coverageOf([AMABILIS]),
+      })
+      source.setActiveUser('user_a')
+      const { promise } = load(source, 'user_a')
+      await flush()
+      // Con la copia, antes de la red: completos para sus plantas.
+      expect(stateOf(source, [AMABILIS])).toBe('complete')
+
+      network.last().resolve([AMABILIS, RLC])
+      await flush()
+      expect(stateOf(source, [AMABILIS, RLC])).toBe('pending')
+      extras.calls[0].reject(new TypeError('red'))
+      await expect(promise).resolves.toEqual([AMABILIS, RLC])
+      expect(source.getInfo()?.extrasRequest).toBe('failed')
+      expect(stateOf(source, [AMABILIS, RLC])).toBe('failed')
+      // Las plantas que ya estaban siguen completas.
+      expect(stateOf(source, [AMABILIS])).toBe('complete')
+      await flush()
+      const saved = await storage.read('user_a')
+      expect(saved?.plants).toEqual([AMABILIS, RLC])
+      expect(saved?.extrasCoverage).toEqual(coverageOf([AMABILIS]))
+    })
+
+    it('una copia de una versión anterior (sin cobertura) no da sus extras por completos', async () => {
+      const { network, storage, source } = setup()
+      await storage.write(copyOf('user_a', [AMABILIS]))
+      source.setActiveUser('user_a')
+      const { promise } = load(source, 'user_a')
+      await flush()
+      expect(stateOf(source, [AMABILIS])).toBe('outdated')
+      network.last().reject(new CollectionLoadError('offline'))
+      await promise
+      expect(stateOf(source, [AMABILIS])).toBe('outdated')
+    })
+
+    it('ensureExtras pide solo los que faltan, los añade y los guarda en la copia', async () => {
+      const { network, storage, source, fetchExtras } = setup()
+      source.setActiveUser('user_a')
+      const { promise } = load(source, 'user_a')
+      await flush()
+      network.last().resolve([AMABILIS])
+      await promise
+      vi.mocked(fetchExtras).mockClear()
+
+      // Una planta registrada en la app, de un género nuevo.
+      source.save('user_a', [AMABILIS, RLC])
+      expect(stateOf(source, [AMABILIS, RLC])).toBe('outdated')
+      vi.mocked(fetchExtras).mockResolvedValueOnce({
+        speciesNames: new Map(),
+        genusAbbreviations: new Map([['genus-rlc', ['Rlc.']]]),
+      })
+      source.ensureExtras('user_a', [AMABILIS, RLC])
+      expect(fetchExtras).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(fetchExtras).mock.calls[0][0]).toEqual([RLC])
+      expect(stateOf(source, [AMABILIS, RLC])).toBe('pending')
+      await flush()
+
+      expect(stateOf(source, [AMABILIS, RLC])).toBe('complete')
+      const info = source.getInfo()
+      expect(info?.extras.genusAbbreviations?.get('genus-rlc')).toEqual([
+        'Rlc.',
+      ])
+      // Los de antes siguen.
+      expect(info?.extras.genusAbbreviations?.get('genus-phal')).toEqual([
+        'Phal.',
+      ])
+      await flush()
+      const saved = await storage.read('user_a')
+      expect(saved?.plants).toEqual([AMABILIS, RLC])
+      expect(saved?.extras.genusAbbreviations?.get('genus-rlc')).toEqual([
+        'Rlc.',
+      ])
+      expect(saved?.extrasCoverage).toEqual(coverageOf([AMABILIS, RLC]))
+      // Completos: no pide nada más.
+      source.ensureExtras('user_a', [AMABILIS, RLC])
+      expect(fetchExtras).toHaveBeenCalledTimes(1)
+    })
+
+    it('ensureExtras no insiste tras un fallo salvo con force, ni sin sesión confirmada', async () => {
+      const extras = heldExtras()
+      const { network, source } = setup({ fetchExtras: extras.fetchExtras })
+      source.setActiveUser('user_a')
+      const { promise } = load(source, 'user_a')
+      await flush()
+      network.last().resolve([AMABILIS])
+      await flush()
+      // En curso: no se piden dos veces.
+      source.ensureExtras('user_a', [AMABILIS], { force: true })
+      expect(extras.calls).toHaveLength(1)
+      extras.calls[0].reject(new TypeError('red'))
+      await promise
+
+      source.ensureExtras('user_a', [AMABILIS])
+      expect(extras.calls).toHaveLength(1)
+      source.setVerified(false)
+      source.ensureExtras('user_a', [AMABILIS], { force: true })
+      expect(extras.calls).toHaveLength(1)
+      source.setVerified(true)
+      source.ensureExtras('user_a', [AMABILIS], { force: true })
+      expect(extras.calls).toHaveLength(2)
+      expect(stateOf(source, [AMABILIS])).toBe('pending')
+      extras.calls[1].resolve(EXTRAS)
+      await flush()
+      expect(stateOf(source, [AMABILIS])).toBe('complete')
+    })
+
+    it('los extras pedidos para otra cuenta se descartan', async () => {
+      const extras = heldExtras()
+      const { network, source } = setup({ fetchExtras: extras.fetchExtras })
+      source.setActiveUser('user_a')
+      const { promise } = load(source, 'user_a')
+      await flush()
+      network.last().resolve([AMABILIS])
+      await flush()
+      extras.calls[0].resolve({})
+      await promise
+      source.save('user_a', [AMABILIS, RLC])
+      source.ensureExtras('user_a', [AMABILIS, RLC])
+      expect(extras.calls).toHaveLength(2)
+
+      source.setActiveUser('user_b')
+      extras.calls[1].resolve(EXTRAS)
+      await flush()
+      expect(source.getInfo()).toBeNull()
     })
   })
 })

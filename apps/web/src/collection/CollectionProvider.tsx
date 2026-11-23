@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -40,6 +41,15 @@ function isCopySource(
   return (
     typeof (source as Partial<CollectionCopySource>).getInfo === 'function' &&
     typeof (source as Partial<CollectionCopySource>).subscribe === 'function'
+  )
+}
+
+function canEnsureExtras(
+  source: CollectionSource,
+): source is CollectionSource & Pick<CachedCollectionSource, 'ensureExtras'> {
+  return (
+    typeof (source as Partial<CachedCollectionSource>).ensureExtras ===
+    'function'
   )
 }
 
@@ -97,6 +107,13 @@ const THUMBNAIL_SYNC_DELAY_MS = 2_000
  * cargada se actualiza en segundo plano (store.refresh()): así se ve lo que
  * cambió fuera del dispositivo, como una propuesta que resolvió un
  * administrador, sin perder la búsqueda, los filtros ni la posición.
+ *
+ * Sinónimos, nombres comunes y abreviaturas de "¿Ya la tengo?" (#274): con la
+ * colección lista, la sesión confirmada y conexión, si a alguna planta le
+ * faltan (una registrada o cambiada en la app con una especie o un género
+ * nuevos), los pide (ensureExtras de la fuente); tras un fallo no insiste
+ * sola: lo hacen "Reintentar" (retryExtras del contexto de la copia) y la
+ * lectura al recuperar la conexión, que los vuelve a pedir todos.
  */
 export function CollectionProvider({
   source: sourceProp,
@@ -177,6 +194,35 @@ export function CollectionProvider({
     }
   }, [store])
 
+  // Extras que faltan (#274): ver arriba.
+  useEffect(() => {
+    if (!confirmed || !canEnsureExtras(source)) return
+    const check = () => {
+      const { userId, status, plants } = store.getSnapshot()
+      if (userId === null || status !== 'ready' || plants === null) return
+      if (!navigator.onLine) return
+      source.ensureExtras(userId, plants)
+    }
+    const unsubscribe = store.subscribe(check)
+    check()
+    return unsubscribe
+  }, [source, store, confirmed])
+
+  const copySource = useMemo<CollectionCopySource | null>(() => {
+    if (!isCopySource(source)) return null
+    return {
+      subscribe: source.subscribe,
+      getInfo: source.getInfo,
+      retryExtras: canEnsureExtras(source)
+        ? () => {
+            const { userId, plants } = store.getSnapshot()
+            if (userId === null || plants === null) return
+            source.ensureExtras(userId, plants, { force: true })
+          }
+        : undefined,
+    }
+  }, [source, store])
+
   // Miniaturas sin conexión (#119): con la colección completa, se limpian las
   // que sobran y se bajan las que faltan. Otra pasada cuando cambian las
   // fotos de la colección o tras cada lectura (al recuperar la conexión).
@@ -218,7 +264,7 @@ export function CollectionProvider({
 
   return (
     <CollectionContext value={store}>
-      <CollectionCopyContext value={isCopySource(source) ? source : null}>
+      <CollectionCopyContext value={copySource}>
         <SessionUnverifiedContext value={identity.kind === 'unverified'}>
           {children}
         </SessionUnverifiedContext>

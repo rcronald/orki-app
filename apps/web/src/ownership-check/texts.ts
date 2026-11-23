@@ -21,6 +21,15 @@ export const CHECK_TEXT = {
     text: 'No hay conexión y este dispositivo aún no guarda una copia de tu colección, así que no se puede comprobar. Cuando vuelvas a tener señal, abre Mi colección una vez: se guardará una copia para consultarla también sin conexión.',
   },
   retry: 'Reintentar',
+  /**
+   * Un «no» mientras faltan los sinónimos, nombres comunes o abreviaturas de
+   * alguna planta (#274): no es seguro.
+   */
+  unconfirmed: {
+    pending: 'Comprobando sinónimos y abreviaturas…',
+    unchecked: 'No pudimos comprobarlo todo',
+    whenOnline: 'Se comprobará solo al volver la conexión.',
+  },
 } as const
 
 /** "1 ejemplar", "3 ejemplares". */

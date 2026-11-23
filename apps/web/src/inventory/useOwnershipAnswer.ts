@@ -28,6 +28,11 @@ export interface OwnershipAnswerOptions {
   /** Sinónimos, nombres comunes y abreviaturas de la copia local (#18). */
   extras?: OwnershipExtras
   /**
+   * Si faltan extras y se están pidiendo (#274): un «no» es provisional y no
+   * se mide como respuesta mostrada hasta que se confirma o se corrige.
+   */
+  extrasPending?: boolean
+  /**
    * Búsqueda del catálogo con la que se mejora la respuesta cuando hay
    * conexión (#124). Por defecto, searchSpecies; null, sin catálogo (la
    * página de muestra, las pruebas).
@@ -70,6 +75,7 @@ export function useOwnershipAnswer({
   plants,
   query,
   extras,
+  extrasPending = false,
   searchSpecies = catalogSearchSpecies,
   online: onlineProp,
   onMeasure,
@@ -101,7 +107,8 @@ export function useOwnershipAnswer({
   useOwnershipMeasurement(
     query,
     {
-      ownership,
+      ownership:
+        extrasPending && ownership?.outcome === 'not-owned' ? null : ownership,
       source: improved?.improved ? 'catalog' : 'local',
       computeMs: local.ms,
       online,

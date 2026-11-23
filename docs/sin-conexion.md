@@ -137,7 +137,12 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   "¿Ya la tengo?" necesita además: los sinónimos y nombres comunes de sus
   especies (`species_names`) y las abreviaturas de sus géneros
   (`genus_abbreviations`), que se piden con cada lectura de la red
-  (`collection/extras-source.ts`, por grupos de 50 ids y paginadas).
+  (`collection/extras-source.ts`, por grupos de 50 ids y paginadas), con su
+  cobertura: de qué especies y géneros se leyeron (#274). Sin ella no se
+  sabe si están completos (una especie sin sinónimos no aparece), y "¿Ya la
+  tengo?" no daría por seguro un "no". Una copia anterior al #274 no la trae:
+  hasta la siguiente lectura de la red, sus extras se usan pero no se dan
+  por completos.
 - **Formato:** `LOCAL_COPY_FORMAT` (hoy 1). Una copia de otro formato o
   dañada se borra y se trata como si no hubiera; la siguiente lectura de la
   red la vuelve a crear entera. No se migra: no hay nada en la copia que no
@@ -158,8 +163,10 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   pasa la colección a `save()` tras `upsertPlant` y `removePlant`). La fecha
   que se muestra es la de la última lectura completa desde la red; un cambio
   hecho en la app no la mueve, porque otras plantas pueden haber cambiado
-  desde otro dispositivo. Los extras de una especie recién enlazada llegan en
-  la siguiente lectura.
+  desde otro dispositivo. Los extras de una especie o un género nuevos (una
+  planta registrada o cambiada en la app) se piden solos al momento, con
+  conexión y la sesión confirmada (`ensureExtras`, desde
+  `CollectionProvider`), y se añaden a la copia sin cambiar la fecha.
 - **Por usuario:** `setActiveUser()` borra las copias de las demás cuentas al
   entrar o al cerrar sesión, y desde ese momento solo se escribe la copia del
   usuario activo (una lectura de la cuenta anterior que termine tarde no la
@@ -326,8 +333,9 @@ El código está en `src/telemetry/`.
 - Con mala señal (el navegador dice tener red, pero no llega nada), la app
   espera a Clerk hasta 10 s antes de mostrar la copia como "sesión sin
   confirmar".
-- Los extras de "¿Ya la tengo?" de una especie recién enlazada en la app
-  llegan en la siguiente lectura desde la red, no al guardar.
+- Sin conexión, si a alguna planta le faltan los extras (registrada en la
+  app sin que llegaran, o una copia anterior al #274), "¿Ya la tengo?" no da
+  por seguro un "no" hasta volver a tener red (#274).
 - La foto grande del detalle no está disponible sin conexión (se ve la
   miniatura).
 

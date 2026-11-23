@@ -1,6 +1,10 @@
 import type { Page } from '@playwright/test'
 import { GENEROS, ESPECIES, USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
+import {
+  ORIGEN_SUPABASE,
+  type SupabaseSimulado,
+} from './soporte/supabase-simulado.ts'
 
 // «¿Ya la tengo?» en su pantalla (/ya-la-tengo, #209): coincidencia con
 // varios ejemplares y «Ver en mi colección», sin coincidencias y registrar con
@@ -150,6 +154,125 @@ test.describe('solo a 360 px', () => {
       ).toBeVisible()
     },
   )
+
+  // Los sinónimos y abreviaturas («extras») se piden aparte, después de las
+  // plantas (#243). Mientras faltan, o si fallan, un «no» no es seguro
+  // (#274). Una planta por validar de un género cuya abreviatura no es el
+  // comienzo del nombre («Blc.»): solo la encuentra la abreviatura, y el
+  // catálogo no la rescata (no hay especie).
+  test.describe('sinónimos y abreviaturas que faltan (#274)', () => {
+    const GENERO_BLC = '00000002-0000-4000-8000-000000000099'
+
+    function conBrassolaeliocattleya(supabase: SupabaseSimulado) {
+      supabase.datos.generos.push({
+        id: GENERO_BLC,
+        name: 'Brassolaeliocattleya',
+        is_quick_access: false,
+        abreviaturas: ['Blc.'],
+      })
+      supabase.datos.plantas.push({
+        ...supabase.datos.plantas[0],
+        id: '00000003-0000-4000-8000-000000000098',
+        user_id: USUARIO,
+        entered_name: 'Waikiki Gold',
+        species_id: null,
+        genus_id: GENERO_BLC,
+        type: 'hybrid',
+        validation: 'pending',
+        nickname: null,
+      })
+    }
+
+    /** Las peticiones de los extras (species_names y genus_abbreviations). */
+    const esDeExtras = (url: URL) =>
+      url.origin === ORIGEN_SUPABASE &&
+      (url.pathname === '/rest/v1/species_names' ||
+        url.pathname === '/rest/v1/genus_abbreviations')
+
+    /** Retiene las peticiones de los extras hasta llamar a la función devuelta. */
+    async function retenerExtras(page: Page): Promise<() => void> {
+      let soltar = () => {}
+      const sueltas = new Promise<void>((resolve) => {
+        soltar = resolve
+      })
+      await page.route(esDeExtras, async (route) => {
+        await sueltas
+        await route.fallback()
+      })
+      return soltar
+    }
+
+    test(
+      'retenidos: «Comprobando…» en vez de «Aún no la tienes», y se resuelve solo',
+      { tag: '@logica' },
+      async ({ page, supabase }) => {
+        conBrassolaeliocattleya(supabase)
+        const soltar = await retenerExtras(page)
+        await page.goto('/ya-la-tengo')
+        await campo(page).fill('Blc. Waikiki')
+        await expect(
+          respuesta(page, 'Comprobando sinónimos y abreviaturas…'),
+        ).toBeVisible()
+        await expect(page.getByText('Aún no la tienes')).toHaveCount(0)
+
+        soltar()
+        await expect(respuesta(page, 'Sí, la tienes')).toContainText(
+          '1 ejemplar de Waikiki Gold',
+        )
+      },
+    )
+
+    test(
+      'fallidos: lo dice, no afirma que no la tienes y deja reintentar',
+      { tag: '@logica' },
+      async ({ page, supabase }) => {
+        conBrassolaeliocattleya(supabase)
+        await page.route(esDeExtras, (route) => route.abort('failed'))
+        await page.goto('/ya-la-tengo')
+        await campo(page).fill('Blc. Waikiki')
+        // supabase-js reintenta un GET que falla por la red tres veces (1, 2
+        // y 4 s) antes de rendirse; mientras tanto, «Comprobando…».
+        await expect(
+          respuesta(page, 'Comprobando sinónimos y abreviaturas…'),
+        ).toBeVisible()
+        await expect(
+          respuesta(page, 'no pudimos comprobar sinónimos ni abreviaturas'),
+        ).toBeVisible({ timeout: 15_000 })
+        await expect(page.getByText('Aún no la tienes')).toHaveCount(0)
+
+        // Vuelve la red para esas peticiones: «Reintentar» las pide otra vez.
+        await page.unroute(esDeExtras)
+        await page.getByRole('button', { name: 'Reintentar' }).click()
+        await expect(respuesta(page, 'Sí, la tienes')).toContainText(
+          '1 ejemplar de Waikiki Gold',
+        )
+      },
+    )
+
+    // El objetivo de responder en menos de 5 s (#19): una positiva por el
+    // nombre aceptado no espera a los extras. Se anota el tiempo con y sin
+    // ellos retenidos.
+    for (const retenidos of [false, true]) {
+      test(
+        `por el nombre aceptado, «Sí, la tienes» en menos de 5 s (extras ${retenidos ? 'retenidos' : 'servidos'})`,
+        { tag: '@logica' },
+        async ({ page }, testInfo) => {
+          if (retenidos) await retenerExtras(page)
+          await page.goto('/ya-la-tengo')
+          await expect(campo(page)).toBeFocused()
+          const inicio = Date.now()
+          await campo(page).fill('Phalaenopsis amabilis')
+          await expect(respuesta(page, 'Sí, la tienes')).toBeVisible()
+          const ms = Date.now() - inicio
+          testInfo.annotations.push({
+            type: 'tiempo hasta la respuesta',
+            description: `${ms} ms`,
+          })
+          expect(ms).toBeLessThan(5_000)
+        },
+      )
+    }
+  })
 
   test.describe('sin conexión', () => {
     // Como en pwa.spec.ts: el service worker sirve la app sin red, y fuera

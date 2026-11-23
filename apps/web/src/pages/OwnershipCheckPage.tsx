@@ -9,7 +9,11 @@ import {
 import { useLocation, useSearchParams } from 'react-router'
 import type { CollectionApi } from '../collection/useCollection.ts'
 import { useCollection } from '../collection/useCollection.ts'
-import { useCollectionCopy } from '../collection/useCollectionCopy.ts'
+import {
+  useCollectionCopy,
+  useExtrasState,
+  useRetryExtras,
+} from '../collection/useCollectionCopy.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { Button } from '../components/ui/Button.tsx'
@@ -24,7 +28,10 @@ import {
 import { MatchList, RegisterAction } from '../inventory/OwnershipMatches.tsx'
 import { LOAD_ERROR_TEXT } from '../inventory/texts.ts'
 import { useOwnershipAnswer } from '../inventory/useOwnershipAnswer.ts'
-import { CheckAnswer } from '../ownership-check/CheckAnswer.tsx'
+import {
+  CheckAnswer,
+  type UnconfirmedNo,
+} from '../ownership-check/CheckAnswer.tsx'
 import {
   COLLECTION_QUERY_PARAM,
   collectionLinkFor,
@@ -63,6 +70,13 @@ const EMPTY_REGION = 'empty:mt-[calc(var(--space-4)*-1)]'
 //   copia, y registrar desactivado citándolo. Sin copia ni conexión, «Sin
 //   copia disponible» (QueryAnswer notice): no se puede saber, que no es lo
 //   mismo que "no la tienes". Mientras carga, un texto de espera.
+// - Sinónimos, nombres comunes y abreviaturas (#274): llegan después de las
+//   plantas (#243) y pueden faltar los de alguna (useExtrasState). Un "Sí"
+//   se muestra al momento; un "no" sin ellos completos no se da por seguro
+//   (CheckAnswer, `unconfirmed`): "Comprobando…" mientras llegan, que se
+//   resuelve solo en la misma región; si fallan, lo dice y ofrece
+//   "Reintentar" (useRetryExtras); sin conexión, que se comprobará al
+//   volver (la fecha de la copia la da el indicador de arriba).
 // - Medición de uso (#146): useHaveItSearchEvents, un evento por búsqueda con
 //   la primera respuesta estable y nunca el texto, también sin conexión.
 // - Accesibilidad: el campo recibe el foco al entrar; la respuesta va en una
@@ -74,6 +88,8 @@ export default function OwnershipCheckPage() {
   const { plants } = collection
   const copy = useCollectionCopy()
   const extras = copy?.extras ?? NO_EXTRAS
+  const extrasState = useExtrasState(plants)
+  const retryExtras = useRetryExtras()
   const readOnly = useReadOnly()
   const offlineNoticeId = useId()
   const location = useLocation()
@@ -91,7 +107,13 @@ export default function OwnershipCheckPage() {
     offline: readOnly !== null,
   })
   const { ownership, typed, registerName, catalogName, improvedByCatalog } =
-    useOwnershipAnswer({ plants, query, extras, onMeasure })
+    useOwnershipAnswer({
+      plants,
+      query,
+      extras,
+      extrasPending: extrasState === 'pending',
+      onMeasure,
+    })
 
   // Sin datos que consultar: o cargan, o no se pudieron leer (sin copia).
   const unavailable = plants === null && collection.status === 'error'
@@ -99,6 +121,17 @@ export default function OwnershipCheckPage() {
     ? null
     : (readOnly ?? (copy?.unreachable === 'offline' ? 'unreachable' : null))
   const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
+  // Un «no» con los extras incompletos (#274). Sin conexión (o con la sesión
+  // sin confirmar) no se pueden pedir; con ella, si no se están pidiendo,
+  // fallaron o no se pidieron, y «Reintentar» los pide.
+  const unconfirmed: UnconfirmedNo | null =
+    ownership?.outcome !== 'not-owned' || extrasState === 'complete'
+      ? null
+      : extrasState === 'pending'
+        ? 'pending'
+        : offlineReason !== null
+          ? 'offline'
+          : 'failed'
 
   // Después del efecto de Page, que lleva el foco al título al navegar: este
   // componente lo contiene, así que su efecto corre después.
@@ -175,11 +208,25 @@ export default function OwnershipCheckPage() {
                     typed,
                     improvedByCatalog,
                   )}
+                  unconfirmed={unconfirmed}
                 />
               )
             }
           />
         </div>
+        {unconfirmed === 'failed' && retryExtras !== null && (
+          <Button
+            className="self-start"
+            onClick={() => {
+              retryExtras()
+              // El botón desaparece mientras se comprueba: el foco vuelve
+              // al campo, y la región de la respuesta anuncia el resultado.
+              inputRef.current?.focus()
+            }}
+          >
+            {CHECK_TEXT.retry}
+          </Button>
+        )}
         {ownership !== null && (
           <>
             <MatchList
