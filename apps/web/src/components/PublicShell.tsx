@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { UpdateNotice } from '../pwa/UpdateNotice.tsx'
 import { PublicHeader } from './PublicHeader.tsx'
 import { SiteFooter } from './SiteFooter.tsx'
 
@@ -22,6 +23,8 @@ export function PublicShell({ actions = true, children }: PublicShellProps) {
         Saltar al contenido
       </a>
       <PublicHeader actions={actions} />
+      {/* «Hay una versión nueva» (#278), en el flujo: no tapa el foco. */}
+      <UpdateNotice />
       <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
         {children}
       </main>

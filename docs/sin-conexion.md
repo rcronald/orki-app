@@ -272,6 +272,12 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   chunks ya existentes (el de la app con Clerk) y el precache incluye todos
   los chunks del build (comprobado en `dist/sw.js` tras `npm run build`: los
   20 archivos JavaScript están en la lista).
+- **Versión nueva** (#278): un despliegue no cambia el service worker de una
+  pestaña abierta hasta que la persona pulsa «Actualizar» o cierra la app,
+  así que sin conexión se sigue abriendo la versión que estaba en el
+  dispositivo, con todos sus chunks. Sin conexión no se buscan versiones
+  nuevas, y un chunk que no carga sin red no recarga la página (no es un
+  despliegue). Ver «Service worker: versiones nuevas» en el README.
 
 ## 6. Eventos de producto sin conexión (#146)
 

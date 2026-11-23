@@ -66,6 +66,10 @@ as $$
   from public.search_species(consulta, maximo) s
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: normalización: minúsculas, sin tildes y con los espacios unificados
 select pruebas.iguales('tildes, mayúsculas y espacios', public.normalize_search_text('  Orquídea   MARIPOSA '), 'orquidea mariposa');
 select pruebas.iguales('eñe y diéresis', public.normalize_search_text('Araña Güira'), 'arana guira');

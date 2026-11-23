@@ -11,6 +11,11 @@ const DROPPED_INTEGRATIONS = new Set(['CultureContext'])
 interface OptionsDeps {
   /** Si el navegador dice estar conectado; en la app, navigator.onLine. */
   isOnline: () => boolean
+  /**
+   * Si la página ya se recarga por una versión nueva (#278); en la app,
+   * recargaEnCurso de pwa/recarga-por-version.ts.
+   */
+  isReloadingForUpdate?: () => boolean
   /** Solo para pruebas: transporte que no sale a la red. */
   transport?: BrowserOptions['transport']
 }
@@ -30,7 +35,7 @@ interface OptionsDeps {
  */
 export function buildSentryOptions(
   settings: SentrySettings,
-  { isOnline, transport }: OptionsDeps,
+  { isOnline, isReloadingForUpdate = () => false, transport }: OptionsDeps,
 ): BrowserOptions {
   return {
     dsn: settings.dsn,
@@ -54,7 +59,7 @@ export function buildSentryOptions(
       ),
     denyUrls: EXTENSION_URLS,
     beforeSend: (event, hint) =>
-      isNoise(event, hint.originalException, isOnline())
+      isNoise(event, hint.originalException, isOnline(), isReloadingForUpdate())
         ? null
         : scrubEvent(event),
     beforeBreadcrumb: (breadcrumb) => scrubBreadcrumb(breadcrumb),

@@ -1,4 +1,5 @@
 import { captureException, init, setUser } from '@sentry/react'
+import { recargaEnCurso } from '../pwa/recarga-por-version.ts'
 import { buildSentryOptions } from './sentry-options.ts'
 import type { SentryModule } from './types.ts'
 
@@ -37,6 +38,7 @@ export const startSentry: SentryModule['startSentry'] = (settings, userId) => {
   init(
     buildSentryOptions(settings, {
       isOnline: () => navigator.onLine !== false,
+      isReloadingForUpdate: recargaEnCurso,
     }),
   )
   // Del usuario solo se envía el id de Clerk, que no dice quién es.

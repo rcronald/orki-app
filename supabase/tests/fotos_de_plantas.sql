@@ -645,11 +645,6 @@ select pruebas.debe_fallar(
 );
 select pruebas.debe_fallar('anon edita', 'update public.plant_photos set in_bloom = true', '42501');
 select pruebas.debe_fallar('anon borra', 'delete from public.plant_photos', '42501');
-select pruebas.debe_fallar(
-  'anon llama a is_pending_plant',
-  $$select public.is_pending_plant('bbbbbbbb-0000-4000-8000-000000000001')$$,
-  '42501'
-);
 
 -- prueba: cada usuario lee, crea, edita y borra solo sus fotos
 set local role authenticated;
@@ -712,11 +707,6 @@ select pruebas.debe_fallar(
   $$update public.plant_photos set created_at = '2000-01-01' where plant_id = 'aaaaaaaa-0000-4000-8000-000000000004'$$,
   '42501'
 );
-select pruebas.debe_fallar(
-  'user_a llama a is_pending_plant',
-  $$select public.is_pending_plant('bbbbbbbb-0000-4000-8000-000000000001')$$,
-  '42501'
-);
 with borradas as (delete from public.plant_photos where plant_id = 'aaaaaaaa-0000-4000-8000-000000000004' and position = 4 returning 1)
 select pruebas.iguales('fotos propias que borra user_a', (select count(*) from borradas), 1::bigint);
 set local role postgres;
@@ -746,26 +736,44 @@ select pruebas.debe_fallar(
   '42501'
 );
 
--- prueba: el administrador lee solo las fotos de plantas por validar, sin escribirlas
+-- prueba: el administrador lee solo sus fotos: ninguna fila ajena, tampoco de plantas por validar
+-- Desde el #283 la política de lectura no tiene rama del administrador: la cola le da las rutas
+-- (list_proposal_groups) y Storage le deja descargarlas (is_pending_plant_photo), pero no lee
+-- las filas de plant_photos de otros usuarios, con su nota y su fecha. B1 (de user_b) y A4 (de
+-- user_a) están por validar y tienen fotos con nota y fecha.
+set local role postgres;
+insert into public.plants (id, user_id, entered_name, genus_id, type, photo_path, thumbnail_path)
+values ('dddddddd-0000-4000-8000-000000000001', 'user_admin', 'Planta del administrador', pruebas.genero('Vanda'),
+        'unknown', 'user_admin/dddddddd-0000-4000-8000-000000000001/photo-1.webp',
+        'user_admin/dddddddd-0000-4000-8000-000000000001/thumb-1.webp');
+select pruebas.iguales(
+  'fotos ajenas de plantas por validar en la base',
+  (select count(*) from public.plant_photos f join public.plants p on p.id = f.plant_id
+     where p.validation = 'pending' and f.user_id <> 'user_admin'),
+  4::bigint
+);
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "app_role": "catalog_admin"}';
 select pruebas.iguales(
-  'fotos visibles para el administrador',
-  (select string_agg(photo_path, ', ' order by photo_path) from public.plant_photos),
-  'user_a/aaaaaaaa-0000-4000-8000-000000000004/photo-0.webp, user_a/aaaaaaaa-0000-4000-8000-000000000004/photo-4.webp, '
-    || 'user_b/bbbbbbbb-0000-4000-8000-000000000001/photo-1.webp, user_b/bbbbbbbb-0000-4000-8000-000000000001/photo-2.webp'
+  'filas ajenas de plant_photos que lee el administrador',
+  (select count(*) from (select user_id, note, taken_at, photo_path from public.plant_photos
+                          where user_id <> 'user_admin') f),
+  0::bigint
 );
 select pruebas.iguales(
-  'is_pending_plant',
-  (select string_agg(coalesce(public.is_pending_plant(r.id)::text, 'null'), ', ' order by r.orden)
-     from (values (1, 'bbbbbbbb-0000-4000-8000-000000000001'::uuid), (2, 'bbbbbbbb-0000-4000-8000-000000000002'::uuid),
-                  (3, 'eeeeeeee-0000-4000-8000-000000000001'::uuid), (4, null::uuid)) r (orden, id)),
-  'true, false, false, false'
+  'filas de la planta por validar B1 que lee el administrador',
+  (select count(*) from public.plant_photos where plant_id = 'bbbbbbbb-0000-4000-8000-000000000001'),
+  0::bigint
 );
-with cambiadas as (update public.plant_photos set in_bloom = true returning 1)
-select pruebas.iguales('fotos que edita el administrador', (select count(*) from cambiadas), 0::bigint);
-with borradas as (delete from public.plant_photos returning 1)
-select pruebas.iguales('fotos que borra el administrador', (select count(*) from borradas), 0::bigint);
+select pruebas.iguales(
+  'fotos que lee el administrador',
+  (select string_agg(photo_path, ', ' order by photo_path) from public.plant_photos),
+  'user_admin/dddddddd-0000-4000-8000-000000000001/photo-1.webp'
+);
+with cambiadas as (update public.plant_photos set in_bloom = true where user_id <> 'user_admin' returning 1)
+select pruebas.iguales('fotos ajenas que edita el administrador', (select count(*) from cambiadas), 0::bigint);
+with borradas as (delete from public.plant_photos where user_id <> 'user_admin' returning 1)
+select pruebas.iguales('fotos ajenas que borra el administrador', (select count(*) from borradas), 0::bigint);
 select pruebas.debe_fallar(
   'el administrador añade una foto a una planta de user_b',
   $$insert into public.plant_photos (plant_id, user_id, photo_path, thumbnail_path, position)
@@ -773,29 +781,32 @@ select pruebas.debe_fallar(
             'user_b/bbbbbbbb-0000-4000-8000-000000000001/t.webp', 5)$$,
   '42501'
 );
--- Al validar la planta deja de verlas.
-set local role postgres;
-update public.plants set species_id = pruebas.especie('Cattleya labiata') where id = 'bbbbbbbb-0000-4000-8000-000000000001';
-set local role authenticated;
-set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "app_role": "catalog_admin"}';
+-- La cola sigue dándole las rutas de las fotos de B1 (sin nota ni fecha).
+select pruebas.comprobar(
+  'list_proposal_groups da al administrador las fotos de B1',
+  exists (select from public.list_proposal_groups(50, 0) g
+           cross join lateral jsonb_array_elements(g.photos) f
+           where f ->> 'thumbnail_path' = 'user_b/bbbbbbbb-0000-4000-8000-000000000001/thumb-1.webp')
+);
+-- Un app_role que no es catalog_admin tampoco da nada.
+set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "app_role": "admin"}';
 select pruebas.iguales(
-  'fotos de user_b visibles para el administrador tras validar B1',
-  (select count(*) from public.plant_photos where user_id = 'user_b'),
+  'fotos ajenas visibles con otro app_role',
+  (select count(*) from public.plant_photos where user_id <> 'user_admin'),
   0::bigint
 );
--- Un app_role que no es catalog_admin no da nada.
-set local request.jwt.claims = '{"sub": "user_admin", "role": "authenticated", "app_role": "admin"}';
-select pruebas.iguales('fotos visibles con otro app_role', (select count(*) from public.plant_photos), 0::bigint);
 
--- prueba: is_pending_plant sigue el patrón de administrador
+-- prueba: la política de lectura de plant_photos solo compara con el usuario de la petición
 select pruebas.iguales(
-  'propiedades y permisos de is_pending_plant',
-  (select 'definer=' || p.prosecdef::text || ' ' || array_to_string(p.proconfig, ',')
-          || ' anon=' || has_function_privilege('anon', p.oid, 'execute')::text
-          || ' authenticated=' || has_function_privilege('authenticated', p.oid, 'execute')::text
-          || ' service_role=' || has_function_privilege('service_role', p.oid, 'execute')::text
-     from pg_proc p where p.oid = 'public.is_pending_plant(uuid)'::regprocedure),
-  'definer=true search_path="" anon=false authenticated=true service_role=false'
+  'política de lectura de plant_photos',
+  (select p.policyname || ': ' || p.qual
+     from pg_policies p
+     where p.schemaname = 'public' and p.tablename = 'plant_photos' and p.cmd = 'SELECT'),
+  'Cada usuario lee sus fotos: (user_id = ( SELECT requesting_user_id() AS requesting_user_id))'
+);
+select pruebas.comprobar(
+  'is_pending_plant(uuid) ya no existe',
+  to_regprocedure('public.is_pending_plant(uuid)') is null
 );
 
 -- Copia de las fotos existentes ------------------------------------------------------------

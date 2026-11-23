@@ -85,13 +85,19 @@ export default defineConfig({
     // la revisión de index.html en el precaché tiene que ser la del HTML final.
     portadaPrevia(),
     VitePWA({
-      // El service worker nuevo se activa solo y toma el control sin preguntar.
-      registerType: 'autoUpdate',
-      // Registro mediante un script generado (registerSW.js) inyectado en el HTML
-      // del build con `defer` (#149): no bloquea el análisis del HTML y el
-      // primer pintado del inicio baja de 0,90 s a 0,75 s (medido). En
-      // `vite dev` no se inyecta ni se genera service worker.
-      injectRegister: 'script-defer',
+      // Versión nueva con aviso (#278). El service worker nuevo se instala y
+      // espera: la pestaña sigue con el código y el precaché de su versión,
+      // así que sus chunks siguen llegando. Entra cuando la persona pulsa
+      // «Actualizar» (src/pwa/UpdateNotice.tsx) o cuando no queda ninguna
+      // pestaña de la app abierta. Con 'autoUpdate' se activaba solo, borraba
+      // del precaché los chunks viejos y la pestaña abierta, al pedir uno, se
+      // encontraba un 404 y la pantalla «Algo salió mal».
+      registerType: 'prompt',
+      // Lo registra la app con virtual:pwa-register (src/pwa/actualizacion.ts)
+      // cuando llega el chunk de App, después del primer pintado, como hacía
+      // el registerSW.js con `defer` (#149): nada en el HTML. En `vite dev` no
+      // se genera service worker.
+      injectRegister: false,
       devOptions: { enabled: false },
       includeAssets: [
         'favicon.ico',
@@ -162,10 +168,19 @@ export default defineConfig({
         // en este dominio. Haría falta si algún día se usa el proxy de Clerk
         // (proxyUrl), que sí sirve rutas bajo el dominio de la app.
         navigateFallback: 'index.html',
+        // Borra las cachés de formatos viejos de Workbox. No toca el precaché
+        // de la versión en uso: los chunks viejos los quita el service worker
+        // nuevo al activarse, y en modo 'prompt' eso no pasa hasta que se
+        // acepta la versión nueva o se cierran todas las pestañas.
         cleanupOutdatedCaches: true,
-        // Con el registro por script no hay aviso en la interfaz: la versión
-        // nueva se activa en cuanto se instala y controla las pestañas abiertas.
-        skipWaiting: true,
+        // Sin skipWaiting (#278): el service worker nuevo espera. «Actualizar»
+        // le pide que deje de esperar con un mensaje (SKIP_WAITING), que el
+        // modo 'prompt' añade al service worker generado.
+        skipWaiting: false,
+        // La primera vez que se instala toma el control de la pestaña abierta
+        // sin recargar, así la app ya funciona sin conexión desde la primera
+        // visita. En una actualización no cambia nada: al activarse, el
+        // service worker nuevo pasa a controlar las pestañas de todos modos.
         clientsClaim: true,
         // Sin mapas del service worker. El plugin de PWA los generaría al ver
         // los mapas ocultos que activa el plugin de Sentry, y como se escriben

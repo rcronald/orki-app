@@ -136,6 +136,10 @@ as $$
   )
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: permisos: anon, un usuario sin rol, otro rol y la clave de servicio reciben 42501 y nada cambia
 set local role postgres;
 select pg_temp.foto() as antes \gset
