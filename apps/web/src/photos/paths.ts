@@ -92,12 +92,21 @@ export interface PlantPhotoPaths {
   thumbnailPath: string
 }
 
+/**
+ * Subcarpeta de las fotos de la bitácora (#264, #267):
+ * <usuario>/<planta>/log/photo-<versión>.<ext> y thumb-<versión>.<ext>. No
+ * cuentan en las seis de la galería (plant_photos no admite subcarpetas).
+ */
+export const LOG_SUBFOLDER = 'log'
+
 export interface PlantPhotoPathsInput {
   userId: string
   plantId: string
   version: string
   photoType: PlantPhotoType
   thumbnailType: PlantPhotoType
+  /** 'log' para la foto de un registro de la bitácora; sin ella, la galería. */
+  subfolder?: typeof LOG_SUBFOLDER
 }
 
 /** Rutas de la foto y la miniatura de una versión, con la convención exacta. */
@@ -107,8 +116,10 @@ export function plantPhotoPaths({
   version,
   photoType,
   thumbnailType,
+  subfolder,
 }: PlantPhotoPathsInput): PlantPhotoPaths {
-  const folder = plantFolder(userId, plantId)
+  const base = plantFolder(userId, plantId)
+  const folder = subfolder === undefined ? base : `${base}${subfolder}/`
   if (!VERSION.test(version)) {
     throw new Error('Versión no válida para la ruta de la foto.')
   }
