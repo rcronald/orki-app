@@ -60,6 +60,10 @@ as $$
   from public.search_genera(consulta, maximo) g
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: especies: la abreviatura se expande con o sin punto y con cualquier mayúscula
 select pruebas.iguales('Phal. amab', pg_temp.primera('Phal. amab'), 'Phalaenopsis amabilis');
 select pruebas.iguales('phal amab', pg_temp.primera('phal amab'), 'Phalaenopsis amabilis');

@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useNavigate } from 'react-router'
+import { Button } from '../components/ui/Button.tsx'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { Modal } from '../components/ui/Modal.tsx'
 import { EDIT_LEAVE_TEXT } from './texts.ts'
 
 // Aviso de cambios sin guardar (#266) al salir de la edición por las cuatro
@@ -30,6 +39,14 @@ import { EDIT_LEAVE_TEXT } from './texts.ts'
 // El diálogo es el del proyecto (ConfirmDialog sobre Modal): foco dentro,
 // «Seguir editando» primero (la acción segura), Escape cierra y el foco
 // vuelve a donde estaba. Sin cambios no pregunta.
+//
+// Mientras se guarda (`busy`, #279) no se puede salir por ninguna de las
+// cuatro vías: el guardado en curso puede estar creando la fila de una foto
+// nueva, y salir a mitad dejaría el guardado partido. Un enlace, «atrás» o
+// «Volver a la ficha» abren un aviso que solo dice que se espere (sin «Salir
+// sin guardar»), y la pestaña pide el aviso nativo. El aviso se cierra solo
+// al terminar el guardado: si sale bien, la pantalla vuelve a la ficha; si
+// falla, se queda con el error.
 
 const GUARD = 'orkiEditGuard'
 
@@ -73,35 +90,37 @@ export interface LeaveGuard {
   dialog: ReactNode
 }
 
-interface Pending {
-  proceed: () => void
-  stay: () => void
-}
+type Pending =
+  | { kind: 'confirm'; proceed: () => void; stay: () => void }
+  /** Se intentó salir durante el guardado: solo se avisa. */
+  | { kind: 'busy' }
 
 /**
  * Protege la edición de salir con cambios sin guardar. `partial`: un intento
  * de guardar ya dejó parte de los cambios en la base (el diálogo lo dice).
- * `onLeave` se llama al salir sin guardar (para borrar lo subido sin fila).
+ * `busy`: hay un guardado en curso; mientras dure no se puede salir.
  */
 export function useLeaveGuard({
   dirty,
   partial = false,
-  onDiscard,
+  busy = false,
 }: {
   dirty: boolean
   partial?: boolean
-  onDiscard?: () => void
+  busy?: boolean
 }): LeaveGuard {
   const navigate = useNavigate()
   const [pending, setPending] = useState<Pending | null>(null)
   const armed = useRef(false)
   const leaving = useRef(false)
   const dirtyRef = useRef(dirty)
-  const discardRef = useRef(onDiscard)
+  const busyRef = useRef(busy)
   useEffect(() => {
     dirtyRef.current = dirty
-    discardRef.current = onDiscard
+    busyRef.current = busy
   })
+  const guarded = dirty || busy
+  const busyDescriptionId = useId()
 
   const arm = useCallback(() => {
     if (armed.current || leaving.current) return
@@ -145,9 +164,13 @@ export function useLeaveGuard({
 
   const ask = useCallback(
     (go: () => void, stay: () => void = () => undefined) => {
+      if (busyRef.current) {
+        setPending({ kind: 'busy' })
+        return
+      }
       setPending({
+        kind: 'confirm',
         proceed: () => {
-          discardRef.current?.()
           void leave(go)
         },
         stay: () => {
@@ -162,7 +185,7 @@ export function useLeaveGuard({
   const requestLeave = useCallback(
     (go: () => void) => {
       if (leaving.current) return
-      if (!dirtyRef.current) {
+      if (!dirtyRef.current && !busyRef.current) {
         void leave(go)
         return
       }
@@ -171,10 +194,10 @@ export function useLeaveGuard({
     [ask, leave],
   )
 
-  // Guarda en el historial mientras haya cambios.
+  // Guarda en el historial mientras haya cambios (o un guardado en curso).
   useEffect(() => {
-    if (dirty) arm()
-  }, [dirty, arm])
+    if (guarded) arm()
+  }, [guarded, arm])
 
   // «Atrás»: se salió de la guarda.
   useEffect(() => {
@@ -182,6 +205,12 @@ export function useLeaveGuard({
       if (!armed.current || leaving.current) return
       if (isGuard(window.history.state)) return
       armed.current = false
+      if (busyRef.current) {
+        // Guardando: se vuelve a poner la guarda y solo se avisa.
+        arm()
+        setPending({ kind: 'busy' })
+        return
+      }
       if (!dirtyRef.current) {
         // Ya no hay cambios: «atrás» sigue su camino.
         leaving.current = true
@@ -199,7 +228,7 @@ export function useLeaveGuard({
 
   // Enlaces de la app.
   useEffect(() => {
-    if (!dirty) return
+    if (!guarded) return
     const onClick = (event: MouseEvent) => {
       if (leaving.current) return
       const to = internalTarget(event)
@@ -210,11 +239,11 @@ export function useLeaveGuard({
     }
     document.addEventListener('click', onClick, true)
     return () => document.removeEventListener('click', onClick, true)
-  }, [dirty, ask, navigate])
+  }, [guarded, ask, navigate])
 
   // Cerrar o recargar la pestaña: el aviso nativo.
   useEffect(() => {
-    if (!dirty) return
+    if (!guarded) return
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (leaving.current) return
       event.preventDefault()
@@ -223,24 +252,47 @@ export function useLeaveGuard({
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [dirty])
+  }, [guarded])
 
-  const dialog = pending && (
-    <ConfirmDialog
-      title={EDIT_LEAVE_TEXT.title}
-      description={
-        <>
-          <p>{EDIT_LEAVE_TEXT.description}</p>
-          {partial && <p className="mt-space-2">{EDIT_LEAVE_TEXT.partial}</p>}
-        </>
-      }
-      confirmLabel={EDIT_LEAVE_TEXT.confirm}
-      cancelLabel={EDIT_LEAVE_TEXT.stay}
-      initialFocus="cancel"
-      onConfirm={pending.proceed}
-      onCancel={pending.stay}
-    />
-  )
+  // El aviso de esperar se cierra solo al terminar el guardado (y no vuelve a
+  // salir en el siguiente).
+  const [wasBusy, setWasBusy] = useState(busy)
+  if (wasBusy !== busy) {
+    setWasBusy(busy)
+    if (!busy && pending?.kind === 'busy') setPending(null)
+  }
+  const close = () => setPending(null)
+  const shown = pending?.kind === 'busy' && !busy ? null : pending
+  const dialog =
+    shown === null ? null : shown.kind === 'busy' ? (
+      <Modal
+        title={EDIT_LEAVE_TEXT.busyTitle}
+        describedBy={busyDescriptionId}
+        onCancel={close}
+      >
+        <p id={busyDescriptionId} className="text-md text-neutral-900">
+          {EDIT_LEAVE_TEXT.busyDescription}
+        </p>
+        <div className="flex justify-end">
+          <Button onClick={close}>{EDIT_LEAVE_TEXT.busyOk}</Button>
+        </div>
+      </Modal>
+    ) : (
+      <ConfirmDialog
+        title={EDIT_LEAVE_TEXT.title}
+        description={
+          <>
+            <p>{EDIT_LEAVE_TEXT.description}</p>
+            {partial && <p className="mt-space-2">{EDIT_LEAVE_TEXT.partial}</p>}
+          </>
+        }
+        confirmLabel={EDIT_LEAVE_TEXT.confirm}
+        cancelLabel={EDIT_LEAVE_TEXT.stay}
+        initialFocus="cancel"
+        onConfirm={shown.proceed}
+        onCancel={shown.stay}
+      />
+    )
 
   return { requestLeave, leave, dialog }
 }

@@ -8,6 +8,13 @@ function Broken(): never {
   throw new Error('Componente roto')
 }
 
+// Lo que lanza lazy() cuando el chunk de una ruta ya no existe (#278).
+function MissingChunk(): never {
+  throw new TypeError(
+    'Failed to fetch dynamically imported module: https://orqui.app/assets/CreditsPage-BJFUgrOu.js',
+  )
+}
+
 beforeEach(() => {
   document.documentElement.lang = 'es'
   document.title = 'orqui.app'
@@ -68,5 +75,52 @@ describe('ErrorBoundary', () => {
     )
 
     expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
+  it('un chunk que no llega tras un despliegue recarga la página sin pantalla de fallo ni reporte', () => {
+    const report = vi.fn()
+    const recover = vi.fn(() => true)
+    render(
+      <ErrorBoundary reporter={{ report }} recover={recover}>
+        <MissingChunk />
+      </ErrorBoundary>,
+    )
+
+    expect(recover).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Cargando la versión nueva…',
+    )
+    expect(
+      screen.queryByRole('heading', { name: 'Algo salió mal' }),
+    ).not.toBeInTheDocument()
+    expect(report).not.toHaveBeenCalled()
+  })
+
+  it('si no se puede recargar (ya se recargó, o sin conexión), muestra la pantalla de fallo y lo reporta', () => {
+    const report = vi.fn()
+    render(
+      <ErrorBoundary reporter={{ report }} recover={() => false}>
+        <MissingChunk />
+      </ErrorBoundary>,
+    )
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Algo salió mal' }),
+    ).toBeInTheDocument()
+    expect(report).toHaveBeenCalledTimes(1)
+  })
+
+  it('otro error no intenta recargar', () => {
+    const recover = vi.fn(() => true)
+    render(
+      <ErrorBoundary reporter={{ report: vi.fn() }} recover={recover}>
+        <Broken />
+      </ErrorBoundary>,
+    )
+
+    expect(recover).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('heading', { name: 'Algo salió mal' }),
+    ).toBeInTheDocument()
   })
 })

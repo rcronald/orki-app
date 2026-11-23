@@ -1,8 +1,9 @@
 import type { ErrorEvent } from '@sentry/react'
+import { esFalloDeCargaDeChunk } from '../pwa/recarga-por-version.ts'
 
 // Ruido conocido que no se envía a Sentry. Funciones puras: la decisión
-// depende solo del evento, del error original y de si el navegador dice
-// estar conectado.
+// depende solo del evento, del error original, de si el navegador dice estar
+// conectado y de si la página ya se recarga por una versión nueva.
 
 // Mensajes con los que los navegadores rechazan una petición o la carga de un
 // módulo cuando no hay red: Chrome, Firefox y Safari, para fetch y para los
@@ -75,14 +76,25 @@ export function comesFromBrowserExtension(event: ErrorEvent): boolean {
   )
 }
 
+/**
+ * Un chunk que no llegó mientras la página ya se recarga por una versión
+ * nueva (#278, pwa/recarga-por-version.ts): no es un fallo de la app. Si la
+ * recarga no se hizo (sin conexión, o ya se recargó hace poco), sí se envía.
+ */
+export function isUpdateReload(error: unknown, reloading: boolean): boolean {
+  return reloading && esFalloDeCargaDeChunk(error)
+}
+
 /** El evento es ruido conocido y no se envía. */
 export function isNoise(
   event: ErrorEvent,
   originalException: unknown,
   online: boolean,
+  reloadingForUpdate = false,
 ): boolean {
   return (
     isOfflineFailure(originalException, online) ||
+    isUpdateReload(originalException, reloadingForUpdate) ||
     comesFromBrowserExtension(event)
   )
 }

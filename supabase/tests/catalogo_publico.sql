@@ -91,6 +91,10 @@ as $$
   ) e
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: permisos: solo anon y authenticated ejecutan las cuatro funciones; ni service_role ni PUBLIC
 select pruebas.iguales(
   'permiso de ejecución por rol',
@@ -532,6 +536,7 @@ create function pg_temp.marcar() returns void language sql as $$
                     'species_names_species_id_name_key', 'genera_pkey']) i;
 $$;
 grant select, insert, delete on pg_temp.recorridos to anon;
+grant execute on function pg_temp.marcar(), pg_temp.recorridos_desde_la_marca() to public;
 set local enable_seqscan = off;
 set local role anon;
 set local request.jwt.claims = '{"role": "anon"}';

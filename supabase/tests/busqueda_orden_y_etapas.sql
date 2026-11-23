@@ -177,6 +177,10 @@ as $$
   where o.puesto <= case when maximo is null or maximo <= 0 then 10 else least(maximo, 20) end
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: especies: el signo de híbrido no cuenta al desempatar, y las especies van antes que los híbridos
 -- Antes, "ph" ordenaba por el nombre guardado y "Phalaenopsis × amphitrite" podía salir entre
 -- las especies (o delante, según la intercalación del servidor).

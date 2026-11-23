@@ -418,6 +418,249 @@ test('si falla el guardado, «Reintentar» lo completa sin duplicar fotos', asyn
   sinRestos(supabase)
 })
 
+/**
+ * El invariante del guardado (#279): los archivos son los que citan las filas
+ * y la principal de la planta apunta a un archivo que existe.
+ */
+async function coherente(supabase: SupabaseSimulado) {
+  const citados = () =>
+    supabase
+      .fotosDe(PLANTAS.maxima)
+      .flatMap((foto) => [foto.photo_path, foto.thumbnail_path])
+      .sort()
+  await expect.poll(() => estado(supabase).archivos).toEqual(citados())
+  const planta = estado(supabase).planta
+  for (const archivo of [planta.photo_path, planta.thumbnail_path]) {
+    if (archivo) expect(supabase.archivos.has(archivo)).toBe(true)
+  }
+}
+
+/** Retiene la creación de filas de fotos hasta que la prueba la suelte. */
+async function retenerFilas(page: Page) {
+  let soltar: () => void = () => undefined
+  const suelta = new Promise<void>((resolve) => {
+    soltar = resolve
+  })
+  let pedida: () => void = () => undefined
+  const llegada = new Promise<void>((resolve) => {
+    pedida = resolve
+  })
+  await page.route(
+    `${ORIGEN_SUPABASE}/rest/v1/plant_photos**`,
+    async (route) => {
+      if (route.request().method() === 'POST') {
+        pedida()
+        await suelta
+      }
+      await route.fallback()
+    },
+  )
+  return { llegada, soltar }
+}
+
+/** La primera petición `metodo` a `patron` falla con un 500. */
+async function fallarUnaVez(page: Page, patron: string, metodo: string) {
+  let fallos = 1
+  await page.route(patron, async (route) => {
+    if (route.request().method() === metodo && fallos > 0) {
+      fallos -= 1
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ code: 'XX000', message: 'Fallo simulado' }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+}
+
+test.describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
+  const vias: { nombre: string; salir: (page: Page) => Promise<void> }[] = [
+    {
+      nombre: 'un enlace de la app',
+      salir: (page) => page.getByRole('link', { name: 'Mi colección' }).click(),
+    },
+    { nombre: '«atrás»', salir: async (page) => void (await page.goBack()) },
+    {
+      nombre: '«Volver a la ficha»',
+      salir: (page) =>
+        page.getByRole('link', { name: 'Volver a la ficha' }).click(),
+    },
+  ]
+  for (const via of vias) {
+    test(`durante el guardado, salir por ${via.nombre} espera a que termine`, async ({
+      page,
+      supabase,
+    }) => {
+      conFotos(supabase, 1)
+      await abrirEdicion(page, PLANTAS.maxima)
+      await elegirFotos(page, 1)
+      await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+      await gestion(page)
+        .getByRole('group', { name: 'Foto 2 de 2' })
+        .getByRole('button', { name: 'Hacer principal' })
+        .click()
+      await page.getByRole('button', { name: 'Listo' }).click()
+      const { llegada, soltar } = await retenerFilas(page)
+      await page.getByRole('button', { name: 'Guardar cambios' }).click()
+      await llegada
+
+      await via.salir(page)
+      const guardando = page.getByRole('dialog', {
+        name: 'Se están guardando los cambios',
+      })
+      await expect(guardando).toBeVisible()
+      await expect(
+        page.getByRole('button', { name: 'Salir sin guardar' }),
+      ).toHaveCount(0)
+      await expect(page).toHaveURL(new RegExp(`${edicion(PLANTAS.maxima)}$`))
+
+      soltar()
+      await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+      expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(2)
+      // La nueva es la principal y su archivo existe.
+      expect(estado(supabase).planta.photo_path).not.toBe(
+        `${CARPETA}/photo-v0.webp`,
+      )
+      await coherente(supabase)
+    })
+  }
+
+  test('b) quitar una foto nueva que ya tiene fila tras un fallo del orden: «Reintentar» termina', async ({
+    page,
+    supabase,
+  }) => {
+    conFotos(supabase, 1)
+    await fallarUnaVez(
+      page,
+      `${ORIGEN_SUPABASE}/rest/v1/rpc/reorder_plant_photos**`,
+      'POST',
+    )
+    await abrirEdicion(page, PLANTAS.maxima)
+    await elegirFotos(page, 1)
+    await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto 2 de 2' })
+      .getByRole('button', { name: 'Hacer principal' })
+      .click()
+    await page.getByRole('button', { name: 'Listo' }).click()
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    const alerta = page.getByRole('alert').filter({ hasText: 'Reintentar' })
+    await expect(alerta).toContainText('Parte de los cambios ya quedó guardada')
+    expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(2)
+
+    await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByRole('button', { name: 'Quitar' })
+      .click()
+    await page.getByRole('button', { name: 'Listo' }).click()
+    await alerta.getByRole('button', { name: 'Reintentar' }).click()
+    await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+    expect(
+      supabase.fotosDe(PLANTAS.maxima).map((foto) => foto.photo_path),
+    ).toEqual([`${CARPETA}/photo-v0.webp`])
+    await coherente(supabase)
+  })
+
+  test('b) tras borrar la fila de una foto quitada, no se ofrece «Deshacer» y «Reintentar» termina', async ({
+    page,
+    supabase,
+  }) => {
+    conFotos(supabase, 2)
+    await fallarUnaVez(
+      page,
+      `${ORIGEN_SUPABASE}/rest/v1/plant_photos**`,
+      'PATCH',
+    )
+    await abrirEdicion(page, PLANTAS.maxima)
+    await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByRole('button', { name: 'Quitar' })
+      .click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByLabel('Nota', { exact: true })
+      .fill('Nueva vara')
+    await page.getByRole('button', { name: 'Listo' }).click()
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    const alerta = page.getByRole('alert').filter({ hasText: 'Reintentar' })
+    await expect(alerta).toContainText('Parte de los cambios ya quedó guardada')
+    expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(1)
+    await expect(page.getByRole('button', { name: 'Deshacer' })).toHaveCount(0)
+
+    await alerta.getByRole('button', { name: 'Reintentar' }).click()
+    await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+    expect(supabase.fotosDe(PLANTAS.maxima)[0]).toMatchObject({
+      photo_path: `${CARPETA}/photo-v1.webp`,
+      note: 'Nueva vara',
+    })
+    await coherente(supabase)
+  })
+
+  test('c) una foto subida que se quita antes de reintentar no queda huérfana', async ({
+    page,
+    supabase,
+  }) => {
+    conFotos(supabase, 1)
+    await fallarUnaVez(page, `${ORIGEN_SUPABASE}/rest/v1/plants**`, 'PATCH')
+    await abrirEdicion(page, PLANTAS.maxima)
+    await elegirFotos(page, 1)
+    await page.getByRole('textbox', { name: 'Apodo' }).fill('La morada')
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    const alerta = page.getByRole('alert').filter({ hasText: 'Reintentar' })
+    await expect(alerta).toContainText('No se pudieron guardar los cambios')
+
+    await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto 2 de 2' })
+      .getByRole('button', { name: 'Quitar' })
+      .click()
+    await page.getByRole('button', { name: 'Listo' }).click()
+    await alerta.getByRole('button', { name: 'Reintentar' }).click()
+    await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+    expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(1)
+    await coherente(supabase)
+  })
+
+  test('salir tras un guardado a medias borra lo que ninguna fila cita', async ({
+    page,
+    supabase,
+  }) => {
+    conFotos(supabase, 2)
+    await fallarUnaVez(
+      page,
+      `${ORIGEN_SUPABASE}/rest/v1/plant_photos**`,
+      'PATCH',
+    )
+    await abrirEdicion(page, PLANTAS.maxima)
+    await elegirFotos(page, 1)
+    await page.getByRole('button', { name: 'Gestionar fotos' }).click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByRole('button', { name: 'Quitar' })
+      .click()
+    await gestion(page)
+      .getByRole('group', { name: 'Foto principal' })
+      .getByLabel('Nota', { exact: true })
+      .fill('Nueva vara')
+    await page.getByRole('button', { name: 'Listo' }).click()
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    const alerta = page.getByRole('alert').filter({ hasText: 'Reintentar' })
+    await expect(alerta).toContainText('Parte de los cambios ya quedó guardada')
+
+    await page.getByRole('button', { name: 'Cancelar' }).click()
+    await aviso(page).getByRole('button', { name: 'Salir sin guardar' }).click()
+    await expect(page).toHaveURL(new RegExp(`${detalle(PLANTAS.maxima)}$`))
+    // La quitada ya no tiene fila ni archivos; la nueva sí quedó guardada.
+    expect(supabase.fotosDe(PLANTAS.maxima)).toHaveLength(2)
+    await coherente(supabase)
+  })
+})
+
 test.describe('aviso de cambios sin guardar', () => {
   test('sin cambios no pregunta', async ({ page }) => {
     await abrirEdicion(page, PLANTAS.amabilis)

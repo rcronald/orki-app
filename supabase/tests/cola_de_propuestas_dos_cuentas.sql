@@ -48,6 +48,10 @@ as $$
   select set_config('orki.catalog_action_id', '', true)
 $$;
 
+-- Desde el #283, las funciones que crea postgres no nacen ejecutables por PUBLIC: las de
+-- ayuda de este archivo se abren a mano para poder llamarlas con otros roles.
+grant execute on all functions in schema pg_temp to public;
+
 -- prueba: el guion completo con dos cuentas
 -- 2. El administrador lista la cola. El tipo del primer grupo es "species": una planta de cada
 --    tipo, y a igualdad gana el primero del enumerado.

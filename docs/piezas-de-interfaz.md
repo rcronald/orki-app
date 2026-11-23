@@ -379,7 +379,7 @@ type QueryAnswerProps = DivProps & {
 | Tono      | Para                                                      | Aspecto                                        |
 | --------- | --------------------------------------------------------- | ---------------------------------------------- |
 | `yes`     | «Sí, la tienes»                                           | Fondo `color-secondary-soft`, icono verde lleno |
-| `similar` | «Tienes parecidas»                                        | Mismo fondo, icono con borde verde             |
+| `similar` | «Tienes parecidas», «Podrías tenerla» (ficha del catálogo) | Mismo fondo, icono con borde verde             |
 | `no`      | «Aún no la tienes», «No, pero la tuviste»                 | Neutro (`color-neutral-50`), nunca rojo        |
 | `notice`  | Un aviso que no es respuesta: «Sin copia disponible»      | Neutro, icono sobre `color-warning`            |
 

@@ -286,6 +286,40 @@ const KIND_RANK: Record<OwnershipNameKind, number> = {
 }
 
 /**
+ * Los nombres por los que se busca una planta (ver el comentario del
+ * principio): el científico de su especie y sus sinónimos y nombres comunes,
+ * si está enlazada; el ingresado y, sin especie y si no empieza por el
+ * género, «género + ingresado».
+ */
+function plantNames(
+  plant: CollectionPlant,
+  extras: OwnershipExtras,
+): { name: string; kind: OwnershipNameKind }[] {
+  const names: { name: string; kind: OwnershipNameKind }[] = []
+  if (plant.species !== null) {
+    names.push({ name: plant.species.scientificName, kind: 'scientific' })
+    for (const extra of extras.speciesNames?.get(plant.species.id) ?? []) {
+      names.push({ name: extra.name, kind: extra.type })
+    }
+  }
+  names.push({ name: plant.enteredName, kind: 'entered' })
+  const genusWords = searchWords(plant.genus.name)
+  const enteredWords = searchWords(plant.enteredName)
+  if (
+    plant.species === null &&
+    enteredWords.length > 0 &&
+    genusWords.length > 0 &&
+    enteredWords[0] !== genusWords[0]
+  ) {
+    names.push({
+      name: `${plant.genus.name} ${plant.enteredName}`,
+      kind: 'entered',
+    })
+  }
+  return names
+}
+
+/**
  * Prepara la colección (todas las plantas, también las dadas de baja) para
  * responder. Normaliza cada nombre una vez y agrupa las plantas que lo
  * comparten: con muchas plantas de pocas especies, se compara cada nombre una
@@ -324,22 +358,11 @@ export function buildOwnershipIndex(
       const linked = bySpecies.get(plant.species.id)
       if (linked) linked.push(plant)
       else bySpecies.set(plant.species.id, [plant])
-      add(plant, plant.species.scientificName, 'scientific')
-      for (const extra of extras.speciesNames?.get(plant.species.id) ?? []) {
-        add(plant, extra.name, extra.type)
-      }
     }
-    add(plant, plant.enteredName, 'entered')
+    for (const { name, kind } of plantNames(plant, extras)) {
+      add(plant, name, kind)
+    }
     const genusWords = searchWords(plant.genus.name)
-    const enteredWords = searchWords(plant.enteredName)
-    if (
-      plant.species === null &&
-      enteredWords.length > 0 &&
-      genusWords.length > 0 &&
-      enteredWords[0] !== genusWords[0]
-    ) {
-      add(plant, `${plant.genus.name} ${plant.enteredName}`, 'entered')
-    }
 
     const genus = genera.get(plant.genus.id)
     if (genus) genus.plants.push(plant)
@@ -686,4 +709,79 @@ export function withCatalog(
       ? strongSpecies[0].scientificName
       : null
   return { ownership, improved, catalogName }
+}
+
+// Desde la ficha de una especie (#296) ------------------------------------------
+
+/** Los nombres de una especie del catálogo: el aceptado y sus sinónimos. */
+export interface SpeciesNames {
+  scientificName: string
+  /** Los de la ficha pública (get_public_species). */
+  synonyms: readonly string[]
+}
+
+/**
+ * Las plantas sin especie enlazada (por validar o no identificables) cuyo
+ * nombre corresponde a esta especie, para que su ficha no diga «Aún no la
+ * tienes» con una de ellas en la colección (#296). Todas, activas o no: quien
+ * llama separa las dadas de baja. Ordenadas como las de answerOwnership.
+ *
+ * Con las reglas de «¿Ya la tengo?», sin otras:
+ * - Lo que encuentra al escribir el nombre aceptado o un sinónimo
+ *   (matchPlantNames): prefijo por palabras, errores de tipeo y, con el
+ *   nombre ingresado sin el género, «género + nombre» ("amabilis" en una
+ *   Phalaenopsis).
+ * - Lo que acepta del catálogo al escribir el nombre de la planta
+ *   (catalogMatchQuality): cubre las abreviaturas del género que escribió la
+ *   persona ("Phal. amabilis", "Blc. …"). Solo si el nombre tiene tantas
+ *   palabras como el de la especie: "Phal." a secas nombra el género, no la
+ *   especie.
+ * Los nombres comunes no cuentan: son de muchas especies a la vez. No hacen
+ * falta los extras de la colección (sinónimos de las especies enlazadas y
+ * abreviaturas de sus géneros): estas plantas no tienen especie, y los
+ * nombres de esta salen de la ficha.
+ */
+export function unlinkedPlantsNamed(
+  plants: readonly CollectionPlant[],
+  species: SpeciesNames,
+): OwnershipMatch[] {
+  const unlinked = plants.filter((plant) => plant.species === null)
+  if (unlinked.length === 0) return []
+  const speciesNames = [species.scientificName, ...species.synonyms]
+  const best = new Map<string, OwnershipMatch>()
+
+  const index = buildOwnershipIndex(unlinked)
+  for (const name of speciesNames) {
+    for (const match of matchPlantNames(index, name)?.values() ?? []) {
+      addMatch(best, match)
+    }
+  }
+
+  for (const plant of unlinked) {
+    for (const { name: plantName } of plantNames(plant, NO_EXTRAS)) {
+      const plantWordCount = searchWords(plantName).length
+      for (const name of speciesNames) {
+        const nameWords = searchWords(name)
+        if (nameWords.length === 0 || nameWords.length !== plantWordCount) {
+          continue
+        }
+        const quality = catalogMatchQuality(plantName, {
+          id: '',
+          scientificName: name,
+          genusName: nameWords[0],
+          matchedName: name,
+          matchedNameType: 'scientific',
+        })
+        if (quality !== null) {
+          addMatch(best, {
+            plant,
+            matchedName: plant.enteredName,
+            kind: 'entered',
+            quality,
+          })
+        }
+      }
+    }
+  }
+  return [...best.values()].sort(compareMatches)
 }

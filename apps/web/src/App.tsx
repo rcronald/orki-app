@@ -11,6 +11,7 @@ import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { SignInPage } from './pages/SignInPage.tsx'
 import { SignUpPage } from './pages/SignUpPage.tsx'
 import type { AppEnv } from './config/env.ts'
+import { UpdateWatcher } from './pwa/UpdateNotice.tsx'
 import { PATHS } from './routes/paths.ts'
 
 // Panel de diagnóstico de la identidad (/diagnostico), solo fuera de
@@ -91,6 +92,9 @@ interface AppProps {
 function App({ appEnv, clerkPublishableKey }: AppProps) {
   return (
     <AuthProvider publishableKey={clerkPublishableKey}>
+      {/* Service worker y versión nueva (#278): el aviso va en AppShell y
+          PublicShell (pwa/UpdateNotice.tsx). */}
+      <UpdateWatcher />
       <Routes>
         {/* El inicio tiene su propia estructura (cabecera pública, sin chips)
             y, con sesión, lleva a la colección (#191). */}
