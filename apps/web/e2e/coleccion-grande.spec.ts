@@ -224,3 +224,28 @@ test(
     }
   },
 )
+
+test(
+  'cuadrícula: cuatro columnas desde 1200 px, tres por debajo',
+  { tag: '@escritorio' },
+  async ({ page }) => {
+    for (const [ancho, columnas] of [
+      [1440, 4],
+      [1200, 4],
+      [1198, 3],
+    ] as const) {
+      await page.setViewportSize({ width: ancho, height: 900 })
+      await page.goto('/coleccion')
+      await expect(tarjetas(page)).toHaveCount(5)
+      const filas = await tarjetas(page).evaluateAll((todas) =>
+        todas.map((tarjeta) => Math.round(tarjeta.getBoundingClientRect().y)),
+      )
+      // Las de la primera fila empiezan a la misma altura.
+      expect(
+        filas.filter((y) => y === filas[0]).length,
+        `${String(ancho)} px`,
+      ).toBe(columnas)
+      await sinDesplazamientoHorizontal(page)
+    }
+  },
+)

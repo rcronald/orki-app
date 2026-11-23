@@ -459,7 +459,11 @@ describe('InventoryView', () => {
     )
     expect(isRow(screen.getAllByRole('article')[0])).toBe(false)
     const grid = screen.getAllByRole('article')[0]?.closest('ul')
-    expect(grid).toHaveClass('grid-cols-2', 'md:grid-cols-3')
+    expect(grid).toHaveClass(
+      'grid-cols-2',
+      'md:max-[1199px]:grid-cols-3',
+      'min-[1200px]:grid-cols-4',
+    )
   })
 
   it('cambia entre cuadrícula y lista y lo recuerda al volver', async () => {

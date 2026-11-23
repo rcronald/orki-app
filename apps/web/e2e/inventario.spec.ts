@@ -351,12 +351,13 @@ for (const ancho of [360, 1440]) {
         }
       }
 
-      // Tarjetas por fila: dos en el celular, tres en escritorio.
+      // Tarjetas por fila: dos en el celular, cuatro a 1440 px (#292; tres
+      // entre 768 y 1199 px, ver coleccion-grande.spec.ts).
       const filas = await tarjetas(page).evaluateAll((cards) =>
         cards.map((card) => Math.round(card.getBoundingClientRect().top)),
       )
       const primeraFila = filas.filter((top) => top === filas[0]).length
-      expect(primeraFila).toBe(ancho === 360 ? 2 : 3)
+      expect(primeraFila).toBe(ancho === 360 ? 2 : 4)
 
       await revisarAccesibilidad(`colección a ${ancho} px`)
       await page

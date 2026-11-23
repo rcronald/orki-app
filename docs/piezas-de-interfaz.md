@@ -385,8 +385,11 @@ accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
 />
 ```
 
-La rejilla (tres por fila en escritorio, dos en móvil) se compone con Tailwind:
-`grid grid-cols-2 gap-space-3 md:grid-cols-3`.
+La rejilla (dos por fila en móvil, tres desde 768 px y cuatro desde 1200 px,
+#292) se compone con Tailwind: `grid grid-cols-2 gap-space-3
+md:max-[1199px]:grid-cols-3 min-[1200px]:grid-cols-4`. Las tres columnas van
+acotadas hasta 1199 px porque Tailwind escribe la regla de `min-[1200px]`
+antes que la de `md` y, si se solaparan, ganaría `md`.
 
 ## Resultado de consulta
 
