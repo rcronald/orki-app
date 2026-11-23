@@ -129,7 +129,7 @@ function setup(photoCount: number, notes: string | null = null) {
   }
   const images = fakeImageSource()
   const user = userEvent.setup()
-  render(
+  const { unmount } = render(
     <PlantImagesContext value={images.source}>
       <MemoryRouter initialEntries={['/coleccion/x/editar']}>
         <Location />
@@ -148,6 +148,7 @@ function setup(photoCount: number, notes: string | null = null) {
     onCancel,
     onPlantStored,
     user,
+    unmount,
     showPlant: (next: CollectionPlant) => {
       act(() => setShown(next))
     },
@@ -481,5 +482,203 @@ describe('EditPlantForm', () => {
     // Los datos se enviaron una sola vez con éxito (no se reenvían).
     expect(updatePlant).toHaveBeenCalledTimes(2)
     expect(rows.photosOf(PLANT_ID)[0]?.id).toBe('foto-1')
+  })
+})
+
+type Context = ReturnType<typeof setup>
+
+/**
+ * El invariante del guardado (#279): el bucket tiene exactamente los archivos
+ * que citan las filas y la principal de la planta apunta a un archivo que
+ * existe.
+ */
+function expectConsistent({ rows, storage }: Context) {
+  const cited = rows
+    .photosOf(PLANT_ID)
+    .flatMap((photo) => [photo.photoPath, photo.thumbnailPath])
+    .sort()
+  expect([...storage.objects.keys()].sort()).toEqual(cited)
+  const current = rows.plants.get(PLANT_ID)
+  for (const path of [current?.photoPath, current?.thumbnailPath]) {
+    if (path) expect(storage.objects.has(path)).toBe(true)
+  }
+}
+
+/** Retiene la creación de filas hasta que la prueba la suelte. */
+function holdInserts(rows: Context['rows']) {
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const insertRow = rows.insert.bind(rows)
+  const insert = vi.spyOn(rows, 'insert').mockImplementation(async (row) => {
+    await gate
+    return insertRow(row)
+  })
+  return { insert, release }
+}
+
+/** Un enlace cualquiera de la app, fuera del formulario. */
+function appLink() {
+  const link = document.createElement('a')
+  link.href = '/coleccion'
+  link.textContent = 'Mi colección'
+  document.body.append(link)
+  return link
+}
+
+const photoGroup = (name: string) =>
+  within(manager()).getByRole('group', { name })
+
+describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
+  it('a) durante el guardado, un enlace no ofrece «Salir sin guardar» y el guardado termina', async () => {
+    const context = setup(0)
+    const { user, rows, onSaved } = context
+    await loaded(0)
+    await choosePhotos(user, 1)
+    const { insert, release } = holdInserts(rows)
+    await user.click(submit())
+    await waitFor(() => expect(insert).toHaveBeenCalled())
+
+    const link = appLink()
+    await user.click(link)
+    expect(
+      screen.queryByRole('button', { name: 'Salir sin guardar' }),
+    ).toBeNull()
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/coleccion/x/editar',
+    )
+
+    release()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(rows.photosOf(PLANT_ID)).toHaveLength(1)
+    expectConsistent(context)
+    link.remove()
+  })
+
+  it('a) si el formulario se desmonta durante el guardado, no navega ni deja filas sin archivo', async () => {
+    const context = setup(1)
+    const { user, rows, onSaved, unmount } = context
+    await loaded(1)
+    await choosePhotos(user, 1)
+    const { insert, release } = holdInserts(rows)
+    await user.click(submit())
+    await waitFor(() => expect(insert).toHaveBeenCalled())
+
+    unmount()
+    release()
+    await waitFor(() => expect(rows.photosOf(PLANT_ID)).toHaveLength(2))
+    // Lo que quede por hacer (borrar lo que sobra) ya terminó.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(onSaved).not.toHaveBeenCalled()
+    expectConsistent(context)
+  })
+
+  it('b) quitar una foto nueva que ya tiene fila tras un fallo del orden: «Reintentar» termina', async () => {
+    const context = setup(1)
+    const { user, rows, onSaved } = context
+    await loaded(1)
+    await choosePhotos(user, 1)
+    await user.click(screen.getByRole('button', { name: 'Gestionar fotos' }))
+    await user.click(
+      within(photoGroup('Foto 2 de 2')).getByRole('button', {
+        name: 'Hacer principal',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Listo' }))
+    rows.failReorder = () => ({ error: new PhotoStorageError('offline') })
+    await user.click(submit())
+    const alert = await screen.findByRole('alert')
+    expect(rows.photosOf(PLANT_ID)).toHaveLength(2)
+
+    rows.failReorder = undefined
+    await user.click(screen.getByRole('button', { name: 'Gestionar fotos' }))
+    await user.click(
+      within(photoGroup('Foto principal')).getByRole('button', {
+        name: 'Quitar',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Listo' }))
+    await user.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(rows.photosOf(PLANT_ID).map((photo) => photo.id)).toEqual(['foto-0'])
+    expectConsistent(context)
+  })
+
+  it('b) tras borrar la fila de una foto quitada, no se ofrece «Deshacer» y «Reintentar» termina', async () => {
+    const context = setup(2)
+    const { user, rows, onSaved } = context
+    await loaded(2)
+    await user.click(screen.getByRole('button', { name: 'Gestionar fotos' }))
+    await user.click(
+      within(photoGroup('Foto principal')).getByRole('button', {
+        name: 'Quitar',
+      }),
+    )
+    await user.type(
+      within(photoGroup('Foto principal')).getByLabelText('Nota'),
+      'Nueva vara',
+    )
+    await user.click(screen.getByRole('button', { name: 'Listo' }))
+    rows.failUpdate = () => ({ error: new PhotoStorageError('offline') })
+    await user.click(submit())
+    const alert = await screen.findByRole('alert')
+    expect(rows.photosOf(PLANT_ID).map((photo) => photo.id)).toEqual(['foto-1'])
+    // La fila ya no está: no hay nada que deshacer.
+    expect(screen.queryByRole('button', { name: 'Deshacer' })).toBeNull()
+
+    rows.failUpdate = undefined
+    await user.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(rows.photosOf(PLANT_ID)[0]?.note).toBe('Nueva vara')
+    expectConsistent(context)
+  })
+
+  it('c) una foto subida que se quita antes de reintentar no queda huérfana', async () => {
+    const context = setup(1)
+    const { user, rows, updatePlant, onSaved } = context
+    await loaded(1)
+    await choosePhotos(user, 1)
+    await user.click(screen.getByRole('button', { name: /Más detalles/ }))
+    await user.type(screen.getByLabelText('Apodo'), 'La morada')
+    updatePlant.mockRejectedValueOnce(new PlantSaveError('offline'))
+    await user.click(submit())
+    const alert = await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('button', { name: 'Gestionar fotos' }))
+    await user.click(
+      within(photoGroup('Foto 2 de 2')).getByRole('button', { name: 'Quitar' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Listo' }))
+    await user.click(within(alert).getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(rows.photosOf(PLANT_ID).map((photo) => photo.id)).toEqual(['foto-0'])
+    expectConsistent(context)
+  })
+
+  it('si la planta ya no existe, lo dice y lleva a «Mi colección» en vez de reintentar', async () => {
+    const { user, rows, updatePlant } = setup(1)
+    await loaded(1)
+    await user.click(screen.getByRole('button', { name: /Más detalles/ }))
+    await user.type(screen.getByLabelText('Apodo'), 'La morada')
+    rows.plants.delete(PLANT_ID)
+    rows.rows.clear()
+    updatePlant.mockRejectedValue(new PlantSaveError('not-found'))
+    await user.click(submit())
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Esta orquídea ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
+    )
+    expect(
+      within(alert).queryByRole('button', { name: 'Reintentar' }),
+    ).toBeNull()
+    const go = within(alert).getByRole('link', { name: 'Ir a Mi colección' })
+    expect(go).toHaveFocus()
+    await user.click(go)
+    // Sin preguntar: no hay nada que guardar.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/coleccion$/),
+    )
   })
 })

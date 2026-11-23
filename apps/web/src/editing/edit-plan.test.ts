@@ -426,3 +426,147 @@ describe('discardUploads', () => {
     expect(uploaded.size).toBe(0)
   })
 })
+
+/**
+ * El invariante del guardado (#279): el bucket tiene exactamente los archivos
+ * que citan las filas y la principal de la planta apunta a un archivo que
+ * existe (o a ninguno, sin fotos).
+ */
+function expectConsistent(context: Context) {
+  expect(bucket(context)).toEqual(cited(context))
+  const main = context.rows.plants.get(PLANT_ID)
+  if (main?.photoPath) {
+    expect(context.storage.objects.has(main.photoPath)).toBe(true)
+  }
+  if (main?.thumbnailPath) {
+    expect(context.storage.objects.has(main.thumbnailPath)).toBe(true)
+  }
+}
+
+/** Una promesa que la prueba resuelve cuando quiere. */
+function held() {
+  let release: () => void = () => undefined
+  const promise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { promise, release }
+}
+
+describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
+  it('a) descartar lo subido mientras un intento sigue vivo no deja filas que citen archivos borrados', async () => {
+    const context = setup(0)
+    const a = added()
+    const gate = held()
+    const insertRow = context.rows.insert.bind(context.rows)
+    const insert = vi
+      .spyOn(context.rows, 'insert')
+      .mockImplementation(async (row) => {
+        await gate.promise
+        return insertRow(row)
+      })
+    const uploaded: UploadedPhotos = new Map()
+    const attempt = apply(context, plan([a]), uploaded)
+    // La subida terminó y la fila está en camino.
+    await vi.waitFor(() => expect(insert).toHaveBeenCalled())
+
+    // La persona sale: se descartan los archivos subidos.
+    const discarded = discardUploads(
+      uploaded,
+      { userId: USER_ID, plantId: PLANT_ID },
+      context,
+    )
+    gate.release()
+    await Promise.allSettled([attempt, discarded])
+
+    expectConsistent(context)
+  })
+
+  it('b) una foto nueva que ya tiene fila y se quita tras un fallo del orden: el reintento termina', async () => {
+    const context = setup(1)
+    const [p0] = context.stored
+    if (!p0) throw new Error('Sin fotos.')
+    const a = added()
+    context.rows.failReorder = () => ({
+      error: new PhotoStorageError('offline'),
+    })
+    const uploaded: UploadedPhotos = new Map()
+    // La nueva, como principal: hace falta el paso del orden.
+    await expect(
+      apply(context, plan([a, keep(p0)]), uploaded),
+    ).rejects.toMatchObject({ step: 'order' })
+    expect(context.rows.photosOf(PLANT_ID)).toHaveLength(2)
+
+    // Se quita la nueva y se reintenta.
+    context.rows.failReorder = undefined
+    await apply(context, plan([keep(p0)]), uploaded)
+
+    expect(rowPaths(context)).toEqual([p0.photoPath])
+    expect(context.rows.plants.get(PLANT_ID)?.photoPath).toBe(p0.photoPath)
+    expectConsistent(context)
+  })
+
+  it('b) recuperar una foto cuya fila ya borró un intento anterior: el reintento termina y no deja sus archivos', async () => {
+    const context = setup(2)
+    const [p0, p1] = context.stored
+    if (!p0 || !p1) throw new Error('Sin fotos.')
+    // Se quita la principal y se cambia la nota de la otra; la nota falla
+    // después de borrar la fila de la quitada.
+    context.rows.failUpdate = () => ({
+      error: new PhotoStorageError('offline'),
+    })
+    const uploaded: UploadedPhotos = new Map()
+    await expect(
+      apply(
+        context,
+        plan([keep(p1, { ...NO_DETAILS, note: 'Nueva vara' })], [p0]),
+        uploaded,
+      ),
+    ).rejects.toMatchObject({ step: 'details' })
+    expect(rowPaths(context)).toEqual([p1.photoPath])
+
+    // «Deshacer» la quitada y reintentar.
+    context.rows.failUpdate = undefined
+    await apply(
+      context,
+      plan([keep(p0), keep(p1, { ...NO_DETAILS, note: 'Nueva vara' })]),
+      uploaded,
+    )
+    expectConsistent(context)
+    expect(context.rows.photosOf(PLANT_ID)[0]?.note).toBe('Nueva vara')
+  })
+
+  it('c) una foto subida que se quita antes del reintento no queda huérfana', async () => {
+    const context = setup(1)
+    const [p0] = context.stored
+    if (!p0) throw new Error('Sin fotos.')
+    const a = added()
+    context.updatePlant.mockRejectedValueOnce(new PlantSaveError('offline'))
+    const uploaded: UploadedPhotos = new Map()
+    const patch = { nickname: 'La reina' }
+    await expect(
+      apply(context, plan([keep(p0), a], [], patch), uploaded),
+    ).rejects.toMatchObject({ step: 'data' })
+    expect(bucket(context)).toHaveLength(4)
+
+    // Se quita la nueva y el reintento sale bien.
+    await apply(context, plan([keep(p0)], [], patch), uploaded)
+
+    expect(rowPaths(context)).toEqual([p0.photoPath])
+    expectConsistent(context)
+  })
+
+  it('si la planta ya no existe, el error lo dice (plantGone)', async () => {
+    const context = setup(1)
+    const [p0] = context.stored
+    if (!p0) throw new Error('Sin fotos.')
+    const a = added()
+    // La planta se eliminó desde otro dispositivo (con sus filas).
+    context.rows.plants.delete(PLANT_ID)
+    context.rows.rows.clear()
+    const failure: unknown = await apply(context, plan([keep(p0), a])).catch(
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(PlantEditError)
+    expect(failure).toMatchObject({ plantGone: true })
+  })
+})
