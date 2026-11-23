@@ -11,6 +11,10 @@ import { pathToFileURL } from 'node:url'
 // Código de salida de la carga cuando se detiene antes de escribir y basta con repetirla
 // (INCOMPLETE en scripts/catalog-import/src/catalog_import/reference_photos_cli.py).
 export const CODIGO_REANUDAR = 3
+// Storage no aceptó la clave o no tiene el bucket (STORAGE_REJECTED): no se escribió nada.
+export const CODIGO_STORAGE_RECHAZADO = 4
+// Se escribieron las filas, pero alguna subida falló (UPLOAD_FAILURES).
+export const CODIGO_SUBIDAS_FALLIDAS = 5
 
 const LICENCIAS = {
   cc0: 'CC0',
@@ -86,6 +90,23 @@ export function estado(codigo) {
       'entradas** (si fue el tope diario, al día siguiente en UTC).'
     )
   }
+  if (n === CODIGO_STORAGE_RECHAZADO) {
+    return (
+      '**La carga falló: Storage rechazó la clave secreta** (o el proyecto no tiene el bucket ' +
+      '`species-photos`). No se ha escrito ninguna fila ni la auditoría. Revisa el secreto ' +
+      '`SUPABASE_SECRET_KEY` del environment: tiene que ser la clave secreta (`sb_secret_...`) ' +
+      'de ese proyecto, copiada entera con el botón de copiar del panel de Supabase (lo ' +
+      'muestra enmascarada). Volver a lanzarlo sin cambiarla dará el mismo error; el motivo ' +
+      'exacto está en la salida de abajo.'
+    )
+  }
+  if (n === CODIGO_SUBIDAS_FALLIDAS) {
+    return (
+      '**La carga terminó con errores de subida:** Storage rechazó algunos archivos y esas ' +
+      'especies se quedaron sin foto nueva (resultado `error`). Las demás se escribieron. ' +
+      'Volver a lanzar el workflow con las mismas entradas las intenta de nuevo.'
+    )
+  }
   return (
     `**La carga falló** (código de salida ${n}). No se ha escrito ninguna fila: la ` +
     'transacción se revierte entera. El motivo está en la salida de abajo y en el registro ' +
@@ -112,6 +133,29 @@ export function resumenMarkdown({ ambiente, modo, alcance, codigo, resumen }) {
     ([k, e]) => `${e} ${numero.format(filas[k] ?? 0)}`,
   ).join(', ')
   const resultado = resumen.resultado ?? {}
+  const fallidas = ejecucion.subidas_fallidas ?? 0
+  const errores = ejecucion.errores_de_subida ?? []
+
+  if (fallidas > 0) {
+    lineas.push(
+      `### Errores de subida: ${numero.format(fallidas)}`,
+      '',
+      `> [!CAUTION]`,
+      `> ${numero.format(fallidas)} subidas a Storage fallaron: esas especies se quedaron sin foto nueva.`,
+      '',
+      ...tabla(
+        ['Especie', 'Error de Storage'],
+        errores.map((e) => [e.especie ?? '', e.detalle ?? '']),
+      ),
+      '',
+    )
+    if (fallidas > errores.length) {
+      lineas.push(
+        `Y ${numero.format(fallidas - errores.length)} más: el resto, en el reporte CSV.`,
+        '',
+      )
+    }
+  }
 
   lineas.push(
     ...tabla(
@@ -129,7 +173,10 @@ export function resumenMarkdown({ ambiente, modo, alcance, codigo, resumen }) {
         [
           'Archivos subidos a Storage',
           escritura
-            ? `${numero.format(ejecucion.archivos_subidos ?? 0)} (${numero.format(ejecucion.bytes_subidos ?? 0)} bytes)`
+            ? `${numero.format(ejecucion.archivos_subidos ?? 0)} (${numero.format(ejecucion.bytes_subidos ?? 0)} bytes)` +
+              (fallidas > 0
+                ? `; **${numero.format(fallidas)} subidas fallidas**`
+                : '')
             : 'ninguno (simulación)',
         ],
         [

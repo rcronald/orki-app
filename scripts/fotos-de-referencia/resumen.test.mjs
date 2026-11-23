@@ -89,6 +89,36 @@ describe('resumenMarkdown', () => {
     assert.doesNotMatch(md, /\| Concepto/)
   })
 
+  test('los errores de subida van arriba, antes de los recuentos', () => {
+    const resumen = {
+      ...RESUMEN,
+      ejecucion: {
+        ...RESUMEN.ejecucion,
+        subidas_fallidas: 3,
+        errores_de_subida: [
+          {
+            especie: 'Phalaenopsis amabilis',
+            detalle:
+              'Storage respondió 413 a POST object/species-photos/a/medium-1.webp: demasiado grande',
+          },
+        ],
+      },
+    }
+    const md = resumenMarkdown({ ...BASE, codigo: '5', resumen })
+    assert.match(md, /terminó con errores de subida/)
+    assert.match(md, /^### Errores de subida: 3$/m)
+    assert.match(md, /\| Phalaenopsis amabilis \| Storage respondió 413 /)
+    assert.match(md, /Y 2 más: el resto, en el reporte CSV\./)
+    assert.match(md, /6200 \(200 000 000 bytes\); \*\*3 subidas fallidas\*\*/)
+    assert.ok(md.indexOf('Errores de subida') < md.indexOf('| Concepto'))
+  })
+
+  test('sin errores de subida no hay sección de errores', () => {
+    const md = resumenMarkdown({ ...BASE, codigo: '0', resumen: RESUMEN })
+    assert.doesNotMatch(md, /Errores de subida/)
+    assert.doesNotMatch(md, /subidas fallidas/)
+  })
+
   test('escapa las barras de las celdas', () => {
     const resumen = { ...RESUMEN, resultado: { 'a|b': 1 } }
     assert.match(
@@ -107,6 +137,18 @@ describe('estado', () => {
   test('sin código (tiempo agotado o cancelado) también se reanuda', () => {
     assert.match(estado(''), /no terminó/)
     assert.match(estado(''), /basta con volver a lanzar el workflow/)
+  })
+
+  test('el código 4 dice que Storage rechazó la clave y cómo arreglarla', () => {
+    assert.match(estado('4'), /Storage rechazó la clave secreta/)
+    assert.match(estado('4'), /SUPABASE_SECRET_KEY/)
+    assert.match(estado('4'), /botón de copiar/)
+    assert.match(estado('4'), /No se ha escrito ninguna fila/)
+  })
+
+  test('el código 5 dice que hubo errores de subida', () => {
+    assert.match(estado('5'), /errores de subida/)
+    assert.doesNotMatch(estado('5'), /terminó bien/)
   })
 
   test('otro código es un fallo', () => {

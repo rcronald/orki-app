@@ -24,6 +24,14 @@ Si una petición se queda sin respuesta tras los reintentos, o se llega a un top
 para **antes** de la transacción, sin escribir ninguna fila (código de salida 3): los archivos
 que ya subió quedan sin citar (los repite o los limpia la siguiente) y lo leído y descargado
 queda en las cachés, así que volver a ejecutarla sigue desde ahí.
+
+Al escribir, antes de leer la base, iNaturalist o nada más, se comprueba con una lectura que
+Storage acepta la clave y tiene el bucket (:meth:`StorageClient.check`); si no, la orden sale
+con el código 4 sin tocar nada. Si durante las subidas Storage rechaza la clave, o rechaza
+:data:`MAX_SAME_FAILURES` subidas seguidas con el mismo error, la carga se para antes de la
+transacción, también con el código 4. Un rechazo aislado de un archivo deja esa especie sin
+foto nueva y las demás se escriben, pero la orden sale con el código 5, nunca con 0 (ver
+«Códigos de salida» en el README).
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -106,7 +115,10 @@ from .reference_photos import (
 from .report import default_report_path
 from .species_storage import (
     BUCKET,
+    KEY_VARIABLE,
     Storage,
+    StorageAuthError,
+    StorageBucketMissing,
     StorageClient,
     StorageConfig,
     StorageConfigError,
@@ -119,7 +131,20 @@ from .target import Target, scrub, without_pg_environment
 
 DEFAULT_IMAGE_CACHE = DEFAULT_CACHE.parent / 'inaturalist-imagenes'
 REPORT_PREFIX = 'reporte-carga-fotos'
+# Códigos de salida (además de 0, 1 para los errores y 2 para las opciones mal puestas).
+# Se detuvo antes de escribir y basta con volver a ejecutarla.
 INCOMPLETE = 3
+# Storage no acepta la clave o no tiene el bucket (en la comprobación previa o al subir), o
+# rechazó muchas subidas seguidas con el mismo error: no se escribió nada; hay que arreglar la
+# clave (o el bucket) antes de repetir.
+STORAGE_REJECTED = 4
+# Se escribieron las filas, pero alguna subida falló y esas especies se quedaron sin foto nueva.
+UPLOAD_FAILURES = 5
+# Subidas seguidas que fallan con el mismo error (el mismo estado y el mismo mensaje de Storage,
+# sea cual sea el archivo) a partir de las que se da por hecho que el fallo no es del archivo.
+MAX_SAME_FAILURES = 5
+# Errores de subida que se enumeran en el resumen (el CSV los tiene todos).
+LISTED_FAILURES = 20
 # Antigüedad mínima de un archivo sin citar para borrarlo, como scripts/fotos-huerfanas.mjs.
 MIN_AGE_HOURS = 24
 
@@ -284,15 +309,49 @@ def _read_taxa(client: Client, genera: list[str] | None) -> tuple[list[Taxon], l
 # Imágenes ------------------------------------------------------------------------------------
 
 
-class Stop(Exception):
-    """Hay que parar la carga antes de escribir ninguna fila (se reanuda volviendo a
-    ejecutarla)."""
+class StorageRefused(Exception):
+    """Storage rechaza las subidas por algo que no depende del archivo: hay que parar."""
+
+    def __init__(self, problem: StorageError, repeated: int) -> None:
+        super().__init__(str(problem))
+        self.problem = problem
+        self.repeated = repeated
+
+
+@dataclass(slots=True)
+class UploadGuard:
+    """Lleva la cuenta de las subidas fallidas y decide cuándo parar.
+
+    Para enseguida si Storage no acepta la clave (:class:`StorageAuthError`) o no tiene el
+    bucket; y, sin depender de cómo esté redactado el mensaje, si ``limit`` subidas seguidas
+    fallan con el mismo estado y el mismo mensaje de Storage (sin la ruta), porque eso no es un
+    archivo concreto. Una subida que sale bien reinicia la cuenta.
+    """
+
+    limit: int = MAX_SAME_FAILURES
+    failures: list[tuple[Decision, str]] = field(default_factory=list)
+    _last: tuple[int | None, str] | None = None
+    _repeated: int = 0
+
+    def succeeded(self) -> None:
+        self._last, self._repeated = None, 0
+
+    def failed(self, decision: Decision, problem: StorageError) -> None:
+        if isinstance(problem, StorageAuthError | StorageBucketMissing):
+            raise StorageRefused(problem, 1)
+        key = (problem.status, problem.detail)
+        self._repeated = self._repeated + 1 if key == self._last else 1
+        self._last = key
+        if self._repeated >= self.limit:
+            raise StorageRefused(problem, self._repeated)
+        self.failures.append((decision, str(problem)))
 
 
 def _prepare(
     decision: Decision,
     downloader: ImageDownloader,
     storage: Storage | None,
+    guard: UploadGuard,
 ) -> None:
     """Descarga, convierte y (al escribir) sube la primera candidata que salga bien."""
     for candidate in decision.usable:
@@ -314,8 +373,10 @@ def _prepare(
                 storage.upload(thumbnail_path, converted.thumbnail.data)
             except StorageError as problem:
                 decision.skipped[Skip.UPLOAD.value] += 1
+                guard.failed(decision, problem)
                 give_up(decision, f'Storage rechazó la subida: {problem}')
                 return
+            guard.succeeded()
         decision.prepared = Prepared(
             Metadata.of(candidate), converted, obtained, medium_path, thumbnail_path
         )
@@ -363,6 +424,11 @@ def main(
     announce(target, args.escribir)
     if storage is not None:
         print(f'Storage: {config.describe()}\n')
+        # Antes de leer la base o iNaturalist y de descargar nada: si la clave no vale, no
+        # tiene sentido hacer nada de eso.
+        refused = _check_storage(storage, config, INCOMPLETE)
+        if refused is not None:
+            return refused
 
     state = _with_connection(target, _read)
     if isinstance(state, int):
@@ -465,12 +531,16 @@ def main(
         except (BudgetExhausted, OfflineMiss, ApiError) as problem:
             return _stopped(f'no se pudieron buscar las observaciones: {_reason(problem)}')
 
+    guard = UploadGuard()
     try:
         for decision in decisions:
             if decision.action is Action.FETCH:
-                _prepare(decision, downloader, storage)
+                _prepare(decision, downloader, storage, guard)
     except (DownloadsExhausted, DownloadsUnavailable, StorageUnavailable) as problem:
         return _stopped(str(problem))
+    except StorageRefused as refused:
+        return _refused_while_uploading(refused, config)
+    failures = guard.failures
 
     summary = tally(decisions, None)
     extra = {
@@ -483,6 +553,7 @@ def main(
         'kept_unverified': summary['resultado'].get(Outcome.KEPT.value, 0),
         'uploaded_files': getattr(storage, 'uploads', 0),
         'uploaded_bytes': getattr(storage, 'uploaded_bytes', 0),
+        'failed_uploads': len(failures),
     }
     source = {
         'name': 'iNaturalist',
@@ -496,7 +567,15 @@ def main(
     written = _with_connection(
         target,
         lambda conn: write_rows(
-            conn, decisions, write=args.escribir, audit=audit, extra=extra, source=source
+            conn,
+            decisions,
+            write=args.escribir,
+            audit=audit,
+            extra=extra,
+            source=source,
+            # Una carga que, por los errores, no tiene ninguna fila que escribir no deja
+            # auditoría: como un fallo antes de la transacción.
+            audit_when_empty=not failures,
         ),
     )
     if isinstance(written, int):
@@ -530,13 +609,26 @@ def main(
         'archivos_subidos': extra['uploaded_files'],
         'bytes_subidos': extra['uploaded_bytes'],
         'filas': dict(written.plan.counts),
-        'auditoria': audit.actor,
+        'auditoria': audit.actor if written.audit_action_id or not written.written else None,
+        'subidas_fallidas': len(failures),
+        'errores_de_subida': [
+            {'especie': d.species.name, 'detalle': message}
+            for d, message in failures[:LISTED_FAILURES]
+        ],
     }
     _print(final, written, report, rows, audit.actor)
     if args.resumen_json:
         args.resumen_json.write_text(
             json.dumps(final, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
         )
+    if failures:
+        print(
+            f'Error: {len(failures)} subidas a Storage fallaron; esas especies se quedaron sin '
+            'foto nueva (resultado «error» en el reporte). Las demás se escribieron. Volver a '
+            'ejecutar la carga las intenta de nuevo.',
+            file=sys.stderr,
+        )
+        return UPLOAD_FAILURES
     return 0
 
 
@@ -555,6 +647,67 @@ def _stopped(message: str) -> int:
     return INCOMPLETE
 
 
+def _key_advice(config: StorageConfig) -> str:
+    return (
+        f'{KEY_VARIABLE} tiene que ser la clave secreta (sb_secret_...) del proyecto de '
+        f'{config.base_url}, copiada entera. El panel de Supabase (Project Settings > API Keys) '
+        'la muestra enmascarada: cópiala con su botón de copiar, no seleccionando el texto. En '
+        f'el workflow «Fotos de referencia» es el secreto {KEY_VARIABLE} del environment del '
+        f'ambiente (gh secret set {KEY_VARIABLE} --env <ambiente>).'
+    )
+
+
+def _refusal(problem: StorageError, config: StorageConfig) -> str:
+    """Qué pasó y qué hacer, sin la clave (Storage no la devuelve y el cliente la quita)."""
+    answered = f'respondió {problem.status}' + (f': {problem.detail}' if problem.detail else '')
+    if isinstance(problem, StorageBucketMissing):
+        return (
+            f'Storage ({config.describe()}) aceptó la clave, pero no tiene el bucket {BUCKET} '
+            f'({answered}). Aplica en ese proyecto la migración que lo crea '
+            '(20261124110000_fotos_de_referencia.sql) o comprueba que la clave es de este '
+            'proyecto.'
+        )
+    return f'Storage ({config.describe()}) rechazó la clave ({answered}).\n{_key_advice(config)}'
+
+
+def _check_storage(storage: Storage, config: StorageConfig, unavailable: int) -> int | None:
+    """Comprobación previa de la clave y del bucket. Devuelve el código de salida si falla."""
+    try:
+        storage.check()
+    except StorageUnavailable as problem:
+        print(
+            f'Error: no se pudo comprobar Storage: {problem} No se ha tocado nada: vuelve a '
+            'ejecutar cuando responda.',
+            file=sys.stderr,
+        )
+        return unavailable
+    except StorageError as problem:
+        if not isinstance(problem, StorageAuthError | StorageBucketMissing):
+            problem = StorageAuthError(str(problem), problem.status, problem.detail)
+        error(f'{_refusal(problem, config)}\nNo se ha tocado la base ni el bucket.')
+        return STORAGE_REJECTED
+    return None
+
+
+def _refused_while_uploading(refused: StorageRefused, config: StorageConfig) -> int:
+    problem = refused.problem
+    if isinstance(problem, StorageAuthError | StorageBucketMissing):
+        what = _refusal(problem, config)
+    else:
+        what = (
+            f'Storage rechazó {refused.repeated} subidas seguidas con el mismo error '
+            f'({problem}). No depende de cada archivo, así que no se siguió.\n'
+            f'Si el error es de permisos o de la clave: {_key_advice(config)}'
+        )
+    error(
+        f'carga detenida antes de escribir ninguna fila: {what}\n'
+        'No se ha escrito ninguna fila ni la auditoría. Los archivos que llegaron a subirse '
+        'quedan sin citar: la siguiente carga los reutiliza y «limpiar-fotos-referencia» borra '
+        'los que sobren.'
+    )
+    return STORAGE_REJECTED
+
+
 def _counts(data: dict[str, int], labels: Callable[[str], str] = str) -> str:
     return ', '.join(f'{labels(k)} {v}' for k, v in data.items()) or 'ninguna'
 
@@ -563,6 +716,17 @@ def _print(
     summary: dict[str, Any], result: WriteResult, report: Path, rows: int, actor: str
 ) -> None:
     run = summary['ejecucion']
+    if run['subidas_fallidas']:
+        print(
+            f'ATENCIÓN: {run["subidas_fallidas"]} subidas a Storage fallaron. Esas especies se '
+            'quedaron sin foto nueva (resultado «error»); las demás se escribieron. La carga sale '
+            f'con el código {UPLOAD_FAILURES}.'
+        )
+        for item in run['errores_de_subida']:
+            print(f'  {item["especie"]}: {item["detalle"]}')
+        if run['subidas_fallidas'] > len(run['errores_de_subida']):
+            print('  (el resto, en el reporte CSV)')
+        print('')
     print(f'Alcance: {run["alcance"]}')
     print(f'Géneros leídos de iNaturalist: {", ".join(run["generos_leidos"]) or "(ninguno)"}')
     print(
@@ -586,7 +750,8 @@ def _print(
     )
     if result.written:
         print(
-            f'Storage: {run["archivos_subidos"]} archivos subidos ({run["bytes_subidos"]} bytes).'
+            f'Storage: {run["archivos_subidos"]} archivos subidos ({run["bytes_subidos"]} bytes), '
+            f'{run["subidas_fallidas"]} subidas fallidas.'
         )
     else:
         print('Storage: simulación, no se ha subido nada.')
@@ -603,7 +768,12 @@ def _print(
     )
     verb = 'escritas' if result.written else 'simuladas y revertidas'
     print(f'Filas de species_photos {verb}: {filas}.')
-    if result.written:
+    if result.written and result.audit_action_id is None:
+        print(
+            'Auditoría: no se registró la carga: por los errores de subida no había ninguna fila '
+            'que escribir.'
+        )
+    elif result.written:
         print(
             f'Auditoría: resumen registrado ({ACTION}, load_type {LOAD_TYPE}) con el '
             f'identificador de la carga {actor} (acción {result.audit_action_id}).'
@@ -693,6 +863,9 @@ def cleanup_main(
     storage = storage_factory(config)
     mode = 'BORRADO' if args.borrar else 'PRUEBA (no se borrará nada)'
     print(f'Destino: {target.describe()}\nStorage: {config.describe()}\nModo: {mode}\n')
+    refused = _check_storage(storage, config, 1)
+    if refused is not None:
+        return refused
     cited = _with_connection(target, _cited)
     if isinstance(cited, int):
         return cited

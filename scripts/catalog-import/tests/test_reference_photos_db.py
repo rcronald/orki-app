@@ -13,7 +13,7 @@ import csv
 import io
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,8 +23,20 @@ from PIL import Image
 
 from catalog_import.inaturalist import HttpStatus
 from catalog_import.reference_images import MAX_BYTES
-from catalog_import.reference_photos_cli import INCOMPLETE, cleanup_main, main
-from catalog_import.species_storage import StorageConfig, StorageUnavailable, StoredObject
+from catalog_import.reference_photos_cli import (
+    INCOMPLETE,
+    STORAGE_REJECTED,
+    UPLOAD_FAILURES,
+    cleanup_main,
+    main,
+)
+from catalog_import.species_storage import (
+    StorageClient,
+    StorageConfig,
+    StorageError,
+    StorageUnavailable,
+    StoredObject,
+)
 from catalog_import.target import Target
 
 from .basedatos import execute, rows
@@ -91,13 +103,18 @@ class Images:
 
 
 class Bucket:
-    """Doble del bucket species-photos. ``fail_at`` corta la subida número N (desde 1)."""
+    """Doble del bucket species-photos. ``fail_at`` corta la subida número N (desde 1) y
+    ``rejected`` da, por ruta, el error con el que Storage rechaza ese archivo."""
 
-    def __init__(self, fail_at: int | None = None) -> None:
+    def __init__(
+        self, fail_at: int | None = None, rejected: dict[str, StorageError] | None = None
+    ) -> None:
         self.objects: dict[str, tuple[bytes, datetime]] = {}
         self.uploads = 0
         self.uploaded_bytes = 0
         self.fail_at = fail_at
+        self.rejected = rejected or {}
+        self.checks = 0
         self.deleted: list[str] = []
         self.configs: list[StorageConfig] = []
 
@@ -105,9 +122,15 @@ class Bucket:
         self.configs.append(config)
         return self
 
+    def check(self) -> None:
+        self.checks += 1
+
     def upload(self, path: str, data: bytes) -> None:
         if self.fail_at is not None and self.uploads + 1 >= self.fail_at:
             raise StorageUnavailable('Storage no respondió a POST (prueba).')
+        for suffix, problem in self.rejected.items():
+            if path.endswith(suffix):
+                raise problem
         assert len(data) <= MAX_BYTES
         self.objects[path] = (data, datetime.now(UTC))
         self.uploads += 1
@@ -187,6 +210,7 @@ def run(
     bucket: Bucket | None = None,
     environ: dict[str, str] | None = None,
     name: str = 'reporte-fotos.csv',
+    factory: Callable[[StorageConfig], Any] | None = None,
 ) -> tuple[int, dict[str, dict[str, str]], Images, Bucket]:
     api = api or Api(licenses=SHARE_ALIKE)
     images = images or Images()
@@ -208,7 +232,7 @@ def run(
         ],
         fetch=api,
         image_fetch=images,
-        storage_factory=bucket.factory,
+        storage_factory=factory or bucket.factory,
         environ=ENV if environ is None else environ,
     )
     by_name: dict[str, dict[str, str]] = {}
@@ -330,6 +354,125 @@ def test_upload_failure_midway_and_resume(catalog: Target, tmp_path: Path) -> No
     assert set(photos(catalog)) == {AMABILIS, APHRODITE}
     assert len(bucket.objects) == 4
     assert len(audits(catalog)) == 1
+
+
+INVALID_JWS = (
+    400,
+    b'{"statusCode": "403", "error": "Unauthorized", "message": "Invalid Compact JWS"}',
+)
+
+
+class StorageApi:
+    """Transporte de prueba para el cliente de Storage de verdad: responde al GET del bucket con
+    ``bucket`` y a todo lo demás con ``other``."""
+
+    def __init__(self, bucket: tuple[int, bytes], other: tuple[int, bytes]) -> None:
+        self.bucket, self.other = bucket, other
+        self.calls: list[tuple[str, str]] = []
+
+    def __call__(
+        self, method: str, url: str, _headers: Mapping[str, str], _body: bytes | None
+    ) -> tuple[int, bytes]:
+        self.calls.append((method, url))
+        return self.bucket if method == 'GET' else self.other
+
+    def factory(self, config: StorageConfig) -> StorageClient:
+        return StorageClient(config, send=self, sleep=lambda _seconds: None)
+
+
+def test_invalid_key_stops_before_reading_anything(
+    catalog: Target, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Lo que pasó en producción: Storage responde 400 «Invalid Compact JWS» a todo.
+    storage = StorageApi(INVALID_JWS, INVALID_JWS)
+    api = Api(licenses=SHARE_ALIKE)
+    code, report, images, _ = run(
+        tmp_path, '--escribir', '--resumen-json', str(tmp_path / 'r.json'), api=api,
+        factory=storage.factory,
+    )  # fmt: skip
+    assert code == STORAGE_REJECTED
+    # Una sola petición, la de la comprobación previa: ni iNaturalist, ni descargas, ni subidas.
+    assert storage.calls == [('GET', 'http://127.0.0.1:54321/storage/v1/bucket/species-photos')]
+    assert api.calls == []
+    assert images.calls == []
+    assert report == {}
+    assert not (tmp_path / 'r.json').exists()
+    assert photos(catalog) == {}
+    assert audits(catalog) == []
+    err = capsys.readouterr().err
+    assert 'rechazó la clave (respondió 400: Invalid Compact JWS)' in err
+    assert 'SUPABASE_SECRET_KEY tiene que ser la clave secreta' in err
+    assert 'botón de copiar' in err
+    assert ENV['SUPABASE_SECRET_KEY'] not in err
+
+
+def test_key_rejected_while_uploading_stops_at_once(
+    catalog: Target, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # La comprobación pasa, pero las subidas se rechazan por la clave: no se intentan todas.
+    storage = StorageApi((200, b'{"id": "species-photos"}'), INVALID_JWS)
+    code, _, _, _ = run(tmp_path, '--escribir', factory=storage.factory)
+    assert code == STORAGE_REJECTED
+    assert [m for m, _ in storage.calls] == ['GET', 'POST']
+    assert photos(catalog) == {}
+    assert audits(catalog) == []
+    err = capsys.readouterr().err
+    assert 'carga detenida antes de escribir ninguna fila' in err
+    assert 'Invalid Compact JWS' in err
+
+
+def test_one_rejected_file_does_not_stop_the_rest(
+    catalog: Target, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    too_big = StorageError(
+        'Storage respondió 413 a POST object/species-photos/x/medium-620845107.webp: '
+        'The object exceeded the maximum allowed size',
+        413,
+        'The object exceeded the maximum allowed size',
+    )
+    summary = tmp_path / 'resumen.json'
+    code, report, _, bucket = run(
+        tmp_path, '--escribir', '--resumen-json', str(summary),
+        bucket=Bucket(rejected={'medium-620845107.webp': too_big}),
+    )  # fmt: skip
+    assert code == UPLOAD_FAILURES
+    assert bucket.checks == 1
+    # La otra especie sí se escribe, con su auditoría, que cuenta el fallo.
+    assert set(photos(catalog)) == {AMABILIS}
+    assert report[APHRODITE]['resultado'] == 'error'
+    assert 'error_subida 1' in report[APHRODITE]['descartadas']
+    [details] = audits(catalog)
+    assert details['counts']['species_photos']['created'] == 1
+    assert details['failed_uploads'] == 1
+    out, err = capsys.readouterr()
+    assert out.index('ATENCIÓN: 1 subidas a Storage fallaron') < out.index('Alcance:')
+    assert f'{APHRODITE}: Storage respondió 413' in out
+    assert '1 subidas a Storage fallaron' in err
+    data = json.loads(summary.read_text(encoding='utf-8'))
+    assert data['ejecucion']['subidas_fallidas'] == 1
+    assert data['ejecucion']['errores_de_subida'][0]['especie'] == APHRODITE
+
+    # Volver a ejecutarla, ya sin el rechazo, completa la que faltaba.
+    bucket.rejected = {}
+    code, report, _, _ = run(tmp_path, '--escribir', bucket=bucket, name='otra.csv')
+    assert code == 0
+    assert set(photos(catalog)) == {AMABILIS, APHRODITE}
+
+
+def test_load_that_writes_nothing_because_of_errors_leaves_no_audit(
+    catalog: Target, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Dos rechazos distintos (no bastan para parar), y ninguna especie con foto nueva.
+    rejected = {
+        f'medium-{photo}.webp': StorageError(f'Storage respondió 413 ({photo}).', 413, photo)
+        for photo in ('149339720', '620845107')
+    }
+    code, report, _, _ = run(tmp_path, '--escribir', bucket=Bucket(rejected=rejected))
+    assert code == UPLOAD_FAILURES
+    assert photos(catalog) == {}
+    assert audits(catalog) == []
+    assert report[AMABILIS]['resultado'] == 'error'
+    assert 'Auditoría: no se registró la carga' in capsys.readouterr().out
 
 
 def reject(db: Target, name: str, photo_id: str, reason: str) -> None:

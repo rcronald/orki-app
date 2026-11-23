@@ -210,8 +210,13 @@ jobs:
           codigo="${PIPESTATUS[0]}"
           set -e
           echo "codigo=${codigo}" >> "$GITHUB_OUTPUT"
+          # Códigos de salida: scripts/catalog-import/README.md, «Códigos de salida».
           if [[ "$codigo" == 3 ]]; then
             echo "::error::La carga se detuvo antes de escribir ninguna fila (iNaturalist o Storage siguieron fallando, o se llegó al tope de peticiones del día). Lo leído y descargado se guarda en la caché: basta con volver a lanzar el workflow con las mismas entradas (si fue el tope diario, al día siguiente en UTC)."
+          elif [[ "$codigo" == 4 ]]; then
+            echo "::error::Storage rechazó la clave secreta (o el proyecto no tiene el bucket species-photos). No se ha escrito ninguna fila ni la auditoría. Revisa el secreto SUPABASE_SECRET_KEY del environment ${AMBIENTE}: tiene que ser la clave secreta (sb_secret_...) de ese proyecto, copiada entera con el botón de copiar del panel de Supabase. Lo que respondió Storage está en la salida de arriba."
+          elif [[ "$codigo" == 5 ]]; then
+            echo "::error::Algunas subidas a Storage fallaron: esas especies se quedaron sin foto nueva y las demás se escribieron. Los errores están arriba en la salida y en el resumen de la ejecución; volver a lanzar el workflow con las mismas entradas las intenta de nuevo."
           elif [[ "$codigo" != 0 ]]; then
             echo "::error::La carga falló con el código ${codigo}. No se ha escrito ninguna fila; el motivo está en la salida de arriba."
           fi
@@ -251,7 +256,16 @@ jobs:
           unset DB_PASSWORD clave_url
 
           mapfile -t argumentos < "$ARGUMENTOS_LIMPIEZA"
+          set +e
           uv run --no-sync orki-catalogo limpiar-fotos-referencia "${argumentos[@]}" 2>&1 | tee "${REPORTE_DIR}/salida-limpieza.txt"
+          codigo="${PIPESTATUS[0]}"
+          set -e
+          if [[ "$codigo" == 4 ]]; then
+            echo "::error::Storage rechazó la clave secreta (o el proyecto no tiene el bucket species-photos): no se ha listado ni borrado nada. Revisa el secreto SUPABASE_SECRET_KEY del environment ${AMBIENTE}."
+          elif [[ "$codigo" != 0 ]]; then
+            echo "::error::La limpieza falló con el código ${codigo}; el motivo está en la salida de arriba."
+          fi
+          exit "$codigo"
 
       - name: Resumen de la ejecución
         if: ${{ always() && steps.carga.outcome != 'skipped' }}

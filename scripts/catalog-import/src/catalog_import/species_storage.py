@@ -12,6 +12,10 @@ Supabase en :data:`LOCAL_URL_VARIABLE` (solo un host de esta máquina).
 
 Peticiones (las mismas que hace ``@supabase/storage-js``):
 
+- Comprobar la clave: ``GET /storage/v1/bucket/species-photos`` (los datos del bucket; solo
+  lee). Distingue una clave que Storage no acepta (401 o 403, también dentro del cuerpo de un
+  400, como el «Invalid Compact JWS» de una clave de otro proyecto o mal copiada) de un bucket
+  que no existe (404, o «Bucket not found»).
 - Subir: ``POST /storage/v1/object/species-photos/<ruta>`` con ``x-upsert: true`` (repetir una
   subida es inofensivo: el nombre depende solo de la foto) y ``cache-control`` largo.
 - Listar: ``POST /storage/v1/object/list/species-photos`` por carpeta.
@@ -25,6 +29,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -49,11 +54,25 @@ TIMEOUT = 60.0
 
 
 class StorageError(Exception):
-    """Storage rechazó la operación (no se arregla reintentando). Nunca lleva la clave."""
+    """Storage rechazó la operación (no se arregla reintentando). Nunca lleva la clave.
 
-    def __init__(self, message: str, status: int | None = None) -> None:
+    ``status`` es el estado HTTP y ``detail``, el mensaje de Storage (sin la ruta), para
+    comparar dos errores sin que importe a qué archivo afectaron.
+    """
+
+    def __init__(self, message: str, status: int | None = None, detail: str = '') -> None:
         super().__init__(message)
         self.status = status
+        self.detail = detail
+
+
+class StorageAuthError(StorageError):
+    """Storage no acepta la clave (401 o 403, o un 400 por el token): no depende del archivo,
+    así que ninguna otra petición con esa clave va a salir bien."""
+
+
+class StorageBucketMissing(StorageError):
+    """Storage aceptó la clave, pero el proyecto no tiene el bucket."""
 
 
 class StorageUnavailable(Exception):
@@ -72,6 +91,8 @@ class StoredObject:
 
 class Storage(Protocol):
     """Lo que la carga necesita del bucket. En las pruebas, un doble en memoria."""
+
+    def check(self) -> None: ...
 
     def upload(self, path: str, data: bytes) -> None: ...
 
@@ -163,6 +184,40 @@ def urllib_send(
         return NO_RESPONSE, b''
 
 
+# Último recurso para reconocer un error de la clave cuando ni el estado HTTP ni el
+# «statusCode» del cuerpo lo dicen: palabras del token o de la autorización en el mensaje.
+_AUTH_WORDS = re.compile(
+    r'\b(jwt|jws|token|signature|api ?key|unauthori[sz]ed|forbidden)\b', re.IGNORECASE
+)
+
+
+def _rejection(status: int, data: bytes, key: str) -> tuple[type[StorageError], str]:
+    """La clase de error y el mensaje de Storage (sin la clave) de una respuesta 4xx.
+
+    Storage responde a veces 400 con el estado real en el cuerpo: por ejemplo, a una clave que
+    no es de ese proyecto, ``{"statusCode": "403", "error": "Unauthorized", "message": "Invalid
+    Compact JWS"}``; y a un bucket que no existe, ``{"statusCode": "404", "error": "Bucket not
+    found", ...}``.
+    """
+    body: dict[str, Any] = {}
+    with contextlib.suppress(ValueError):
+        parsed = json.loads(data)
+        if isinstance(parsed, dict):
+            body = parsed
+    message = str(body.get('message') or body.get('error') or '').strip()
+    if key:
+        message = message.replace(key, '[clave]')
+    codes = {status}
+    with contextlib.suppress(TypeError, ValueError):
+        codes.add(int(body.get('statusCode')))  # type: ignore[arg-type]
+    text = f'{body.get("error") or ""} {message}'
+    if codes & {401, 403} or _AUTH_WORDS.search(text):
+        return StorageAuthError, message
+    if re.search(r'bucket not found', text, re.IGNORECASE):
+        return StorageBucketMissing, message
+    return StorageError, message
+
+
 def _parse_time(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
@@ -200,15 +255,33 @@ class StorageClient:
                     continue
                 what = 'no respondió' if status == NO_RESPONSE else f'respondió {status}'
                 raise StorageUnavailable(f'Storage {what} a {method} {path}.')
-            message = ''
-            with contextlib.suppress(ValueError, AttributeError):
-                message = str(json.loads(data).get('message') or '')
-            raise StorageError(
+            kind, message = _rejection(status, data, self.config.key)
+            raise kind(
                 f'Storage respondió {status} a {method} {path}'
                 + (f': {message}' if message else '.'),
                 status,
+                message,
             )
         raise AssertionError('inalcanzable')  # pragma: no cover
+
+    def check(self) -> None:
+        """Comprueba, solo leyendo, que la clave vale para este proyecto y que el bucket existe.
+
+        Lanza :class:`StorageAuthError` si Storage no acepta la clave,
+        :class:`StorageBucketMissing` si no tiene el bucket y :class:`StorageUnavailable` si no
+        responde.
+        """
+        try:
+            data = self._request('GET', f'bucket/{BUCKET}', None, {})
+        except StorageError as problem:
+            if problem.status == 404 and type(problem) is StorageError:
+                raise StorageBucketMissing(str(problem), 404, problem.detail) from None
+            raise
+        found: object = None
+        with contextlib.suppress(ValueError, AttributeError):
+            found = json.loads(data).get('id')
+        if found not in (None, BUCKET):
+            raise StorageError(f'Storage devolvió otro bucket ({found}) en vez de {BUCKET}.')
 
     def upload(self, path: str, data: bytes) -> None:
         self._request(
