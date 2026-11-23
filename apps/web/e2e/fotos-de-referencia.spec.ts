@@ -267,8 +267,14 @@ test.describe('backoffice', () => {
     await dialogo.getByRole('radio', { name: 'Otro motivo' }).check()
     await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
     await expect(dialogo).toHaveCount(0)
+    // Se anuncia (región de estado) y se ve en el panel (#257).
     await expect(
-      page.getByText(/La foto de referencia de esta especie cambió/),
+      page
+        .getByRole('status')
+        .filter({ hasText: /La foto de referencia de esta especie cambió/ }),
+    ).toHaveCount(1)
+    await expect(
+      panel.getByText(/La foto de referencia de esta especie cambió/),
     ).toBeVisible()
     await expect(panel.getByText('No tiene foto de referencia.')).toBeVisible()
     expect(supabase.fotosRetiradas).toEqual([])

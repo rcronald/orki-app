@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import {
-  NavigationType,
-  useLocation,
-  useNavigate,
-  useNavigationType,
-  useSearchParams,
-} from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import type { PlantFilters } from '../collection/filters.ts'
 import { countGenera, countPlants } from '../collection/selectors.ts'
 import { useCollection } from '../collection/useCollection.ts'
@@ -27,6 +21,7 @@ import { readRegisteredPlant } from '../inventory/registered-plant.ts'
 import { RegisteredNotice } from '../inventory/RegisteredNotice.tsx'
 import { useScrollMemory } from '../inventory/scroll-memory.ts'
 import { collectionSummaryText } from '../inventory/texts.ts'
+import { useUrlFieldText } from '../routes/useUrlFieldText.ts'
 
 /** Parámetro de la URL con el texto del buscador: /coleccion?q=phal. */
 const SEARCH_PARAM = 'q'
@@ -83,26 +78,13 @@ export function CollectionPage() {
   const writeDisabledBy = readOnly === null ? undefined : offlineNoticeId
   const [searchParams, setSearchParams] = useSearchParams()
   const urlQuery = searchParams.get(SEARCH_PARAM) ?? ''
-  // El campo tiene su propio estado y es la fuente de verdad mientras la
-  // pantalla está abierta: la dirección se actualiza dentro de una transición
-  // del enrutador y llega atrasada, así que si el campo leyera de ella (o se
-  // corrigiera con ella al pintar) se perderían letras al escribir deprisa.
-  // La dirección solo manda al abrir (/coleccion?q=…) y cuando cambia por
-  // OTRA navegación: un enlace a /coleccion estando aquí (PUSH) o atrás y
-  // adelante (POP). Lo que escribe esta pantalla en la dirección (el
-  // buscador, los filtros, limpiar el estado) va siempre con `replace`, así
-  // que una navegación REPLACE nunca trae una búsqueda nueva de fuera.
-  const [query, setQueryText] = useState(urlQuery)
-  const navigationType = useNavigationType()
+  // El campo tiene estado propio y la dirección solo manda en las navegaciones
+  // que no son de esta pantalla (ver useUrlFieldText): lo que escribe aquí en
+  // la dirección (el buscador, los filtros, limpiar el estado) va siempre con
+  // `replace`.
+  const [query, setQueryText] = useUrlFieldText(urlQuery)
   const location = useLocation()
   const navigate = useNavigate()
-  // Ajuste al cambiar de ubicación, al pintar (sin efecto): en una navegación
-  // REPLACE solo se anota la ubicación; el texto del campo no se toca.
-  const [seenLocation, setSeenLocation] = useState(location.key)
-  if (seenLocation !== location.key) {
-    setSeenLocation(location.key)
-    if (navigationType !== NavigationType.Replace) setQueryText(urlQuery)
-  }
   const [registered, setRegistered] = useState(() =>
     readRegisteredPlant(location.state),
   )
@@ -134,7 +116,7 @@ export function CollectionPage() {
         { replace: true, preventScrollReset: true },
       )
     },
-    [setSearchParams],
+    [setSearchParams, setQueryText],
   )
 
   // Un objeto nuevo solo cuando cambian los filtros, no al escribir en el

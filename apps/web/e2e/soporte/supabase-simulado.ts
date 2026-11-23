@@ -1517,6 +1517,20 @@ export class SupabaseSimulado {
       }
       case 'create_catalog_species':
         return json(this.crearEspecie(argumentos, 'curated'))
+      case 'set_catalog_species_status': {
+        // Cambio de estado por lote: cuántas cambiaron (las que ya lo tenían
+        // no cuentan).
+        const ids = (argumentos.target_species_ids as string[]) ?? []
+        const estado = argumentos.new_status as Especie['status']
+        let cambiadas = 0
+        for (const especie of this.datos.especies) {
+          if (!ids.includes(especie.id) || especie.status === estado) continue
+          especie.status = estado
+          especie.updated_at = this.ahora()
+          cambiadas += 1
+        }
+        return json(cambiadas)
+      }
       case 'retire_species_photo':
         return this.retirarFoto(argumentos)
       case 'create_species_from_proposal': {

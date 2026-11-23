@@ -18,9 +18,16 @@ import {
   LoadError,
   Notice,
   Pagination,
+  ResultNotice,
   SearchField,
   SpeciesStatusBadge,
 } from './parts.tsx'
+import {
+  revealPanel,
+  SIDE_PANEL,
+  WITH_SIDE_PANEL,
+  type PlacedNotice,
+} from './side-panel.ts'
 import type { CatalogAdminSource } from './source.ts'
 import {
   SpeciesDetailPanel,
@@ -185,9 +192,10 @@ export function SpeciesTab({
     { revision },
   )
   const [creating, setCreating] = useState(false)
+  const createPanelRef = useRef<HTMLElement>(null)
   const createHeadingRef = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
-    if (creating) createHeadingRef.current?.focus()
+    if (creating) revealPanel(createPanelRef.current, createHeadingRef.current)
   }, [creating])
   const addButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -210,6 +218,31 @@ export function SpeciesTab({
       }
       return next
     })
+
+  // Aviso visible del resultado de la última escritura, junto a donde se
+  // hizo: arriba de la tabla (cambio por lote, baja) o en el detalle de la
+  // especie a la que se refiere (alta, edición, nombres, fusión). El anuncio
+  // al lector de pantalla lo hace la pantalla (onCatalogChanged).
+  const [notice, setNotice] = useState<PlacedNotice<
+    { kind: 'tabla' } | { kind: 'detalle'; speciesId: string }
+  > | null>(null)
+  const changed = (
+    message: string,
+    place: { kind: 'tabla' } | { kind: 'detalle'; speciesId: string },
+  ) => {
+    setNotice((current) => ({ id: (current?.id ?? 0) + 1, message, place }))
+    onCatalogChanged(message)
+  }
+  const tableNotice =
+    notice?.place.kind === 'tabla' ? (
+      <ResultNotice key={notice.id} message={notice.message} />
+    ) : null
+  const detailNotice =
+    notice?.place.kind === 'detalle' &&
+    notice.place.speciesId === detailId &&
+    !creating ? (
+      <ResultNotice key={notice.id} message={notice.message} />
+    ) : null
 
   const [focusRequest, setFocusRequest] = useState(0)
   const [returnFocusTo, setReturnFocusTo] = useState<string | null>(null)
@@ -363,13 +396,14 @@ export function SpeciesTab({
           onClear={() => setSelected(new Set())}
           onDone={(message) => {
             setSelected(new Set())
-            onCatalogChanged(message)
+            changed(message, { kind: 'tabla' })
           }}
         />
       )}
+      {tableNotice}
 
       <div
-        className={`grid gap-space-4 ${detailId || creating ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]' : ''}`}
+        className={`grid gap-space-4 ${detailId || creating ? WITH_SIDE_PANEL : ''}`}
       >
         <div ref={tableRef} className="flex min-w-[0] flex-col gap-space-3">
           {table.status === 'error' && !typing ? (
@@ -470,8 +504,9 @@ export function SpeciesTab({
         </div>
         {creating ? (
           <section
+            ref={createPanelRef}
             aria-labelledby={`${statusId}-alta`}
-            className="flex flex-col gap-space-3 self-start rounded-lg bg-neutral-50 p-space-4"
+            className={`${SIDE_PANEL} gap-space-3`}
           >
             <h2
               id={`${statusId}-alta`}
@@ -492,7 +527,10 @@ export function SpeciesTab({
                 setFocusRequest((value) => value + 1)
                 setReturnFocusTo(written.id)
                 onChange({ ...state, detailId: written.id })
-                onCatalogChanged(createdMessage(written))
+                changed(createdMessage(written), {
+                  kind: 'detalle',
+                  speciesId: written.id,
+                })
               }}
             />
           </section>
@@ -503,11 +541,14 @@ export function SpeciesTab({
               focusRequest={focusRequest}
               source={source}
               revision={revision}
-              onChanged={onCatalogChanged}
+              notice={detailNotice}
+              onChanged={(message) =>
+                changed(message, { kind: 'detalle', speciesId: detailId })
+              }
               onDeleted={(message) => {
                 setReturnFocusTo(detailId)
                 onChange({ ...state, detailId: null })
-                onCatalogChanged(message)
+                changed(message, { kind: 'tabla' })
               }}
               onMerged={(keptId, message) => {
                 // Se abre la conservada (puede ser la misma) con el foco en
@@ -516,7 +557,7 @@ export function SpeciesTab({
                 setReturnFocusTo(keptId)
                 if (keptId !== detailId)
                   onChange({ ...state, detailId: keptId })
-                onCatalogChanged(message)
+                changed(message, { kind: 'detalle', speciesId: keptId })
               }}
               onClose={() => {
                 setReturnFocusTo(detailId)

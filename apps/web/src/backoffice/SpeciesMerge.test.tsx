@@ -28,6 +28,7 @@ import {
   INITIAL_CATALOG_ADMIN_STATE,
   type CatalogAdminState,
 } from './url-state.ts'
+import { findAnnouncement } from '../test/announcement.ts'
 
 // Fusión de especies desde el detalle (#136): elegir la otra especie con el
 // buscador del catálogo, elegir cuál se conserva e intercambiarlas, vista
@@ -249,7 +250,7 @@ describe('Fusión de especies', () => {
     )
     expect(opener).not.toBeInTheDocument()
     expect(
-      screen.getByText(
+      await findAnnouncement(
         'Se fusionó «Phalaenopsis equestris» en «Phalaenopsis amabilis»: se movieron 2 plantas y pasó 1 nombre (2 ya existían). «Phalaenopsis amabilis» pasó a «Validada».',
       ),
     ).toHaveAttribute('role', 'status')
