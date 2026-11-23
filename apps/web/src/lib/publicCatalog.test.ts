@@ -112,6 +112,7 @@ describe('searchPublicSpecies', () => {
         type: 'species',
         matchedName: 'Laelia purpurata',
         matchedNameType: 'synonym',
+        reference: null,
       },
     ])
   })
@@ -230,7 +231,12 @@ describe('listPublicGenusSpecies', () => {
     expect(page).toEqual({
       genus: { id: GENUS_ID, name: 'Cattleya' },
       species: [
-        { id: SPECIES_ID, scientificName: 'Cattleya maxima', type: 'species' },
+        {
+          id: SPECIES_ID,
+          scientificName: 'Cattleya maxima',
+          type: 'species',
+          reference: null,
+        },
       ],
       total: 120,
       page: 3,
@@ -294,6 +300,7 @@ describe('getPublicSpecies', () => {
         { name: 'Moon orchid', language: null },
       ],
       commonNameCount: 2,
+      reference: null,
     })
   })
 

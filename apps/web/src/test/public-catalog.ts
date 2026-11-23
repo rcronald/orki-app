@@ -32,6 +32,65 @@ export interface FakeSpecies {
   /** Sinónimos en total; por defecto, los de `synonyms`. */
   synonym_count?: number
   common_names: { name: string; language: string | null }[]
+  /** Foto de referencia (#234), como la columna reference_photo; sin ella, null. */
+  reference_photo?: FakeReferencePhoto | null
+}
+
+/** La foto de referencia de una especie, con los campos de get_public_species. */
+export interface FakeReferencePhoto {
+  medium_path: string
+  medium_width: number
+  medium_height: number
+  thumbnail_path: string
+  thumbnail_width: number
+  thumbnail_height: number
+  author_name: string
+  attribution: string
+  license: 'cc0' | 'pd' | 'cc-by' | 'cc-by-sa'
+  source: 'inaturalist'
+  source_url: string
+  source_observation_id: string | null
+  is_modified: boolean
+  obtained_at: string
+}
+
+/** Una foto de referencia de prueba para `speciesId` (CC BY, reducida). */
+export function fakeReferencePhoto(
+  speciesId: string,
+  overrides: Partial<FakeReferencePhoto> = {},
+): FakeReferencePhoto {
+  return {
+    medium_path: `${speciesId}/medium-12345.webp`,
+    medium_width: 480,
+    medium_height: 360,
+    thumbnail_path: `${speciesId}/thumb-12345.webp`,
+    thumbnail_width: 160,
+    thumbnail_height: 120,
+    author_name: 'Ana Pérez',
+    attribution: '(c) Ana Pérez, some rights reserved (CC BY)',
+    license: 'cc-by',
+    source: 'inaturalist',
+    source_url: 'https://www.inaturalist.org/photos/12345',
+    source_observation_id: null,
+    is_modified: true,
+    obtained_at: '2026-11-23T12:00:00.000Z',
+    ...overrides,
+  }
+}
+
+/** La miniatura de una foto, con los campos de reference_thumbnail. */
+function thumbnailOf(photo: FakeReferencePhoto | null | undefined) {
+  if (!photo) return null
+  return {
+    thumbnail_path: photo.thumbnail_path,
+    thumbnail_width: photo.thumbnail_width,
+    thumbnail_height: photo.thumbnail_height,
+    author_name: photo.author_name,
+    license: photo.license,
+    source: photo.source,
+    source_url: photo.source_url,
+    is_modified: photo.is_modified,
+  }
 }
 
 export const GENUS = {
@@ -202,6 +261,7 @@ export function fakePublicCatalog(): FakePublicCatalog {
             type: species.type,
             matched_name: hit[0],
             matched_name_type: hit[1],
+            reference_thumbnail: thumbnailOf(species.reference_photo),
           })
         }
         return json(rows.slice(0, max))
@@ -247,6 +307,7 @@ export function fakePublicCatalog(): FakePublicCatalog {
             genus_name: genus.name,
             total_count: species.length,
             current_page: page,
+            reference_thumbnail: thumbnailOf(s.reference_photo),
           })),
         )
       }
@@ -271,6 +332,7 @@ export function fakePublicCatalog(): FakePublicCatalog {
             synonym_count: species.synonym_count ?? species.synonyms.length,
             common_names: species.common_names,
             common_name_count: species.common_names.length,
+            reference_photo: species.reference_photo ?? null,
           },
         ])
       }

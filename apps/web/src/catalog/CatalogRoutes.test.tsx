@@ -16,6 +16,7 @@ import {
 import {
   CONFIG,
   fakePublicCatalog,
+  fakeReferencePhoto,
   GENUS,
   SPECIES,
   type FakePublicCatalog,
@@ -340,6 +341,131 @@ describe('especies de un género', () => {
     expect(
       screen.getAllByRole('link', { name: 'Volver al catálogo' }),
     ).toHaveLength(2)
+  })
+})
+
+describe('fotos de referencia (#234)', () => {
+  const PUBLIC =
+    'https://ejemplo.supabase.co/storage/v1/object/public/species-photos'
+
+  function withPhoto(id: string, overrides = {}) {
+    const species = catalog.data.species.find((item) => item.id === id)
+    if (species) species.reference_photo = fakeReferencePhoto(id, overrides)
+  }
+
+  it('la ficha muestra la foto con su rótulo, su tamaño y su crédito', async () => {
+    withPhoto(SPECIES.amabilis)
+    renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+    const image = await screen.findByRole('img', {
+      name: 'Foto de referencia de Phalaenopsis amabilis',
+    })
+    expect(image).toHaveAttribute(
+      'src',
+      `${PUBLIC}/${SPECIES.amabilis}/medium-12345.webp`,
+    )
+    expect(image).toHaveAttribute('width', '480')
+    expect(image).toHaveAttribute('height', '360')
+    expect(image).toHaveAttribute('loading', 'lazy')
+    expect(image).toHaveAttribute('decoding', 'async')
+    const figure = image.closest('figure')
+    expect(figure).not.toBeNull()
+    const credit = within(figure as HTMLElement)
+    expect(credit.getAllByText(/Foto de referencia/).length).toBeGreaterThan(0)
+    expect(figure).toHaveTextContent(
+      'Foto: Ana Pérez, CC BY 4.0 (se abre en otra pestaña), reducida.',
+    )
+    expect(credit.getByRole('link', { name: /CC BY 4.0/ })).toHaveAttribute(
+      'href',
+      'https://creativecommons.org/licenses/by/4.0/legalcode.es',
+    )
+    expect(
+      credit.getByRole('link', { name: /Ver el original en iNaturalist/ }),
+    ).toHaveAttribute('href', 'https://www.inaturalist.org/photos/12345')
+    await expectNoAxeViolations()
+  })
+
+  it('una foto CC0 sin adaptar no dice «reducida»', async () => {
+    withPhoto(SPECIES.amabilis, { license: 'cc0', is_modified: false })
+    renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+    const link = await screen.findByRole('link', { name: /CC0 1.0/ })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://creativecommons.org/publicdomain/zero/1.0/legalcode.es',
+    )
+    expect(link.closest('p')).not.toHaveTextContent('reducida')
+  })
+
+  it('sin foto, o si la imagen no carga, la ficha no deja hueco', async () => {
+    withPhoto(SPECIES.amabilis)
+    renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+    const image = await screen.findByRole('img', {
+      name: /Foto de referencia/,
+    })
+    act(() => {
+      image.dispatchEvent(new Event('error'))
+    })
+    expect(screen.queryByRole('figure')).toBeNull()
+    expect(screen.queryByText(/Foto: Ana Pérez/)).toBeNull()
+  })
+
+  it('una licencia que no es de las aceptadas no se muestra', async () => {
+    withPhoto(SPECIES.amabilis, { license: 'cc-by-nc' as 'cc-by' })
+    renderAt(`/catalogo/especie/${SPECIES.amabilis}`)
+    await screen.findByRole('region', { name: 'Sinónimos' })
+    expect(screen.queryByRole('img', { name: /Foto de referencia/ })).toBeNull()
+  })
+
+  it('la búsqueda pone la miniatura y el crédito; las filas sin foto guardan el hueco', async () => {
+    withPhoto(SPECIES.maxima)
+    const user = userEvent.setup()
+    const { container } = renderAt('/catalogo')
+    await user.type(field(), 'cattleya')
+    const withThumb = await screen.findByRole('link', {
+      name: /Cattleya maxima/,
+    })
+    expect(withThumb).toHaveTextContent(
+      'Foto de referencia: Ana Pérez, CC BY 4.0',
+    )
+    const thumb = withThumb.querySelector('img')
+    expect(thumb).toHaveAttribute(
+      'src',
+      `${PUBLIC}/${SPECIES.maxima}/thumb-12345.webp`,
+    )
+    expect(thumb).toHaveAttribute('alt', '')
+    const without = screen.getByRole('link', { name: /Cattleya purpurata/ })
+    expect(without.querySelector('img')).toBeNull()
+    expect(without.querySelector('span[aria-hidden="true"]')).not.toBeNull()
+    // Todas las filas empiezan igual: miniatura o hueco del mismo tamaño.
+    for (const row of container.querySelectorAll('.orki-action')) {
+      expect(row.firstElementChild).toHaveClass('size-[44px]')
+    }
+    await expectNoAxeViolations()
+  })
+
+  it('sin ninguna foto, las filas quedan como antes', async () => {
+    const user = userEvent.setup()
+    renderAt('/catalogo')
+    await user.type(field(), 'cattleya')
+    const row = await screen.findByRole('link', { name: /Cattleya maxima/ })
+    expect(row.querySelector('img, span[aria-hidden="true"]')).toBeNull()
+  })
+
+  it('las especies de un género llevan la miniatura de las que tienen foto', async () => {
+    const first = catalog.data.species.find(
+      (item) => item.scientific_name === 'Dendrobium especie002',
+    )?.id as string
+    withPhoto(first)
+    renderAt(`/catalogo/genero/${GENUS.dendrobium}`)
+    await screen.findByRole('heading', { level: 1, name: 'Dendrobium' })
+    const list = screen.getByRole('region', { name: /^Especies/ })
+    const row = list.querySelector(
+      `a[href="/catalogo/especie/${first}"]`,
+    ) as HTMLElement
+    expect(row.querySelector('img')).toHaveAttribute(
+      'src',
+      `${PUBLIC}/${first}/thumb-12345.webp`,
+    )
+    expect(row).toHaveTextContent('Foto de referencia: Ana Pérez, CC BY 4.0')
   })
 })
 

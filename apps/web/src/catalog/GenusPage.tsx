@@ -74,6 +74,8 @@ export default function GenusPage() {
   }
 
   const genusName = header?.genus.name ?? null
+  const reserve =
+    page?.species.some((species) => species.reference !== null) ?? false
   return (
     <Page
       title={genusName ?? CATALOG_TEXT.title}
@@ -131,6 +133,8 @@ export default function GenusPage() {
                         ? SPECIES_TYPE_LABEL.hybrid
                         : null,
                     ]}
+                    reference={species.reference}
+                    reserve={reserve}
                   />
                 </li>
               ))}

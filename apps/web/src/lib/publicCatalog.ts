@@ -6,6 +6,11 @@ import type {
   SpeciesSource,
   SpeciesType,
 } from './database.ts'
+import {
+  publicPhotoUrl,
+  toReferencePicture,
+  type ReferencePicture,
+} from './referencePhotos.ts'
 import { getPublicSupabase } from './supabase.ts'
 
 // Catálogo público desde la app (#232): las cuatro funciones de solo lectura
@@ -41,6 +46,8 @@ export interface PublicSpeciesResult {
   type: SpeciesType
   matchedName: string
   matchedNameType: SpeciesMatchType
+  /** La miniatura de referencia con su crédito (#234), o null (sin medium). */
+  reference: ReferencePicture | null
 }
 
 /** Un género con su número de especies públicas. */
@@ -55,6 +62,8 @@ export interface PublicGenusSpecies {
   id: string
   scientificName: string
   type: SpeciesType
+  /** La miniatura de referencia con su crédito (#234), o null (sin medium). */
+  reference: ReferencePicture | null
 }
 
 /** Una página de las especies de un género. */
@@ -84,6 +93,8 @@ export interface PublicSpecies {
   /** Hasta 100 nombres comunes, en orden. */
   commonNames: PublicCommonName[]
   commonNameCount: number
+  /** La foto de referencia con su crédito (#234), o null. */
+  reference: ReferencePicture | null
 }
 
 export interface PublicCatalogOptions {
@@ -185,6 +196,7 @@ export async function searchPublicSpecies(
     }),
     signal,
   )
+  const resolve = publicPhotoUrl(supabase)
   return (rows ?? []).map((row) => ({
     id: row.id,
     scientificName: row.scientific_name,
@@ -193,6 +205,7 @@ export async function searchPublicSpecies(
     type: row.type,
     matchedName: row.matched_name,
     matchedNameType: row.matched_name_type,
+    reference: toReferencePicture(row.reference_thumbnail, resolve),
   }))
 }
 
@@ -262,12 +275,14 @@ export async function listPublicGenusSpecies(
     )) ?? []
   const first = rows[0]
   if (first === undefined) return null
+  const resolve = publicPhotoUrl(supabase)
   return {
     genus: { id: first.genus_id, name: first.genus_name },
     species: rows.map((row) => ({
       id: row.id,
       scientificName: row.scientific_name,
       type: row.type,
+      reference: toReferencePicture(row.reference_thumbnail, resolve),
     })),
     total: first.total_count,
     page: first.current_page,
@@ -321,5 +336,9 @@ export async function getPublicSpecies(
     synonymCount: row.synonym_count,
     commonNames: commonNamesOf(row.common_names),
     commonNameCount: row.common_name_count,
+    reference: toReferencePicture(
+      row.reference_photo,
+      publicPhotoUrl(supabase),
+    ),
   }
 }

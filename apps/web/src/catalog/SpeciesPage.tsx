@@ -5,6 +5,7 @@ import {
 } from '../backoffice/attribution.ts'
 import { Page } from '../components/Page.tsx'
 import { Panel } from '../components/ui/Panel.tsx'
+import { ReferencePhoto } from '../components/ui/ReferencePhoto.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
 import { getPublicSpecies, type PublicSpecies } from '../lib/publicCatalog.ts'
 import { CatalogAttribution, ExternalLink } from './CatalogAttribution.tsx'
@@ -30,6 +31,8 @@ import { useCatalogData } from './useCatalogData.ts'
 // comunes con su idioma y la fuente con su atribución. Con sesión, si la
 // persona la tiene y «Registrar esta especie» (SpeciesOwnership). Un id que no
 // existe o no es público: «Especie no encontrada», con la vuelta al catálogo.
+// Si la especie tiene foto de referencia (#234), arriba, con su crédito; sin
+// ella (o si no carga), la ficha empieza por lo demás, sin hueco.
 export default function SpeciesPage() {
   const { speciesId = '' } = useParams()
   const data = useCatalogData(`especie:${speciesId}`, (signal) =>
@@ -89,6 +92,13 @@ export default function SpeciesPage() {
 function SpeciesDetail({ species }: { species: PublicSpecies }) {
   return (
     <>
+      {species.reference && (
+        <ReferencePhoto
+          key={species.reference.sourcePhotoId}
+          picture={species.reference}
+          scientificName={species.scientificName}
+        />
+      )}
       <SpeciesOwnership species={species} />
       <Panel title={CATALOG_TEXT.classification}>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-space-4 gap-y-space-2 text-md">
