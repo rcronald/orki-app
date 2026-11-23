@@ -113,6 +113,7 @@ const GENERA = {
     id: '20000000-0000-4000-8000-000000000005',
     name: 'Miltoniopsis',
   },
+  laelia: { id: '20000000-0000-4000-8000-000000000006', name: 'Laelia' },
 }
 const QUICK_GENERA = [GENERA.cattleya, GENERA.dendrobium, GENERA.phalaenopsis]
 const ALL_GENERA = Object.values(GENERA)
@@ -138,6 +139,61 @@ const WAKANKI = {
   matched_name_type: 'common',
 }
 const SPECIES = [AMABILIS, WAKANKI]
+// Para la coincidencia exacta (#280): un sinónimo, su homónimo aceptado y un
+// híbrido natural con «×».
+const PURPURATA = {
+  id: '10000000-0000-4000-8000-000000000003',
+  scientific_name: 'Cattleya purpurata',
+  genus_id: GENERA.cattleya.id,
+  genus_name: 'Cattleya',
+  type: 'species',
+  status: 'validated',
+  matched_name: 'Laelia purpurata',
+  matched_name_type: 'synonym',
+}
+const LAELIA_PURPURATA = {
+  id: '10000000-0000-4000-8000-000000000004',
+  scientific_name: 'Laelia purpurata',
+  genus_id: GENERA.laelia.id,
+  genus_name: 'Laelia',
+  type: 'species',
+  status: 'imported',
+  matched_name: 'Laelia purpurata',
+  matched_name_type: 'scientific',
+}
+const INTERMEDIA = {
+  id: '10000000-0000-4000-8000-000000000005',
+  scientific_name: 'Phalaenopsis × intermedia',
+  genus_id: GENERA.phalaenopsis.id,
+  genus_name: 'Phalaenopsis',
+  type: 'hybrid',
+  status: 'validated',
+  matched_name: 'Phalaenopsis × intermedia',
+  matched_name_type: 'scientific',
+}
+const ALL_SPECIES = [...SPECIES, PURPURATA, LAELIA_PURPURATA, INTERMEDIA]
+
+/** Géneros del catálogo para search_genera, con sus abreviaturas. */
+const GENUS_ROWS = [
+  { ...GENERA.cattleya, is_quick_access: true, abbreviations: ['C.'] },
+  { ...GENERA.dendrobium, is_quick_access: true, abbreviations: ['Den.'] },
+  { ...GENERA.phalaenopsis, is_quick_access: true, abbreviations: ['Phal.'] },
+  { ...GENERA.masdevallia, is_quick_access: false, abbreviations: ['Masd.'] },
+  { ...GENERA.miltoniopsis, is_quick_access: false, abbreviations: ['Mps.'] },
+  { ...GENERA.laelia, is_quick_access: false, abbreviations: ['L.'] },
+]
+
+/** search_genera simplificada: por nombre o por el comienzo de una abreviatura. */
+function searchGeneraRows(query: string) {
+  const plain = (text: string) => text.toLowerCase().replace(/\./g, '').trim()
+  const text = plain(query)
+  return GENUS_ROWS.flatMap(({ abbreviations, ...genus }) => {
+    const byName = plain(genus.name).includes(text)
+    const abbreviation = abbreviations.find((a) => plain(a).startsWith(text))
+    if (!byName && abbreviation === undefined) return []
+    return [{ ...genus, matched_abbreviation: byName ? null : abbreviation }]
+  })
+}
 
 type FetchArgs = Parameters<typeof fetch>
 interface SentRequest {
@@ -152,6 +208,8 @@ let insertResponder: (body: Record<string, unknown>) => Promise<Response>
 /** Respuesta de cada subida a Storage (#87); por defecto, subida. */
 let storageUploadResponder: (path: string) => Promise<Response>
 let source: FakeCollectionSource
+/** Lo que devuelve search_species, sea cual sea la consulta. */
+let speciesRows: readonly Record<string, unknown>[]
 
 function json(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve(
@@ -187,7 +245,7 @@ function plantInserts(): Record<string, unknown>[] {
 
 /** La fila que devolvería PostgREST, con lo que pone el disparador. */
 function createdRow(body: Record<string, unknown>): CollectionPlantRow {
-  const species = SPECIES.find((s) => s.id === body.species_id) ?? null
+  const species = ALL_SPECIES.find((s) => s.id === body.species_id) ?? null
   const genusId = species ? species.genus_id : (body.genus_id as string)
   const genus = ALL_GENERA.find((g) => g.id === genusId) ?? GENERA.cattleya
   return {
@@ -226,16 +284,10 @@ function respond(...args: FetchArgs): Promise<Response> {
   const request = readRequest(args)
   const { pathname } = request.url
   if (pathname === '/rest/v1/genera') return json(QUICK_GENERA)
-  if (pathname === '/rest/v1/rpc/search_species') return json(SPECIES)
+  if (pathname === '/rest/v1/rpc/search_species') return json(speciesRows)
   if (pathname === '/rest/v1/rpc/search_genera') {
-    return json([
-      {
-        id: GENERA.miltoniopsis.id,
-        name: 'Miltoniopsis',
-        is_quick_access: false,
-        matched_abbreviation: 'Mps.',
-      },
-    ])
+    const { query } = request.body as { query: string }
+    return json(searchGeneraRows(query))
   }
   if (pathname === '/rest/v1/plants' && request.method === 'POST') {
     return insertResponder(request.body as Record<string, unknown>)
@@ -376,6 +428,7 @@ beforeEach(() => {
   initSupabase(CONFIG)
   setSessionTokenSource(() => Promise.resolve(TOKEN))
   source = fakeCollectionSource()
+  speciesRows = SPECIES
 })
 
 afterEach(() => {
@@ -1188,6 +1241,243 @@ describe('NewPlantPage', () => {
       location: 'Balcón',
       flower_color: 'white',
     })
+  })
+})
+
+// El nombre exacto de una especie del catálogo la enlaza (#280): escrito, al
+// llegar con ?nombre= desde «¿Ya la tengo?» o con Enter sin elegir la
+// sugerencia. Un sinónimo, varias especies o un parecido no se enlazan solos.
+describe('NewPlantPage: el nombre exacto del catálogo enlaza la especie (#280)', () => {
+  const pendingText = /No está en el catálogo/
+
+  it('al llegar con ?nombre= y el nombre exacto de una especie, la enlaza y se guarda validada', async () => {
+    const user = userEvent.setup()
+    await renderPage([], '/coleccion/nueva?nombre=Phalaenopsis%20amabilis')
+
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveAccessibleDescription(
+      `${PLANT_FORM_TEXT.nameMatch} ${PLANT_FORM_TEXT.nameHint}`,
+    )
+    expect(screen.queryByText(pendingText)).toBeNull()
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-pressed', 'true')
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-disabled', 'true')
+    expect(
+      within(typeGroup()).getByRole('button', { name: 'Especie' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expectNoAxeViolations()
+
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toEqual({
+      id: expect.any(String) as unknown,
+      entered_name: 'Phalaenopsis amabilis',
+      species_id: AMABILIS.id,
+      genus_id: GENERA.phalaenopsis.id,
+      type: 'species',
+      acquired_on: localDateString(),
+    })
+    expect(await screen.findByText(/Registraste/)).toHaveTextContent(
+      'Registraste Phalaenopsis amabilis en tu colección. Validada',
+    )
+  })
+
+  it('escribir el nombre exacto y pulsar Enter enseguida, sin elegir la sugerencia, la enlaza', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    // Enter antes de que llegue la búsqueda: el registro espera a saber si
+    // el nombre está en el catálogo.
+    await user.type(nameInput(), 'phalaenopsis amabilis{Enter}')
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(plantInserts()).toHaveLength(1)
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'Phalaenopsis amabilis',
+      species_id: AMABILIS.id,
+      genus_id: GENERA.phalaenopsis.id,
+      type: 'species',
+    })
+  })
+
+  it('escribir el nombre exacto enlaza la especie sin el aviso de «por validar»; Enter la guarda', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'Phalaenopsis amabilis')
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    // Ni el aviso de «por validar» ni la lista con «No la encuentro».
+    expect(screen.queryByText(pendingText)).toBeNull()
+    expect(screen.queryByRole('option')).toBeNull()
+    expect(nameInput()).toHaveAttribute('aria-expanded', 'false')
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-disabled', 'true')
+
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({ species_id: AMABILIS.id })
+  })
+
+  it('sin tildes ni mayúsculas, con espacios de más y con «x» por «×» también es exacto', async () => {
+    speciesRows = [INTERMEDIA, AMABILIS]
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), '  PHALÁENOPSIS   x  Intermedia ')
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('Phalaenopsis × intermedia')
+    expect(
+      within(typeGroup()).getByRole('button', { name: 'Híbrido' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      species_id: INTERMEDIA.id,
+      type: 'hybrid',
+    })
+  })
+
+  it('un sinónimo exacto (?nombre=) no se enlaza solo: se ofrece la especie aceptada y se elige con un toque', async () => {
+    speciesRows = [PURPURATA]
+    const user = userEvent.setup()
+    await renderPage([], '/coleccion/nueva?nombre=Laelia%20purpurata')
+
+    expect(await screen.findByText(/es un sinónimo de/)).toHaveTextContent(
+      'Laelia purpurata es un sinónimo de Cattleya purpurata en el catálogo. Si la eliges, se guarda con ese nombre; si no, quedará como «Nombre por validar».',
+    )
+    // Sin enlazar ni cambiarle el nombre, y sin decir que no está.
+    expect(nameInput()).toHaveValue('Laelia purpurata')
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    expect(screen.queryByText(pendingText)).toBeNull()
+    await expectNoAxeViolations()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Elegir Cattleya purpurata' }),
+    )
+    expect(nameInput()).toHaveValue('Cattleya purpurata')
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
+    expect(screen.queryByText(/es un sinónimo de/)).toBeNull()
+    expect(chip('Cattleya')).toHaveAttribute('aria-disabled', 'true')
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'Cattleya purpurata',
+      species_id: PURPURATA.id,
+    })
+  })
+
+  it('al escribir un sinónimo exacto, la sugerencia queda destacada y Enter la elige', async () => {
+    speciesRows = [PURPURATA]
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'laelia purpurata')
+    const option = await screen.findByRole('option', {
+      name: /^Cattleya purpurata,\s*Sinónimo: Laelia purpurata$/,
+    })
+    await waitFor(() => expect(option).toHaveAttribute('aria-selected', 'true'))
+    expect(nameInput()).toHaveAttribute('aria-activedescendant', option.id)
+    expect(screen.queryByText(pendingText)).toBeNull()
+
+    await user.keyboard('{Enter}')
+    expect(nameInput()).toHaveValue('Cattleya purpurata')
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
+    expect(plantInserts()).toHaveLength(0)
+  })
+
+  it('con varias especies con ese nombre no enlaza ninguna: las muestra para elegir', async () => {
+    speciesRows = [LAELIA_PURPURATA, PURPURATA]
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'Laelia purpurata')
+    expect(
+      await screen.findByText(/Hay 2 especies del catálogo con este nombre/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    expect(screen.queryByText(pendingText)).toBeNull()
+    // Ninguna destacada: Enter no elige por la persona.
+    for (const option of screen.getAllByRole('option')) {
+      expect(option).toHaveAttribute('aria-selected', 'false')
+    }
+    expect(
+      screen.getByRole('button', { name: 'Elegir Laelia purpurata' }),
+    ).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Elegir Cattleya purpurata (sinónimo: Laelia purpurata)',
+      }),
+    )
+    expect(nameInput()).toHaveValue('Cattleya purpurata')
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
+  })
+
+  it('un parecido (error de tipeo) nunca se enlaza solo: queda por validar', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'Phalaenopsis amabilys')
+    await screen.findByRole('option', { name: 'Phalaenopsis amabilis' })
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    expect(nameInput()).toHaveAccessibleDescription(
+      PLANT_FORM_TEXT.namePendingHint,
+    )
+    await user.click(chip('Phalaenopsis'))
+    await user.click(
+      within(typeGroup()).getByRole('button', { name: 'Especie' }),
+    )
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).not.toHaveProperty('species_id')
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'Phalaenopsis amabilys',
+      genus_id: GENERA.phalaenopsis.id,
+    })
+  })
+
+  it('el foco está en «Nombre» al abrir el registro', async () => {
+    await renderPage()
+    expect(nameInput()).toHaveFocus()
+  })
+
+  it('un nombre libre marca de antemano el género de su primera palabra, y se puede cambiar', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'Cattleya Mini Purple')
+    await waitFor(() =>
+      expect(chip('Cattleya')).toHaveAttribute('aria-pressed', 'true'),
+    )
+    expect(chip('Cattleya')).not.toHaveAttribute('aria-disabled')
+    await user.click(chip('Dendrobium'))
+    expect(chip('Dendrobium')).toHaveAttribute('aria-pressed', 'true')
+    // Lo elegido a mano no lo cambia lo que se siga escribiendo.
+    await user.type(nameInput(), ' 2')
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)))
+    expect(chip('Dendrobium')).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(
+      within(typeGroup()).getByRole('button', { name: 'Híbrido' }),
+    )
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'Cattleya Mini Purple 2',
+      genus_id: GENERA.dendrobium.id,
+    })
+  })
+
+  it('también por la abreviatura del género («Mps.»)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+
+    await user.type(nameInput(), 'Mps. Rojo de la sierra')
+    await waitFor(() =>
+      expect(chip('Miltoniopsis')).toHaveAttribute('aria-pressed', 'true'),
+    )
   })
 })
 
