@@ -287,3 +287,27 @@ Redactados aquí; no se han abierto todavía.
 **4. Portada: pintar el Hero sin esperar al chunk de la app** (prioridad media, área rendimiento, ejecuta: agente). **Hecho en el #204** (ver «Carga de la portada»).
 
 > La portada (#179) da 3,95 s de LCP en la medición móvil: la foto se descarga enseguida, pero no se pinta hasta que llega y se ejecuta el chunk `App` (Clerk, rutas y pantallas). Opciones: llevar el Hero y las ventajas (sin Clerk) al chunk inicial y que `App` solo decida después si `/` lleva a la colección, o pintarlos como `fallback` mientras `App` carga. Medir el efecto en el JavaScript inicial (hoy al 95,3 % del presupuesto) y en el inventario.
+
+## Inventario con Clerk y Supabase reales (#169)
+
+Medición a mano del 23 nov 2026, distinta de la de Lighthouse: el build de producción (`npm run build`, con la configuración del ambiente de desarrollo) servido con `scripts/medicion/servidor.mjs`, abierto en Chrome de escritorio con una sesión real y 100 plantas, **sin limitar la red ni la CPU** y con el service worker ya instalado. Los tiempos salen de la API de rendimiento del navegador (LCP y `PerformanceResourceTiming`). Son una o dos cargas por caso, no una mediana: sirven para ver el orden de las peticiones, no como cifra de referencia.
+
+Qué añade la app real a la carga de `/coleccion`, en orden:
+
+| Paso | Empieza | Termina |
+| --- | --- | --- |
+| `clerk.browser.js` y `ui.browser.js` (en caché) | 0,13–0,17 s | 0,28–0,31 s |
+| API de Clerk (`/v1/environment` y `/v1/client`, en paralelo) | 0,34–0,37 s | 0,59–0,64 s |
+| `profiles` y `plants` (PostgREST, en paralelo) | 0,56–0,68 s | 0,87–0,98 s |
+| Extras de «¿Ya la tengo?» (`species_names` × 2 y `genus_abbreviations`) | tras `plants` | ver abajo |
+
+Hallazgo: sin copia local, las tarjetas no se pintaban al llegar `plants`, sino al terminar los extras, que además se pedían uno tras otro (tres viajes más con 100 plantas).
+
+| Caso (sin copia local) | Llega `plants` | Terminan los extras | LCP (primera tarjeta) |
+| --- | --- | --- | --- |
+| Antes | 0,98 s | 2,02 s | 2,08 s |
+| Después | 0,87 s | 1,18 s | 0,93 s |
+
+Cambio aplicado: `cached-source.ts` entrega las plantas de la red en cuanto llegan (`provide`) y `extras-source.ts` pide todos los grupos a la vez. Con copia local (visitas siguientes en el mismo dispositivo) el LCP fue de 0,72 s: la copia se pinta en cuanto Clerk confirma la sesión, sin esperar a Supabase.
+
+Sin medir todavía: lo mismo con Lighthouse (móvil, red y CPU limitadas) y sesión real, que es lo que pide el criterio de los 3 s. Lighthouse abre un Chrome sin la sesión; hace falta lanzarlo contra un Chrome con depuración remota y la sesión iniciada. En red limitada cada viaje ahorrado pesa más que aquí (150 ms de ida y vuelta simulados más el tiempo del servidor), así que la mejora debería ser mayor, no menor; está por comprobar.
