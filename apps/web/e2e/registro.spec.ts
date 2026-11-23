@@ -83,7 +83,8 @@ test('registrar una especie del catálogo sin foto', async ({
     genero.getByRole('button', { name: 'Phalaenopsis' }),
   ).toBeDisabled()
   await expect(page.getByText(/Ya tienes 1 ejemplar de/)).toBeVisible()
-  await revisarAccesibilidad('registro con especie elegida')
+  // axe con la especie elegida: fotos-de-referencia.spec.ts, en la misma
+  // pantalla.
 
   await page
     .getByRole('combobox', { name: 'Origen' })
@@ -284,35 +285,38 @@ test('en celular, el aviso de registro no se aplasta con un nombre largo', async
   ).toBe(true)
 })
 
-test('registrar un nombre por validar sin fotos y con «Otro»', async ({
-  page,
-  supabase,
-}) => {
-  await page.goto('/coleccion/nueva')
-  await page
-    .getByRole('combobox', { name: 'Nombre' })
-    .fill('Masdevallia del jardín')
-  await page
-    .getByRole('group', { name: 'Género' })
-    .getByRole('button', { name: 'Otro' })
-    .click()
-  await page.getByRole('combobox', { name: 'Buscar otro género' }).fill('Masde')
-  await page.getByRole('option', { name: /^Masdevallia/ }).click()
-  await elegirTipo(page, 'No sé')
-  await page.getByRole('button', { name: 'Registrar orquídea' }).click()
+test(
+  'registrar un nombre por validar sin fotos y con «Otro»',
+  { tag: '@logica' },
+  async ({ page, supabase }) => {
+    await page.goto('/coleccion/nueva')
+    await page
+      .getByRole('combobox', { name: 'Nombre' })
+      .fill('Masdevallia del jardín')
+    await page
+      .getByRole('group', { name: 'Género' })
+      .getByRole('button', { name: 'Otro' })
+      .click()
+    await page
+      .getByRole('combobox', { name: 'Buscar otro género' })
+      .fill('Masde')
+    await page.getByRole('option', { name: /^Masdevallia/ }).click()
+    await elegirTipo(page, 'No sé')
+    await page.getByRole('button', { name: 'Registrar orquídea' }).click()
 
-  await expect(page).toHaveURL(/\/coleccion$/)
-  const nueva = supabase
-    .plantasDe(USUARIO)
-    .find((p) => p.entered_name === 'Masdevallia del jardín')
-  expect(nueva).toMatchObject({
-    species_id: null,
-    validation: 'pending',
-    genus_id: GENEROS.masdevallia,
-    type: 'unknown',
-    photo_path: null,
-  })
-})
+    await expect(page).toHaveURL(/\/coleccion$/)
+    const nueva = supabase
+      .plantasDe(USUARIO)
+      .find((p) => p.entered_name === 'Masdevallia del jardín')
+    expect(nueva).toMatchObject({
+      species_id: null,
+      validation: 'pending',
+      genus_id: GENEROS.masdevallia,
+      type: 'unknown',
+      photo_path: null,
+    })
+  },
+)
 
 test('si una foto falla al subir, la planta queda registrada y se reintenta solo esa', async ({
   page,
@@ -377,41 +381,44 @@ test('si una foto falla al subir, la planta queda registrada y se reintenta solo
 })
 
 for (const ancho of [360, 1440]) {
-  test(`a ${String(ancho)} px, sin desplazamiento horizontal y con axe`, async ({
-    page,
-    revisarAccesibilidad,
-  }) => {
-    await page.setViewportSize({ width: ancho, height: 900 })
-    await page.goto('/coleccion/nueva')
-    await page.getByRole('combobox', { name: 'Nombre' }).fill('Cattleya max')
-    await page.getByRole('option', { name: /^Cattleya maxima/ }).click()
-    await elegirFotos(page, FOTOS.slice(0, 3))
-    await page.getByRole('button', { name: 'Más detalles (opcional)' }).click()
-    const sobra = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    )
-    expect(sobra).toBeLessThanOrEqual(0)
-    // En escritorio, la galería a la derecha de los datos; en el celular,
-    // debajo del origen.
-    const nombre = await page
-      .getByRole('combobox', { name: 'Nombre' })
-      .boundingBox()
-    const caja = await galeria(page).boundingBox()
-    const origen = await page
-      .getByRole('combobox', { name: 'Origen' })
-      .boundingBox()
-    expect(nombre && caja && origen).toBeTruthy()
-    if (nombre && caja && origen) {
-      if (ancho > 720) {
-        expect(Math.round(caja.x)).toBeGreaterThan(
-          Math.round(nombre.x + nombre.width),
-        )
-      } else {
-        expect(Math.round(caja.y)).toBeGreaterThan(
-          Math.round(origen.y + origen.height),
-        )
+  test(
+    `a ${String(ancho)} px, sin desplazamiento horizontal y con axe`,
+    { tag: ancho > 720 ? '@escritorio' : [] },
+    async ({ page, revisarAccesibilidad }) => {
+      await page.setViewportSize({ width: ancho, height: 900 })
+      await page.goto('/coleccion/nueva')
+      await page.getByRole('combobox', { name: 'Nombre' }).fill('Cattleya max')
+      await page.getByRole('option', { name: /^Cattleya maxima/ }).click()
+      await elegirFotos(page, FOTOS.slice(0, 3))
+      await page
+        .getByRole('button', { name: 'Más detalles (opcional)' })
+        .click()
+      const sobra = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      )
+      expect(sobra).toBeLessThanOrEqual(0)
+      // En escritorio, la galería a la derecha de los datos; en el celular,
+      // debajo del origen.
+      const nombre = await page
+        .getByRole('combobox', { name: 'Nombre' })
+        .boundingBox()
+      const caja = await galeria(page).boundingBox()
+      const origen = await page
+        .getByRole('combobox', { name: 'Origen' })
+        .boundingBox()
+      expect(nombre && caja && origen).toBeTruthy()
+      if (nombre && caja && origen) {
+        if (ancho > 720) {
+          expect(Math.round(caja.x)).toBeGreaterThan(
+            Math.round(nombre.x + nombre.width),
+          )
+        } else {
+          expect(Math.round(caja.y)).toBeGreaterThan(
+            Math.round(origen.y + origen.height),
+          )
+        }
       }
-    }
-    await revisarAccesibilidad(`registro a ${String(ancho)} px`)
-  })
+      await revisarAccesibilidad(`registro a ${String(ancho)} px`)
+    },
+  )
 }

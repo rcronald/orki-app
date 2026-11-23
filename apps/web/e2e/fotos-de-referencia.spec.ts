@@ -56,66 +56,67 @@ test.describe('catálogo público, sin sesión', () => {
     ['a 360 px', 360, 780],
     ['en escritorio', 1440, 900],
   ] as const) {
-    test(`ficha con foto, ficha sin foto y búsqueda con miniaturas ${nombre}`, async ({
-      page,
-      revisarAccesibilidad,
-    }) => {
-      await page.setViewportSize({ width: ancho, height: alto })
-      const pedidas = vigilarImagenes(page)
+    test(
+      `ficha con foto, ficha sin foto y búsqueda con miniaturas ${nombre}`,
+      { tag: ancho > 720 ? '@escritorio' : [] },
+      async ({ page, revisarAccesibilidad }) => {
+        await page.setViewportSize({ width: ancho, height: alto })
+        const pedidas = vigilarImagenes(page)
 
-      await page.goto(`/catalogo/especie/${ESPECIES.cattleyaMaxima}`)
-      const foto = page.getByRole('img', {
-        name: 'Foto de referencia de Cattleya maxima',
-      })
-      await cargada(foto)
-      await expect(foto).toHaveAttribute('width', '480')
-      await expect(foto).toHaveAttribute('height', '360')
-      const figura = page.getByRole('figure')
-      await expect(figura).toContainText('Foto de referencia')
-      await expect(figura).toContainText('Foto: Luis Quispe')
-      await expect(figura).toContainText('reducida')
-      await expect(
-        figura.getByRole('link', { name: /CC BY-SA 4.0/ }),
-      ).toHaveAttribute(
-        'href',
-        'https://creativecommons.org/licenses/by-sa/4.0/legalcode.es',
-      )
-      await expect(
-        figura.getByRole('link', { name: /Ver el original en iNaturalist/ }),
-      ).toHaveAttribute('href', 'https://www.inaturalist.org/photos/1002')
-      await sinDesplazamientoHorizontal(page)
-      await revisarAccesibilidad(`ficha con foto ${nombre}`)
-
-      // Sin foto: la ficha empieza por lo demás, sin hueco.
-      await page.goto(`/catalogo/especie/${ESPECIES.dendrobiumNobile}`)
-      await expect(
-        page.getByRole('heading', { name: 'Dendrobium nobile', level: 1 }),
-      ).toBeVisible()
-      await expect(page.getByRole('region', { name: 'Fuente' })).toBeVisible()
-      await expect(page.getByRole('figure')).toHaveCount(0)
-
-      // Búsqueda: la miniatura en las filas que la tienen; las demás, con
-      // el hueco del mismo tamaño.
-      await page.goto('/catalogo?q=cattleya')
-      const maxima = page.getByRole('link', { name: /Cattleya maxima/ })
-      await cargada(maxima.locator('img'))
-      await expect(maxima).toContainText(
-        'Foto de referencia: Luis Quispe, CC BY-SA 4.0',
-      )
-      const trianae = page.getByRole('link', { name: /Cattleya trianae/ })
-      await expect(trianae.locator('img')).toHaveCount(0)
-      const izquierda = async (fila: Locator) =>
-        Math.round(
-          (await fila.locator('.orki-action__title').boundingBox())?.x ?? -1,
+        await page.goto(`/catalogo/especie/${ESPECIES.cattleyaMaxima}`)
+        const foto = page.getByRole('img', {
+          name: 'Foto de referencia de Cattleya maxima',
+        })
+        await cargada(foto)
+        await expect(foto).toHaveAttribute('width', '480')
+        await expect(foto).toHaveAttribute('height', '360')
+        const figura = page.getByRole('figure')
+        await expect(figura).toContainText('Foto de referencia')
+        await expect(figura).toContainText('Foto: Luis Quispe')
+        await expect(figura).toContainText('reducida')
+        await expect(
+          figura.getByRole('link', { name: /CC BY-SA 4.0/ }),
+        ).toHaveAttribute(
+          'href',
+          'https://creativecommons.org/licenses/by-sa/4.0/legalcode.es',
         )
-      expect(await izquierda(maxima)).toBe(await izquierda(trianae))
-      await sinDesplazamientoHorizontal(page)
-      await revisarAccesibilidad(`búsqueda con miniaturas ${nombre}`)
+        await expect(
+          figura.getByRole('link', { name: /Ver el original en iNaturalist/ }),
+        ).toHaveAttribute('href', 'https://www.inaturalist.org/photos/1002')
+        await sinDesplazamientoHorizontal(page)
+        await revisarAccesibilidad(`ficha con foto ${nombre}`)
 
-      // Las imágenes salen del bucket público, sin token.
-      expect(pedidas.length).toBeGreaterThan(0)
-      expect(pedidas.filter((pedida) => pedida.conToken)).toEqual([])
-    })
+        // Sin foto: la ficha empieza por lo demás, sin hueco.
+        await page.goto(`/catalogo/especie/${ESPECIES.dendrobiumNobile}`)
+        await expect(
+          page.getByRole('heading', { name: 'Dendrobium nobile', level: 1 }),
+        ).toBeVisible()
+        await expect(page.getByRole('region', { name: 'Fuente' })).toBeVisible()
+        await expect(page.getByRole('figure')).toHaveCount(0)
+
+        // Búsqueda: la miniatura en las filas que la tienen; las demás, con
+        // el hueco del mismo tamaño.
+        await page.goto('/catalogo?q=cattleya')
+        const maxima = page.getByRole('link', { name: /Cattleya maxima/ })
+        await cargada(maxima.locator('img'))
+        await expect(maxima).toContainText(
+          'Foto de referencia: Luis Quispe, CC BY-SA 4.0',
+        )
+        const trianae = page.getByRole('link', { name: /Cattleya trianae/ })
+        await expect(trianae.locator('img')).toHaveCount(0)
+        const izquierda = async (fila: Locator) =>
+          Math.round(
+            (await fila.locator('.orki-action__title').boundingBox())?.x ?? -1,
+          )
+        expect(await izquierda(maxima)).toBe(await izquierda(trianae))
+        await sinDesplazamientoHorizontal(page)
+        await revisarAccesibilidad(`búsqueda con miniaturas ${nombre}`)
+
+        // Las imágenes salen del bucket público, sin token.
+        expect(pedidas.length).toBeGreaterThan(0)
+        expect(pedidas.filter((pedida) => pedida.conToken)).toEqual([])
+      },
+    )
   }
 
   test('si la imagen no carga, la foto se retira sin dejar hueco', async ({
@@ -201,82 +202,88 @@ test('detalle de una planta sin foto propia: la de su especie, sin contar como s
 test.describe('backoffice', () => {
   test.use({ sesion: { usuario: ADMIN, rol: 'catalog_admin' } })
 
-  test('ver la foto de referencia y retirarla con motivo', async ({
-    page,
-    supabase,
-    revisarAccesibilidad,
-  }) => {
-    await page.goto(
-      `/administracion/catalogo?especie=${ESPECIES.phalaenopsisAmabilis}`,
-    )
-    const panel = page.getByRole('region', {
-      name: 'Detalle de Phalaenopsis amabilis',
-    })
-    await cargada(
-      panel.getByRole('img', {
-        name: 'Foto de referencia de Phalaenopsis amabilis',
-      }),
-    )
-    await expect(panel).toContainText('Foto: Ana Pérez')
-    await panel.getByRole('button', { name: 'Retirar foto' }).click()
-    const dialogo = page.getByRole('alertdialog', {
-      name: 'Retirar la foto de «Phalaenopsis amabilis»',
-    })
-    await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
-    await expect(dialogo.getByRole('alert')).toContainText(
-      'Elige por qué se retira la foto',
-    )
-    await revisarAccesibilidad('backoffice: retirar la foto')
-    await dialogo.getByRole('radio', { name: 'Mal identificada' }).check()
-    await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
-    await expect(dialogo).toHaveCount(0)
-    await expect(
-      page.getByRole('status').filter({ hasText: 'Se retiró la foto' }),
-    ).toContainText(
-      'Se retiró la foto de referencia de «Phalaenopsis amabilis» (mal identificada).',
-    )
-    await expect(panel.getByText('No tiene foto de referencia.')).toBeVisible()
-    expect(supabase.fotosRetiradas).toEqual([
-      {
-        species_id: ESPECIES.phalaenopsisAmabilis,
-        source_photo_id: '1001',
-        reason: 'misidentified',
-      },
-    ])
-  })
+  test(
+    'ver la foto de referencia y retirarla con motivo',
+    { tag: '@logica' },
+    async ({ page, supabase, revisarAccesibilidad }) => {
+      await page.goto(
+        `/administracion/catalogo?especie=${ESPECIES.phalaenopsisAmabilis}`,
+      )
+      const panel = page.getByRole('region', {
+        name: 'Detalle de Phalaenopsis amabilis',
+      })
+      await cargada(
+        panel.getByRole('img', {
+          name: 'Foto de referencia de Phalaenopsis amabilis',
+        }),
+      )
+      await expect(panel).toContainText('Foto: Ana Pérez')
+      await panel.getByRole('button', { name: 'Retirar foto' }).click()
+      const dialogo = page.getByRole('alertdialog', {
+        name: 'Retirar la foto de «Phalaenopsis amabilis»',
+      })
+      await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
+      await expect(dialogo.getByRole('alert')).toContainText(
+        'Elige por qué se retira la foto',
+      )
+      await revisarAccesibilidad('backoffice: retirar la foto')
+      await dialogo.getByRole('radio', { name: 'Mal identificada' }).check()
+      await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
+      await expect(dialogo).toHaveCount(0)
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Se retiró la foto' }),
+      ).toContainText(
+        'Se retiró la foto de referencia de «Phalaenopsis amabilis» (mal identificada).',
+      )
+      await expect(
+        panel.getByText('No tiene foto de referencia.'),
+      ).toBeVisible()
+      expect(supabase.fotosRetiradas).toEqual([
+        {
+          species_id: ESPECIES.phalaenopsisAmabilis,
+          source_photo_id: '1001',
+          reason: 'misidentified',
+        },
+      ])
+    },
+  )
 
-  test('si la foto cambió entretanto, avisa y relee', async ({
-    page,
-    supabase,
-  }) => {
-    await page.goto(
-      `/administracion/catalogo?especie=${ESPECIES.cattleyaMaxima}`,
-    )
-    const panel = page.getByRole('region', {
-      name: 'Detalle de Cattleya maxima',
-    })
-    await expect(
-      panel.getByRole('button', { name: 'Retirar foto' }),
-    ).toBeVisible()
-    // Otra persona la retira antes.
-    supabase.datos.fotosDeReferencia = supabase.datos.fotosDeReferencia.filter(
-      (foto) => foto.species_id !== ESPECIES.cattleyaMaxima,
-    )
-    await panel.getByRole('button', { name: 'Retirar foto' }).click()
-    const dialogo = page.getByRole('alertdialog')
-    await dialogo.getByRole('radio', { name: 'Otro motivo' }).check()
-    await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
-    await expect(dialogo).toHaveCount(0)
-    // Se anuncia (región de estado) y se ve en el panel (#257).
-    await expect(
-      page
-        .getByRole('status')
-        .filter({ hasText: /La foto de referencia de esta especie cambió/ }),
-    ).toHaveCount(1)
-    await expect(
-      panel.getByText(/La foto de referencia de esta especie cambió/),
-    ).toBeVisible()
-    await expect(panel.getByText('No tiene foto de referencia.')).toBeVisible()
-    expect(supabase.fotosRetiradas).toEqual([])
-  })
+  test(
+    'si la foto cambió entretanto, avisa y relee',
+    { tag: '@logica' },
+    async ({ page, supabase }) => {
+      await page.goto(
+        `/administracion/catalogo?especie=${ESPECIES.cattleyaMaxima}`,
+      )
+      const panel = page.getByRole('region', {
+        name: 'Detalle de Cattleya maxima',
+      })
+      await expect(
+        panel.getByRole('button', { name: 'Retirar foto' }),
+      ).toBeVisible()
+      // Otra persona la retira antes.
+      supabase.datos.fotosDeReferencia =
+        supabase.datos.fotosDeReferencia.filter(
+          (foto) => foto.species_id !== ESPECIES.cattleyaMaxima,
+        )
+      await panel.getByRole('button', { name: 'Retirar foto' }).click()
+      const dialogo = page.getByRole('alertdialog')
+      await dialogo.getByRole('radio', { name: 'Otro motivo' }).check()
+      await dialogo.getByRole('button', { name: 'Retirar foto' }).click()
+      await expect(dialogo).toHaveCount(0)
+      // Se anuncia (región de estado) y se ve en el panel (#257).
+      await expect(
+        page
+          .getByRole('status')
+          .filter({ hasText: /La foto de referencia de esta especie cambió/ }),
+      ).toHaveCount(1)
+      await expect(
+        panel.getByText(/La foto de referencia de esta especie cambió/),
+      ).toBeVisible()
+      await expect(
+        panel.getByText('No tiene foto de referencia.'),
+      ).toBeVisible()
+      expect(supabase.fotosRetiradas).toEqual([])
+    },
+  )
 })

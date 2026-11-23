@@ -28,7 +28,7 @@ async function esperarServiceWorker(page: Page) {
 
 const TITULO_PORTADA = 'Tu colección de orquídeas, en un solo lugar'
 
-test('manifiesto instalable', async ({ page, request }) => {
+test('manifiesto instalable', { tag: '@logica' }, async ({ page, request }) => {
   await page.goto('/')
   const enlace = page.locator('link[rel="manifest"]')
   await expect(enlace).toHaveCount(1)

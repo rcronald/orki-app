@@ -128,61 +128,62 @@ test('a 360 px: una columna, sin desplazamiento horizontal y acciones de 44 px',
   await revisarAccesibilidad('portada a 360 px')
 })
 
-test('en escritorio: dos columnas, foto a toda la altura hasta el borde y ventajas en fila', async ({
-  page,
-  revisarAccesibilidad,
-}) => {
-  await page.setViewportSize({ width: 1536, height: 1024 })
-  await page.goto('/')
-  await portadaDeLaApp(page)
-  await sinDesplazamientoHorizontal(page)
+test(
+  'en escritorio: dos columnas, foto a toda la altura hasta el borde y ventajas en fila',
+  { tag: '@escritorio' },
+  async ({ page, revisarAccesibilidad }) => {
+    await page.setViewportSize({ width: 1536, height: 1024 })
+    await page.goto('/')
+    await portadaDeLaApp(page)
+    await sinDesplazamientoHorizontal(page)
 
-  const cabecera = page.getByRole('banner')
-  await expect(
-    cabecera.getByRole('link', { name: 'Iniciar sesión' }),
-  ).toBeVisible()
-  await expect(
-    cabecera.getByRole('link', { name: 'Crear cuenta gratis' }),
-  ).toBeVisible()
-  // «Catálogo» (#232) en la cabecera, como enlace de sección.
-  await expect(
-    cabecera
-      .getByRole('navigation', { name: 'Secciones' })
-      .getByRole('link', { name: 'Catálogo' }),
-  ).toBeVisible()
+    const cabecera = page.getByRole('banner')
+    await expect(
+      cabecera.getByRole('link', { name: 'Iniciar sesión' }),
+    ).toBeVisible()
+    await expect(
+      cabecera.getByRole('link', { name: 'Crear cuenta gratis' }),
+    ).toBeVisible()
+    // «Catálogo» (#232) en la cabecera, como enlace de sección.
+    await expect(
+      cabecera
+        .getByRole('navigation', { name: 'Secciones' })
+        .getByRole('link', { name: 'Catálogo' }),
+    ).toBeVisible()
 
-  const titulo = await page
-    .getByRole('heading', { name: TITULO, level: 1 })
-    .boundingBox()
-  const hero = await page.getByRole('region', { name: TITULO }).boundingBox()
-  const foto = await (await fotoCargada(page)).boundingBox()
-  // La foto a la derecha del texto, hasta el borde derecho y a toda la
-  // altura del bloque, que empieza justo debajo de la cabecera.
-  expect(foto?.x).toBeGreaterThan((titulo?.x ?? 0) + (titulo?.width ?? 0) - 1)
-  expect((foto?.x ?? 0) + (foto?.width ?? 0)).toBeCloseTo(1536, 0)
-  expect(foto?.y).toBeCloseTo(hero?.y ?? 0, 0)
-  expect(foto?.height).toBeCloseTo(hero?.height ?? 0, 0)
-  const cajaCabecera = await cabecera.boundingBox()
-  expect(hero?.y).toBeCloseTo(
-    (cajaCabecera?.y ?? 0) + (cajaCabecera?.height ?? 0),
-    0,
-  )
+    const titulo = await page
+      .getByRole('heading', { name: TITULO, level: 1 })
+      .boundingBox()
+    const hero = await page.getByRole('region', { name: TITULO }).boundingBox()
+    const foto = await (await fotoCargada(page)).boundingBox()
+    // La foto a la derecha del texto, hasta el borde derecho y a toda la
+    // altura del bloque, que empieza justo debajo de la cabecera.
+    expect(foto?.x).toBeGreaterThan((titulo?.x ?? 0) + (titulo?.width ?? 0) - 1)
+    expect((foto?.x ?? 0) + (foto?.width ?? 0)).toBeCloseTo(1536, 0)
+    expect(foto?.y).toBeCloseTo(hero?.y ?? 0, 0)
+    expect(foto?.height).toBeCloseTo(hero?.height ?? 0, 0)
+    const cajaCabecera = await cabecera.boundingBox()
+    expect(hero?.y).toBeCloseTo(
+      (cajaCabecera?.y ?? 0) + (cajaCabecera?.height ?? 0),
+      0,
+    )
 
-  const ventajas = page.getByRole('heading', { level: 2 })
-  await expect(ventajas).toHaveText(VENTAJAS)
-  const cajas = await Promise.all(
-    [0, 1, 2].map((i) => ventajas.nth(i).boundingBox()),
-  )
-  expect(new Set(cajas.map((caja) => Math.round(caja?.y ?? 0))).size).toBe(1)
+    const ventajas = page.getByRole('heading', { level: 2 })
+    await expect(ventajas).toHaveText(VENTAJAS)
+    const cajas = await Promise.all(
+      [0, 1, 2].map((i) => ventajas.nth(i).boundingBox()),
+    )
+    expect(new Set(cajas.map((caja) => Math.round(caja?.y ?? 0))).size).toBe(1)
 
-  // Pie: los enlaces a la derecha.
-  const pie = page.getByRole('contentinfo')
-  const creditos = await pie
-    .getByRole('link', { name: 'Créditos y fuentes' })
-    .boundingBox()
-  expect(creditos?.x).toBeGreaterThan(1536 / 2)
-  await revisarAccesibilidad('portada en escritorio')
-})
+    // Pie: los enlaces a la derecha.
+    const pie = page.getByRole('contentinfo')
+    const creditos = await pie
+      .getByRole('link', { name: 'Créditos y fuentes' })
+      .boundingBox()
+    expect(creditos?.x).toBeGreaterThan(1536 / 2)
+    await revisarAccesibilidad('portada en escritorio')
+  },
+)
 
 // Portada prerrenderada (#204): el index.html del build trae la portada y
 // precarga su foto, así se ve sin esperar al chunk de la app ni a Clerk.
@@ -206,28 +207,30 @@ test.describe('portada prerrenderada', () => {
     return pedidas
   }
 
-  test('el HTML inicial trae la portada y la precarga de su foto', async ({
-    request,
-  }) => {
-    const html = await (await request.get('/')).text()
-    expect(html).toContain('<template id="portada-previa-plantilla">')
-    expect(html).toContain(TITULO)
-    expect(html).toMatch(/imagesrcset/)
-    // Todas las direcciones son las del build y existen.
-    expect(html).not.toContain('/src/')
-    // Pero la plantilla no lleva ningún src ni srcset de archivo: Firefox
-    // descargaría la foto en cualquier ruta (su lector previo del HTML no
-    // respeta que un <template> sea inerte).
-    const plantilla = html.slice(html.indexOf('<template'))
-    expect(plantilla).not.toMatch(/\ssrc(set)?="(?!data:)/i)
-    const direcciones = new Set(
-      html.match(/\/assets\/portada-\d+-[\w-]+\.(avif|jpg)/g) ?? [],
-    )
-    expect(direcciones.size).toBeGreaterThanOrEqual(5)
-    for (const direccion of direcciones) {
-      expect((await request.get(direccion)).ok(), direccion).toBe(true)
-    }
-  })
+  test(
+    'el HTML inicial trae la portada y la precarga de su foto',
+    { tag: '@logica' },
+    async ({ request }) => {
+      const html = await (await request.get('/')).text()
+      expect(html).toContain('<template id="portada-previa-plantilla">')
+      expect(html).toContain(TITULO)
+      expect(html).toMatch(/imagesrcset/)
+      // Todas las direcciones son las del build y existen.
+      expect(html).not.toContain('/src/')
+      // Pero la plantilla no lleva ningún src ni srcset de archivo: Firefox
+      // descargaría la foto en cualquier ruta (su lector previo del HTML no
+      // respeta que un <template> sea inerte).
+      const plantilla = html.slice(html.indexOf('<template'))
+      expect(plantilla).not.toMatch(/\ssrc(set)?="(?!data:)/i)
+      const direcciones = new Set(
+        html.match(/\/assets\/portada-\d+-[\w-]+\.(avif|jpg)/g) ?? [],
+      )
+      expect(direcciones.size).toBeGreaterThanOrEqual(5)
+      for (const direccion of direcciones) {
+        expect((await request.get(direccion)).ok(), direccion).toBe(true)
+      }
+    },
+  )
 
   test('se pinta entera sin el chunk de la app, con su foto', async ({
     page,
@@ -253,49 +256,51 @@ test.describe('portada prerrenderada', () => {
   })
 
   for (const ancho of [360, 1536]) {
-    test(`a ${ancho} px, al sustituirla por la de la app nada se mueve`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: ancho, height: 900 })
-      // El chunk de la app espera hasta que la prueba lo suelta.
-      let soltar = () => {}
-      const suelto = new Promise<void>((resolver) => {
-        soltar = resolver
-      })
-      await page.route(/\/assets\/App-[\w-]+\.js$/, async (ruta) => {
-        await suelto
-        await ruta.continue()
-      })
-      await page.goto('/', { waitUntil: 'domcontentloaded' })
-      await expect(page.locator('#portada-previa')).toHaveCount(1)
-      await fotoCargada(page)
-      const cajas = () =>
-        page.evaluate(() =>
-          [
-            '.orki-nav',
-            'h1',
-            '.orki-hero__actions',
-            'img.orki-hero__photo',
-            '.orki-features',
-            '.orki-nav__links',
-            'main a[href="/catalogo"]',
-            'footer',
-          ].map((selector) => {
-            const caja = document
-              .querySelector(selector)
-              ?.getBoundingClientRect()
-            return caja
-              ? [caja.x, caja.y, caja.width, caja.height].map(Math.round)
-              : null
-          }),
-        )
-      const antes = await cajas()
-      expect(antes).not.toContain(null)
+    test(
+      `a ${ancho} px, al sustituirla por la de la app nada se mueve`,
+      { tag: ancho > 720 ? '@escritorio' : [] },
+      async ({ page }) => {
+        await page.setViewportSize({ width: ancho, height: 900 })
+        // El chunk de la app espera hasta que la prueba lo suelta.
+        let soltar = () => {}
+        const suelto = new Promise<void>((resolver) => {
+          soltar = resolver
+        })
+        await page.route(/\/assets\/App-[\w-]+\.js$/, async (ruta) => {
+          await suelto
+          await ruta.continue()
+        })
+        await page.goto('/', { waitUntil: 'domcontentloaded' })
+        await expect(page.locator('#portada-previa')).toHaveCount(1)
+        await fotoCargada(page)
+        const cajas = () =>
+          page.evaluate(() =>
+            [
+              '.orki-nav',
+              'h1',
+              '.orki-hero__actions',
+              'img.orki-hero__photo',
+              '.orki-features',
+              '.orki-nav__links',
+              'main a[href="/catalogo"]',
+              'footer',
+            ].map((selector) => {
+              const caja = document
+                .querySelector(selector)
+                ?.getBoundingClientRect()
+              return caja
+                ? [caja.x, caja.y, caja.width, caja.height].map(Math.round)
+                : null
+            }),
+          )
+        const antes = await cajas()
+        expect(antes).not.toContain(null)
 
-      soltar()
-      await portadaDeLaApp(page)
-      expect(await cajas()).toEqual(antes)
-    })
+        soltar()
+        await portadaDeLaApp(page)
+        expect(await cajas()).toEqual(antes)
+      },
+    )
   }
 
   // Lo que el usuario tiene entre manos cuando la app sustituye la portada
@@ -409,31 +414,56 @@ test.describe('portada prerrenderada', () => {
   test.describe('con un usuario recordado en el dispositivo', () => {
     test.use({ sesion: { usuario: 'user_prueba_e2e' } })
 
-    test('no se pinta: `/` lleva a la colección', async ({ page }) => {
-      await page.addInitScript(() => {
-        localStorage.setItem('orki-ultimo-usuario', 'user_prueba_e2e')
-      })
-      const pedidas = fotosPedidas(page)
-      await page.goto('/')
-      await expect(page).toHaveURL(/\/coleccion$/)
-      await expect(
-        page.getByRole('heading', { name: 'Mi colección', level: 1 }),
-      ).toBeVisible()
-      expect(pedidas).toEqual([])
-    })
+    test(
+      'no se pinta: `/` lleva a la colección',
+      { tag: '@logica' },
+      async ({ page }) => {
+        await page.addInitScript(() => {
+          localStorage.setItem('orki-ultimo-usuario', 'user_prueba_e2e')
+        })
+        const pedidas = fotosPedidas(page)
+        await page.goto('/')
+        await expect(page).toHaveURL(/\/coleccion$/)
+        await expect(
+          page.getByRole('heading', { name: 'Mi colección', level: 1 }),
+        ).toBeVisible()
+        expect(pedidas).toEqual([])
+      },
+    )
   })
-})
 
-test.describe('con sesión', () => {
-  test.use({ sesion: { usuario: 'user_prueba_e2e' } })
+  // Sin usuario recordado (una visita nueva, o con el almacenamiento borrado)
+  // la portada se pinta al momento, sin esperar a Clerk; si resulta haber
+  // sesión, la app pasa a la colección en cuanto Clerk lo confirma
+  // (HomeRoute). Es lo previsto: la contrapartida de la prueba anterior.
+  test.describe('con sesión, pero sin usuario recordado', () => {
+    test.use({ sesion: { usuario: 'user_prueba_e2e' } })
 
-  test('el inicio lleva a la colección sin pintar la portada', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    await expect(page).toHaveURL(/\/coleccion$/)
-    await expect(
-      page.getByRole('heading', { name: 'Mi colección', level: 1 }),
-    ).toBeVisible()
+    test(
+      'se pinta y `/` lleva después a la colección',
+      { tag: '@logica' },
+      async ({ page }) => {
+        await page.addInitScript((titulo) => {
+          const w = window as unknown as { portadaPintada?: boolean }
+          new MutationObserver(() => {
+            for (const h1 of document.querySelectorAll('h1')) {
+              if (h1.textContent?.includes(titulo)) w.portadaPintada = true
+            }
+          }).observe(document, { childList: true, subtree: true })
+        }, TITULO)
+        await page.goto('/')
+        await expect(page).toHaveURL(/\/coleccion$/)
+        await expect(
+          page.getByRole('heading', { name: 'Mi colección', level: 1 }),
+        ).toBeVisible()
+        expect(
+          await page.evaluate(
+            () =>
+              (window as unknown as { portadaPintada?: boolean })
+                .portadaPintada,
+          ),
+        ).toBe(true)
+      },
+    )
   })
 })

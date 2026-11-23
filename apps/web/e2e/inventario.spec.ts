@@ -110,7 +110,7 @@ test('cabecera, cuadrícula y lista', async ({ page, revisarAccesibilidad }) => 
   ).toBeVisible()
 })
 
-test('búsqueda en la colección', async ({ page }) => {
+test('búsqueda en la colección', { tag: '@logica' }, async ({ page }) => {
   await page.goto('/coleccion')
   await expect(tarjetas(page)).toHaveCount(5)
   // Un único campo de búsqueda en la pantalla (sin lupa en la barra).
@@ -157,47 +157,53 @@ test('al escribir deprisa tecla a tecla no se pierden letras', async ({
   await expect(page).toHaveURL(/\?q=masdevallia\+veitchiana$/)
 })
 
-test('/coleccion?q= abre el inventario con ese texto en el buscador', async ({
-  page,
-}) => {
-  await page.goto('/coleccion?q=nobile')
-  await expect(buscador(page)).toHaveValue('nobile')
-  await expect(tarjetas(page)).toHaveCount(1)
-  await expect(
-    page.getByRole('article', { name: 'Dendrobium nobile' }),
-  ).toBeVisible()
-})
+test(
+  '/coleccion?q= abre el inventario con ese texto en el buscador',
+  { tag: '@logica' },
+  async ({ page }) => {
+    await page.goto('/coleccion?q=nobile')
+    await expect(buscador(page)).toHaveValue('nobile')
+    await expect(tarjetas(page)).toHaveCount(1)
+    await expect(
+      page.getByRole('article', { name: 'Dendrobium nobile' }),
+    ).toBeVisible()
+  },
+)
 
-test('accesos por género', async ({ page, revisarAccesibilidad }) => {
-  await page.goto('/coleccion')
-  await expect(tarjetas(page)).toHaveCount(5)
+test(
+  'accesos por género',
+  { tag: '@logica' },
+  async ({ page, revisarAccesibilidad }) => {
+    await page.goto('/coleccion')
+    await expect(tarjetas(page)).toHaveCount(5)
 
-  // De más a menos plantas (Cattleya tiene también la perdida); a igualdad,
-  // alfabético.
-  await expect(generos(page).getByRole('button')).toHaveText([
-    'Todos',
-    'Cattleya',
-    'Dendrobium',
-    'Masdevallia',
-    'Oncidium',
-    'Phalaenopsis',
-  ])
-  await expect(
-    generos(page).getByRole('button', { name: 'Todos' }),
-  ).toHaveAttribute('aria-pressed', 'true')
+    // De más a menos plantas (Cattleya tiene también la perdida); a igualdad,
+    // alfabético.
+    await expect(generos(page).getByRole('button')).toHaveText([
+      'Todos',
+      'Cattleya',
+      'Dendrobium',
+      'Masdevallia',
+      'Oncidium',
+      'Phalaenopsis',
+    ])
+    await expect(
+      generos(page).getByRole('button', { name: 'Todos' }),
+    ).toHaveAttribute('aria-pressed', 'true')
 
-  await generos(page).getByRole('button', { name: 'Cattleya' }).click()
-  await expect(tarjetas(page)).toHaveCount(1)
-  await generos(page).getByRole('button', { name: 'Dendrobium' }).click()
-  await expect(tarjetas(page)).toHaveCount(2)
-  await expect(page).toHaveURL(/genero=.*genero=/)
-  await revisarAccesibilidad('accesos por género')
+    await generos(page).getByRole('button', { name: 'Cattleya' }).click()
+    await expect(tarjetas(page)).toHaveCount(1)
+    await generos(page).getByRole('button', { name: 'Dendrobium' }).click()
+    await expect(tarjetas(page)).toHaveCount(2)
+    await expect(page).toHaveURL(/genero=.*genero=/)
+    await revisarAccesibilidad('accesos por género')
 
-  await generos(page).getByRole('button', { name: 'Todos' }).click()
-  await expect(tarjetas(page)).toHaveCount(5)
-})
+    await generos(page).getByRole('button', { name: 'Todos' }).click()
+    await expect(tarjetas(page)).toHaveCount(5)
+  },
+)
 
-test('filtros', async ({ page, revisarAccesibilidad }) => {
+test('filtros', { tag: '@logica' }, async ({ page, revisarAccesibilidad }) => {
   await page.goto('/coleccion')
   await expect(tarjetas(page)).toHaveCount(5)
 
@@ -258,167 +264,110 @@ test('filtros', async ({ page, revisarAccesibilidad }) => {
   ).toBeVisible()
 })
 
-test('la vista sobrevive a ir a «¿Ya la tengo?» y volver con atrás', async ({
-  page,
-}) => {
-  await page.goto('/coleccion')
-  await expect(tarjetas(page)).toHaveCount(5)
-
-  await buscador(page).fill('a')
-  await generos(page).getByRole('button', { name: 'Phalaenopsis' }).click()
-  await page
-    .getByRole('group', { name: 'Vista' })
-    .getByRole('button', { name: 'Lista' })
-    .click()
-  await page.getByRole('button', { name: 'Filtros' }).click()
-  await page
-    .getByRole('group', { name: 'Color de la flor' })
-    .getByRole('button', { name: 'Blanco' })
-    .click()
-  await expect(tarjetas(page)).toHaveCount(1)
-  const antes = page.url()
-
-  await page.getByRole('link', { name: '¿Ya la tengo?' }).click()
-  await expect(page).toHaveURL(/\/ya-la-tengo$/)
-
-  await page.goBack()
-  expect(page.url()).toBe(antes)
-  await expect(buscador(page)).toHaveValue('a')
-  await expect(
-    generos(page).getByRole('button', { name: 'Phalaenopsis' }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(
-    page.getByRole('group', { name: 'Vista' }).getByRole('button', {
-      name: 'Lista',
-    }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(
-    page.getByRole('button', { name: /^Filtros ?, 1 activo$/ }),
-  ).toBeVisible()
-  await expect(tarjetas(page)).toHaveCount(1)
-})
-
-for (const ancho of [360, 1440]) {
-  test(`a ${ancho} px: sin desplazamiento horizontal, objetivos de 44 px y axe`, async ({
-    page,
-    revisarAccesibilidad,
-  }) => {
-    await page.setViewportSize({ width: ancho, height: 900 })
+test(
+  'la vista sobrevive a ir a «¿Ya la tengo?» y volver con atrás',
+  { tag: '@logica' },
+  async ({ page }) => {
     await page.goto('/coleccion')
     await expect(tarjetas(page)).toHaveCount(5)
-    await sinDesplazamientoHorizontal(page)
 
-    const main = page.getByRole('main')
-    await objetivosDe44(main.locator('.orki-pagehead__actions > *'))
-    await objetivosDe44(page.getByRole('search').getByRole('button'))
-    await objetivosDe44(generos(page).getByRole('button'))
-    await objetivosDe44(page.getByRole('button', { name: 'Exportar a CSV' }))
-
-    // Acciones de la cabecera: a la derecha del título en escritorio; en el
-    // celular, apiladas a todo el ancho, «¿Ya la tengo?» debajo.
-    const registrar = await page
-      .getByRole('link', { name: 'Registrar orquídea' })
-      .boundingBox()
-    const consulta = await page
-      .getByRole('link', { name: '¿Ya la tengo?' })
-      .boundingBox()
-    const titulo = await page
-      .getByRole('heading', { name: 'Mi colección', level: 1 })
-      .boundingBox()
-    expect(registrar && consulta && titulo).toBeTruthy()
-    if (registrar && consulta && titulo) {
-      if (ancho === 360) {
-        expect(consulta.y).toBeGreaterThan(registrar.y)
-        expect(Math.round(consulta.width)).toBe(Math.round(registrar.width))
-        expect(registrar.y).toBeGreaterThan(titulo.y)
-      } else {
-        expect(registrar.x).toBeGreaterThan(titulo.x + titulo.width)
-        expect(Math.round(consulta.y)).toBe(Math.round(registrar.y))
-      }
-    }
-
-    // Tarjetas por fila: dos en el celular, tres en escritorio.
-    const filas = await tarjetas(page).evaluateAll((cards) =>
-      cards.map((card) => Math.round(card.getBoundingClientRect().top)),
-    )
-    const primeraFila = filas.filter((top) => top === filas[0]).length
-    expect(primeraFila).toBe(ancho === 360 ? 2 : 3)
-
-    await revisarAccesibilidad(`colección a ${ancho} px`)
+    await buscador(page).fill('a')
+    await generos(page).getByRole('button', { name: 'Phalaenopsis' }).click()
     await page
       .getByRole('group', { name: 'Vista' })
       .getByRole('button', { name: 'Lista' })
       .click()
-    await sinDesplazamientoHorizontal(page)
-    await revisarAccesibilidad(`colección en lista a ${ancho} px`)
-  })
-}
-
-// La consulta «¿Ya la tengo?» sale de esta pantalla (#208) y tendrá la suya
-// (#209). Estas pruebas se rehacen allí contra la pantalla nueva.
-test.describe('¿Ya la tengo?', () => {
-  const respuesta = (page: Page, texto: string) =>
-    page.getByRole('status').filter({ hasText: texto })
-
-  // pasa a #209
-  test.fixme('sí, por un nombre común del catálogo', async ({
-    page,
-    revisarAccesibilidad,
-  }) => {
-    await page.goto('/coleccion')
+    await page.getByRole('button', { name: 'Filtros' }).click()
     await page
-      .getByRole('searchbox', { name: 'Buscar en tu colección' })
-      .fill('orquidea luna')
-    await expect(respuesta(page, 'Sí, la tienes')).toContainText(
-      'Tienes 1 ejemplar de Phalaenopsis amabilis.',
-    )
-    await expect(
-      page
-        .getByRole('list', { name: 'Ejemplares que coinciden' })
-        .getByRole('link'),
-    ).toHaveAccessibleName(/Nombre común: Orquídea luna/)
-    await revisarAccesibilidad('¿Ya la tengo? sí')
-  })
-
-  // pasa a #209
-  test.fixme('no, pero la tuvo', async ({ page }) => {
-    await page.goto('/coleccion')
-    await page
-      .getByRole('searchbox', { name: 'Buscar en tu colección' })
-      .fill('Cattleya trianae')
-    await expect(respuesta(page, 'Aún no la tienes')).toContainText(
-      'La tuviste: 1 ejemplar perdido.',
-    )
-    await expect(
-      page
-        .getByRole('list', { name: 'Ejemplares que tuviste' })
-        .getByRole('link', { name: /Cattleya trianae/ }),
-    ).toBeVisible()
-  })
-
-  // pasa a #209
-  test.fixme('no, y se puede registrar con ese nombre', async ({
-    page,
-    revisarAccesibilidad,
-  }) => {
-    await page.goto('/coleccion')
-    await page
-      .getByRole('searchbox', { name: 'Buscar en tu colección' })
-      .fill('Vanda coerulea')
-    await expect(respuesta(page, 'Aún no la tienes')).toContainText(
-      'Vanda coerulea no está en tu colección.',
-    )
-    await revisarAccesibilidad('¿Ya la tengo? no')
-
-    await page
-      .getByRole('link', { name: 'Registrarla con este nombre' })
+      .getByRole('group', { name: 'Color de la flor' })
+      .getByRole('button', { name: 'Blanco' })
       .click()
-    await expect(page).toHaveURL(/\/coleccion\/nueva\?nombre=Vanda\+coerulea$/)
-    await expect(page.getByRole('combobox', { name: 'Nombre' })).toHaveValue(
-      'Vanda coerulea',
-    )
-  })
-})
+    await expect(tarjetas(page)).toHaveCount(1)
+    const antes = page.url()
+
+    await page.getByRole('link', { name: '¿Ya la tengo?' }).click()
+    await expect(page).toHaveURL(/\/ya-la-tengo$/)
+
+    await page.goBack()
+    expect(page.url()).toBe(antes)
+    await expect(buscador(page)).toHaveValue('a')
+    await expect(
+      generos(page).getByRole('button', { name: 'Phalaenopsis' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(
+      page.getByRole('group', { name: 'Vista' }).getByRole('button', {
+        name: 'Lista',
+      }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await expect(
+      page.getByRole('button', { name: /^Filtros ?, 1 activo$/ }),
+    ).toBeVisible()
+    await expect(tarjetas(page)).toHaveCount(1)
+  },
+)
+
+for (const ancho of [360, 1440]) {
+  test(
+    `a ${ancho} px: sin desplazamiento horizontal, objetivos de 44 px y axe`,
+    { tag: ancho > 720 ? '@escritorio' : [] },
+    async ({ page, revisarAccesibilidad }) => {
+      await page.setViewportSize({ width: ancho, height: 900 })
+      await page.goto('/coleccion')
+      await expect(tarjetas(page)).toHaveCount(5)
+      await sinDesplazamientoHorizontal(page)
+
+      // A 360 px, los 44 px los mide objetivos-tactiles.spec.ts (todos los
+      // controles visibles); a 1440, solo aquí.
+      if (ancho === 1440) {
+        const main = page.getByRole('main')
+        await objetivosDe44(main.locator('.orki-pagehead__actions > *'))
+        await objetivosDe44(page.getByRole('search').getByRole('button'))
+        await objetivosDe44(generos(page).getByRole('button'))
+        await objetivosDe44(
+          page.getByRole('button', { name: 'Exportar a CSV' }),
+        )
+      }
+
+      // Acciones de la cabecera: a la derecha del título en escritorio; en el
+      // celular, apiladas a todo el ancho, «¿Ya la tengo?» debajo.
+      const registrar = await page
+        .getByRole('link', { name: 'Registrar orquídea' })
+        .boundingBox()
+      const consulta = await page
+        .getByRole('link', { name: '¿Ya la tengo?' })
+        .boundingBox()
+      const titulo = await page
+        .getByRole('heading', { name: 'Mi colección', level: 1 })
+        .boundingBox()
+      expect(registrar && consulta && titulo).toBeTruthy()
+      if (registrar && consulta && titulo) {
+        if (ancho === 360) {
+          expect(consulta.y).toBeGreaterThan(registrar.y)
+          expect(Math.round(consulta.width)).toBe(Math.round(registrar.width))
+          expect(registrar.y).toBeGreaterThan(titulo.y)
+        } else {
+          expect(registrar.x).toBeGreaterThan(titulo.x + titulo.width)
+          expect(Math.round(consulta.y)).toBe(Math.round(registrar.y))
+        }
+      }
+
+      // Tarjetas por fila: dos en el celular, tres en escritorio.
+      const filas = await tarjetas(page).evaluateAll((cards) =>
+        cards.map((card) => Math.round(card.getBoundingClientRect().top)),
+      )
+      const primeraFila = filas.filter((top) => top === filas[0]).length
+      expect(primeraFila).toBe(ancho === 360 ? 2 : 3)
+
+      await revisarAccesibilidad(`colección a ${ancho} px`)
+      await page
+        .getByRole('group', { name: 'Vista' })
+        .getByRole('button', { name: 'Lista' })
+        .click()
+      await sinDesplazamientoHorizontal(page)
+      await revisarAccesibilidad(`colección en lista a ${ancho} px`)
+    },
+  )
+}
 
 const FOTO = readFileSync(
   path.join(
@@ -455,76 +404,76 @@ function conFotos(supabase: SupabaseSimulado, planta: string, cuantas: number) {
 }
 
 for (const ancho of [360, 1440]) {
-  test(`número de fotos en la tarjeta a ${String(ancho)} px, en cuadrícula y en lista`, async ({
-    page,
-    supabase,
-    revisarAccesibilidad,
-  }) => {
-    conFotos(supabase, PLANTAS.maxima, 3)
-    conFotos(supabase, PLANTAS.amabilis, 1)
-    await page.setViewportSize({ width: ancho, height: 900 })
-    await page.goto('/coleccion')
-    await expect(tarjetas(page)).toHaveCount(5)
+  test(
+    `número de fotos en la tarjeta a ${String(ancho)} px, en cuadrícula y en lista`,
+    { tag: ancho > 720 ? '@escritorio' : [] },
+    async ({ page, supabase, revisarAccesibilidad }) => {
+      conFotos(supabase, PLANTAS.maxima, 3)
+      conFotos(supabase, PLANTAS.amabilis, 1)
+      await page.setViewportSize({ width: ancho, height: 900 })
+      await page.goto('/coleccion')
+      await expect(tarjetas(page)).toHaveCount(5)
 
-    const maxima = page.getByRole('article', { name: 'Cattleya maxima' })
-    const amabilis = page.getByRole('article', {
-      name: 'Phalaenopsis amabilis',
-    })
+      const maxima = page.getByRole('article', { name: 'Cattleya maxima' })
+      const amabilis = page.getByRole('article', {
+        name: 'Phalaenopsis amabilis',
+      })
 
-    for (const vista of ['Cuadrícula', 'Lista']) {
-      await page
-        .getByRole('group', { name: 'Vista' })
-        .getByRole('button', { name: vista })
-        .click()
-      await expect(
-        page
+      for (const vista of ['Cuadrícula', 'Lista']) {
+        await page
           .getByRole('group', { name: 'Vista' })
-          .getByRole('button', { name: vista }),
-      ).toHaveAttribute('aria-pressed', 'true')
+          .getByRole('button', { name: vista })
+          .click()
+        await expect(
+          page
+            .getByRole('group', { name: 'Vista' })
+            .getByRole('button', { name: vista }),
+        ).toHaveAttribute('aria-pressed', 'true')
 
-      // Con tres fotos: el número sobre la foto y «3 fotos» para el lector;
-      // el nombre de la tarjeta sigue siendo el de la planta.
-      await expect(maxima).toHaveAccessibleDescription('3 fotos')
-      const numero = maxima.locator('.orki-count')
-      await expect(numero).toBeVisible()
-      await expect(numero.locator('span[aria-hidden="true"]')).toHaveText('3')
-      await expect(
-        maxima.getByRole('img', { name: 'Foto de Cattleya maxima' }),
-      ).toBeVisible()
-      const caja = await numero.boundingBox()
-      const foto = await maxima.locator('.orki-card__photo').boundingBox()
-      expect(caja && foto).toBeTruthy()
-      if (caja && foto) {
-        expect(Math.round(caja.x)).toBeGreaterThanOrEqual(Math.round(foto.x))
-        expect(Math.round(caja.y)).toBeGreaterThanOrEqual(Math.round(foto.y))
-        expect(Math.round(caja.x + caja.width)).toBeLessThanOrEqual(
-          Math.round(foto.x + foto.width),
-        )
-        expect(Math.round(caja.y + caja.height)).toBeLessThanOrEqual(
-          Math.round(foto.y + foto.height),
-        )
+        // Con tres fotos: el número sobre la foto y «3 fotos» para el lector;
+        // el nombre de la tarjeta sigue siendo el de la planta.
+        await expect(maxima).toHaveAccessibleDescription('3 fotos')
+        const numero = maxima.locator('.orki-count')
+        await expect(numero).toBeVisible()
+        await expect(numero.locator('span[aria-hidden="true"]')).toHaveText('3')
+        await expect(
+          maxima.getByRole('img', { name: 'Foto de Cattleya maxima' }),
+        ).toBeVisible()
+        const caja = await numero.boundingBox()
+        const foto = await maxima.locator('.orki-card__photo').boundingBox()
+        expect(caja && foto).toBeTruthy()
+        if (caja && foto) {
+          expect(Math.round(caja.x)).toBeGreaterThanOrEqual(Math.round(foto.x))
+          expect(Math.round(caja.y)).toBeGreaterThanOrEqual(Math.round(foto.y))
+          expect(Math.round(caja.x + caja.width)).toBeLessThanOrEqual(
+            Math.round(foto.x + foto.width),
+          )
+          expect(Math.round(caja.y + caja.height)).toBeLessThanOrEqual(
+            Math.round(foto.y + foto.height),
+          )
+        }
+
+        // Con una foto (o ninguna), nada.
+        await expect(amabilis.locator('.orki-count')).toHaveCount(0)
+        await expect(amabilis).toHaveAccessibleDescription('')
+
+        await sinDesplazamientoHorizontal(page)
+        await revisarAccesibilidad(`número de fotos en ${vista.toLowerCase()}`)
       }
 
-      // Con una foto (o ninguna), nada.
-      await expect(amabilis.locator('.orki-count')).toHaveCount(0)
-      await expect(amabilis).toHaveAccessibleDescription('')
-
-      await sinDesplazamientoHorizontal(page)
-      await revisarAccesibilidad(`número de fotos en ${vista.toLowerCase()}`)
-    }
-
-    // El indicador no tapa el enlace: tocarlo abre el detalle (se pulsa en su
-    // centro, porque no recibe el toque: lo recibe el enlace que hay debajo).
-    const centro = await maxima.locator('.orki-count').boundingBox()
-    expect(centro).toBeTruthy()
-    if (centro) {
-      await page.mouse.click(
-        Math.round(centro.x + centro.width / 2),
-        Math.round(centro.y + centro.height / 2),
-      )
-    }
-    await expect(
-      page.getByRole('heading', { name: 'Cattleya maxima', level: 1 }),
-    ).toBeVisible()
-  })
+      // El indicador no tapa el enlace: tocarlo abre el detalle (se pulsa en su
+      // centro, porque no recibe el toque: lo recibe el enlace que hay debajo).
+      const centro = await maxima.locator('.orki-count').boundingBox()
+      expect(centro).toBeTruthy()
+      if (centro) {
+        await page.mouse.click(
+          Math.round(centro.x + centro.width / 2),
+          Math.round(centro.y + centro.height / 2),
+        )
+      }
+      await expect(
+        page.getByRole('heading', { name: 'Cattleya maxima', level: 1 }),
+      ).toBeVisible()
+    },
+  )
 }

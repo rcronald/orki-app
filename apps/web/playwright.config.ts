@@ -40,13 +40,32 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
+  // Reparto por perfil (#259). Sin etiqueta, una prueba corre en los cuatro
+  // perfiles: es lo que se espera de una prueba nueva, y ante la duda se deja
+  // así. Dos etiquetas (`{ tag: ... }` en test o test.describe) la sacan solo
+  // del perfil `celular`:
+  //
+  // - @logica: flujos que no dependen del motor (rutas, sesión, lo que se
+  //   escribe en Supabase, respuestas de la app). WebKit ya los corre en el
+  //   perfil `webkit`; el de celular es el mismo motor. No se pone en lo que
+  //   mide el diseño, el foco o el teclado, ni en lo que usa el puntero, las
+  //   fotos, el service worker o la portada prerrenderada.
+  // - @escritorio: variantes a ancho de escritorio (1440 o 1536 px), que no
+  //   son un caso real con la pantalla de un iPhone.
+  //
+  // axe corre solo en chromium, y eso lo decide la fixture
+  // revisarAccesibilidad (e2e/soporte/fixtures.ts), no las pruebas.
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
     // Celular: pantalla pequeña, táctil y Safari de iPhone, el navegador con
     // más limitaciones para una PWA (#25).
-    { name: 'celular', use: { ...devices['iPhone 15'] } },
+    {
+      name: 'celular',
+      use: { ...devices['iPhone 15'] },
+      grepInvert: /@logica|@escritorio/,
+    },
   ],
   webServer: {
     command: `node ../../scripts/servir-e2e.mjs ${PUERTO}`,

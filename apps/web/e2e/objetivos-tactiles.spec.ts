@@ -203,29 +203,35 @@ async function barraDe44(page: Page, cuantos: number) {
 }
 
 for (const ancho of ANCHOS_DE_LAS_BARRAS) {
-  test(`a ${String(ancho)} px, la barra de la app: logotipo, pestañas y cuenta`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: ancho, height: 800 })
-    await page.goto('/coleccion')
-    await expect(titulo('Mi colección')(page)).toBeVisible()
-    // Logotipo, «Mi colección», «Catálogo» y «Tu cuenta».
-    await barraDe44(page, 4)
-  })
+  test(
+    `a ${String(ancho)} px, la barra de la app: logotipo, pestañas y cuenta`,
+    { tag: ancho > 720 ? '@escritorio' : [] },
+    async ({ page }) => {
+      await page.setViewportSize({ width: ancho, height: 800 })
+      await page.goto('/coleccion')
+      await expect(titulo('Mi colección')(page)).toBeVisible()
+      // Logotipo, «Mi colección», «Catálogo» y «Tu cuenta».
+      await barraDe44(page, 4)
+    },
+  )
 }
 
 test.describe('sin sesión', () => {
   test.use({ sesion: { usuario: null } })
 
   for (const ancho of ANCHOS_DE_LAS_BARRAS) {
-    test(`a ${String(ancho)} px, la barra pública`, async ({ page }) => {
-      await page.setViewportSize({ width: ancho, height: 800 })
-      await page.goto('/creditos')
-      await expect(titulo('Créditos y fuentes')(page)).toBeVisible()
-      // Hasta 720 px, solo el logotipo; en escritorio, además «Catálogo»,
-      // «Iniciar sesión» y «Crear cuenta gratis».
-      await barraDe44(page, ancho > 720 ? 4 : 1)
-    })
+    test(
+      `a ${String(ancho)} px, la barra pública`,
+      { tag: ancho > 720 ? '@escritorio' : [] },
+      async ({ page }) => {
+        await page.setViewportSize({ width: ancho, height: 800 })
+        await page.goto('/creditos')
+        await expect(titulo('Créditos y fuentes')(page)).toBeVisible()
+        // Hasta 720 px, solo el logotipo; en escritorio, además «Catálogo»,
+        // «Iniciar sesión» y «Crear cuenta gratis».
+        await barraDe44(page, ancho > 720 ? 4 : 1)
+      },
+    )
   }
 
   test('portada, catálogo, créditos, privacidad y acceso', async ({ page }) => {

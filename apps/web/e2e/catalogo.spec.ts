@@ -26,113 +26,120 @@ test.describe('sin sesión', () => {
     ['a 360 px', 360, 780],
     ['en escritorio', 1440, 900],
   ] as const) {
-    test(`géneros, especies de un género y ficha ${nombre}`, async ({
-      page,
-      supabase,
-      revisarAccesibilidad,
-    }) => {
-      await page.setViewportSize({ width: ancho, height: alto })
-      await page.goto('/catalogo')
-      await expect(
-        page.getByRole('heading', { name: 'Catálogo', level: 1 }),
-      ).toBeVisible()
-      const letras = page.getByRole('navigation', {
-        name: 'Géneros por letra',
-      })
-      // Oncidium no tiene especies en el catálogo: no sale.
-      await expect(letras.getByRole('link')).toHaveText([
-        'C',
-        'D',
-        'M',
-        'P',
-        'V',
-      ])
-      await expect(page.getByText('5 géneros · 6 especies')).toBeVisible()
-      await sinDesplazamientoHorizontal(page)
-      await revisarAccesibilidad(`catálogo ${nombre}`)
+    test(
+      `géneros, especies de un género y ficha ${nombre}`,
+      { tag: ancho > 720 ? '@escritorio' : [] },
+      async ({ page, supabase, revisarAccesibilidad }) => {
+        await page.setViewportSize({ width: ancho, height: alto })
+        await page.goto('/catalogo')
+        await expect(
+          page.getByRole('heading', { name: 'Catálogo', level: 1 }),
+        ).toBeVisible()
+        const letras = page.getByRole('navigation', {
+          name: 'Géneros por letra',
+        })
+        // Oncidium no tiene especies en el catálogo: no sale.
+        await expect(letras.getByRole('link')).toHaveText([
+          'C',
+          'D',
+          'M',
+          'P',
+          'V',
+        ])
+        await expect(page.getByText('5 géneros · 6 especies')).toBeVisible()
+        await sinDesplazamientoHorizontal(page)
+        await revisarAccesibilidad(`catálogo ${nombre}`)
 
-      await letras.getByRole('link', { name: 'P' }).click()
-      await expect(page).toHaveURL(/\/catalogo\?letra=p$/)
-      await page.getByRole('link', { name: /Phalaenopsis/ }).click()
-      await expect(page).toHaveURL(
-        new RegExp(`/catalogo/genero/${GENEROS.phalaenopsis}$`),
-      )
-      await expect(
-        page.getByRole('heading', { name: 'Phalaenopsis', level: 1 }),
-      ).toBeFocused()
-      await expect(page.getByText('1 especie · Página 1 de 1')).toBeVisible()
-      await revisarAccesibilidad(`género ${nombre}`)
+        await letras.getByRole('link', { name: 'P' }).click()
+        await expect(page).toHaveURL(/\/catalogo\?letra=p$/)
+        await page.getByRole('link', { name: /Phalaenopsis/ }).click()
+        await expect(page).toHaveURL(
+          new RegExp(`/catalogo/genero/${GENEROS.phalaenopsis}$`),
+        )
+        await expect(
+          page.getByRole('heading', { name: 'Phalaenopsis', level: 1 }),
+        ).toBeFocused()
+        await expect(page.getByText('1 especie · Página 1 de 1')).toBeVisible()
+        await revisarAccesibilidad(`género ${nombre}`)
 
-      await page.getByRole('link', { name: /Phalaenopsis amabilis/ }).click()
-      await expect(
-        page.getByRole('heading', { name: 'Phalaenopsis amabilis', level: 1 }),
-      ).toBeVisible()
-      await expect(page.getByText('Phalaenopsis grandiflora')).toBeVisible()
-      await expect(page.getByText('Orquídea luna')).toBeVisible()
-      await expect(page.getByText('(español)')).toBeVisible()
-      await expect(page.getByText('La tienes')).toHaveCount(0)
-      await expect(
-        page.getByRole('link', { name: 'Registrar esta especie' }),
-      ).toHaveCount(0)
-      await sinDesplazamientoHorizontal(page)
-      await revisarAccesibilidad(`ficha ${nombre}`)
+        await page.getByRole('link', { name: /Phalaenopsis amabilis/ }).click()
+        await expect(
+          page.getByRole('heading', {
+            name: 'Phalaenopsis amabilis',
+            level: 1,
+          }),
+        ).toBeVisible()
+        await expect(page.getByText('Phalaenopsis grandiflora')).toBeVisible()
+        await expect(page.getByText('Orquídea luna')).toBeVisible()
+        await expect(page.getByText('(español)')).toBeVisible()
+        await expect(page.getByText('La tienes')).toHaveCount(0)
+        await expect(
+          page.getByRole('link', { name: 'Registrar esta especie' }),
+        ).toHaveCount(0)
+        await sinDesplazamientoHorizontal(page)
+        await revisarAccesibilidad(`ficha ${nombre}`)
 
-      // «Volver al catálogo» vuelve a la letra del género.
-      await page.getByRole('link', { name: 'Volver al catálogo' }).click()
-      await expect(page).toHaveURL(/\/catalogo\?letra=p$/)
+        // «Volver al catálogo» vuelve a la letra del género.
+        await page.getByRole('link', { name: 'Volver al catálogo' }).click()
+        await expect(page).toHaveURL(/\/catalogo\?letra=p$/)
 
-      expect(supabase.llamadasPublicas.length).toBeGreaterThan(0)
-      expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
-    })
+        expect(supabase.llamadasPublicas.length).toBeGreaterThan(0)
+        expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
+      },
+    )
   }
 
-  test('buscar por un nombre común lleva a la especie aceptada, y «atrás» conserva la búsqueda', async ({
-    page,
-    supabase,
-    revisarAccesibilidad,
-  }) => {
-    await page.goto('/catalogo')
-    await campo(page).fill('flor de mayo')
-    const resultado = page.getByRole('link', { name: /Cattleya trianae/ })
-    await expect(resultado).toContainText('Nombre común: Flor de mayo')
-    await expect(page.getByText('1 especie encontrada.')).toBeVisible()
-    await expect(page).toHaveURL(/\/catalogo\?q=flor\+de\+mayo$/)
-    await revisarAccesibilidad('búsqueda con resultados')
+  test(
+    'buscar por un nombre común lleva a la especie aceptada, y «atrás» conserva la búsqueda',
+    { tag: '@logica' },
+    async ({ page, supabase, revisarAccesibilidad }) => {
+      await page.goto('/catalogo')
+      await campo(page).fill('flor de mayo')
+      const resultado = page.getByRole('link', { name: /Cattleya trianae/ })
+      await expect(resultado).toContainText('Nombre común: Flor de mayo')
+      await expect(page.getByText('1 especie encontrada.')).toBeVisible()
+      await expect(page).toHaveURL(/\/catalogo\?q=flor\+de\+mayo$/)
+      await revisarAccesibilidad('búsqueda con resultados')
 
-    await resultado.click()
-    await expect(
-      page.getByRole('heading', { name: 'Cattleya trianae', level: 1 }),
-    ).toBeVisible()
-    await page.goBack()
-    await expect(campo(page)).toHaveValue('flor de mayo')
-    await expect(resultado).toBeVisible()
+      await resultado.click()
+      await expect(
+        page.getByRole('heading', { name: 'Cattleya trianae', level: 1 }),
+      ).toBeVisible()
+      await page.goBack()
+      await expect(campo(page)).toHaveValue('flor de mayo')
+      await expect(resultado).toBeVisible()
 
-    await campo(page).fill('stanhopea')
-    await expect(
-      page.getByText('No hay especies que coincidan con «stanhopea».').first(),
-    ).toBeVisible()
-    expect(
-      supabase.llamadasPublicas.filter(
-        (l) => l.funcion === 'search_public_species',
-      ).length,
-    ).toBeGreaterThan(0)
-    expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
-  })
+      await campo(page).fill('stanhopea')
+      await expect(
+        page
+          .getByText('No hay especies que coincidan con «stanhopea».')
+          .first(),
+      ).toBeVisible()
+      expect(
+        supabase.llamadasPublicas.filter(
+          (l) => l.funcion === 'search_public_species',
+        ).length,
+      ).toBeGreaterThan(0)
+      expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
+    },
+  )
 
-  test('una ficha que no existe: «Especie no encontrada» con la vuelta', async ({
-    page,
-  }) => {
-    await page.goto('/catalogo/especie/00000000-0000-4000-8000-000000009999')
-    await expect(
-      page.getByRole('heading', { name: 'Especie no encontrada', level: 1 }),
-    ).toBeVisible()
-    await page
-      .getByRole('main')
-      .getByRole('link', { name: 'Volver al catálogo' })
-      .last()
-      .click()
-    await expect(page).toHaveURL(/\/catalogo$/)
-  })
+  test(
+    'una ficha que no existe: «Especie no encontrada» con la vuelta',
+    { tag: '@logica' },
+    async ({ page }) => {
+      await page.goto('/catalogo/especie/00000000-0000-4000-8000-000000009999')
+      await expect(
+        page.getByRole('heading', { name: 'Especie no encontrada', level: 1 }),
+      ).toBeVisible()
+      await page
+        .getByRole('main')
+        .getByRole('link', { name: 'Volver al catálogo' })
+        .last()
+        .click()
+      await expect(page).toHaveURL(/\/catalogo$/)
+    },
+  )
 
   test('sin conexión: lo dice y lo ya cargado se sigue viendo', async ({
     page,
@@ -172,37 +179,39 @@ test.describe('sin sesión', () => {
 })
 
 test.describe('con sesión', () => {
-  test('la ficha dice si la tiene y registra la especie elegida', async ({
-    page,
-    supabase,
-    revisarAccesibilidad,
-  }) => {
-    await page.goto(`/catalogo/especie/${ESPECIES.phalaenopsisAmabilis}`)
-    await expect(
-      page.getByRole('navigation', { name: 'Principal' }),
-    ).toBeVisible()
-    await expect(page.getByText('La tienes')).toBeVisible()
-    await expect(page.getByText('1 ejemplar en tu colección')).toBeVisible()
-    await revisarAccesibilidad('ficha con sesión')
-    await page.getByRole('link', { name: /Ver en mi colección/ }).click()
-    await expect(page).toHaveURL(/\/coleccion\?q=Phalaenopsis\+amabilis$/)
+  test(
+    'la ficha dice si la tiene y registra la especie elegida',
+    { tag: '@logica' },
+    async ({ page, supabase, revisarAccesibilidad }) => {
+      await page.goto(`/catalogo/especie/${ESPECIES.phalaenopsisAmabilis}`)
+      await expect(
+        page.getByRole('navigation', { name: 'Principal' }),
+      ).toBeVisible()
+      await expect(page.getByText('La tienes')).toBeVisible()
+      await expect(page.getByText('1 ejemplar en tu colección')).toBeVisible()
+      await revisarAccesibilidad('ficha con sesión')
+      await page.getByRole('link', { name: /Ver en mi colección/ }).click()
+      await expect(page).toHaveURL(/\/coleccion\?q=Phalaenopsis\+amabilis$/)
 
-    await page.goto(`/catalogo/especie/${ESPECIES.vandaCoerulea}`)
-    await expect(page.getByText('Aún no la tienes')).toBeVisible()
-    await page.getByRole('link', { name: 'Registrar esta especie' }).click()
-    await expect(page).toHaveURL(/\/coleccion\/nueva\?nombre=Vanda\+coerulea$/)
-    await expect(page.getByRole('combobox', { name: 'Nombre' })).toHaveValue(
-      'Vanda coerulea',
-    )
-    await expect(page.getByText('Coincidencia en el catálogo')).toBeVisible()
-    await page.getByRole('button', { name: 'Registrar orquídea' }).click()
-    await expect(page).toHaveURL(/\/coleccion$/)
-    const nueva = supabase
-      .plantasDe('user_e2e')
-      .find((planta) => planta.entered_name === 'Vanda coerulea')
-    expect(nueva?.species_id).toBe(ESPECIES.vandaCoerulea)
+      await page.goto(`/catalogo/especie/${ESPECIES.vandaCoerulea}`)
+      await expect(page.getByText('Aún no la tienes')).toBeVisible()
+      await page.getByRole('link', { name: 'Registrar esta especie' }).click()
+      await expect(page).toHaveURL(
+        /\/coleccion\/nueva\?nombre=Vanda\+coerulea$/,
+      )
+      await expect(page.getByRole('combobox', { name: 'Nombre' })).toHaveValue(
+        'Vanda coerulea',
+      )
+      await expect(page.getByText('Coincidencia en el catálogo')).toBeVisible()
+      await page.getByRole('button', { name: 'Registrar orquídea' }).click()
+      await expect(page).toHaveURL(/\/coleccion$/)
+      const nueva = supabase
+        .plantasDe('user_e2e')
+        .find((planta) => planta.entered_name === 'Vanda coerulea')
+      expect(nueva?.species_id).toBe(ESPECIES.vandaCoerulea)
 
-    // Con sesión, el catálogo sigue yendo sin token.
-    expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
-  })
+      // Con sesión, el catálogo sigue yendo sin token.
+      expect(supabase.llamadasPublicas.every((l) => !l.conToken)).toBe(true)
+    },
+  )
 })

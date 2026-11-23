@@ -73,175 +73,180 @@ for (const { ancho, alto } of [
   { ancho: 1440, alto: 900 },
   { ancho: 360, alto: 760 },
 ]) {
-  test(`ver varias fotos y recorrerlas en el visor a ${String(ancho)} px`, async ({
-    page,
-    supabase,
-    revisarAccesibilidad,
-  }) => {
-    await page.setViewportSize({ width: ancho, height: alto })
-    conFotos(supabase, 4)
-    await page.goto(`/coleccion/${PLANTA}`)
-    await expect(
-      page.getByRole('heading', { name: NOMBRE, level: 1 }),
-    ).toBeVisible()
-    await expect(miniaturas(page)).toHaveCount(4)
-    await expect(galeria(page).getByText('4 de 6')).toBeVisible()
-    await expect(
-      galeria(page).getByRole('img', { name: `Foto principal de ${NOMBRE}` }),
-    ).toHaveAttribute('src', /^blob:/)
-    // «Volver a Mi colección» con 44 px de alto (#174).
-    const volver = page.getByRole('link', { name: 'Volver a Mi colección' })
-    const caja = await volver.boundingBox()
-    expect(Math.round(caja?.height ?? 0)).toBeGreaterThanOrEqual(44)
-    await sinDesplazamientoHorizontal(page)
-    await revisarAccesibilidad(`detalle con varias fotos a ${String(ancho)} px`)
+  test(
+    `ver varias fotos y recorrerlas en el visor a ${String(ancho)} px`,
+    { tag: ancho > 720 ? '@escritorio' : [] },
+    async ({ page, supabase, revisarAccesibilidad }) => {
+      await page.setViewportSize({ width: ancho, height: alto })
+      conFotos(supabase, 4)
+      await page.goto(`/coleccion/${PLANTA}`)
+      await expect(
+        page.getByRole('heading', { name: NOMBRE, level: 1 }),
+      ).toBeVisible()
+      await expect(miniaturas(page)).toHaveCount(4)
+      await expect(galeria(page).getByText('4 de 6')).toBeVisible()
+      await expect(
+        galeria(page).getByRole('img', { name: `Foto principal de ${NOMBRE}` }),
+      ).toHaveAttribute('src', /^blob:/)
+      // «Volver a Mi colección» con 44 px de alto (#174).
+      const volver = page.getByRole('link', { name: 'Volver a Mi colección' })
+      const caja = await volver.boundingBox()
+      expect(Math.round(caja?.height ?? 0)).toBeGreaterThanOrEqual(44)
+      await sinDesplazamientoHorizontal(page)
+      await revisarAccesibilidad(
+        `detalle con varias fotos a ${String(ancho)} px`,
+      )
 
-    // Elegir la tercera: se ve en grande con su fecha y su nota.
-    await miniaturas(page).nth(2).click()
-    await expect(miniaturas(page).nth(2)).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    await expect(fotoGrande(page)).toHaveAccessibleName(
-      `Ver en grande: Foto 3 de 4 de ${NOMBRE}, en flor`,
-    )
-    await expect(galeria(page).getByText('Primera vara floral')).toBeVisible()
-    await expect(
-      galeria(page).getByText('Foto del 5 de octubre de 2026'),
-    ).toBeVisible()
+      // Elegir la tercera: se ve en grande con su fecha y su nota.
+      await miniaturas(page).nth(2).click()
+      await expect(miniaturas(page).nth(2)).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+      await expect(fotoGrande(page)).toHaveAccessibleName(
+        `Ver en grande: Foto 3 de 4 de ${NOMBRE}, en flor`,
+      )
+      await expect(galeria(page).getByText('Primera vara floral')).toBeVisible()
+      await expect(
+        galeria(page).getByText('Foto del 5 de octubre de 2026'),
+      ).toBeVisible()
 
-    // El visor, con el teclado.
-    await fotoGrande(page).focus()
-    await page.keyboard.press('Enter')
-    const visor = page.getByRole('dialog', { name: `Fotos de ${NOMBRE}` })
-    await expect(visor).toBeVisible()
-    await expect(visor.getByRole('button', { name: 'Cerrar' })).toBeFocused()
-    await expect(visor.getByText('Foto 3 de 4')).toBeVisible()
-    await expect(
-      visor.getByRole('img', { name: `Foto 3 de 4 de ${NOMBRE}, en flor` }),
-    ).toHaveAttribute('src', /^blob:/)
-    await sinDesplazamientoHorizontal(page)
-    await revisarAccesibilidad(`visor a ${String(ancho)} px`)
+      // El visor, con el teclado.
+      await fotoGrande(page).focus()
+      await page.keyboard.press('Enter')
+      const visor = page.getByRole('dialog', { name: `Fotos de ${NOMBRE}` })
+      await expect(visor).toBeVisible()
+      await expect(visor.getByRole('button', { name: 'Cerrar' })).toBeFocused()
+      await expect(visor.getByText('Foto 3 de 4')).toBeVisible()
+      await expect(
+        visor.getByRole('img', { name: `Foto 3 de 4 de ${NOMBRE}, en flor` }),
+      ).toHaveAttribute('src', /^blob:/)
+      await sinDesplazamientoHorizontal(page)
+      await revisarAccesibilidad(`visor a ${String(ancho)} px`)
 
-    await page.keyboard.press('ArrowRight')
-    await expect(visor.getByText('Foto 4 de 4')).toBeVisible()
-    await expect(
-      visor.getByRole('button', { name: 'Foto siguiente' }),
-    ).toHaveAttribute('aria-disabled', 'true')
-    await visor.getByRole('button', { name: 'Foto anterior' }).click()
-    await page.keyboard.press('ArrowLeft')
-    await expect(visor.getByText('Foto 2 de 4')).toBeVisible()
-    await expect(
-      visor.getByRole('img', { name: `Foto 2 de 4 de ${NOMBRE}` }),
-    ).toHaveAttribute('src', /^blob:/)
+      await page.keyboard.press('ArrowRight')
+      await expect(visor.getByText('Foto 4 de 4')).toBeVisible()
+      await expect(
+        visor.getByRole('button', { name: 'Foto siguiente' }),
+      ).toHaveAttribute('aria-disabled', 'true')
+      await visor.getByRole('button', { name: 'Foto anterior' }).click()
+      await page.keyboard.press('ArrowLeft')
+      await expect(visor.getByText('Foto 2 de 4')).toBeVisible()
+      await expect(
+        visor.getByRole('img', { name: `Foto 2 de 4 de ${NOMBRE}` }),
+      ).toHaveAttribute('src', /^blob:/)
 
-    await page.keyboard.press('Escape')
-    await expect(visor).toBeHidden()
-    await expect(fotoGrande(page)).toBeFocused()
-    await expect(miniaturas(page).nth(1)).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-  })
+      await page.keyboard.press('Escape')
+      await expect(visor).toBeHidden()
+      await expect(fotoGrande(page)).toBeFocused()
+      await expect(miniaturas(page).nth(1)).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+    },
+  )
 }
 
-test('editar la fecha y la nota de una foto', async ({
-  page,
-  supabase,
-  revisarAccesibilidad,
-}) => {
-  conFotos(supabase, 3)
-  await page.goto(`/coleccion/${PLANTA}`)
-  await miniaturas(page).nth(1).click()
-  await galeria(page)
-    .getByRole('button', { name: 'Editar fecha y nota' })
-    .click()
+test(
+  'editar la fecha y la nota de una foto',
+  { tag: '@logica' },
+  async ({ page, supabase, revisarAccesibilidad }) => {
+    conFotos(supabase, 3)
+    await page.goto(`/coleccion/${PLANTA}`)
+    await miniaturas(page).nth(1).click()
+    await galeria(page)
+      .getByRole('button', { name: 'Editar fecha y nota' })
+      .click()
 
-  const formulario = galeria(page).getByRole('form', {
-    name: 'Fecha y nota de la foto',
-  })
-  const fecha = formulario.getByLabel('Fecha de la foto (opcional)')
-  await expect(fecha).toBeFocused()
-  await fecha.fill('2999-01-01')
-  await formulario.getByRole('button', { name: 'Guardar' }).click()
-  await expect(
-    formulario.getByText('La fecha no puede ser posterior a hoy.'),
-  ).toBeVisible()
-  await revisarAccesibilidad('fecha y nota con un error')
+    const formulario = galeria(page).getByRole('form', {
+      name: 'Fecha y nota de la foto',
+    })
+    const fecha = formulario.getByLabel('Fecha de la foto (opcional)')
+    await expect(fecha).toBeFocused()
+    await fecha.fill('2999-01-01')
+    await formulario.getByRole('button', { name: 'Guardar' }).click()
+    await expect(
+      formulario.getByText('La fecha no puede ser posterior a hoy.'),
+    ).toBeVisible()
+    await revisarAccesibilidad('fecha y nota con un error')
 
-  await fecha.fill('2026-11-01')
-  await formulario.getByLabel('Nota (opcional)').fill('  Hojas nuevas  ')
-  await formulario.getByRole('button', { name: 'En flor' }).click()
-  await formulario.getByRole('button', { name: 'Guardar' }).click()
+    await fecha.fill('2026-11-01')
+    await formulario.getByLabel('Nota (opcional)').fill('  Hojas nuevas  ')
+    await formulario.getByRole('button', { name: 'En flor' }).click()
+    await formulario.getByRole('button', { name: 'Guardar' }).click()
 
-  await expect(
-    galeria(page).getByText('Guardaste la fecha y la nota de la foto.'),
-  ).toBeVisible()
-  await expect(galeria(page).getByText('Hojas nuevas')).toBeVisible()
-  await expect(
-    galeria(page).getByText('Foto del 1 de noviembre de 2026'),
-  ).toBeVisible()
-  await expect(
-    galeria(page).getByRole('button', { name: 'Editar fecha y nota' }),
-  ).toBeFocused()
-  expect(supabase.fotosDe(PLANTA)[1]).toMatchObject({
-    taken_at: '2026-11-01',
-    note: 'Hojas nuevas',
-    in_bloom: true,
-  })
-})
+    await expect(
+      galeria(page).getByText('Guardaste la fecha y la nota de la foto.'),
+    ).toBeVisible()
+    await expect(galeria(page).getByText('Hojas nuevas')).toBeVisible()
+    await expect(
+      galeria(page).getByText('Foto del 1 de noviembre de 2026'),
+    ).toBeVisible()
+    await expect(
+      galeria(page).getByRole('button', { name: 'Editar fecha y nota' }),
+    ).toBeFocused()
+    expect(supabase.fotosDe(PLANTA)[1]).toMatchObject({
+      taken_at: '2026-11-01',
+      note: 'Hojas nuevas',
+      in_bloom: true,
+    })
+  },
+)
 
-test('hacer principal y reordenar: la tarjeta del inventario muestra la nueva principal', async ({
-  page,
-  supabase,
-  revisarAccesibilidad,
-}) => {
-  conFotos(supabase, 4)
-  await page.goto('/coleccion')
-  await page.getByRole('link', { name: NOMBRE }).click()
-  await expect(miniaturas(page)).toHaveCount(4)
+test(
+  'hacer principal y reordenar: la tarjeta del inventario muestra la nueva principal',
+  { tag: '@logica' },
+  async ({ page, supabase, revisarAccesibilidad }) => {
+    conFotos(supabase, 4)
+    await page.goto('/coleccion')
+    await page.getByRole('link', { name: NOMBRE }).click()
+    await expect(miniaturas(page)).toHaveCount(4)
 
-  // Mover la segunda después: pasa al tercer lugar.
-  await miniaturas(page).nth(1).click()
-  await galeria(page).getByRole('button', { name: 'Mover después' }).click()
-  await expect(
-    galeria(page).getByText('Foto movida al lugar 3 de 4.'),
-  ).toBeVisible()
-  expect(supabase.fotosDe(PLANTA).map((f) => f.photo_path)).toEqual([
-    ruta('photo', 1),
-    ruta('photo', 3),
-    ruta('photo', 2),
-    ruta('photo', 4),
-  ])
+    // Mover la segunda después: pasa al tercer lugar.
+    await miniaturas(page).nth(1).click()
+    await galeria(page).getByRole('button', { name: 'Mover después' }).click()
+    await expect(
+      galeria(page).getByText('Foto movida al lugar 3 de 4.'),
+    ).toBeVisible()
+    expect(supabase.fotosDe(PLANTA).map((f) => f.photo_path)).toEqual([
+      ruta('photo', 1),
+      ruta('photo', 3),
+      ruta('photo', 2),
+      ruta('photo', 4),
+    ])
 
-  // Hacer principal la cuarta.
-  await miniaturas(page).nth(3).click()
-  const principal = galeria(page).getByRole('button', {
-    name: 'Hacer principal',
-  })
-  await principal.click()
-  await expect(
-    galeria(page).getByText(
-      'Ahora es la foto principal. Tu colección ya la muestra.',
-    ),
-  ).toBeVisible()
-  await expect(principal).toHaveAttribute('aria-disabled', 'true')
-  await expect(miniaturas(page).first()).toHaveAttribute('aria-pressed', 'true')
-  expect(supabase.fotosDe(PLANTA)[0]?.photo_path).toBe(ruta('photo', 4))
-  expect(
-    supabase.datos.plantas.find((p) => p.id === PLANTA)?.thumbnail_path,
-  ).toBe(ruta('thumb', 4))
-  await revisarAccesibilidad('galería tras hacer principal')
+    // Hacer principal la cuarta.
+    await miniaturas(page).nth(3).click()
+    const principal = galeria(page).getByRole('button', {
+      name: 'Hacer principal',
+    })
+    await principal.click()
+    await expect(
+      galeria(page).getByText(
+        'Ahora es la foto principal. Tu colección ya la muestra.',
+      ),
+    ).toBeVisible()
+    await expect(principal).toHaveAttribute('aria-disabled', 'true')
+    await expect(miniaturas(page).first()).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(supabase.fotosDe(PLANTA)[0]?.photo_path).toBe(ruta('photo', 4))
+    expect(
+      supabase.datos.plantas.find((p) => p.id === PLANTA)?.thumbnail_path,
+    ).toBe(ruta('thumb', 4))
+    await revisarAccesibilidad('galería tras hacer principal')
 
-  // La tarjeta del inventario, ya con la nueva (la imagen de 240 px).
-  await page.getByRole('link', { name: 'Volver a Mi colección' }).click()
-  const tarjeta = page
-    .getByRole('article', { name: NOMBRE })
-    .locator('img.orki-card__photo')
-  await expect
-    .poll(() => tarjeta.evaluate((img: HTMLImageElement) => img.naturalWidth))
-    .toBe(240)
-})
+    // La tarjeta del inventario, ya con la nueva (la imagen de 240 px).
+    await page.getByRole('link', { name: 'Volver a Mi colección' }).click()
+    const tarjeta = page
+      .getByRole('article', { name: NOMBRE })
+      .locator('img.orki-card__photo')
+    await expect
+      .poll(() => tarjeta.evaluate((img: HTMLImageElement) => img.naturalWidth))
+      .toBe(240)
+  },
+)
 
 test('sin conexión: solo la principal, el motivo y nada que cambiar', async ({
   page,
