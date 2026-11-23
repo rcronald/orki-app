@@ -41,6 +41,8 @@ venv/
 # Reportes de la carga del catálogo (scripts/catalog-import): pueden ser grandes y se
 # revisan, no se versionan.
 reporte-carga-*.csv
+# Reportes del emparejamiento con iNaturalist (orki-catalogo emparejar-inaturalist).
+reporte-inaturalist-*.csv
 
 # macOS
 .DS_Store

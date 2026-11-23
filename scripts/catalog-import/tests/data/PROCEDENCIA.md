@@ -43,3 +43,15 @@ La muestra es un extracto (49 de 8 504 545 filas). Solo se modificó una fila a 
 | Sinónimos de rango género y familia                  | `8VXDV` _Epipactis_ Ség. y `LLFHH` Apostasiaceae                                                                                                      |
 | Géneros sin especies importadas                      | `8VXXY` _Goodyera_ y `8VTQR` _Anacamptis_ (en la muestra)                                                                                             |
 | Espacios y autoría                                   | `7THCP` (modificada, ver arriba); las autorías van aparte del nombre en todas las filas                                                               |
+
+# Respuestas grabadas de iNaturalist
+
+`inaturalist/respuestas.json` tiene cinco respuestas reales de la API pública de iNaturalist (`https://api.inaturalist.org/v1/`), pedidas el 22 de noviembre de 2026 sin autenticación, indexadas por su URL exacta. Las usa `test_inaturalist_cli.py`, que las sirve sin red. Son: la búsqueda del género _Phalaenopsis_ (taxón 140477), la primera página de sus especies e híbridos, las fotos de los taxones (`/v1/taxa/{ids}`) y dos búsquedas de observaciones.
+
+Se recortaron a propósito, para que la muestra sea pequeña:
+
+- De la página de especies se conservan 10 de sus 100 taxones (344883, 864477, 344885, 1127035, 1028105, 488434, 852336, 1598483, 518230 y 903975), con solo los campos que usa la herramienta (`id`, `name`, `rank`, `is_active`, `current_synonymous_taxon_ids`, `observations_count`, `default_photo` y los nombres científicos de `names`).
+- La respuesta de fotos de los taxones se rehízo con los taxones de la muestra (la URL, por tanto, es la que pide la herramienta con ellos) y con las cuatro primeras fotos de cada uno. Por eso _Phalaenopsis aphrodite_ no tiene aquí ninguna foto del taxón con licencia aceptada (la quinta sí la tiene) y sale con la de una observación: así la muestra cubre los tres casos.
+- De las observaciones, las tres primeras, con el taxón, el autor y las fotos.
+
+Los nombres de autor son los que iNaturalist publica para la atribución de cada foto. Ninguna imagen se descargó. Los datos son de iNaturalist y de sus usuarios; cada foto citada tiene la licencia que indica su `license_code`.
