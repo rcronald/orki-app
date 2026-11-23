@@ -167,31 +167,41 @@ export function publicPhotoUrl(client: OrkiSupabaseClient): Resolve {
 export const SPECIES_PHOTO_SELECT =
   'medium_path, medium_width, medium_height, thumbnail_path, thumbnail_width, thumbnail_height, author_name, license, source, source_url, is_modified'
 
+/** Por qué no se pudo leer la foto (no es «sin foto»): sin conexión o un fallo. */
+export class ReferencePhotoError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super('No se pudo leer la foto de referencia.', options)
+    this.name = 'ReferencePhotoError'
+  }
+}
+
 /**
  * La foto de referencia de una especie, con sesión: una consulta por clave a
  * species_photos (/rest/v1/species_photos?species_id=eq.<id>). Null si no
- * tiene. Sin conexión no se pide (null) y cualquier fallo es «sin foto»: es
- * una ayuda, no un dato que falte.
+ * tiene (o si lo que llega no se puede mostrar con su atribución). Sin
+ * conexión no se pide; sin conexión o con un fallo, se rechaza con
+ * ReferencePhotoError (quien la usa no la muestra y puede volver a pedirla).
  */
 export async function getSpeciesReferencePhoto(
   speciesId: string,
   { signal }: { signal?: AbortSignal } = {},
 ): Promise<ReferencePicture | null> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return null
+    throw new ReferencePhotoError()
   }
+  let client: OrkiSupabaseClient
   try {
-    const client = await getSupabase()
-    signal?.throwIfAborted()
-    let request = client
-      .from('species_photos')
-      .select(SPECIES_PHOTO_SELECT)
-      .eq('species_id', speciesId)
-    if (signal) request = request.abortSignal(signal)
-    const { data, error } = await request.maybeSingle()
-    if (error || data === null) return null
-    return toReferencePicture(data, publicPhotoUrl(client))
-  } catch {
-    return null
+    client = await getSupabase()
+  } catch (error) {
+    throw new ReferencePhotoError({ cause: error })
   }
+  signal?.throwIfAborted()
+  let request = client
+    .from('species_photos')
+    .select(SPECIES_PHOTO_SELECT)
+    .eq('species_id', speciesId)
+  if (signal) request = request.abortSignal(signal)
+  const { data, error } = await request.maybeSingle()
+  if (error) throw new ReferencePhotoError({ cause: error })
+  return data === null ? null : toReferencePicture(data, publicPhotoUrl(client))
 }

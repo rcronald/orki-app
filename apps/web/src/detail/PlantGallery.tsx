@@ -7,6 +7,8 @@ import { Button } from '../components/ui/Button.tsx'
 import { galleryPhotoLabel } from '../components/ui/gallery-label.ts'
 import { Icon } from '../components/ui/Icon.tsx'
 import { PhotoLightbox } from '../components/ui/PhotoLightbox.tsx'
+import { ReferencePhoto } from '../components/ui/ReferencePhoto.tsx'
+import type { ReferencePicture } from '../lib/referencePhotos.ts'
 import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import {
   orderWithMain,
@@ -47,6 +49,11 @@ interface PlantGalleryProps {
   services: PlantGalleryServices
   /** La planta releída tras cambiar la principal o su «en flor». */
   onPlantUpdated: (plant: CollectionPlant) => void
+  /**
+   * La foto de referencia de su especie (#234): solo se muestra mientras la
+   * planta no tiene ninguna foto propia, en lugar del hueco vacío.
+   */
+  reference?: ReferencePicture | null
 }
 
 /** Texto del error de una escritura; recarga si la galería cambió. */
@@ -91,6 +98,19 @@ export function PhotoFacts({ photo }: { photo: StoredPlantPhoto }) {
         </p>
       )}
       {photo.note !== null && <p className="orki-viewer__note">{photo.note}</p>}
+    </div>
+  )
+}
+
+/** La planta sin ninguna foto: el marcador sin-foto.svg. */
+function EmptyPhoto() {
+  return (
+    <div className="orki-viewer__main">
+      <img
+        className="orki-viewer__photo orki-viewer__photo--empty"
+        src={sinFoto}
+        alt={GALLERY_TEXT.noPhoto}
+      />
     </div>
   )
 }
@@ -226,6 +246,11 @@ function ViewerPhoto({ photo, alt }: { photo: StoredPlantPhoto; alt: string }) {
  *
  * Cambiar algo exige conexión y la lista leída de la base; sin ella (sin
  * conexión al abrir) se ve solo la principal de la colección y lo dice.
+ *
+ * Sin fotos propias, en lugar del hueco vacío, la foto de referencia de su
+ * especie si la hay (#234), rotulada y con su crédito, y una frase que dice
+ * que no es de su ejemplar: no es «principal», no cuenta en «N de 6» y no
+ * abre el visor.
  */
 export function PlantGallery({
   plant,
@@ -233,6 +258,7 @@ export function PlantGallery({
   readOnly,
   services,
   onPlantUpdated,
+  reference = null,
 }: PlantGalleryProps) {
   const titleId = useId()
   const reasonId = useId()
@@ -357,14 +383,19 @@ export function PlantGallery({
           buttonRef={mainButton}
           onOpen={() => setViewer(true)}
         />
+      ) : reference !== null ? (
+        <ReferencePhoto
+          key={reference.sourcePhotoId}
+          picture={reference}
+          scientificName={plant.species?.scientificName ?? name}
+          variant="viewer"
+          fallback={<EmptyPhoto />}
+        />
       ) : (
-        <div className="orki-viewer__main">
-          <img
-            className="orki-viewer__photo orki-viewer__photo--empty"
-            src={sinFoto}
-            alt={GALLERY_TEXT.noPhoto}
-          />
-        </div>
+        <EmptyPhoto />
+      )}
+      {!selected && reference !== null && (
+        <p className="orki-viewer__hint">{GALLERY_TEXT.referenceNote}</p>
       )}
 
       {count > 1 && (

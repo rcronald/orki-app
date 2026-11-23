@@ -1190,7 +1190,6 @@ export function PlantForm(props: PlantFormProps) {
           <SpeciesPreview
             speciesId={duplicateSpecies.id}
             scientificName={duplicateSpecies.scientificName}
-            online={online}
             load={services.loadReferencePhoto}
           />
         )}

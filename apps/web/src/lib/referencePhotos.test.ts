@@ -3,6 +3,7 @@ import { CONFIG, fakeReferencePhoto } from '../test/public-catalog.ts'
 import {
   getSpeciesReferencePhoto,
   REFERENCE_LICENSES,
+  ReferencePhotoError,
   toReferencePicture,
 } from './referencePhotos.ts'
 import { initSupabase, setSessionTokenSource } from './supabase.ts'
@@ -114,12 +115,16 @@ describe('getSpeciesReferencePhoto', () => {
 
   it('sin conexión no pide nada', async () => {
     online = false
-    expect(await getSpeciesReferencePhoto(SPECIES)).toBeNull()
+    await expect(getSpeciesReferencePhoto(SPECIES)).rejects.toBeInstanceOf(
+      ReferencePhotoError,
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('un fallo es «sin foto»', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 500 }))
-    expect(await getSpeciesReferencePhoto(SPECIES)).toBeNull()
+  it('un fallo no es «sin foto»: se rechaza', async () => {
+    fetchMock.mockResolvedValue(new Response('{}', { status: 400 }))
+    await expect(getSpeciesReferencePhoto(SPECIES)).rejects.toBeInstanceOf(
+      ReferencePhotoError,
+    )
   })
 })

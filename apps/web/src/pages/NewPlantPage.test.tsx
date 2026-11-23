@@ -50,6 +50,7 @@ import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { plant } from '../test/collection.ts'
 import { processedPhoto } from '../test/photos.ts'
 import { fakeReferencePhoto } from '../test/public-catalog.ts'
+import { forgetReferencePhotos } from '../lib/useReferencePhoto.ts'
 import {
   fakeCollectionSource,
   type FakeCollectionSource,
@@ -351,6 +352,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
+  forgetReferencePhotos()
   document.documentElement.lang = 'es'
   resetFakeClerk()
   setFakeClerk({ signedIn: true, userId: 'user_prueba' })
