@@ -45,6 +45,8 @@ export interface MemoryPlantPhotoRows extends PlantPhotoRows {
   failReorder:
     ((photoIds: readonly string[]) => SimulatedRowFailure | null) | undefined
   failReadPlant: (() => PhotoStorageError | null) | undefined
+  // insert y remove pasan por insertMany y removeMany (una fila): los fallos
+  // simulados se piden por fila también en lote.
   /** Fotos de una planta en orden (para las comprobaciones de las pruebas). */
   photosOf(plantId: string): StoredPlantPhoto[]
 }
@@ -120,57 +122,89 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
     },
 
     insert(photo) {
-      const failure = store.failInsert?.(photo)
-      if (failure && !failure.applied) return Promise.reject(failure.error)
-      const plant = plants.get(photo.plantId)
-      if (plants.size > 0 && (!plant || plant.userId !== photo.userId)) {
-        return Promise.reject(new PhotoStorageError('not-found'))
+      return store.insertMany([photo]).then(([stored]) => {
+        if (!stored) throw new PhotoStorageError('failed')
+        return stored
+      })
+    },
+
+    // Una sola sentencia: si una fila no vale, no se crea ninguna.
+    insertMany(photos) {
+      const failures = photos.map((photo) => store.failInsert?.(photo) ?? null)
+      const refused = failures.find((failure) => failure && !failure.applied)
+      if (refused) return Promise.reject(refused.error)
+      const taken = new Set(
+        [...rows.values()].map((row) => `${row.plantId}:${row.position}`),
+      )
+      for (const photo of photos) {
+        const plant = plants.get(photo.plantId)
+        if (plants.size > 0 && (!plant || plant.userId !== photo.userId)) {
+          return Promise.reject(new PhotoStorageError('not-found'))
+        }
+        if (
+          !Number.isInteger(photo.position) ||
+          photo.position < 0 ||
+          photo.position >= MAX_PLANT_PHOTOS ||
+          !inFolder(photo.photoPath, photo.userId, photo.plantId) ||
+          !inFolder(photo.thumbnailPath, photo.userId, photo.plantId)
+        ) {
+          // 23514: restricción de la tabla.
+          return Promise.reject(new PhotoStorageError('failed'))
+        }
+        const key = `${photo.plantId}:${String(photo.position)}`
+        if (taken.has(key)) {
+          return Promise.reject(new PhotoStorageError('position-taken'))
+        }
+        taken.add(key)
       }
-      if (
-        !Number.isInteger(photo.position) ||
-        photo.position < 0 ||
-        photo.position >= MAX_PLANT_PHOTOS ||
-        !inFolder(photo.photoPath, photo.userId, photo.plantId) ||
-        !inFolder(photo.thumbnailPath, photo.userId, photo.plantId)
-      ) {
-        // 23514: restricción de la tabla.
-        return Promise.reject(new PhotoStorageError('failed'))
+      const created = photos.map((photo) => {
+        clock += 1000
+        const stored: StoredPlantPhoto & { userId: string } = {
+          id: crypto.randomUUID(),
+          plantId: photo.plantId,
+          userId: photo.userId,
+          photoPath: photo.photoPath,
+          thumbnailPath: photo.thumbnailPath,
+          inBloom: photo.inBloom,
+          takenAt: photo.takenAt,
+          note: photo.note,
+          position: photo.position,
+          createdAt: new Date(clock).toISOString(),
+        }
+        rows.set(stored.id, stored)
+        return stored
+      })
+      for (const plantId of new Set(photos.map((photo) => photo.plantId))) {
+        copyMainPhoto(plantId)
       }
-      if (
-        photosOf(photo.plantId).some((row) => row.position === photo.position)
-      ) {
-        return Promise.reject(new PhotoStorageError('position-taken'))
-      }
-      clock += 1000
-      const stored: StoredPlantPhoto & { userId: string } = {
-        id: crypto.randomUUID(),
-        plantId: photo.plantId,
-        userId: photo.userId,
-        photoPath: photo.photoPath,
-        thumbnailPath: photo.thumbnailPath,
-        inBloom: photo.inBloom,
-        takenAt: photo.takenAt,
-        note: photo.note,
-        position: photo.position,
-        createdAt: new Date(clock).toISOString(),
-      }
-      rows.set(stored.id, stored)
-      copyMainPhoto(photo.plantId)
-      if (failure) return Promise.reject(failure.error)
-      return Promise.resolve(plain(stored))
+      const late = failures.find((failure) => failure?.applied)
+      if (late) return Promise.reject(late.error)
+      return Promise.resolve(created.map(plain).sort(byPosition))
     },
 
     remove(photoId, userId) {
-      const failure = store.failRemove?.(photoId)
-      if (failure && !failure.applied) return Promise.reject(failure.error)
-      const row = rows.get(photoId)
-      let deleted: StoredPlantPhoto | null = null
-      if (row && row.userId === userId) {
-        rows.delete(photoId)
-        copyMainPhoto(row.plantId)
-        deleted = plain(row)
+      return store
+        .removeMany([photoId], userId)
+        .then(([deleted]) => deleted ?? null)
+    },
+
+    removeMany(photoIds, userId) {
+      const failures = photoIds.map((id) => store.failRemove?.(id) ?? null)
+      const refused = failures.find((failure) => failure && !failure.applied)
+      if (refused) return Promise.reject(refused.error)
+      const deleted: StoredPlantPhoto[] = []
+      const touched = new Set<string>()
+      for (const photoId of photoIds) {
+        const row = rows.get(photoId)
+        if (row && row.userId === userId) {
+          rows.delete(photoId)
+          touched.add(row.plantId)
+          deleted.push(plain(row))
+        }
       }
-      if (failure) return Promise.reject(failure.error)
+      for (const plantId of touched) copyMainPhoto(plantId)
+      const late = failures.find((failure) => failure?.applied)
+      if (late) return Promise.reject(late.error)
       return Promise.resolve(deleted)
     },
 

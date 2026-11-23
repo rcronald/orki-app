@@ -3,6 +3,7 @@ import { MAX_PLANT_PHOTOS, plantPhotoPaths } from '../photos/paths.ts'
 import {
   byPosition,
   type PlantPhotoRowChanges,
+  type PlantPhotoRowInsert,
   type PlantPhotoRows,
   type StoredPlantPhoto,
 } from '../photos/photo-rows.ts'
@@ -57,26 +58,42 @@ import {
 // 2. Guardar los datos de la planta (solo las columnas que cambiaron). Es
 //    idempotente: repetir el mismo cambio deja lo mismo. Quien llama recuerda
 //    lo ya guardado (evento data-saved) para no volver a enviarlo.
-// 3. Borrar las filas de las fotos quitadas (sin sus archivos). Va antes de
-//    crear las nuevas porque una planta tiene como mucho seis posiciones
-//    (0 a 5): con seis fotos, quitar dos y añadir dos no cabría al revés. Si
-//    la fila ya no está (un intento anterior la borró), se sigue.
+// 3. Borrar las filas de las fotos quitadas (sin sus archivos), todas en una
+//    petición (id=in.(...)). Va antes de crear las nuevas porque una planta
+//    tiene como mucho seis posiciones (0 a 5): con seis fotos, quitar dos y
+//    añadir dos no cabría al revés. Si la fila ya no está (un intento
+//    anterior la borró), se sigue.
 // 4. Crear las filas de las fotos nuevas, con su fecha, su nota y «en flor»,
-//    en posiciones libres. Sus archivos ya existen (paso 1): nunca hay una
-//    fila que cite un archivo que no está. Si la ruta ya tiene fila (un
-//    intento anterior la creó), no se crea otra: no hay duplicados.
-// 5. Cambiar la fecha, la nota y «en flor» de las fotos que se conservan,
-//    solo si difieren de lo leído en el paso 0.
+//    en posiciones libres, todas en una petición (una sola sentencia: todas o
+//    ninguna). Sus archivos ya existen (paso 1): nunca hay una fila que cite
+//    un archivo que no está. Si la ruta ya tiene fila (un intento anterior la
+//    creó), no se crea otra: no hay duplicados.
+// 5. Cambiar la fecha, la nota y «en flor» de las fotos que ya tienen fila,
+//    solo si difieren de lo leído en el paso 0. PostgREST no deja poner un
+//    valor distinto en cada fila de un PATCH (y un upsert escribiría
+//    plant_id, user_id y las rutas, que la API no deja cambiar), así que va
+//    una petición por foto; las que solo cambian la fecha o la nota salen a
+//    la vez que el paso 3 (o el 4, si no hay nada que quitar).
 // 6. Poner el orden final de una vez (reorder_plant_photos): la primera es
 //    la principal y la base la copia a la planta. Si ya está en ese orden, no
 //    se envía nada.
 // 7. Releer la planta (con la principal y el número de fotos nuevos) para la
-//    colección y la tarjeta de «Mi colección».
+//    colección y la tarjeta de «Mi colección», a la vez que el paso 8.
 // 8. Al final, borrar los archivos que ya no cita ninguna fila: los de las
 //    fotos quitadas y los subidos que no llegaron a tener fila (una foto
 //    nueva que se quitó entre dos intentos). Si falla, quedan para el script
 //    de limpieza (npm run fotos:huerfanas): un archivo sin fila no lo ve
 //    nadie.
+//
+// Escrituras a la vez (#285): dos sentencias que disparan sync_plant sobre
+// la misma planta no pueden ir a la vez. El disparador lee la principal con
+// la foto de su propia sentencia y escribe plants después; si otra
+// transacción cambia plant_photos entre tanto, la que confirma la última
+// puede dejar en plants una principal vieja (incluso la de una foto quitada,
+// cuyos archivos se borran en el paso 8). Por eso el borrado, la inserción,
+// los cambios de «en flor» y el orden van uno detrás de otro, y solo salen a
+// la vez las fechas y notas (que no disparan sync_plant) y, al final, la
+// relectura de la planta con el borrado de archivos.
 //
 // Si un paso falla, el plan se detiene con PlantEditError (qué paso, por qué
 // y, en la subida, qué fotos). Lo editado sigue en la pantalla y «Reintentar»
@@ -385,56 +402,6 @@ async function runPlantEdit(
     photosWritten = true
   }
 
-  // 3. Filas de las fotos quitadas (los archivos, al final).
-  for (const id of removals) {
-    if (!rows.some((row) => row.id === id)) continue
-    try {
-      await rowsApi.remove(id, userId)
-    } catch (error) {
-      throw await failure('remove', photoStorageErrorFrom(error))
-    }
-    rows = rows.filter((row) => row.id !== id)
-    written()
-    onEvent({ type: 'row-removed', id })
-  }
-
-  // 4. Filas de las fotos nuevas.
-  for (const photo of newPhotos) {
-    const paths =
-      uploaded.get(photo.files) ?? pathsOf(photo.files, userId, plantId)
-    if (rowWithPath(paths.photoPath)) continue
-    const position = freePosition(new Set(rows.map((row) => row.position)))
-    if (position === null) {
-      throw new PlantEditError(
-        'insert',
-        new PhotoStorageError('too-many-photos'),
-      )
-    }
-    let row: StoredPlantPhoto
-    try {
-      row = await rowsApi.insert({
-        plantId,
-        userId,
-        photoPath: paths.photoPath,
-        thumbnailPath: paths.thumbnailPath,
-        inBloom: photo.details.inBloom,
-        takenAt: photo.details.takenAt,
-        note: photo.details.note,
-        position,
-      })
-    } catch (error) {
-      const failed = photoStorageErrorFrom(error)
-      throw await failure(
-        'insert',
-        failed.reason === 'position-taken'
-          ? new PhotoStorageError('too-many-photos', { cause: error })
-          : failed,
-      )
-    }
-    rows = [...rows, row].sort(byPosition)
-    written()
-  }
-
   // Cada foto del plan con su fila.
   const rowOf = (photo: PlannedPhoto): StoredPlantPhoto | undefined =>
     photo.kind === 'stored'
@@ -444,30 +411,138 @@ async function runPlantEdit(
             .photoPath,
         )
 
-  // 5. Fecha, nota y «en flor».
-  for (const photo of photos) {
+  // 5 (antes de escribir): la fecha, la nota y «en flor» que cambian en las
+  // filas que ya existen. Las que no tocan «en flor» no disparan la copia de
+  // la principal a la planta (sync_plant solo mira posición, rutas e
+  // in_bloom), así que pueden ir a la vez que el borrado o la inserción; las
+  // que lo tocan van después, de una en una (ver «Escrituras a la vez»).
+  const detailUpdates = photos.flatMap((photo) => {
     const row = rowOf(photo)
-    if (!row) {
-      // La fila desapareció durante el intento (otro dispositivo): el
-      // reintento lo concilia, salvo que se haya ido la planta entera.
-      const gone = await plantIsGone()
+    if (!row) return []
+    const changes = detailChanges(row, photo.details)
+    return Object.keys(changes).length === 0 ? [] : [{ row, changes }]
+  })
+  const quietUpdates = detailUpdates.filter(
+    ({ changes }) => changes.inBloom === undefined,
+  )
+  const bloomUpdates = detailUpdates.filter(
+    ({ changes }) => changes.inBloom !== undefined,
+  )
+  const runUpdate = async ({
+    row,
+    changes,
+  }: (typeof detailUpdates)[number]) => {
+    const updated = await rowsApi.update(row.id, userId, changes)
+    rows = rows.map((item) => (item.id === updated.id ? updated : item))
+    written()
+  }
+  /** Las de fecha y nota, en el primer viaje que escriba (o solas). */
+  let pendingQuiet: typeof quietUpdates | null = quietUpdates
+  const withQuiet = () => {
+    const tasks = (pendingQuiet ?? []).map(runUpdate)
+    pendingQuiet = null
+    return tasks
+  }
+  /**
+   * El primer fallo de una fecha o una nota: se lanza después de crear las
+   * filas nuevas, como si el paso 5 fuera detrás del 4 (lo de antes queda
+   * hecho, igual que sin ir a la vez).
+   */
+  let detailsFailure: unknown = null
+  /** Espera un viaje: lanza el fallo de su paso y aparta el de las notas. */
+  const settle = async (
+    step: PlantEditStep,
+    main: Promise<unknown> | null,
+    others: Promise<unknown>[],
+    mapError: (error: unknown) => unknown = photoStorageErrorFrom,
+  ) => {
+    const [mainResult, ...otherResults] = await Promise.allSettled([
+      main ?? Promise.resolve(),
+      ...others,
+    ])
+    const rejected = otherResults.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+    if (rejected) detailsFailure ??= rejected.reason
+    if (mainResult?.status === 'rejected') {
+      throw await failure(step, mapError(mainResult.reason))
+    }
+  }
+
+  // 3. Filas de las fotos quitadas, en una sola petición (los archivos, al
+  // final).
+  const toRemove = removals.filter((id) => rows.some((row) => row.id === id))
+  if (toRemove.length > 0) {
+    const removing = rowsApi.removeMany(toRemove, userId).then(() => {
+      rows = rows.filter((row) => !toRemove.includes(row.id))
+      written()
+      for (const id of toRemove) onEvent({ type: 'row-removed', id })
+    })
+    await settle('remove', removing, withQuiet())
+  }
+
+  // 4. Filas de las fotos nuevas, en una sola petición (todas o ninguna).
+  const occupied = new Set(rows.map((row) => row.position))
+  const inserts: PlantPhotoRowInsert[] = []
+  for (const photo of newPhotos) {
+    const paths =
+      uploaded.get(photo.files) ?? pathsOf(photo.files, userId, plantId)
+    if (rowWithPath(paths.photoPath)) continue
+    const position = freePosition(occupied)
+    if (position === null) {
       throw new PlantEditError(
-        'details',
-        new PhotoStorageError(gone ? 'not-found' : 'failed'),
-        [],
-        { plantGone: gone },
+        'insert',
+        new PhotoStorageError('too-many-photos'),
       )
     }
-    const changes = detailChanges(row, photo.details)
-    if (Object.keys(changes).length === 0) continue
-    let updated: StoredPlantPhoto
+    occupied.add(position)
+    inserts.push({
+      plantId,
+      userId,
+      photoPath: paths.photoPath,
+      thumbnailPath: paths.thumbnailPath,
+      inBloom: photo.details.inBloom,
+      takenAt: photo.details.takenAt,
+      note: photo.details.note,
+      position,
+    })
+  }
+  const inserting =
+    inserts.length > 0
+      ? rowsApi.insertMany(inserts).then((created) => {
+          rows = [...rows, ...created].sort(byPosition)
+          written()
+        })
+      : null
+  await settle('insert', inserting, withQuiet(), (error) => {
+    const failed = photoStorageErrorFrom(error)
+    return failed.reason === 'position-taken'
+      ? new PhotoStorageError('too-many-photos', { cause: error })
+      : failed
+  })
+
+  // 5. Fecha, nota y «en flor»: cada foto del plan tiene ya su fila; las que
+  // cambian «en flor», de una en una.
+  if (detailsFailure !== null) {
+    throw await failure('details', photoStorageErrorFrom(detailsFailure))
+  }
+  if (photos.some((photo) => !rowOf(photo))) {
+    // La fila desapareció durante el intento (otro dispositivo): el
+    // reintento lo concilia, salvo que se haya ido la planta entera.
+    const gone = await plantIsGone()
+    throw new PlantEditError(
+      'details',
+      new PhotoStorageError(gone ? 'not-found' : 'failed'),
+      [],
+      { plantGone: gone },
+    )
+  }
+  for (const update of bloomUpdates) {
     try {
-      updated = await rowsApi.update(row.id, userId, changes)
+      await runUpdate(update)
     } catch (error) {
       throw await failure('details', photoStorageErrorFrom(error))
     }
-    rows = rows.map((item) => (item.id === updated.id ? updated : item))
-    written()
   }
 
   // 6. El orden final (la primera es la principal). Las filas que el plan no
@@ -493,16 +568,13 @@ async function runPlantEdit(
     written()
   }
 
-  // 7. La planta con la principal y el número de fotos nuevos.
-  if (photosWritten) {
-    try {
-      plant = await rowsApi.readPlant(plantId, userId)
-    } catch {
-      // La base ya tiene la principal; la colección la verá en la próxima
-      // lectura.
-    }
-  }
-
+  // 7 y 8, a la vez: las filas ya son las finales.
+  // 7. La planta con la principal y el número de fotos nuevos. La respuesta
+  // del paso 2 no sirve: salió antes de escribir las fotos, y la principal
+  // y photo_count los pone la base desde plant_photos.
+  const reading = photosWritten
+    ? rowsApi.readPlant(plantId, userId).catch(() => null)
+    : Promise.resolve(null)
   // 8. Los archivos que ya no cita ninguna fila: los de las fotos quitadas
   // (también las que quitó un intento anterior u otro dispositivo) y los
   // subidos sin fila (fotos nuevas que se quitaron entre dos intentos).
@@ -515,7 +587,13 @@ async function runPlantEdit(
     ].filter((path) => !cited.has(path)),
   )
   uploaded.clear()
-  const leftovers = await removeQuietly(storage, [...unused])
+  const [reread, leftovers] = await Promise.all([
+    reading,
+    removeQuietly(storage, [...unused]),
+  ])
+  // Si la relectura falla, la base ya tiene la principal; la colección la
+  // verá en la próxima lectura.
+  if (reread) plant = reread
 
   return { plant, photos: [...rows].sort(byPosition), leftovers }
 }

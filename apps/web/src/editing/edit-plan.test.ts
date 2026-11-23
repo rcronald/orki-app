@@ -148,7 +148,9 @@ describe('applyPlantEdit', () => {
     if (!first || !second) throw new Error('Sin fotos.')
     const spies = [
       vi.spyOn(context.rows, 'insert'),
+      vi.spyOn(context.rows, 'insertMany'),
       vi.spyOn(context.rows, 'remove'),
+      vi.spyOn(context.rows, 'removeMany'),
       vi.spyOn(context.rows, 'update'),
       vi.spyOn(context.rows, 'reorder'),
       vi.spyOn(context.storage, 'upload'),
@@ -171,10 +173,11 @@ describe('applyPlantEdit', () => {
     const a = added()
     const b = added()
     const calls: string[] = []
-    const removeRow = context.rows.remove.bind(context.rows)
-    vi.spyOn(context.rows, 'remove').mockImplementation((...args) => {
+    // Las filas quitadas se borran en una sola petición (#285).
+    const removeRows = context.rows.removeMany.bind(context.rows)
+    vi.spyOn(context.rows, 'removeMany').mockImplementation((...args) => {
       calls.push('fila quitada')
-      return removeRow(...args)
+      return removeRows(...args)
     })
     const removeFiles = context.storage.remove.bind(context.storage)
     vi.spyOn(context.storage, 'remove').mockImplementation((paths) => {
@@ -342,8 +345,10 @@ describe('applyPlantEdit', () => {
 
     context.rows.failInsert = undefined
     const insert = vi.spyOn(context.rows, 'insert')
+    const insertMany = vi.spyOn(context.rows, 'insertMany')
     await apply(context, plan([a]), uploaded)
     expect(insert).not.toHaveBeenCalled()
+    expect(insertMany).not.toHaveBeenCalled()
     expect(context.rows.photosOf(PLANT_ID)).toHaveLength(1)
     expect(bucket(context)).toEqual(cited(context))
   })
@@ -406,16 +411,24 @@ describe('discardUploads', () => {
     const context = setup(0)
     const a = added()
     const b = added()
-    // a llega a tener fila; b se queda subida sin fila (falló su fila).
-    let inserts = 0
-    context.rows.failInsert = () => {
-      inserts += 1
-      return inserts === 2 ? { error: new PhotoStorageError('failed') } : null
-    }
+    // a llega a tener fila; b se queda subida sin fila. Las filas nuevas se
+    // crean todas en una petición (#285), así que a la crea un primer
+    // intento (llega sin respuesta) y b la sube un segundo intento que falla
+    // al guardar los datos, antes de crear filas.
+    context.rows.failInsert = () => ({
+      error: new PhotoStorageError('offline', { uncertain: true }),
+      applied: true,
+    })
     const uploaded: UploadedPhotos = new Map()
-    await expect(apply(context, plan([a, b]), uploaded)).rejects.toMatchObject({
+    await expect(apply(context, plan([a]), uploaded)).rejects.toMatchObject({
       step: 'insert',
     })
+    context.rows.failInsert = undefined
+    context.updatePlant.mockRejectedValueOnce(new PlantSaveError('offline'))
+    await expect(
+      apply(context, plan([a, b], [], { nickname: 'La reina' }), uploaded),
+    ).rejects.toMatchObject({ step: 'data' })
+    expect(rowPaths(context)).toHaveLength(1)
     expect(bucket(context)).toHaveLength(4)
 
     await discardUploads(
@@ -424,6 +437,7 @@ describe('discardUploads', () => {
       context,
     )
     expect(bucket(context)).toEqual(cited(context))
+    expect(bucket(context)).toHaveLength(2)
     expect(uploaded.size).toBe(0)
   })
 })
@@ -458,12 +472,13 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
     const context = setup(0)
     const a = added()
     const gate = held()
-    const insertRow = context.rows.insert.bind(context.rows)
+    // Las filas nuevas se crean en una sola petición (#285).
+    const insertRows = context.rows.insertMany.bind(context.rows)
     const insert = vi
-      .spyOn(context.rows, 'insert')
-      .mockImplementation(async (row) => {
+      .spyOn(context.rows, 'insertMany')
+      .mockImplementation(async (photos) => {
         await gate.promise
-        return insertRow(row)
+        return insertRows(photos)
       })
     const uploaded: UploadedPhotos = new Map()
     const attempt = apply(context, plan([a]), uploaded)

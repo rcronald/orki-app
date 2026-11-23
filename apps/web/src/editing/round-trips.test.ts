@@ -24,7 +24,9 @@ import {
 const ROW_METHODS: (keyof PlantPhotoRows)[] = [
   'list',
   'insert',
+  'insertMany',
   'remove',
+  'removeMany',
   'update',
   'reorder',
   'readPlant',
@@ -134,8 +136,8 @@ describe('peticiones y viajes al guardar la edición (#285)', () => {
       viajes: counter.trips(),
     }).toMatchInlineSnapshot(`
       {
-        "peticiones": 11,
-        "viajes": 9,
+        "peticiones": 10,
+        "viajes": 6,
       }
     `)
     // Lo de siempre: las filas y el bucket como deben.
@@ -157,8 +159,8 @@ describe('peticiones y viajes al guardar la edición (#285)', () => {
       viajes: counter.trips(),
     }).toMatchInlineSnapshot(`
       {
-        "peticiones": 12,
-        "viajes": 10,
+        "peticiones": 11,
+        "viajes": 7,
       }
     `)
   })
@@ -172,8 +174,8 @@ describe('peticiones y viajes al guardar la edición (#285)', () => {
       viajes: counter.trips(),
     }).toMatchInlineSnapshot(`
       {
-        "peticiones": 12,
-        "viajes": 10,
+        "peticiones": 11,
+        "viajes": 7,
       }
     `)
     expect(context.rows.plants.get(PLANT_ID)?.photoPath).toBe(

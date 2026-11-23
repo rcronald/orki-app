@@ -510,11 +510,14 @@ function holdInserts(rows: Context['rows']) {
   const gate = new Promise<void>((resolve) => {
     release = resolve
   })
-  const insertRow = rows.insert.bind(rows)
-  const insert = vi.spyOn(rows, 'insert').mockImplementation(async (row) => {
-    await gate
-    return insertRow(row)
-  })
+  // Las filas nuevas se crean en una sola petición (#285).
+  const insertRows = rows.insertMany.bind(rows)
+  const insert = vi
+    .spyOn(rows, 'insertMany')
+    .mockImplementation(async (photos) => {
+      await gate
+      return insertRows(photos)
+    })
   return { insert, release }
 }
 
