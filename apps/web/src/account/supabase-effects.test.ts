@@ -120,6 +120,32 @@ describe('createSupabaseAccountDataEffects', () => {
     expect(fake.deletes).toEqual([`plants.user_id=${USER}`])
   })
 
+  it('borra también las fotos de la bitácora (<planta>/log/, #267)', async () => {
+    const paths = [
+      `${USER}/${PLANT_A}/photo-v1.webp`,
+      `${USER}/${PLANT_A}/thumb-v1.webp`,
+      `${USER}/${PLANT_A}/log/photo-r1.webp`,
+      `${USER}/${PLANT_A}/log/thumb-r1.webp`,
+      `${USER}/${PLANT_B}/log/photo-r2.jpg`,
+      `${USER}/${PLANT_B}/log/thumb-r2.jpg`,
+    ]
+    const fake = fakeClient({
+      objects: [...paths, `otro_usuario/${PLANT_A}/log/photo-x.webp`],
+    })
+    const effects = createSupabaseAccountDataEffects({
+      getClient: () => Promise.resolve(fake.client),
+    })
+
+    await effects.deletePhotos(USER)
+    // Los registros se van con las plantas (on delete cascade).
+    await effects.deletePlants(USER)
+
+    expect([...fake.objects]).toEqual([
+      `otro_usuario/${PLANT_A}/log/photo-x.webp`,
+    ])
+    expect(fake.removed.flat().sort()).toEqual([...paths].sort())
+  })
+
   it('pagina el listado y borra de 100 en 100', async () => {
     const paths = Array.from(
       { length: 250 },

@@ -1,4 +1,4 @@
-import { plantFolder } from './paths.ts'
+import { LOG_SUBFOLDER, plantFolder } from './paths.ts'
 import { appPlantPhotoRecords, type PlantPhotoRecords } from './plant-record.ts'
 import { appPhotoStorage, type PhotoStorage } from './storage.ts'
 
@@ -13,6 +13,11 @@ import { appPhotoStorage, type PhotoStorage } from './storage.ts'
 // Con varias fotos por planta (#219) no cambia nada: todas (la principal y
 // las secundarias de plant_photos) están en la carpeta de la planta, y sus
 // filas se borran con la planta (on delete cascade).
+//
+// Bitácora (#267): las fotos de los registros van en la subcarpeta log/ de
+// la planta. Listar una carpeta en Storage devuelve solo su primer nivel (las
+// subcarpetas llegan sin id y storage.ts las omite), así que log/ se lista
+// aparte. Los registros se borran con la planta (on delete cascade).
 
 export interface DeletePlantPhotosOptions {
   userId: string
@@ -22,16 +27,21 @@ export interface DeletePlantPhotosOptions {
 
 /**
  * Borra todos los archivos de la carpeta de una planta
- * (<usuario>/<planta>/): la foto y la miniatura actuales y cualquier resto de
- * subidas anteriores. Devuelve las rutas borradas. Rechaza con
- * PhotoStorageError si no puede listar o borrar.
+ * (<usuario>/<planta>/ y <usuario>/<planta>/log/): las fotos de la galería,
+ * las de la bitácora y cualquier resto de subidas anteriores. Devuelve las
+ * rutas borradas. Rechaza con PhotoStorageError si no puede listar o borrar.
  */
 export async function deletePlantPhotoFolder({
   userId,
   plantId,
   storage = appPhotoStorage(),
 }: DeletePlantPhotosOptions): Promise<string[]> {
-  const paths = await storage.list(plantFolder(userId, plantId))
+  const folder = plantFolder(userId, plantId)
+  const listed = [
+    ...(await storage.list(folder)),
+    ...(await storage.list(`${folder}${LOG_SUBFOLDER}/`)),
+  ]
+  const paths = [...new Set(listed)]
   // Remove acepta varias rutas por petición; de 100 en 100 por prudencia.
   for (let index = 0; index < paths.length; index += 100) {
     await storage.remove(paths.slice(index, index + 100))
