@@ -38,6 +38,29 @@ export const PLANT_FORM_TEXT = {
   namePendingHint:
     'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
   /**
+   * Lo escrito coincide entero con un nombre del catálogo que no se enlaza
+   * solo (#280): un sinónimo o un nombre común (va antes del nombre
+   * aceptado), o el aceptado cuando no se puede asegurar que es el único.
+   * Termina con nameOfferAfter.
+   */
+  nameOfferSynonym: ' es un sinónimo de ',
+  nameOfferCommon: ' es un nombre común de ',
+  nameOfferScientific: 'Coincide con ',
+  nameOfferAfter:
+    ' en el catálogo. Si la eliges, se guarda con ese nombre; si no, quedará como «Nombre por validar».',
+  /** Varias especies del catálogo con el nombre escrito (#280). */
+  nameSeveral: (count: number) =>
+    `Hay ${String(count)} especies del catálogo con este nombre. Elige la tuya; si no, quedará como «Nombre por validar».`,
+  /** Botón que elige una especie ofrecida bajo el nombre (#280). */
+  nameChoose: 'Elegir',
+  /** Por qué nombre coincidió, en el botón de una de varias especies. */
+  nameChooseSynonym: (name: string) => `(sinónimo: ${name})`,
+  nameChooseCommon: (name: string) => `(nombre común: ${name})`,
+  nameChooseHybrid: '(híbrido)',
+  /** Anuncio al enlazar una especie, sola o elegida (#280); solo para el lector. */
+  nameLinked: (scientificName: string) =>
+    `Enlazada con ${scientificName}, del catálogo.`,
+  /**
    * Aviso de la galería con un nombre por validar (#12, #210, #221): sin
    * fotos, las recomienda (sin exigirlas); con fotos, avisa de quién podrá
    * verlas. Los dos siguen con «Más en Privacidad» (pendingPhotoMore y

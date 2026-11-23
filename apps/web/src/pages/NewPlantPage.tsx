@@ -90,6 +90,7 @@ export default function NewPlantPage() {
         draftUserId={userId}
         initialName={initialName}
         initialSpecies={prefilledSpecies(location.state, initialName)}
+        autoFocusName
         // En cuanto la planta existe (y otra vez al cambiar su principal), a
         // la colección: si una foto falla o se sale a mitad, ya está en el
         // inventario.
