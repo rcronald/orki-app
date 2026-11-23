@@ -1,4 +1,5 @@
 import type { CollectionPlant } from '../collection/model.ts'
+import { eachLimited, MAX_PARALLEL_PHOTO_UPLOADS } from '../photos/limited.ts'
 import { MAX_PLANT_PHOTOS, plantPhotoPaths } from '../photos/paths.ts'
 import {
   byPosition,
@@ -54,7 +55,10 @@ import {
 //    Storage responde 409 si ya estaban (se dan por subidas). Una foto cuya
 //    ruta ya está en una fila no se vuelve a subir: un fallo a medias de esa
 //    subida borraría los archivos que la fila cita (uploadPhotoFiles limpia
-//    lo suyo al fallar).
+//    lo suyo al fallar). Las fotos van de tres en tres (#285) y las que nunca
+//    llegaron al paso 4 se suben a la vez que el paso 0: sin una petición de
+//    crear su fila, ninguna fila puede citar sus rutas. Si el paso 0 falla,
+//    se espera a esas subidas antes de rechazar, así quedan en `uploaded`.
 // 2. Guardar los datos de la planta (solo las columnas que cambiaron). Es
 //    idempotente: repetir el mismo cambio deja lo mismo. Quien llama recuerda
 //    lo ya guardado (evento data-saved) para no volver a enviarlo.
@@ -261,6 +265,13 @@ const filesOf = (photo: { photoPath: string; thumbnailPath: string }) => [
 const liveAttempts = new WeakMap<UploadedPhotos, Promise<unknown>>()
 
 /**
+ * Las fotos nuevas cuya fila se pidió crear alguna vez (paso 4). Las demás no
+ * pueden tener fila, así que sus archivos se suben a la vez que se leen las
+ * filas (paso 1 junto al 0).
+ */
+const rowAttempted = new WeakSet<PhotoFiles>()
+
+/**
  * Aplica el plan en el orden de arriba. Resuelve con la planta y las fotos
  * como quedaron; rechaza con PlantEditError en el primer paso que falle (en
  * la subida, después de intentar todas las fotos). Para reintentar, se vuelve
@@ -311,14 +322,61 @@ async function runPlantEdit(
       plantGone: isNotFound(cause) && (await plantIsGone()),
     })
 
-  // 0. Lo que hay ahora.
+  // 1 (a la vez que el 0). Los archivos de las fotos nuevas cuya fila no se
+  // ha intentado crear nunca: ninguna fila puede citar sus rutas (llevan una
+  // versión aleatoria que solo conoce esta pestaña), así que subirlas no
+  // depende de lo que se lea. Sus avisos esperan a la lectura, para que quien
+  // llama reciba antes las filas (rows-read).
+  const uploadErrors = new Map<string, PhotoStorageError>()
+  let rowsKnown = false
+  const waiting: PlantEditEvent[] = []
+  const uploadEvent = (event: PlantEditEvent) => {
+    if (rowsKnown) onEvent(event)
+    else waiting.push(event)
+  }
+  const uploadOne = async (photo: NewPlannedPhoto) => {
+    try {
+      const paths = await uploadPhotoFiles(photo.files, {
+        userId,
+        plantId,
+        storage,
+        onProgress: ({ bytesDone, bytesTotal }) =>
+          uploadEvent({
+            type: 'upload-progress',
+            key: photo.key,
+            progress: bytesTotal > 0 ? bytesDone / bytesTotal : 0,
+          }),
+      })
+      uploaded.set(photo.files, paths)
+      uploadEvent({ type: 'uploaded', key: photo.key })
+    } catch (error) {
+      const failed = photoStorageErrorFrom(error)
+      uploadErrors.set(photo.key, failed)
+      uploadEvent({ type: 'upload-failed', key: photo.key, error: failed })
+    }
+  }
+  const early = plan.photos.filter(
+    (photo): photo is NewPlannedPhoto =>
+      photo.kind === 'new' &&
+      !uploaded.has(photo.files) &&
+      !rowAttempted.has(photo.files),
+  )
+  const uploading = eachLimited(early, MAX_PARALLEL_PHOTO_UPLOADS, uploadOne)
+
+  // 0. Lo que hay ahora. Si falla, o si la planta ya no existe, se espera a
+  // las subidas en curso: así quedan en `uploaded` y discardUploads las
+  // borra al salir.
   let rows: StoredPlantPhoto[]
   try {
     rows = await rowsApi.list(plantId, userId)
   } catch (error) {
+    await uploading
+    for (const event of waiting) onEvent(event)
     throw await failure('read', photoStorageErrorFrom(error))
   }
   onEvent({ type: 'rows-read', rows: [...rows] })
+  rowsKnown = true
+  for (const event of waiting.splice(0)) onEvent(event)
   const rowWithPath = (path: string) =>
     rows.find((row) => row.photoPath === path)
 
@@ -329,6 +387,7 @@ async function runPlantEdit(
       !rows.some((row) => row.id === photo.stored.id),
   )
   if (missing.length > 0 && (await plantIsGone())) {
+    await uploading
     throw new PlantEditError('read', new PhotoStorageError('not-found'), [], {
       plantGone: true,
     })
@@ -350,38 +409,29 @@ async function runPlantEdit(
     }),
   ]
 
-  // 1. Archivos de las fotos nuevas.
-  const failedKeys: string[] = []
-  let firstUploadError: PhotoStorageError | null = null
+  // 1. El resto de los archivos de las fotos nuevas, ya con las filas
+  // leídas: los ya subidos (o con fila) no se vuelven a subir, y una foto
+  // cuya ruta ya tiene fila no se sube nunca, porque un fallo a medias
+  // borraría los archivos que la fila cita.
+  const late: NewPlannedPhoto[] = []
   for (const photo of newPhotos) {
+    if (early.includes(photo)) continue
     const expected = pathsOf(photo.files, userId, plantId)
     if (uploaded.has(photo.files) || rowWithPath(expected.photoPath)) {
       uploaded.set(photo.files, expected)
       onEvent({ type: 'uploaded', key: photo.key })
-      continue
-    }
-    try {
-      const paths = await uploadPhotoFiles(photo.files, {
-        userId,
-        plantId,
-        storage,
-        onProgress: ({ bytesDone, bytesTotal }) =>
-          onEvent({
-            type: 'upload-progress',
-            key: photo.key,
-            progress: bytesTotal > 0 ? bytesDone / bytesTotal : 0,
-          }),
-      })
-      uploaded.set(photo.files, paths)
-      onEvent({ type: 'uploaded', key: photo.key })
-    } catch (error) {
-      const failed = photoStorageErrorFrom(error)
-      firstUploadError ??= failed
-      failedKeys.push(photo.key)
-      onEvent({ type: 'upload-failed', key: photo.key, error: failed })
+    } else {
+      late.push(photo)
     }
   }
-  if (firstUploadError !== null) {
+  await uploading
+  await eachLimited(late, MAX_PARALLEL_PHOTO_UPLOADS, uploadOne)
+  // Las que fallaron, en el orden del plan.
+  const failedKeys = newPhotos
+    .map((photo) => photo.key)
+    .filter((key) => uploadErrors.has(key))
+  const firstUploadError = uploadErrors.get(failedKeys[0] ?? '')
+  if (firstUploadError) {
     throw new PlantEditError('upload', firstUploadError, failedKeys)
   }
 
@@ -496,6 +546,9 @@ async function runPlantEdit(
       )
     }
     occupied.add(position)
+    // Desde aquí puede haber una fila que cite sus rutas (aunque falle la
+    // respuesta): en otro intento ya no se sube sin leer antes las filas.
+    rowAttempted.add(photo.files)
     inserts.push({
       plantId,
       userId,

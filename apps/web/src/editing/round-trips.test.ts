@@ -137,7 +137,7 @@ describe('peticiones y viajes al guardar la edición (#285)', () => {
     }).toMatchInlineSnapshot(`
       {
         "peticiones": 10,
-        "viajes": 6,
+        "viajes": 4,
       }
     `)
     // Lo de siempre: las filas y el bucket como deben.
@@ -160,7 +160,7 @@ describe('peticiones y viajes al guardar la edición (#285)', () => {
     }).toMatchInlineSnapshot(`
       {
         "peticiones": 11,
-        "viajes": 7,
+        "viajes": 5,
       }
     `)
   })
@@ -175,11 +175,98 @@ describe('peticiones y viajes al guardar la edición (#285)', () => {
     }).toMatchInlineSnapshot(`
       {
         "peticiones": 11,
-        "viajes": 7,
+        "viajes": 5,
       }
     `)
     expect(context.rows.plants.get(PLANT_ID)?.photoPath).toBe(
       context.rows.photosOf(PLANT_ID)[0]?.photoPath,
+    )
+  })
+})
+
+describe('lo que sale a la vez al guardar la edición (#285)', () => {
+  it('nunca dos escrituras que copian la principal a la planta a la vez, y como mucho tres fotos subiendo', async () => {
+    const context = setup(6)
+    const [p0, p1, p2, p3, p4, p5] = context.stored
+    if (!p0 || !p1 || !p2 || !p3 || !p4 || !p5) throw new Error('Sin fotos.')
+    const photos = [added(), added(), added(), added()]
+    const [a, b, c, d] = photos
+    if (!a || !b || !c || !d) throw new Error('Sin fotos nuevas.')
+    // Quitar cuatro y añadir cuatro (con seis no caben a la vez), cambiar
+    // «en flor» de dos y la nota de otra, y la nueva como principal.
+    const bloom = (photo: StoredPlantPhoto): PlannedPhoto => ({
+      ...keep(photo),
+      details: { takenAt: null, note: null, inBloom: true },
+    })
+    const plan: PlantEditPlan = {
+      userId: USER_ID,
+      plantId: PLANT_ID,
+      patch: {},
+      photos: [a, bloom(p0), bloom(p1), b, c, d],
+      removed: [p2, p3, p4, p5],
+    }
+    let syncing = 0
+    let maxSyncing = 0
+    let uploading = 0
+    let maxUploading = 0
+    const slow =
+      <A extends unknown[], R>(
+        fn: (...args: A) => Promise<R>,
+        fires: (...args: NoInfer<A>) => boolean,
+      ) =>
+      async (...args: A): Promise<R> => {
+        const counts = fires(...args)
+        if (counts) syncing += 1
+        maxSyncing = Math.max(maxSyncing, syncing)
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return await fn(...args)
+        } finally {
+          if (counts) syncing -= 1
+        }
+      }
+    const rows = context.rows
+    const services = {
+      ...context.services,
+      rows: {
+        ...context.services.rows,
+        list: rows.list.bind(rows),
+        readPlant: rows.readPlant.bind(rows),
+        insertMany: slow(rows.insertMany.bind(rows), () => true),
+        removeMany: slow(rows.removeMany.bind(rows), () => true),
+        reorder: slow(rows.reorder.bind(rows), () => true),
+        update: slow(
+          rows.update.bind(rows),
+          (_id, _user, changes) => changes.inBloom !== undefined,
+        ),
+      },
+      storage: {
+        ...context.storage,
+        remove: context.storage.remove.bind(context.storage),
+        upload: async (...args: Parameters<PhotoStorage['upload']>) => {
+          uploading += 1
+          maxUploading = Math.max(maxUploading, uploading)
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 5))
+            await context.storage.upload(...args)
+          } finally {
+            uploading -= 1
+          }
+        },
+      },
+    }
+    await applyPlantEdit(plan, services, new Map())
+    expect(maxSyncing).toBe(1)
+    expect(maxUploading).toBe(6)
+    const result = rows.photosOf(PLANT_ID)
+    expect(result).toHaveLength(6)
+    expect(result.slice(1, 3).map((photo) => photo.inBloom)).toEqual([
+      true,
+      true,
+    ])
+    expect(rows.plants.get(PLANT_ID)?.photoPath).toBe(result[0]?.photoPath)
+    expect([...context.storage.objects.keys()].sort()).toEqual(
+      result.flatMap((photo) => [photo.photoPath, photo.thumbnailPath]).sort(),
     )
   })
 })
@@ -208,7 +295,7 @@ describe('peticiones y viajes al registrar con fotos (#285)', () => {
       {
         "lecturasDeFotos": 1,
         "peticiones": 11,
-        "viajes": 8,
+        "viajes": 6,
       }
     `)
     expect(onPlantUpdated).toHaveBeenCalledTimes(1)

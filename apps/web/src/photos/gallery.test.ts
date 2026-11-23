@@ -298,17 +298,20 @@ describe('uploadPlantPhotos', () => {
     expect(context.storage.objects.size).toBe(4)
   })
 
+  // Las fotos suben de tres en tres (#285): cancelar corta las que están en
+  // curso (las tres) y no empieza las siguientes.
   it('cancelar: deja de esperar, borra lo subido y no intenta las siguientes', async () => {
     const context = setup()
     context.storage.delayMs = 20
-    const photos = newPhotos(3)
+    const photos = newPhotos(4)
     const controller = new AbortController()
     const pending = uploadPlantPhotos(photos, {
       ...options(context),
       signal: controller.signal,
       onProgress: (value) => {
-        // Cancelar mientras sube la segunda.
-        if (value.index === 1 && value.step === 'uploading') controller.abort()
+        // Cancelar en cuanto la primera queda guardada, con la segunda y la
+        // tercera aún en curso y la cuarta sin empezar.
+        if (value.index === 0 && value.step === 'done') controller.abort()
       },
     })
 
@@ -316,10 +319,12 @@ describe('uploadPlantPhotos', () => {
     expect(result.results.map((value) => value.status)).toEqual([
       'uploaded',
       'failed',
+      'failed',
       'skipped',
     ])
     expect(result.results[1]).toMatchObject({ error: { reason: 'aborted' } })
-    // Lo que llegue a subirse de la segunda se borra al terminar.
+    expect(result.results[2]).toMatchObject({ error: { reason: 'aborted' } })
+    // Lo que llegue a subirse de la segunda y la tercera se borra al terminar.
     await vi.waitFor(() => {
       expect(bucketPaths(context.storage)).toEqual(
         filesOf(context.rows.photosOf(PLANT_ID)),
@@ -333,9 +338,71 @@ describe('uploadPlantPhotos', () => {
     expect(retry.complete).toBe(true)
     expect(
       context.rows.photosOf(PLANT_ID).map((photo) => photo.position),
-    ).toEqual([0, 1, 2])
+    ).toEqual([0, 1, 2, 3])
     expect(bucketPaths(context.storage)).toEqual(
       filesOf(context.rows.photosOf(PLANT_ID)),
+    )
+  })
+
+  it('cancelar con tres fotos subiendo a la vez: las tres quedan canceladas y sin archivos (#285)', async () => {
+    const context = setup()
+    context.storage.delayMs = 20
+    const photos = newPhotos(3)
+    const controller = new AbortController()
+    const result = await uploadPlantPhotos(photos, {
+      ...options(context),
+      signal: controller.signal,
+      onProgress: (value) => {
+        if (value.index === 2 && value.step === 'uploading') controller.abort()
+      },
+    })
+    expect(
+      result.results.map((value) =>
+        value.status === 'failed' ? value.error.reason : value.status,
+      ),
+    ).toEqual(['aborted', 'aborted', 'aborted'])
+    await vi.waitFor(() => expect(bucketPaths(context.storage)).toEqual([]))
+    expect(context.rows.photosOf(PLANT_ID)).toEqual([])
+  })
+
+  it('sube como mucho tres fotos a la vez y crea las filas de una en una (#285)', async () => {
+    const context = setup()
+    context.storage.delayMs = 5
+    let uploading = 0
+    let maxUploading = 0
+    const upload = context.storage.upload.bind(context.storage)
+    vi.spyOn(context.storage, 'upload').mockImplementation(async (...args) => {
+      uploading += 1
+      maxUploading = Math.max(maxUploading, uploading)
+      try {
+        await upload(...args)
+      } finally {
+        uploading -= 1
+      }
+    })
+    let inserting = 0
+    let maxInserting = 0
+    const insert = context.rows.insert.bind(context.rows)
+    vi.spyOn(context.rows, 'insert').mockImplementation(async (row) => {
+      inserting += 1
+      maxInserting = Math.max(maxInserting, inserting)
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        return await insert(row)
+      } finally {
+        inserting -= 1
+      }
+    })
+    const result = await uploadPlantPhotos(newPhotos(6), options(context))
+    expect(result.complete).toBe(true)
+    // Tres fotos, cada una con su foto y su miniatura.
+    expect(maxUploading).toBe(6)
+    expect(maxInserting).toBe(1)
+    expect(
+      context.rows.photosOf(PLANT_ID).map((photo) => photo.position),
+    ).toEqual([0, 1, 2, 3, 4, 5])
+    expect(context.rows.plants.get(PLANT_ID)?.photoPath).toBe(
+      context.rows.photosOf(PLANT_ID)[0]?.photoPath,
     )
   })
 
