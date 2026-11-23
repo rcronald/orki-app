@@ -9,8 +9,13 @@ import {
   type PlantActionServices,
 } from '../detail/PlantActions.tsx'
 import { PlantDetailView, PlantName } from '../detail/PlantDetailView.tsx'
+import { PlantGallery } from '../detail/PlantGallery.tsx'
+import { usePlantGallery } from '../detail/usePlantGallery.ts'
+import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
+import { createMemoryPlantPhotoRows } from '../photos/memory-photo-rows.ts'
 import type { PlantImageSource } from '../photos/read.ts'
 import { PlantImagesContext } from '../photos/usePlantImage.ts'
+import { PlantPhotoRowsContext } from '../photos/usePlantPhotoRows.ts'
 import samplePhoto from './foto-muestra.svg'
 import { SAMPLE_COLLECTION } from './inventory-data.ts'
 import { Example, Section } from './layout.tsx'
@@ -19,7 +24,10 @@ import { Example, Section } from './layout.tsx'
 // colección de ejemplo, para revisarlo sin base de datos ni sesión. La foto
 // sale de una fuente que siempre devuelve la foto de muestra. Las acciones
 // funcionan sin escribir nada: dar de baja y reactivar cambian la planta de la
-// muestra; eliminar solo lo dice.
+// muestra; eliminar solo lo dice. La galería (#183) lee y escribe en
+// plant_photos en memoria: la validada tiene tres fotos (la tercera con fecha
+// y nota), la no identificable una; sin conexión se prueba con el modo avión
+// del navegador.
 
 const wait = () => new Promise((resolve) => setTimeout(resolve, 600))
 
@@ -40,6 +48,66 @@ const images: PlantImageSource = {
   clear: () => {},
 }
 
+const SAMPLE_USER = 'muestra'
+
+/** plant_photos de la muestra: `count` fotos por planta, en memoria. */
+const sampleRows = createMemoryPlantPhotoRows()
+
+function seedPhotos(plant: CollectionPlant, count: number) {
+  sampleRows.plants.set(plant.id, { ...plant, userId: SAMPLE_USER })
+  if (sampleRows.photosOf(plant.id).length > 0) return
+  for (let position = 0; position < count; position += 1) {
+    const id = `${plant.id}-foto-${String(position)}`
+    sampleRows.rows.set(id, {
+      id,
+      plantId: plant.id,
+      userId: SAMPLE_USER,
+      photoPath: `muestra/${plant.id}/photo-${String(position)}.svg`,
+      thumbnailPath: `muestra/${plant.id}/thumb-${String(position)}.svg`,
+      inBloom: position === 2,
+      takenAt: position === 2 ? '2026-10-05' : null,
+      note: position === 2 ? 'Primera vara floral del año.' : null,
+      position,
+      createdAt: '2026-11-22T12:00:00.000Z',
+    })
+  }
+}
+
+/** La galería con las filas de la muestra; la planta, con su principal. */
+function SampleGallery({
+  plant,
+  onPlantUpdated,
+}: {
+  plant: CollectionPlant
+  onPlantUpdated: (plant: CollectionPlant) => void
+}) {
+  const gallery = usePlantGallery(plant, SAMPLE_USER)
+  const options = {
+    userId: SAMPLE_USER,
+    plantId: plant.id,
+    rows: sampleRows,
+    onPlantUpdated,
+  }
+  return (
+    <PlantGallery
+      plant={plant}
+      gallery={gallery}
+      readOnly={null}
+      onPlantUpdated={onPlantUpdated}
+      services={{
+        updatePhoto: async ({ photo, main, details }) => {
+          await wait()
+          return updatePlantPhoto({ ...options, photo, main, changes: details })
+        },
+        reorderPhotos: async ({ photos, order }) => {
+          await wait()
+          return reorderPlantPhotos({ ...options, photos, order })
+        },
+      }}
+    />
+  )
+}
+
 function find(name: string): CollectionPlant | undefined {
   return SAMPLE_COLLECTION.find((plant) => plant.displayName === name)
 }
@@ -49,25 +117,25 @@ const SCENARIOS = [
     id: 'validada',
     label: 'Validada, con foto',
     plant: find('Phalaenopsis amabilis'),
-    withPhoto: true,
+    withPhoto: 3,
   },
   {
     id: 'por-validar',
     label: 'Por validar',
     plant: find('la naranja del mercado'),
-    withPhoto: false,
+    withPhoto: 0,
   },
   {
     id: 'no-identificable',
     label: 'No identificable',
     plant: find('dendrobio del regalo'),
-    withPhoto: true,
+    withPhoto: 1,
   },
   {
     id: 'perdida',
     label: 'Perdida',
     plant: find('Phalaenopsis schilleriana'),
-    withPhoto: false,
+    withPhoto: 0,
   },
 ] as const
 
@@ -80,21 +148,23 @@ export function DetailSection() {
   const [result, setResult] = useState<string | null>(null)
   const scenario =
     SCENARIOS.find((item) => item.id === scenarioId) ?? SCENARIOS[0]
-  const base = scenario.plant && (changed[scenario.plant.id] ?? scenario.plant)
-  const plant: CollectionPlant | undefined =
-    base && scenario.withPhoto
+  const base: CollectionPlant | undefined =
+    scenario.plant && scenario.withPhoto > 0
       ? {
-          ...base,
-          photoPath: `muestra/${base.id}/photo.svg`,
-          thumbnailPath: `muestra/${base.id}/thumb.svg`,
+          ...scenario.plant,
+          photoPath: `muestra/${scenario.plant.id}/photo-0.svg`,
+          thumbnailPath: `muestra/${scenario.plant.id}/thumb-0.svg`,
         }
-      : base
+      : scenario.plant
+  // Con la baja, la reactivación o la principal que se cambió en la muestra.
+  const plant = base && (changed[base.id] ?? base)
+  if (plant) seedPhotos(plant, scenario.withPhoto)
 
   return (
     <Section
       id="detalle"
       title="Detalle del ejemplar"
-      description="PlantDetailView, el contenido de /coleccion/:plantId, con plantas de la colección de ejemplo: la foto completa (solo se pide aquí, nunca en la lista) y todos los datos. Una planta no identificable lleva la etiqueta «Nombre por validar» y una frase que lo explica. Dar de baja y eliminar abren el diálogo de confirmación (ConfirmDialog): el foco queda dentro y Escape cancela. No se escribe nada."
+      description="PlantDetailView, el contenido de /coleccion/:plantId, con plantas de la colección de ejemplo: la galería (PlantGallery, piezas orki-detail, orki-viewer y el visor orki-lightbox), todos los datos y las acciones. La foto grande y las miniaturas son miniaturas; la foto completa solo se pide al abrir el visor. Elige una miniatura, ábrela en grande (flechas, deslizar, Escape), edita su fecha y su nota, hazla principal o muévela: todo se guarda en memoria. Una planta no identificable lleva la etiqueta «Nombre por validar» y una frase que lo explica. Dar de baja y eliminar abren el diálogo de confirmación (ConfirmDialog): el foco queda dentro y Escape cancela. No se escribe nada."
     >
       <Collapsible title="Ver el detalle" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -113,44 +183,55 @@ export function DetailSection() {
             ))}
           </ChipGroup>
           {plant && (
-            <Example
-              title="Detalle de una planta"
-              className="mx-auto w-full max-w-lg"
-            >
+            <Example title="Detalle de una planta" className="w-full">
               <p className="font-display text-xl font-semibold text-neutral-900">
                 <PlantName plant={plant} />
               </p>
               <PlantImagesContext value={images}>
-                <PlantDetailView
-                  key={plant.id}
-                  plant={plant}
-                  notice={
-                    <p role="status" className="text-sm text-neutral-700">
-                      {result}
-                    </p>
-                  }
-                  actions={
-                    <PlantActions
-                      plant={plant}
-                      online
-                      services={services}
-                      onStatusChanged={(updated) => {
-                        setChanged((current) => ({
-                          ...current,
-                          [updated.id]: updated,
-                        }))
-                        setResult(
-                          `Estado de la muestra: ${PLANT_STATUS_LABEL[updated.status]}.`,
-                        )
-                      }}
-                      onDeleted={() =>
-                        setResult(
-                          'Eliminada (en la app, vuelve al inventario).',
-                        )
-                      }
-                    />
-                  }
-                />
+                <PlantPhotoRowsContext value={sampleRows}>
+                  <PlantDetailView
+                    key={plant.id}
+                    plant={plant}
+                    gallery={
+                      <SampleGallery
+                        key={plant.id}
+                        plant={plant}
+                        onPlantUpdated={(updated) =>
+                          setChanged((current) => ({
+                            ...current,
+                            [updated.id]: updated,
+                          }))
+                        }
+                      />
+                    }
+                    notice={
+                      <p role="status" className="text-sm text-neutral-700">
+                        {result}
+                      </p>
+                    }
+                    actions={
+                      <PlantActions
+                        plant={plant}
+                        online
+                        services={services}
+                        onStatusChanged={(updated) => {
+                          setChanged((current) => ({
+                            ...current,
+                            [updated.id]: updated,
+                          }))
+                          setResult(
+                            `Estado de la muestra: ${PLANT_STATUS_LABEL[updated.status]}.`,
+                          )
+                        }}
+                        onDeleted={() =>
+                          setResult(
+                            'Eliminada (en la app, vuelve al inventario).',
+                          )
+                        }
+                      />
+                    }
+                  />
+                </PlantPhotoRowsContext>
               </PlantImagesContext>
             </Example>
           )}

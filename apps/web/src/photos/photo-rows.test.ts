@@ -30,6 +30,7 @@ function fakeClient(
         'select',
         'insert',
         'delete',
+        'update',
         'eq',
         'order',
         'single',
@@ -44,6 +45,11 @@ function fakeClient(
         reject: (error: unknown) => unknown,
       ) => Promise.resolve(reply(call)).then(resolve, reject)
       return builder
+    },
+    rpc(fn: string, args: unknown) {
+      const call: Call = { table: `rpc:${fn}`, steps: [['args', args]] }
+      calls.push(call)
+      return Promise.resolve(reply(call))
     },
   }
   return {
@@ -197,5 +203,84 @@ describe('filas de plant_photos con PostgREST', () => {
     const plant = await rows.readPlant(PLANT_ID, USER_ID)
     expect(plant.photoPath).toBe(ROW.photo_path)
     expect(calls[0].table).toBe('plants')
+  })
+
+  it('cambia la fecha, la nota y "en floración" de una foto (solo lo pasado)', async () => {
+    const { calls, rows } = fakeClient(() => ({
+      data: { ...ROW, note: 'Segunda vara', in_bloom: false },
+      error: null,
+      status: 200,
+    }))
+    const photo = await rows.update(ROW.id, USER_ID, {
+      note: 'Segunda vara',
+      inBloom: false,
+    })
+    expect(photo).toMatchObject({ note: 'Segunda vara', inBloom: false })
+    expect(calls[0]).toEqual({
+      table: 'plant_photos',
+      steps: [
+        ['update', { note: 'Segunda vara', in_bloom: false }],
+        ['eq', 'id', ROW.id],
+        ['eq', 'user_id', USER_ID],
+        ['select', PLANT_PHOTO_SELECT],
+        ['single'],
+      ],
+    })
+
+    await rows.update(ROW.id, USER_ID, { takenAt: null })
+    expect(calls[1].steps[0]).toEqual(['update', { taken_at: null }])
+  })
+
+  it('cambiar una foto que ya no existe es "not-found"', async () => {
+    const { rows } = fakeClient(() => ({
+      data: null,
+      error: { code: 'PGRST116', message: 'JSON object requested' },
+      status: 406,
+    }))
+    await expect(
+      rows.update(ROW.id, USER_ID, { note: null }),
+    ).rejects.toMatchObject({ reason: 'not-found' })
+  })
+
+  it('reordena con la función reorder_plant_photos y devuelve las fotos en orden', async () => {
+    const second = { ...ROW, id: 'segunda', position: 0 }
+    const { calls, rows } = fakeClient(() => ({
+      data: [{ ...ROW, position: 1 }, second],
+      error: null,
+      status: 200,
+    }))
+    const photos = await rows.reorder(PLANT_ID, USER_ID, ['segunda', ROW.id])
+    expect(photos.map((photo) => [photo.id, photo.position])).toEqual([
+      ['segunda', 0],
+      [ROW.id, 1],
+    ])
+    expect(calls[0]).toEqual({
+      table: 'rpc:reorder_plant_photos',
+      steps: [
+        ['args', { target_plant_id: PLANT_ID, photo_ids: ['segunda', ROW.id] }],
+      ],
+    })
+  })
+
+  it('si las fotos de la planta cambiaron entre tanto (22023), es "position-taken"', async () => {
+    const { rows } = fakeClient(() => ({
+      data: null,
+      error: { code: '22023', message: 'las fotos no son las de la planta' },
+      status: 400,
+    }))
+    await expect(
+      rows.reorder(PLANT_ID, USER_ID, [ROW.id]),
+    ).rejects.toMatchObject({ reason: 'position-taken', uncertain: false })
+  })
+
+  it('sin la función en la base (PGRST202) falla sin cambiar nada', async () => {
+    const { rows } = fakeClient(() => ({
+      data: null,
+      error: { code: 'PGRST202', message: 'Could not find the function' },
+      status: 404,
+    }))
+    await expect(
+      rows.reorder(PLANT_ID, USER_ID, [ROW.id]),
+    ).rejects.toMatchObject({ reason: 'failed' })
   })
 })

@@ -35,7 +35,9 @@ import {
 // escribe la app de una foto en plants se refleja en la principal). Si una
 // prueba pone la foto de una planta directamente en `datos.plantas`, antes de
 // la siguiente petición se crea su fila en la posición 0, como la copia de la
-// migración.
+// migración. La galería del detalle (#183) cambia la nota y la fecha (con sus
+// restricciones) y reordena con reorder_plant_photos, la función propuesta en
+// ese issue (aún sin migración).
 //
 // Cualquier petición que no sepa responder queda en `sinSimular` y recibe un
 // 501: la prueba falla al terminar (fixtures.ts), así un cambio de la app que
@@ -806,6 +808,20 @@ export class SupabaseSimulado {
       }
       const cambiadas = mias.map((foto) => ({ ...foto, ...cambios }))
       for (const foto of cambiadas) {
+        // plant_photos_note_valid y plant_photos_taken_at_not_future.
+        const notaMala =
+          foto.note !== null &&
+          (foto.note.trim() === '' || [...foto.note].length > 500)
+        const manana = new Date(Date.now() + 2 * 86_400_000)
+          .toISOString()
+          .slice(0, 10)
+        if (notaMala || (foto.taken_at !== null && foto.taken_at > manana)) {
+          return errorPostgrest(
+            400,
+            '23514',
+            'violates check constraint "plant_photos_note_valid" (simulado)',
+          )
+        }
         if (
           !rutaDeLaPlanta(foto.photo_path, foto.user_id, foto.plant_id) ||
           !rutaDeLaPlanta(foto.thumbnail_path, foto.user_id, foto.plant_id)
@@ -836,6 +852,39 @@ export class SupabaseSimulado {
       this.copiarPrincipal(plantaId)
     }
     return conRepresentacion ? filas(mias, cabeceras) : vacia()
+  }
+
+  /**
+   * La función propuesta en el #183 (aún sin migración): pone las fotos de la
+   * planta en el orden de photo_ids, en una sola sentencia (la unicidad de la
+   * posición se comprueba al final). Si la lista no es exactamente la de las
+   * fotos de la planta, 22023 y no cambia nada.
+   */
+  private reordenarFotos(argumentos: Record<string, unknown>, yo: Identidad) {
+    if (yo.usuario === null) {
+      return errorPostgrest(401, 'PGRST301', 'JWT required (simulado)')
+    }
+    const plantaId = String(argumentos.target_plant_id)
+    const ids = Array.isArray(argumentos.photo_ids)
+      ? argumentos.photo_ids.map(String)
+      : []
+    const deLaPlanta = this.fotosDe(plantaId).filter(
+      (foto) => foto.user_id === yo.usuario,
+    )
+    if (
+      new Set(ids).size !== ids.length ||
+      ids.length !== deLaPlanta.length ||
+      deLaPlanta.some((foto) => !ids.includes(foto.id))
+    ) {
+      return errorPostgrest(
+        400,
+        '22023',
+        'las fotos no son las de la planta (simulado)',
+      )
+    }
+    for (const foto of deLaPlanta) foto.position = ids.indexOf(foto.id)
+    this.copiarPrincipal(plantaId)
+    return json(this.fotosDe(plantaId))
   }
 
   // Funciones (RPC) ---------------------------------------------------------------
@@ -1062,6 +1111,8 @@ export class SupabaseSimulado {
         this.eventos.push(...(lote as EventoDeProducto[]))
         return vacia()
       }
+      case 'reorder_plant_photos':
+        return this.reordenarFotos(argumentos, yo)
       default:
         break
     }
