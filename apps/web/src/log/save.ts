@@ -37,8 +37,8 @@ import type { LogEntry } from './model.ts'
 // servidor), la foto se queda: quizá el registro existe y la cita. Desde ese
 // momento el formulario no borra nada más (ni al fallar ni al cancelar): lo
 // que sobre lo encuentra el script de fotos huérfanas («sin-registro», con
-// su antigüedad mínima). Cancelar sin un fallo dudoso borra lo subido
-// (discardLogUpload).
+// su antigüedad mínima). Fuera de ese caso, tras un fallo no queda nada
+// subido, así que cancelar no tiene nada que borrar.
 
 /** Lo que se escribe en el formulario, ya normalizado. */
 export interface LogEntryDraft {
@@ -130,15 +130,6 @@ export async function saveLogEntry({
     }
     throw new SaveLogEntryError('entry', failure, paths)
   }
-}
-
-/** Borra sin fallar la foto que subió un formulario que no llegó a guardarse. */
-export async function discardLogUpload(
-  storage: PhotoStorage,
-  paths: PlantPhotoPaths | null,
-): Promise<void> {
-  if (paths === null) return
-  await removeQuietly(storage, [paths.photoPath, paths.thumbnailPath])
 }
 
 export interface DeleteLogEntryInput {

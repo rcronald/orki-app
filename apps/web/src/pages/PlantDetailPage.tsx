@@ -361,7 +361,9 @@ function PlantDetailContent({
           onSaved={onPlantUpdated}
         />
       }
-      log={<PlantLogSection plant={plant} readOnly={readOnly} />}
+      log={
+        <PlantLogSection plant={plant} readOnly={readOnly} userId={userId} />
+      }
       manage={
         <Collapsible
           headingLevel={2}

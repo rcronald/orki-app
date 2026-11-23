@@ -6,7 +6,6 @@ import { PlantLogError } from './entries.ts'
 import { createMemoryPlantLogEntries } from './memory-entries.ts'
 import {
   deleteLogEntry,
-  discardLogUpload,
   saveLogEntry,
   SaveLogEntryError,
   type LogEntryDraft,
@@ -228,21 +227,6 @@ describe('saveLogEntry', () => {
       storage,
     })
     expect(entry.inBloom).toBe(false)
-  })
-})
-
-describe('discardLogUpload', () => {
-  it('borra la foto y la miniatura subidas; sin rutas no hace nada', async () => {
-    const { storage } = setup()
-    const photo = `${logFolder}photo-v1.webp`
-    const thumb = `${logFolder}thumb-v1.webp`
-    for (const path of [photo, thumb]) {
-      storage.objects.set(path, { blob: new Blob(), contentType: 'image/webp' })
-    }
-    await discardLogUpload(storage, null)
-    expect(storage.objects.size).toBe(2)
-    await discardLogUpload(storage, { photoPath: photo, thumbnailPath: thumb })
-    expect(storage.objects.size).toBe(0)
   })
 })
 

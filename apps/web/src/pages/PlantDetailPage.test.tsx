@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CollectionLoadError } from '../collection/source.ts'
 import { DETAIL_TEXT, GALLERY_TEXT, NOTES_TEXT } from '../detail/texts.ts'
+import { LOG_TEXT } from '../log/texts.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
 import { CATTLEYA, plant } from '../test/collection.ts'
@@ -165,6 +166,7 @@ describe('PlantDetailPage', () => {
       `H2 ${GALLERY_TEXT.title}`,
       `H2 ${DETAIL_TEXT.dataLabel}`,
       `H2 ${NOTES_TEXT.title}`,
+      `H2 ${LOG_TEXT.title}`,
       `H2 ${DETAIL_TEXT.actionsLabel}`,
     ])
   })
@@ -206,7 +208,8 @@ describe('PlantDetailPage', () => {
     await user.tab({ shift: true })
     expect(screen.getByRole('link', { name: DETAIL_TEXT.back })).toHaveFocus()
     // Después, «Editar planta»; sin fotos, la galería («Añadir fotos»), los
-    // datos, las notas y «Gestionar planta», en ese orden.
+    // datos, las notas, la bitácora (#267) y «Gestionar planta», en ese orden.
+    await screen.findByText(LOG_TEXT.emptyTitle)
     await user.tab()
     expect(screen.getByRole('link', { name: DETAIL_TEXT.edit })).toHaveFocus()
     await user.tab()
@@ -219,6 +222,12 @@ describe('PlantDetailPage', () => {
     ).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: NOTES_TEXT.add })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: LOG_TEXT.add })).toHaveFocus()
+    await user.tab()
+    expect(
+      screen.getByRole('combobox', { name: LOG_TEXT.filterLabel }),
+    ).toHaveFocus()
     await user.tab()
     expect(
       screen.getByRole('button', { name: DETAIL_TEXT.actionsLabel }),
