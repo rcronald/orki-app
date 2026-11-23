@@ -86,6 +86,11 @@ export interface SpeciesTabProps {
 
 const CHIP = 'py-space-3'
 const CHECKBOX = 'size-[24px] cursor-pointer accent-secondary'
+// Área táctil de cada casilla (#174): la etiqueta que la envuelve ocupa la
+// celda (48 px de ancho, 44 de alto como mínimo) y la casilla sigue de 24 px.
+// La celda va sin relleno: lo pone la etiqueta, así la fila no crece.
+const CHECKBOX_AREA =
+  'flex min-h-[44px] w-full cursor-pointer justify-center px-space-3'
 const NAME_LINK =
   'scientific-name text-md text-neutral-900 underline decoration-neutral-700 underline-offset-2 [overflow-wrap:anywhere]'
 
@@ -567,6 +572,7 @@ function SpeciesTable({
   const th =
     'border-b-2 border-secondary px-space-3 py-space-2 text-left text-sm font-semibold whitespace-nowrap text-neutral-900'
   const td = 'border-b border-neutral-50 px-space-3 py-space-2 align-top'
+  const checkCell = 'border-b border-neutral-50 p-[0] align-top'
   return (
     <div
       role="region"
@@ -586,19 +592,24 @@ function SpeciesTable({
         </caption>
         <thead>
           <tr>
-            <th scope="col" className={`${th} w-[48px]`}>
-              <input
-                type="checkbox"
-                className={CHECKBOX}
-                aria-label="Seleccionar todas las especies de esta página"
-                checked={allChecked}
-                disabled={pageIds.length === 0}
-                ref={(element) => {
-                  if (element)
-                    element.indeterminate = checkedCount > 0 && !allChecked
-                }}
-                onChange={(event) => onCheck(pageIds, event.target.checked)}
-              />
+            <th
+              scope="col"
+              className="w-[48px] border-b-2 border-secondary p-[0]"
+            >
+              <label className={`${CHECKBOX_AREA} items-center`}>
+                <input
+                  type="checkbox"
+                  className={CHECKBOX}
+                  aria-label="Seleccionar todas las especies de esta página"
+                  checked={allChecked}
+                  disabled={pageIds.length === 0}
+                  ref={(element) => {
+                    if (element)
+                      element.indeterminate = checkedCount > 0 && !allChecked
+                  }}
+                  onChange={(event) => onCheck(pageIds, event.target.checked)}
+                />
+              </label>
             </th>
             <th scope="col" className={th}>
               Nombre científico
@@ -648,16 +659,20 @@ function SpeciesTable({
                     key={row.id}
                     className={selected ? 'bg-secondary-soft' : undefined}
                   >
-                    <td className={td}>
-                      <input
-                        type="checkbox"
-                        className={CHECKBOX}
-                        aria-label={`Seleccionar ${row.scientificName}`}
-                        checked={checked.has(row.id)}
-                        onChange={(event) =>
-                          onCheck([row.id], event.target.checked)
-                        }
-                      />
+                    <td className={checkCell}>
+                      <label
+                        className={`${CHECKBOX_AREA} items-start pt-space-2`}
+                      >
+                        <input
+                          type="checkbox"
+                          className={CHECKBOX}
+                          aria-label={`Seleccionar ${row.scientificName}`}
+                          checked={checked.has(row.id)}
+                          onChange={(event) =>
+                            onCheck([row.id], event.target.checked)
+                          }
+                        />
+                      </label>
                     </td>
                     <th scope="row" className={`${td} text-left font-normal`}>
                       {detailHref ? (

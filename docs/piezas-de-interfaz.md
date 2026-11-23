@@ -911,6 +911,55 @@ interface PhotoLightboxProps {
   `__stage`, `__photo`, `__nav` (`--previous`, `--next`), `__notice`,
   `__caption`.
 
+## Objetivos táctiles (#174)
+
+Todo control (enlace, botón, campo, casilla, pestaña, chip) mide al menos
+44 × 44 px de área pulsable, también a 360 px. Las piezas del design system ya
+lo cumplen (`orki-btn`, `orki-chip`, `orki-appbar__tab`,
+`orki-pagehead__back`, `orki-search__clear`…); lo que hay que vigilar son los
+enlaces sueltos con `orki-link` (24 px de alto) o con utilidades de texto.
+
+- **Agrandar sin mover nada**: `min-h-[44px]` (o `min-w-[44px]`) y un margen
+  negativo de la mitad de lo que crece, así ocupa en la maqueta lo mismo que
+  antes. `orki-link` ya es `inline-flex` con `items-center`:
+  `className="orki-link -my-[10px] min-h-[44px]"` (24 → 44 px). Lo usan
+  «Volver al inicio» de las páginas de texto, el género de la ficha del
+  catálogo (`-my-[9px]`, 26 px), el logotipo y «Privacidad» de las pantallas
+  de acceso y el logotipo de la barra hasta 720 px
+  (`publico-estrecho:-mx-[8px] publico-estrecho:min-w-[44px]`, la flor mide
+  28 px de ancho).
+- **Acción de `QueryAnswer`** («Ver en mi colección»): `orki-link
+orki-answer__action min-h-[44px] publico-estrecho:-mt-[2px]
+publico-estrecho:-mb-[10px]` (a la derecha no cambia nada; debajo, el margen
+  descuenta lo que crece).
+- **Casillas en una tabla** (backoffice, «Especies»): la casilla sigue de
+  24 px; la envuelve una `<label>` que ocupa la celda (`flex min-h-[44px]
+w-full justify-center px-space-3`, la celda sin relleno), así la fila no
+  crece y pulsar cerca de la casilla la marca. El nombre accesible sigue en el
+  `aria-label` de la casilla y el foco, en la casilla.
+
+`e2e/objetivos-tactiles.spec.ts` recorre a 360 px la portada, el catálogo (con
+su índice, una letra, una búsqueda, un género y una ficha), créditos,
+privacidad, las pantallas de acceso, «Mi colección» en cuadrícula y en lista
+con los filtros abiertos, el menú «Tu cuenta», el registro, la edición,
+«¿Ya la tengo?», el detalle con galería y el visor, «Tu cuenta» y el
+backoffice (especies, detalle y propuestas), y las barras a 360, 390 y
+1440 px. Falla con la lista de los controles de menos de 44 px que no sean
+una de estas **excepciones** (`EXCEPCIONES` en la prueba):
+
+| Excepción                                                          | Dónde                                                                                                                         | Motivo                                                                                                                                                                                                                |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enlace dentro de un texto                                          | Licencia y DOI del catálogo y de las fotos de referencia, «Ver el original en iNaturalist», créditos, privacidad, pie del backoffice | WCAG 2.5.8 exime los objetivos dentro de una frase: su tamaño lo marca la línea de texto. La prueba lo reconoce porque el enlace está en un `p`, `li`, `dd`, `figcaption` o `small` con más texto que el suyo.          |
+| Nombre de especie en la tabla del backoffice (`scientific-name`)   | Backoffice, «Especies»                                                                                                        | Herramienta interna de escritorio: es el texto de la celda (21 px en una fila de 45) y agrandarlo cambiaría la tabla. Cumple AA (24 px por el espaciado). La casilla de la misma fila mide 48 × 44.                      |
+
+No son excepciones, porque su área pulsable es mayor que la caja que se ve:
+los enlaces estirados de las tarjetas (`orki-card__link`, cuyo `::after` cubre
+la tarjeta; la prueba mide la tarjeta), las casillas con etiqueta (se mide la
+etiqueta) y «Saltar al contenido» (1 px hasta que recibe el foco; no se mide).
+Las casillas de la pestaña «Géneros» y los botones de opción de los diálogos
+del backoffice (fusionar especies, foto de referencia) llevan la etiqueta con
+su texto al lado, que también es pulsable; no los recorre la prueba.
+
 ## Contraste
 
 Todos los pares usados están en `styles/contrast.ts` (los comprueba

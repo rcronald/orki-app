@@ -30,7 +30,10 @@ export type QueryAnswerProps = Omit<
   /**
    * Enlace de acción, a la derecha en escritorio y debajo hasta 720 px:
    * <Link className="orki-link orki-answer__action">Ver en mi colección
-   * <Icon name="arrow-right" /></Link>.
+   * <Icon name="arrow-right" /></Link>. Para que mida 44 px de alto sin
+   * mover nada (#174), añade `min-h-[44px] publico-estrecho:-mt-[2px]
+   * publico-estrecho:-mb-[10px]` (debajo, el margen negativo descuenta lo
+   * que crece sobre la línea de 24 px).
    */
   action?: ReactNode
   /** Icono del círculo; por defecto, el del tono. */
