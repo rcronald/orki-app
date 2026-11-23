@@ -1,9 +1,14 @@
 import type { PlantType } from '../lib/database.ts'
 
-// Textos del detalle de un ejemplar (#16), en un solo sitio.
+// Textos del detalle de un ejemplar (#16) y de su ficha (#265), en un solo
+// sitio.
 
 export const DETAIL_TEXT = {
+  /** Nombre accesible del enlace de regreso: «Volver a» + backShort. */
   back: 'Volver a Mi colección',
+  backPrefix: 'Volver a',
+  /** Lo que se ve en el enlace de regreso (#265). */
+  backShort: 'Mi colección',
   loadingTitle: 'Cargando la planta…',
   loading: 'Cargando los datos de la planta…',
   errorTitle: 'No se pudo cargar la planta',
@@ -14,29 +19,43 @@ export const DETAIL_TEXT = {
   enteredName: 'Nombre ingresado',
   genus: 'Género',
   type: 'Tipo',
+  /** Tipo en la línea bajo el nombre (para el lector; «Tipo» es del panel). */
+  typeShort: 'Tipo de planta',
   validation: 'Nombre',
   status: 'Estado',
+  /** Identificador del ejemplar (#264): «CAT-012». */
+  code: 'Identificador',
   acquiredOn: 'Fecha de adquisición',
   origin: 'Origen',
   location: 'Ubicación',
   nickname: 'Apodo',
   flowerColor: 'Color de la flor',
   missing: 'Sin indicar',
+  /** Acceso discreto a la edición si faltan datos opcionales (#265). */
+  complete: 'Completar datos',
+  /** Enlace a la ficha de su especie en el catálogo (#265). */
+  catalog: 'Ver la especie en el catálogo',
   /** Explica la etiqueta "No identificable". */
   unidentifiable:
     'Revisamos el nombre y no pudimos identificarlo en el catálogo. La planta sigue en tu colección con el nombre que escribiste y la puedes editar como cualquier otra.',
-  actionsLabel: 'Acciones',
-  edit: 'Editar',
+  /** «Gestionar planta» (#265): dar de baja y eliminar, plegado al final. */
+  actionsLabel: 'Gestionar planta',
+  edit: 'Editar planta',
+  retireHint:
+    'Si la perdiste o la regalaste: se conserva con sus datos y deja de contar en tu colección activa.',
+  reactivateHint: 'Vuelve a contar en tu colección activa.',
+  deleteHint:
+    'Para registros creados por error: se borra para siempre con sus fotos y su bitácora.',
   saved: 'Guardaste los cambios.',
   retire: 'Dar de baja',
   reactivate: 'Reactivar',
-  delete: 'Eliminar',
+  delete: 'Eliminar planta',
   offline:
-    'Sin conexión: editar, dar de baja o eliminar necesitan conexión. Las acciones se activarán solas cuando vuelva.',
+    'Sin conexión: editar la planta o sus notas, darla de baja o eliminarla necesitan conexión. Se activarán solas cuando vuelva.',
   unverified:
-    'No se pudo confirmar tu sesión: editar, dar de baja o eliminar necesitan confirmarla con conexión. Ves la copia guardada en este dispositivo.',
+    'No se pudo confirmar tu sesión: editar la planta o sus notas, darla de baja o eliminarla necesitan confirmarla con conexión. Ves la copia guardada en este dispositivo.',
   inactive: (status: string) =>
-    `Dada de baja: ${status.toLocaleLowerCase('es')}. No cuenta en tu colección activa; la ves con el filtro de estado.`,
+    `Dada de baja: ${status.toLocaleLowerCase('es')}. No cuenta en tu colección activa; la ves con el filtro de estado. Puedes reactivarla en «Gestionar planta».`,
   retireTitle: 'Dar de baja esta planta',
   retireDescription:
     'La planta se conserva con sus datos y su foto, pero deja de contar en tu colección activa. La verás con el filtro de estado y podrás reactivarla cuando quieras.',
@@ -51,7 +70,7 @@ export const DETAIL_TEXT = {
   reactivated: 'Reactivaste la planta: vuelve a contar en tu colección.',
   deleteTitle: '¿Eliminar esta planta para siempre?',
   deleteDescription:
-    'Se borrarán sus datos, su foto y su miniatura. No se puede deshacer. Si la perdiste o la regalaste, mejor dala de baja: así la conservas.',
+    'Se borrarán sus datos y sus notas, todas sus fotos y todos los registros de su bitácora. No se puede deshacer. Si la perdiste o la regalaste, mejor dala de baja: así la conservas.',
   deleteConfirm: 'Eliminar definitivamente',
   deleteBusy: 'Eliminando…',
   deleted: 'Eliminaste de tu colección',
@@ -59,10 +78,38 @@ export const DETAIL_TEXT = {
     'Su foto no se pudo borrar ahora; se limpiará más adelante.',
 } as const
 
+/** Notas de la planta en la ficha (#265), editables en el sitio. */
+export const NOTES_TEXT = {
+  title: 'Notas',
+  /** «Editar» y, para el lector, «Editar notas». */
+  edit: 'Editar',
+  editHidden: 'notas',
+  add: 'Añadir notas',
+  empty: 'Aún no has escrito notas sobre esta planta.',
+  count: (length: number, max: number) =>
+    `${String(length)} de ${String(max)} caracteres`,
+  tooLong: (max: number) =>
+    `Las notas pueden tener hasta ${String(max)} caracteres.`,
+  save: 'Guardar',
+  saving: 'Guardando…',
+  cancel: 'Cancelar',
+  saved: 'Guardaste las notas.',
+  removed: 'Quitaste las notas.',
+} as const
+
 /** Galería del detalle (#183): fotos, visor, fecha y nota, y orden. */
 export const GALLERY_TEXT = {
   title: 'Fotos',
-  count: (count: number, max: number) => `${String(count)} de ${String(max)}`,
+  /** Posición de la foto que se ve, sobre su esquina (#265): «1 de 3». */
+  position: (place: number, count: number) =>
+    `${String(place)} de ${String(count)}`,
+  positionHidden: 'Foto ',
+  previous: 'Foto anterior',
+  next: 'Foto siguiente',
+  /** Despliega «Hacer principal», «Mover antes» y «Mover después» (#265). */
+  order: 'Ordenar fotos',
+  empty: 'Aún no tienes fotos de esta planta.',
+  referenceTitle: 'Así es su especie',
   choose: 'Elegir la foto que se ve',
   /** Texto alternativo: «Foto principal de Phalaenopsis amabilis, en flor». */
   alt: (label: string, name: string, inBloom: boolean) =>

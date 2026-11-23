@@ -7,7 +7,7 @@ import { expect, test } from './soporte/fixtures.ts'
 // tenerlas en el #208 (el buscador va en su sitio y registrar, en la
 // cabecera) y el registro y la edición en el #221 (las acciones van al final
 // del formulario). Aquí se comprueba que sigan sin tenerlas y que el foco se
-// vea al recorrerlas. axe no lo comprueba: hace falta llegar con el
+// vea al recorrerlas, también en la ficha del ejemplar (#265). axe no lo comprueba: hace falta llegar con el
 // tabulador, que es cuando el navegador desplaza la página.
 //
 // Pantalla de celular en todos los perfiles. Safari y el WebKit de Playwright
@@ -89,6 +89,28 @@ test('edición: sin barras fijas, el foco se ve en el tipo y en las acciones del
   await tabularHasta(
     page,
     page.getByRole('button', { name: 'Guardar cambios' }),
+  )
+  await focoALaVista(page)
+})
+
+test('ficha: sin barras fijas, el foco se ve en las notas y en «Gestionar planta»', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName === 'webkit', 'WebKit no tabula a los botones')
+  await page.goto(`/coleccion/${PLANTAS.amabilis}`)
+  const notas = page.getByRole('button', { name: 'Añadir notas' })
+  await expect(notas).toBeVisible()
+  await sinBarrasFijas(page)
+  await tabularHasta(page, notas)
+  await focoALaVista(page)
+  const gestionar = page.getByRole('button', { name: 'Gestionar planta' })
+  await tabularHasta(page, gestionar)
+  await focoALaVista(page)
+  await page.keyboard.press('Enter')
+  await tabularHasta(
+    page,
+    page.getByRole('button', { name: 'Eliminar planta' }),
   )
   await focoALaVista(page)
 })

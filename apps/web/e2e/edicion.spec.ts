@@ -128,8 +128,10 @@ test(
   { tag: '@logica' },
   async ({ page, supabase, revisarAccesibilidad }) => {
     await page.goto(detalle(PLANTAS.nobile))
+    // En «Gestionar planta», plegado al final de la ficha (#265).
+    await page.getByRole('button', { name: 'Gestionar planta' }).click()
     await page
-      .getByRole('region', { name: 'Acciones' })
+      .getByRole('region', { name: 'Gestionar planta' })
       .getByRole('button', { name: 'Dar de baja' })
       .click()
     const dialogo = page.getByRole('dialog', {
@@ -155,6 +157,7 @@ test(
     )
 
     await page.goto(detalle(PLANTAS.nobile))
+    await page.getByRole('button', { name: 'Gestionar planta' }).click()
     await page.getByRole('button', { name: 'Reactivar' }).click()
     await expect(
       page.getByText('Reactivaste la planta: vuelve a contar en tu colección.'),
@@ -206,9 +209,10 @@ test(
       page.getByRole('img', { name: /^Foto principal de Cattleya maxima/ }),
     ).toBeVisible()
 
+    await page.getByRole('button', { name: 'Gestionar planta' }).click()
     await page
-      .getByRole('region', { name: 'Acciones' })
-      .getByRole('button', { name: 'Eliminar' })
+      .getByRole('region', { name: 'Gestionar planta' })
+      .getByRole('button', { name: 'Eliminar planta' })
       .click()
     const dialogo = page.getByRole('dialog', {
       name: '¿Eliminar esta planta para siempre?',

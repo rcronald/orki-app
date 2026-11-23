@@ -4,12 +4,19 @@ import type { CollectionPlant } from '../collection/model.ts'
 import { Chip } from '../components/ui/Chip.tsx'
 import { ChipGroup } from '../components/ui/ChipGroup.tsx'
 import { Collapsible } from '../components/ui/Collapsible.tsx'
+import { Icon } from '../components/ui/Icon.tsx'
 import {
   PlantActions,
   type PlantActionServices,
 } from '../detail/PlantActions.tsx'
-import { PlantDetailView, PlantName } from '../detail/PlantDetailView.tsx'
+import {
+  PlantDetailView,
+  PlantMeta,
+  PlantName,
+} from '../detail/PlantDetailView.tsx'
 import { PlantGallery } from '../detail/PlantGallery.tsx'
+import { PlantNotes } from '../detail/PlantNotes.tsx'
+import { DETAIL_TEXT } from '../detail/texts.ts'
 import { usePlantGallery } from '../detail/usePlantGallery.ts'
 import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
 import { createMemoryPlantPhotoRows } from '../photos/memory-photo-rows.ts'
@@ -27,7 +34,8 @@ import { Example, Section } from './layout.tsx'
 // muestra; eliminar solo lo dice. La galería (#183) lee y escribe en
 // plant_photos en memoria: la validada tiene tres fotos (la tercera con fecha
 // y nota), la no identificable una; sin conexión se prueba con el modo avión
-// del navegador.
+// del navegador. Las notas (#265) se editan en memoria; con «Fallar al
+// guardar las notas» el guardado falla para ver el error y el reintento.
 
 const wait = () => new Promise((resolve) => setTimeout(resolve, 600))
 
@@ -146,6 +154,7 @@ export function DetailSection() {
   // Cambios de estado hechos en la muestra, por planta.
   const [changed, setChanged] = useState<Record<string, CollectionPlant>>({})
   const [result, setResult] = useState<string | null>(null)
+  const [notesFail, setNotesFail] = useState(false)
   const scenario =
     SCENARIOS.find((item) => item.id === scenarioId) ?? SCENARIOS[0]
   const base: CollectionPlant | undefined =
@@ -164,7 +173,7 @@ export function DetailSection() {
     <Section
       id="detalle"
       title="Detalle del ejemplar"
-      description="PlantDetailView, el contenido de /coleccion/:plantId, con plantas de la colección de ejemplo: la galería (PlantGallery, piezas orki-detail, orki-viewer y el visor orki-lightbox), todos los datos y las acciones. La foto grande y las miniaturas son miniaturas; la foto completa solo se pide al abrir el visor. Elige una miniatura, ábrela en grande (flechas, deslizar, Escape), edita su fecha y su nota, hazla principal o muévela: todo se guarda en memoria. Una planta no identificable lleva la etiqueta «Nombre por validar» y una frase que lo explica. Dar de baja y eliminar abren el diálogo de confirmación (ConfirmDialog): el foco queda dentro y Escape cancela. No se escribe nada."
+      description="La ficha de /coleccion/:plantId (#265, maqueta «Ficha de la planta» del #263) con plantas de la colección de ejemplo: el nombre con la línea de datos (PlantMeta: insignia, identificador, tipo y estado, separados por una raya fina), la galería (PlantGallery: «1 de 3» sobre la esquina con orki-gallery__count, «Foto anterior» y «Foto siguiente» sobre la foto, miniaturas, «Editar fecha y nota» y «Ordenar fotos», que despliega «Hacer principal», «Mover antes» y «Mover después»; sin fotos, un estado vacío compacto), «Datos de la planta» en dos columnas con «Ver la especie en el catálogo» y «Completar datos», «Notas» editables en el sitio (PlantNotes) y «Gestionar planta» plegado (Collapsible con borde) con dar de baja y eliminar. En escritorio, dos columnas (orki-detail, la de la galería algo más ancha); hasta 720 px, una. La foto grande y las miniaturas son miniaturas; la foto completa solo se pide al abrir el visor (flechas, deslizar, Escape). Todo se guarda en memoria; no se escribe nada."
     >
       <Collapsible title="Ver el detalle" headingLevel={3}>
         <div className="flex flex-col gap-space-4 pt-space-3">
@@ -182,11 +191,19 @@ export function DetailSection() {
               </Chip>
             ))}
           </ChipGroup>
+          <div>
+            <Chip selected={notesFail} onClick={() => setNotesFail((v) => !v)}>
+              Fallar al guardar las notas
+            </Chip>
+          </div>
           {plant && (
             <Example title="Detalle de una planta" className="w-full">
               <p className="font-display text-xl font-semibold text-neutral-900">
                 <PlantName plant={plant} />
               </p>
+              <div className="text-md text-neutral-700">
+                <PlantMeta plant={plant} />
+              </div>
               <PlantImagesContext value={images}>
                 <PlantPhotoRowsContext value={sampleRows}>
                   <PlantDetailView
@@ -209,26 +226,61 @@ export function DetailSection() {
                         {result}
                       </p>
                     }
-                    actions={
-                      <PlantActions
+                    notes={
+                      <PlantNotes
                         plant={plant}
-                        online
-                        services={services}
-                        onStatusChanged={(updated) => {
+                        canEdit
+                        onSave={async (notes) => {
+                          await wait()
+                          if (notesFail) {
+                            throw new Error(
+                              'No se pudieron guardar los cambios por un error del servidor. Vuelve a intentarlo en unos momentos.',
+                            )
+                          }
+                          return { ...plant, notes }
+                        }}
+                        onSaved={(updated) =>
                           setChanged((current) => ({
                             ...current,
                             [updated.id]: updated,
                           }))
-                          setResult(
-                            `Estado de la muestra: ${PLANT_STATUS_LABEL[updated.status]}.`,
-                          )
-                        }}
-                        onDeleted={() =>
-                          setResult(
-                            'Eliminada (en la app, vuelve al inventario).',
-                          )
                         }
                       />
+                    }
+                    manage={
+                      <Collapsible
+                        headingLevel={3}
+                        className="rounded-lg border border-neutral-200"
+                        title={
+                          <span className="flex items-center gap-space-3">
+                            <Icon
+                              name="settings"
+                              className="size-[24px] flex-none"
+                            />
+                            {DETAIL_TEXT.actionsLabel}
+                          </span>
+                        }
+                      >
+                        <PlantActions
+                          plant={plant}
+                          online
+                          services={services}
+                          onStatusChanged={(updated) => {
+                            setChanged((current) => ({
+                              ...current,
+                              [updated.id]: updated,
+                            }))
+                            setResult(
+                              `Estado de la muestra: ${PLANT_STATUS_LABEL[updated.status]}.`,
+                            )
+                          }}
+                          onDeleted={() =>
+                            setResult(
+                              'Eliminada (en la app, vuelve al inventario).',
+                            )
+                          }
+                        />
+                      </Collapsible>
                     }
                   />
                 </PlantPhotoRowsContext>

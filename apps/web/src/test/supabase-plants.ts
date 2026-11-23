@@ -425,6 +425,7 @@ function applyPatch(
   if ('origin' in body) next.origin = text('origin')
   if ('location' in body) next.location = text('location')
   if ('nickname' in body) next.nickname = text('nickname')
+  if ('notes' in body) next.notes = text('notes')
   if ('photo_path' in body) next.photo_path = text('photo_path')
   if ('thumbnail_path' in body) next.thumbnail_path = text('thumbnail_path')
   if ('photo_in_bloom' in body)

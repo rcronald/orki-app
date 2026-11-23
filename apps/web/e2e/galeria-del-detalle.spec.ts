@@ -6,9 +6,10 @@ import { PLANTAS, USUARIO } from './soporte/datos.ts'
 import { expect, test } from './soporte/fixtures.ts'
 import type { SupabaseSimulado } from './soporte/supabase-simulado.ts'
 
-// Galería del detalle de una planta (#183): varias fotos, el visor a pantalla
-// completa, la fecha y la nota de una foto, la principal y el orden, a 360 y a
-// 1440 px, con axe, y sin conexión.
+// Galería del detalle de una planta (#183, en la ficha del #265): varias
+// fotos, el visor a pantalla completa, la fecha y la nota de una foto, la
+// principal y el orden («Ordenar fotos»), a 360 y a 1440 px, con axe, y sin
+// conexión.
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FOTO = readFileSync(
@@ -84,7 +85,9 @@ for (const { ancho, alto } of [
         page.getByRole('heading', { name: NOMBRE, level: 1 }),
       ).toBeVisible()
       await expect(miniaturas(page)).toHaveCount(4)
-      await expect(galeria(page).getByText('4 de 6')).toBeVisible()
+      await expect(galeria(page).locator('.orki-gallery__count')).toHaveText(
+        'Foto 1 de 4',
+      )
       await expect(
         galeria(page).getByRole('img', { name: `Foto principal de ${NOMBRE}` }),
       ).toHaveAttribute('src', /^blob:/)
@@ -202,8 +205,10 @@ test(
     await page.getByRole('link', { name: NOMBRE }).click()
     await expect(miniaturas(page)).toHaveCount(4)
 
-    // Mover la segunda después: pasa al tercer lugar.
+    // Mover la segunda después: pasa al tercer lugar. El orden está en
+    // «Ordenar fotos» (#265).
     await miniaturas(page).nth(1).click()
+    await galeria(page).getByRole('button', { name: 'Ordenar fotos' }).click()
     await galeria(page).getByRole('button', { name: 'Mover después' }).click()
     await expect(
       galeria(page).getByText('Foto movida al lugar 3 de 4.'),

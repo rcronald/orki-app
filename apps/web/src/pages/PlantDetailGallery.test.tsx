@@ -42,8 +42,9 @@ const REFERENCE: ReferencePicture = {
   sourcePhotoId: '12345',
 }
 
-// Galería del detalle (#183): ver las fotos, el visor, la fecha y la nota,
-// la principal y el orden, sin conexión y con axe.
+// Galería del detalle (#183, rediseñada en el #265): ver las fotos, «1 de 3»
+// y las flechas sobre la foto, el visor, la fecha y la nota, la principal y
+// el orden (en «Ordenar fotos»), sin conexión y con axe.
 
 const USER = 'user_prueba'
 const ID = '6f1c2a4e-8b3d-4e5f-9a7b-0c1d2e3f4a5b'
@@ -110,6 +111,22 @@ const thumbs = () =>
   ).getAllByRole('button')
 const tool = (name: string) => within(gallery()).getByRole('button', { name })
 const status = () => within(gallery()).getByRole('status')
+/** «1 de 3» sobre la esquina de la foto; para el lector, «Foto 1 de 3». */
+const position = () => {
+  const pill = gallery().querySelector('.orki-gallery__count')
+  if (!(pill instanceof HTMLElement)) throw new Error('Sin contador.')
+  return pill
+}
+/** Despliega «Hacer principal», «Mover antes» y «Mover después» (#265). */
+async function openOrder(user: ReturnType<typeof userEvent.setup>) {
+  const toggle = tool(GALLERY_TEXT.order)
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(
+    within(gallery()).queryByRole('button', { name: GALLERY_TEXT.makeMain }),
+  ).toBeNull()
+  await user.click(toggle)
+  expect(toggle).toHaveAttribute('aria-expanded', 'true')
+}
 
 beforeEach(() => {
   forgetReferencePhotos()
@@ -132,7 +149,9 @@ describe('foto de referencia de la especie (#234)', () => {
     const image = await within(gallery()).findByRole('img', {
       name: 'Foto de referencia de Phalaenopsis amabilis',
     })
-    expect(image).toHaveAttribute('src', '/referencia-media.webp')
+    // Estado vacío compacto (#265): la miniatura, con su título.
+    expect(image).toHaveAttribute('src', '/referencia-miniatura.webp')
+    expect(gallery()).toHaveTextContent(GALLERY_TEXT.referenceTitle)
     expect(loadReference).toHaveBeenCalledTimes(1)
     expect(loadReference.mock.calls[0]?.[0]).toBe('species-amabilis')
     expect(gallery()).toHaveTextContent('Foto de referencia')
@@ -194,6 +213,7 @@ describe('galería del detalle', () => {
     expect(
       within(gallery()).getByRole('img', { name: GALLERY_TEXT.noPhoto }),
     ).toBeVisible()
+    expect(within(gallery()).getByText(GALLERY_TEXT.empty)).toBeVisible()
     expect(
       within(gallery()).queryByRole('button', { name: /^Ver en grande/ }),
     ).toBeNull()
@@ -216,12 +236,18 @@ describe('galería del detalle', () => {
         name: `Foto principal de ${NAME}`,
       }),
     ).toHaveAttribute('src', `blob:${path('thumb', 1)}`)
-    expect(within(gallery()).getByText('1 de 6')).toBeVisible()
+    // Con una sola: sin contador, flechas, miniaturas ni orden (#265).
+    expect(within(gallery()).queryByText(/de 1$/)).toBeNull()
+    for (const name of [
+      GALLERY_TEXT.previous,
+      GALLERY_TEXT.next,
+      GALLERY_TEXT.order,
+      GALLERY_TEXT.makeMain,
+    ]) {
+      expect(within(gallery()).queryByRole('button', { name })).toBeNull()
+    }
     expect(within(gallery()).queryByRole('list')).toBeNull()
     expect(tool(GALLERY_TEXT.editDetails)).toBeVisible()
-    expect(
-      within(gallery()).queryByRole('button', { name: GALLERY_TEXT.makeMain }),
-    ).toBeNull()
     expect(
       within(gallery()).getByRole('link', { name: GALLERY_TEXT.manage }),
     ).toBeVisible()
@@ -230,7 +256,8 @@ describe('galería del detalle', () => {
 
   it('seis fotos: la principal en grande y seis miniaturas; elegir una la muestra con su fecha y nota', async () => {
     const { user } = await renderDetail({ photos: 6 })
-    expect(within(gallery()).getByText('6 de 6')).toBeVisible()
+    // «1 de 6» sobre la esquina (para el lector, «Foto 1 de 6»).
+    expect(position()).toHaveTextContent('Foto 1 de 6')
     expect(thumbs().map((thumb) => thumb.getAttribute('aria-label'))).toEqual([
       'Foto principal',
       'Foto 2 de 6',
@@ -258,6 +285,33 @@ describe('galería del detalle', () => {
       within(gallery()).getByText('Foto del 5 de octubre de 2026'),
     ).toBeVisible()
     expect(within(gallery()).getByText(GALLERY_TEXT.inBloom)).toBeVisible()
+    expect(position()).toHaveTextContent('Foto 3 de 6')
+    await expectNoAxeViolations()
+  })
+
+  it('las flechas sobre la foto pasan a la anterior y a la siguiente, sin dar la vuelta', async () => {
+    const { user } = await renderDetail({ photos: 3 })
+    const previous = tool(GALLERY_TEXT.previous)
+    const next = tool(GALLERY_TEXT.next)
+    expect(previous).toHaveAttribute('aria-disabled', 'true')
+    expect(next).not.toHaveAttribute('aria-disabled')
+
+    await user.click(next)
+    expect(thumbs()[1]).toHaveAttribute('aria-pressed', 'true')
+    expect(position()).toHaveTextContent('Foto 2 de 3')
+    expect(mainButton()).toHaveAccessibleName(
+      `Ver en grande: Foto 2 de 3 de ${NAME}`,
+    )
+    // Con el teclado, también.
+    next.focus()
+    await user.keyboard('{Enter}')
+    expect(position()).toHaveTextContent('Foto 3 de 3')
+    expect(next).toHaveAttribute('aria-disabled', 'true')
+    expect(next).toHaveFocus()
+    await user.click(next)
+    expect(position()).toHaveTextContent('Foto 3 de 3')
+    await user.click(previous)
+    expect(position()).toHaveTextContent('Foto 2 de 3')
     await expectNoAxeViolations()
   })
 
@@ -414,6 +468,7 @@ describe('galería del detalle', () => {
     })
     const reorder = vi.spyOn(rows, 'reorder')
     await user.click(thumbs()[2])
+    await openOrder(user)
     const makeMain = tool(GALLERY_TEXT.makeMain)
     await user.click(makeMain)
 
@@ -443,6 +498,7 @@ describe('galería del detalle', () => {
   it('«Mover antes» y «Mover después»: cambian el lugar y se desactivan en los extremos', async () => {
     const { user, rows } = await renderDetail({ photos: 3 })
     await user.click(thumbs()[1])
+    await openOrder(user)
     expect(tool(GALLERY_TEXT.moveEarlier)).not.toHaveAttribute('aria-disabled')
 
     await user.click(tool(GALLERY_TEXT.moveLater))
@@ -488,6 +544,7 @@ describe('galería del detalle', () => {
       position: 2,
     })
     await user.click(thumbs()[1])
+    await openOrder(user)
     await user.click(tool(GALLERY_TEXT.makeMain))
     expect(await within(gallery()).findByRole('alert')).toHaveTextContent(
       GALLERY_ERROR_TEXT.changed,
@@ -540,8 +597,9 @@ describe('galería del detalle sin conexión', () => {
       }),
     ).toBeNull()
     expect(tool(GALLERY_TEXT.manage)).toHaveAttribute('aria-disabled', 'true')
+    // El motivo es el de la ficha, arriba (#265).
     expect(tool(GALLERY_TEXT.manage)).toHaveAccessibleDescription(
-      GALLERY_TEXT.offline,
+      DETAIL_TEXT.offline,
     )
     // Ninguna imagen rota.
     for (const image of within(gallery()).queryAllByRole('img')) {
@@ -575,6 +633,7 @@ describe('galería del detalle sin conexión', () => {
       await within(mainButton()).findByText(GALLERY_TEXT.unavailable),
     ).toBeVisible()
     expect(within(mainButton()).queryByRole('img')).toBeNull()
+    await openOrder(user)
     for (const name of [
       GALLERY_TEXT.editDetails,
       GALLERY_TEXT.makeMain,
@@ -584,7 +643,7 @@ describe('galería del detalle sin conexión', () => {
       expect(tool(name)).toHaveAttribute('aria-disabled', 'true')
     }
     expect(tool(GALLERY_TEXT.editDetails)).toHaveAccessibleDescription(
-      GALLERY_TEXT.offline,
+      DETAIL_TEXT.offline,
     )
     const reorder = vi.spyOn(rows, 'reorder')
     await user.click(tool(GALLERY_TEXT.makeMain))
