@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useReducer,
   useRef,
   useState,
@@ -874,11 +875,14 @@ export function EditPlantForm({
   }
 
   // Tras un fallo, el mensaje se ve y el foco va a «Reintentar» (o a «Ir a
-  // Mi colección», si la planta ya no existe).
+  // Mi colección», si la planta ya no existe). En el mismo pintado que el
+  // aviso (useLayoutEffect), después de que el diálogo de esperar, si estaba
+  // abierto, devuelva el foco a donde estaba: el aviso nunca se ve con el
+  // foco en otra parte, por tarde que llegue el fallo.
   const failure = save.status === 'error' ? save.error : null
   const retryRef = useRef<HTMLButtonElement>(null)
   const collectionRef = useRef<HTMLAnchorElement>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (failure === null) return
     alertRef.current?.scrollIntoView?.({ block: 'center' })
     ;(collectionRef.current ?? retryRef.current)?.focus()
