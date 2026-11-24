@@ -15,8 +15,6 @@ Qué es la app y dónde está cada documento: [README.md](README.md#documentaci�
 - Prefija toda orden de shell con
   `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"`.
 - No leas `supabase/.env` ni `apps/web/.env*`.
-- No ejecutes nada contra Supabase, Vercel, Clerk ni Sentry reales
-  (nada de `npm run db:push` ni `db:status`), ni uses conectores MCP.
 
 ## Comprobaciones
 
@@ -65,6 +63,8 @@ Qué es la app y dónde está cada documento: [README.md](README.md#documentaci�
 
 ## Si eres un agente con un encargo
 
+- No ejecutes nada contra Supabase, Vercel, Clerk ni Sentry reales
+  (nada de `npm run db:push` ni `db:status`), ni uses conectores MCP.
 - No hagas `git push` ni abras pull requests: el coordinador integra.
   `gh` solo para leer issues.
 - Empieza donde diga el encargo (normalmente `git fetch origin`,
