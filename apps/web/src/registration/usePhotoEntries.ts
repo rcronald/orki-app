@@ -6,6 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react'
+import type { GalleryPhoto } from '../components/ui/PhotoGallery.tsx'
 import { loadPhotoProcessing } from '../photos/load.ts'
 import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
 import type { StoredPlantPhoto } from '../photos/photo-rows.ts'
@@ -72,6 +73,46 @@ export function newPhotoEntry(
 
 export function storedPhotoEntry(stored: StoredPlantPhoto): PhotoEntry {
   return { key: `guardada-${stored.id}`, kind: 'stored', stored }
+}
+
+export function isNewEntry(entry: PhotoEntry): entry is NewPhotoEntry {
+  return entry.kind === 'new'
+}
+
+/**
+ * La foto como la pinta la galería (PhotoGallery): `src` es su miniatura, si
+ * ya la hay, y `errorText` dice por qué no se subió.
+ */
+export function toGalleryPhoto(
+  entry: PhotoEntry,
+  src: string | undefined,
+  errorText: (error: PhotoStorageError) => string,
+): GalleryPhoto {
+  if (entry.kind === 'preparing') {
+    return { id: entry.key, state: { status: 'preparing' } }
+  }
+  if (entry.kind === 'stored') {
+    return { id: entry.key, src, state: { status: 'ready' } }
+  }
+  const { upload } = entry
+  switch (upload.status) {
+    case 'idle':
+      return { id: entry.key, src, state: { status: 'ready' } }
+    case 'uploading':
+      return {
+        id: entry.key,
+        src,
+        state: { status: 'uploading', progress: upload.progress },
+      }
+    case 'saved':
+      return { id: entry.key, src, state: { status: 'saved' } }
+    case 'error':
+      return {
+        id: entry.key,
+        src,
+        state: { status: 'error', message: errorText(upload.error) },
+      }
+  }
 }
 
 export interface PhotoEntriesEvents {

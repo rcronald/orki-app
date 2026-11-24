@@ -88,7 +88,9 @@ import {
   PLANT_TYPE_LABEL,
 } from '../registration/texts.ts'
 import {
+  isNewEntry,
   storedPhotoEntry,
+  toGalleryPhoto,
   usePhotoSelection,
   type NewPhotoEntry,
   type PhotoEntry,
@@ -201,10 +203,6 @@ const EMPTY_DETAILS: PhotoDetailsText = {
 
 function sameDetails(a: PlantPhotoDetails, b: PlantPhotoDetails): boolean {
   return a.takenAt === b.takenAt && a.note === b.note && a.inBloom === b.inBloom
-}
-
-function isNew(entry: PhotoEntry): entry is NewPhotoEntry {
-  return entry.kind === 'new'
 }
 
 /** Textos del error de un guardado: qué falló y, aparte, el motivo. */
@@ -557,7 +555,7 @@ export function EditPlantForm({
   const setUpload = (key: string, upload: NewPhotoEntry['upload']) =>
     photos.update((list) =>
       list.map((entry) =>
-        entry.key === key && isNew(entry) ? { ...entry, upload } : entry,
+        entry.key === key && isNewEntry(entry) ? { ...entry, upload } : entry,
       ),
     )
 
@@ -786,7 +784,7 @@ export function EditPlantForm({
     setSave({ status: 'saving' })
     setManaging(false)
     for (const entry of photos.current()) {
-      if (isNew(entry) && entry.upload.status === 'error') {
+      if (isNewEntry(entry) && entry.upload.status === 'error') {
         setUpload(entry.key, { status: 'idle' })
       }
     }
@@ -848,7 +846,7 @@ export function EditPlantForm({
       // de la planta (solo las que fallaron dicen «No se subió»).
       photos.update((list) =>
         list.map((entry) =>
-          isNew(entry) && entry.upload.status === 'uploading'
+          isNewEntry(entry) && entry.upload.status === 'uploading'
             ? { ...entry, upload: { status: 'idle' } }
             : entry,
         ),
@@ -878,7 +876,7 @@ export function EditPlantForm({
   }, [failure])
 
   // Miniaturas: las nuevas, de su Blob; las guardadas, de Storage.
-  const newEntries = entries.filter(isNew)
+  const newEntries = entries.filter(isNewEntry)
   const thumbnailUrls = useObjectUrls(
     newEntries.map((entry) => entry.photo.thumbnail.blob),
   )
@@ -894,34 +892,9 @@ export function EditPlantForm({
         ? thumbnailUrls.get(entry.photo.thumbnail.blob)
         : undefined
 
-  const galleryPhotos: GalleryPhoto[] = entries.map((entry) => {
-    const src = srcOf(entry)
-    if (entry.kind === 'preparing') {
-      return { id: entry.key, state: { status: 'preparing' } }
-    }
-    if (entry.kind === 'stored') {
-      return { id: entry.key, src, state: { status: 'ready' } }
-    }
-    const { upload } = entry
-    switch (upload.status) {
-      case 'idle':
-        return { id: entry.key, src, state: { status: 'ready' } }
-      case 'uploading':
-        return {
-          id: entry.key,
-          src,
-          state: { status: 'uploading', progress: upload.progress },
-        }
-      case 'saved':
-        return { id: entry.key, src, state: { status: 'saved' } }
-      case 'error':
-        return {
-          id: entry.key,
-          src,
-          state: { status: 'error', message: EDIT_TEXT.photoNotUploaded },
-        }
-    }
-  })
+  const galleryPhotos: GalleryPhoto[] = entries.map((entry) =>
+    toGalleryPhoto(entry, srcOf(entry), () => EDIT_TEXT.photoNotUploaded),
+  )
 
   const managed: ManagedPhoto[] = entries.map((entry) => ({
     key: entry.key,

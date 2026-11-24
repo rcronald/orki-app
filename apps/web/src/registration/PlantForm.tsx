@@ -108,10 +108,11 @@ import { SpeciesPreview, type LoadReferencePhoto } from './SpeciesPreview.tsx'
 import { useDeducedGenus } from './useDeducedGenus.ts'
 import { useQuickGenera } from './useQuickGenera.ts'
 import {
+  isNewEntry,
   newPhotoEntry,
+  toGalleryPhoto,
   usePhotoSelection,
   type NewPhotoEntry,
-  type PhotoEntry,
 } from './usePhotoEntries.ts'
 
 /** Opciones con las que el formulario sube las fotos de una planta guardada. */
@@ -327,10 +328,6 @@ type PhotoPhase =
 
 function newPlantId(): string {
   return crypto.randomUUID()
-}
-
-function isNew(entry: PhotoEntry): entry is NewPhotoEntry {
-  return entry.kind === 'new'
 }
 
 /** Otro borrador guardado, que se puede continuar en vez del que está abierto. */
@@ -686,7 +683,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const photosTouched = useRef(false)
   const preparing = entries.some((entry) => entry.kind === 'preparing')
   const photoCount = entries.length
-  const newPhotos = entries.filter(isNew)
+  const newPhotos = entries.filter(isNewEntry)
 
   // Planta ya guardada cuyas fotos se están subiendo (o quitando) o no se
   // pudieron subir.
@@ -814,7 +811,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
     if (draftOwner === null || !photosTouched.current || registered !== null) {
       return
     }
-    const list = photos.current().filter(isNew)
+    const list = photos.current().filter(isNewEntry)
     const savedAt = now().getTime()
     let textSaved = true
     if (list.length > 0) {
@@ -997,14 +994,14 @@ function PlantFormBody(props: PlantFormBodyProps) {
     const all = photos.current()
     const pending = all.filter(
       (entry): entry is NewPhotoEntry =>
-        isNew(entry) &&
+        isNewEntry(entry) &&
         entry.upload.status !== 'saved' &&
         (onlyKeys === undefined || onlyKeys.includes(entry.key)),
     )
     const setUpload = (key: string, upload: NewPhotoEntry['upload']) =>
       photos.update((list) =>
         list.map((entry) =>
-          entry.key === key && isNew(entry) ? { ...entry, upload } : entry,
+          entry.key === key && isNewEntry(entry) ? { ...entry, upload } : entry,
         ),
       )
     if (pending.length > 0) {
@@ -1074,7 +1071,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
 
     const failedNow = photos
       .current()
-      .some((entry) => isNew(entry) && entry.upload.status !== 'saved')
+      .some((entry) => isNewEntry(entry) && entry.upload.status !== 'saved')
     if (firstError === null && !failedNow) {
       clearPending()
       if (!mounted.current) return
@@ -1138,7 +1135,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
       pendingRef.current = {
         plant,
         photos: new Map(
-          all.filter(isNew).map((entry) => [
+          all.filter(isNewEntry).map((entry) => [
             entry.key,
             {
               fileName: entry.fileName,
@@ -1194,7 +1191,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
     const savedCount = photos
       .current()
       .filter(
-        (entry) => !isNew(entry) || entry.upload.status === 'saved',
+        (entry) => !isNewEntry(entry) || entry.upload.status === 'saved',
       ).length
     // La persona decidió seguir sin ellas: no se ofrecen después.
     clearPending()
@@ -1284,46 +1281,22 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const thumbnailUrls = useObjectUrls(
     newPhotos.map((entry) => entry.photo.thumbnail.blob),
   )
-  const galleryPhotos: GalleryPhoto[] = entries.map((entry) => {
-    switch (entry.kind) {
-      case 'preparing':
-        return { id: entry.key, state: { status: 'preparing' } }
-      // Solo las usa la edición (editing/), que tiene su galería.
-      case 'stored':
-        return { id: entry.key, state: { status: 'ready' } }
-      case 'new': {
-        const src = thumbnailUrls.get(entry.photo.thumbnail.blob)
-        const { upload } = entry
-        switch (upload.status) {
-          case 'idle':
-            return { id: entry.key, src, state: { status: 'ready' } }
-          case 'uploading':
-            return {
-              id: entry.key,
-              src,
-              state: { status: 'uploading', progress: upload.progress },
-            }
-          case 'saved':
-            return { id: entry.key, src, state: { status: 'saved' } }
-          case 'error':
-            return {
-              id: entry.key,
-              src,
-              state: {
-                status: 'error',
-                message:
-                  upload.error.reason === 'aborted'
-                    ? 'Cancelada'
-                    : 'No se subió',
-              },
-            }
-        }
-      }
-    }
-  })
+  // Las guardadas ('stored') solo las usa la edición: aquí no hay miniatura.
+  const galleryPhotos: GalleryPhoto[] = entries.map((entry) =>
+    toGalleryPhoto(
+      entry,
+      isNewEntry(entry)
+        ? thumbnailUrls.get(entry.photo.thumbnail.blob)
+        : undefined,
+      (error) =>
+        error.reason === 'aborted'
+          ? text.photoCancelled
+          : text.photoNotUploaded,
+    ),
+  )
 
   const failedLabels = entries.flatMap((entry, index) =>
-    isNew(entry) && entry.upload.status === 'error'
+    isNewEntry(entry) && entry.upload.status === 'error'
       ? [galleryPhotoLabel(index, entries.length)]
       : [],
   )
