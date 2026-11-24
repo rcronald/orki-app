@@ -135,6 +135,36 @@ export const PLANT_FORM_TEXT = {
   flowerColorLabel: 'Color de la flor',
   draftRestored: 'Recuperamos lo que estabas escribiendo.',
   draftDiscard: 'Descartar borrador',
+  /**
+   * Otro borrador guardado mientras se registra uno (#296): «Tu borrador de
+   * Cattleya maxima (2 fotos) sigue guardado.», con «Continuar ese borrador».
+   */
+  otherDraftBefore: 'Tu borrador de ',
+  otherDraftAfter: ' sigue guardado.',
+  otherDraftContinue: 'Continuar ese borrador',
+  /** Un borrador sin nombre (solo fotos u otros datos). */
+  draftUnnamed: 'sin nombre',
+  /** « (2 fotos)» tras el nombre de un borrador; nada sin fotos. */
+  draftPhotos: (count: number) =>
+    count === 0 ? '' : ` (${photoCount(count)})`,
+  /**
+   * Elegir entre un borrador y lo que llega de la ficha del catálogo o de
+   * «¿Ya la tengo?» (#296).
+   */
+  choiceTitle: '¿Qué quieres registrar?',
+  choiceOneBefore: 'Tienes un borrador guardado de ',
+  choiceOneMiddle: '. Puedes continuarlo o registrar ',
+  choiceOneAfter: '; el borrador se conserva hasta que lo descartes.',
+  choiceFullBefore: 'Tienes dos borradores guardados. Para registrar ',
+  choiceFullAfter: ', continúa uno o descarta uno de ellos.',
+  choiceContinue: 'Continuar borrador',
+  choiceRegister: (name: string) => `Registrar ${name}`,
+  choiceRegisterHint: 'Tu borrador queda guardado para retomarlo después.',
+  choiceRegisterFull:
+    'Ya tienes dos borradores guardados: descarta uno para empezar otro.',
+  choiceDiscard: (name: string) => `Descartar el borrador de ${name}`,
+  /** Anuncio al descartar un borrador desde la elección. */
+  choiceDiscarded: (name: string) => `Borrador de ${name} descartado.`,
   submit: 'Registrar orquídea',
   submitting: 'Registrando…',
   cancel: 'Cancelar',
@@ -142,8 +172,27 @@ export const PLANT_FORM_TEXT = {
   signIn: 'Iniciar sesión',
   confirmDiscard:
     '¿Salir sin registrar? Se perderá lo que escribiste en el formulario.',
+  /** Sin una sesión identificada en el dispositivo: no hay borrador posible. */
   offline:
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
+  /**
+   * Sin conexión (o con la sesión sin confirmar) y con la sesión identificada
+   * en el dispositivo (#296): se sigue completando el borrador y el envío
+   * espera. Empieza con offlineTitle o unverifiedTitle.
+   */
+  offlineTitle: 'Sin conexión.',
+  unverifiedTitle: 'Sesión sin confirmar.',
+  draftSavedHere: (when: string) =>
+    `Borrador guardado en este dispositivo. Podrás registrarla cuando ${when}.`,
+  draftWillSaveHere: (when: string) =>
+    `Lo que completes se guarda en este dispositivo. Podrás registrarla cuando ${when}.`,
+  draftNotSavedHere: (when: string) =>
+    `No pudimos guardar el borrador en este dispositivo: no cierres esta pantalla. Podrás registrarla cuando ${when}.`,
+  whenOnline: 'vuelva la conexión',
+  whenVerified: 'se confirme tu sesión',
+  /** Bajo el nombre, sin conexión (#296). */
+  nameOfflineHint:
+    'Sin conexión no podemos buscar en el catálogo; al volver se comprobará el nombre.',
 } as const
 
 /** Avisos propios de la edición. */
