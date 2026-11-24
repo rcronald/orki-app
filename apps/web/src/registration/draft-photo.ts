@@ -22,7 +22,9 @@ import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 //   de ese borrador.
 // - Al leer se borran las de otros usuarios: una foto no aparece con otra
 //   cuenta. pruneDraftPhotos borra además las de borradores que ya no existen
-//   (sin borrador de texto con su id) y las caducadas.
+//   (sin borrador de texto con su id) y las caducadas, pero no las fotos por
+//   subir de una planta ya guardada (#284, pending-upload.ts), que comparten
+//   el almacén y tienen su propia caducidad.
 // - Caducan como el borrador (24 horas desde la última vez que se guardaron
 //   las fotos) y se borran al guardar la planta, al descartar el borrador, al
 //   quitar la última foto y al salir con "Cancelar".
@@ -49,13 +51,29 @@ import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 /** Separa el usuario del id de planta en la clave; ninguno de los dos lo lleva. */
 const KEY_SEPARATOR = '/'
 
+/**
+ * Marca, tras el separador, de las fotos por subir de una planta ya guardada
+ * (#284, pending-upload.ts): van en el mismo almacén, con la clave
+ * `<usuario>/subir:<planta>`, así que las borra lo mismo que las de los
+ * borradores al entrar con otra cuenta y al eliminar la cuenta
+ * (clearDraftPhoto sin id de planta).
+ */
+export const PENDING_UPLOAD_MARK = 'subir:'
+
+/** Si `key` es la de unas fotos por subir (no la de un borrador). */
+export function isPendingUploadKey(key: string): boolean {
+  return key
+    .slice(key.lastIndexOf(KEY_SEPARATOR) + 1)
+    .startsWith(PENDING_UPLOAD_MARK)
+}
+
 /** Clave de las fotos del borrador `plantId` del usuario. */
 export function draftPhotoKey(userId: string, plantId: string): string {
   return `${userId}${KEY_SEPARATOR}${plantId}`
 }
 
 /** El usuario de una clave: la de un borrador, o la de antes del #296 (el id solo). */
-function ownerOf(key: string): string {
+export function ownerOf(key: string): string {
   const at = key.lastIndexOf(KEY_SEPARATOR)
   return at === -1 ? key : key.slice(0, at)
 }
@@ -124,7 +142,8 @@ function isEncodedImage(value: unknown): boolean {
   )
 }
 
-function toItem(value: unknown): DraftPhotoItem | null {
+/** Una foto guardada (nombre y foto preparada) si se entiende; null si no. */
+export function toDraftPhotoItem(value: unknown): DraftPhotoItem | null {
   if (
     !isRecord(value) ||
     typeof value.fileName !== 'string' ||
@@ -162,7 +181,7 @@ function toDraftPhotos(value: unknown): DraftPhotos | null {
   if (items.length === 0 || items.length > MAX_PLANT_PHOTOS) return null
   const photos: DraftPhotoItem[] = []
   for (const item of items) {
-    const photo = toItem(item)
+    const photo = toDraftPhotoItem(item)
     if (photo === null) return null
     photos.push(photo)
   }
@@ -184,7 +203,7 @@ function isFresh(found: DraftPhotos, now: Date): boolean {
 }
 
 /** Borra las fotos de los demás usuarios; devuelve las claves de este. */
-async function forgetOtherUsers(
+export async function forgetOtherUsers(
   backend: DraftPhotoBackend,
   userId: string,
 ): Promise<string[]> {
@@ -222,7 +241,11 @@ export async function readDraftPhotos(
   { plantId, now }: { plantId: string | null; now: Date },
 ): Promise<DraftPhotos | null> {
   if (plantId === null) {
-    await clearDraftPhotos(backend, userId)
+    await quietly(async () => {
+      for (const key of await forgetOtherUsers(backend, userId)) {
+        if (!isPendingUploadKey(key)) await backend.delete(key)
+      }
+    })
     return null
   }
   const key = draftPhotoKey(userId, plantId)
@@ -326,6 +349,9 @@ export function pruneDraftPhotos(
 ): Promise<void> {
   return quietly(async () => {
     for (const key of await forgetOtherUsers(backend, userId)) {
+      // Las fotos por subir de una planta ya guardada (#284) no son de un
+      // borrador: tienen su propia caducidad (pending-upload.ts).
+      if (isPendingUploadKey(key)) continue
       const found = toDraftPhotos(await backend.get(key))
       const valid =
         found !== null &&
