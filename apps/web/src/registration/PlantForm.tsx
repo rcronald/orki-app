@@ -31,7 +31,6 @@ import type {
   GenusSearchResult,
   SpeciesSearchResult,
 } from '../lib/catalogSearch.ts'
-import { enumValues, type PlantType } from '../lib/database.ts'
 import { localDateString } from '../lib/localDate.ts'
 import type {
   NewPlantPhoto,
@@ -46,11 +45,7 @@ import { photoVersionFor } from '../photos/upload.ts'
 import { canRetryUpload } from '../photos/usePhotoUpload.ts'
 import { useLeaveGuard } from '../editing/useLeaveGuard.tsx'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
-import {
-  ChoiceField,
-  FORM_CHIP_CLASSES,
-  LOCKED_CHIP_CLASSES,
-} from './ChoiceField.tsx'
+import { FORM_CHIP_CLASSES } from './ChoiceField.tsx'
 import {
   clearPlantDraft,
   readPlantDrafts,
@@ -98,11 +93,13 @@ import {
 import { PendingUploadsNotice } from './PendingUploadsNotice.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
 import {
-  FLOWER_COLOR_LABEL,
-  PENDING_UPLOAD_TEXT,
-  PLANT_FORM_TEXT,
-  PLANT_TYPE_LABEL,
-} from './texts.ts'
+  AcquiredOnField,
+  FlowerColorField,
+  NicknameField,
+  PhotoPrepareErrors,
+  PlantTypeField,
+} from './PlantFields.tsx'
+import { PENDING_UPLOAD_TEXT, PLANT_FORM_TEXT } from './texts.ts'
 import { SpeciesPreview, type LoadReferencePhoto } from './SpeciesPreview.tsx'
 import { useDeducedGenus } from './useDeducedGenus.ts'
 import { usePlantFieldFocus } from './usePlantFieldFocus.ts'
@@ -244,8 +241,6 @@ interface PlantFormCommonProps {
 export type PlantFormProps = PlantFormCommonProps & {
   services: PlantFormServices
 }
-
-const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
 
 const deviceNow = () => new Date()
 
@@ -912,7 +907,6 @@ function PlantFormBody(props: PlantFormBodyProps) {
   // guardar y, desde entonces, se actualizan con cada cambio.
   const errors = submitted ? validatePlantForm(values, today) : {}
   const saving = save.status === 'saving'
-  const locked = values.species !== null
 
   /** Guarda en el dispositivo las fotos que aún quedan por subir. */
   const savePending = (): Promise<boolean> => {
@@ -1340,49 +1334,20 @@ function PlantFormBody(props: PlantFormBodyProps) {
         containerRef={genusRef}
       />
 
-      <ChoiceField
-        label={PLANT_FORM_TEXT.typeLabel}
-        lockedHint={locked ? PLANT_FORM_TEXT.lockedHint : undefined}
+      <PlantTypeField
+        values={values}
+        dispatch={dispatch}
         error={errors.type}
         containerRef={typeRef}
-        segmented
-      >
-        {(describedBy) =>
-          PLANT_TYPES.map((plantType) => {
-            const selected = values.type === plantType
-            return (
-              <Chip
-                key={plantType}
-                className={[
-                  FORM_CHIP_CLASSES,
-                  locked && !selected ? LOCKED_CHIP_CLASSES : '',
-                ].join(' ')}
-                selected={selected}
-                aria-disabled={locked || undefined}
-                aria-describedby={describedBy}
-                onClick={() => dispatch({ type: 'typeSelected', plantType })}
-              >
-                {PLANT_TYPE_LABEL[plantType]}
-              </Chip>
-            )
-          })
-        }
-      </ChoiceField>
+      />
 
       <FormPair>
-        <TextField
-          ref={dateRef}
-          label={PLANT_FORM_TEXT.dateLabel}
-          type="date"
-          max={today}
+        <AcquiredOnField
           value={values.acquiredOn}
+          max={today}
           error={errors.acquiredOn}
-          onChange={(event) =>
-            dispatch({
-              type: 'acquiredOnChanged',
-              acquiredOn: event.target.value,
-            })
-          }
+          dispatch={dispatch}
+          inputRef={dateRef}
         />
         <OriginField
           value={values.origin}
@@ -1450,22 +1415,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
       {leftOutNotice !== null && (
         <p className="orki-gallery__notice">{leftOutNotice}</p>
       )}
-      {prepareErrors.length > 0 && (
-        <div role="alert" className="flex flex-col gap-space-1">
-          {prepareErrors.map((message) => (
-            <p
-              key={message}
-              className="flex items-start gap-space-2 text-sm text-danger"
-            >
-              <Icon
-                name="triangle-alert"
-                className="mt-[2px] size-[16px] flex-none"
-              />
-              {message}
-            </p>
-          ))}
-        </div>
-      )}
+      <PhotoPrepareErrors messages={prepareErrors} />
     </PhotoGallery>
   )
 
@@ -1502,38 +1452,13 @@ function PlantFormBody(props: PlantFormBodyProps) {
               })
             }
           />
-          <TextField
-            ref={nicknameRef}
-            label={PLANT_FORM_TEXT.nicknameLabel}
-            hint={PLANT_FORM_TEXT.nicknameHint}
+          <NicknameField
             value={values.nickname}
-            maxLength={PLANT_TEXT_MAX_LENGTH}
-            autoCapitalize="sentences"
             error={errors.nickname}
-            onChange={(event) =>
-              dispatch({
-                type: 'textChanged',
-                field: 'nickname',
-                value: event.target.value,
-              })
-            }
+            dispatch={dispatch}
+            inputRef={nicknameRef}
           />
-          <ChoiceField label={PLANT_FORM_TEXT.flowerColorLabel}>
-            {() =>
-              enumValues.flower_color.map((flowerColor) => (
-                <Chip
-                  key={flowerColor}
-                  className={FORM_CHIP_CLASSES}
-                  selected={values.flowerColor === flowerColor}
-                  onClick={() =>
-                    dispatch({ type: 'flowerColorToggled', flowerColor })
-                  }
-                >
-                  {FLOWER_COLOR_LABEL[flowerColor]}
-                </Chip>
-              ))
-            }
-          </ChoiceField>
+          <FlowerColorField value={values.flowerColor} dispatch={dispatch} />
           {/* Solo con alguna foto: sin fotos no tiene sentido. */}
           {photoCount > 0 && (
             <div>

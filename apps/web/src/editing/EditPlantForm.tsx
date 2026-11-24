@@ -14,7 +14,6 @@ import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
 import { Button } from '../components/ui/Button.tsx'
-import { Chip } from '../components/ui/Chip.tsx'
 import { Collapsible } from '../components/ui/Collapsible.tsx'
 import {
   FormActions,
@@ -28,13 +27,11 @@ import {
   type GalleryPhoto,
 } from '../components/ui/PhotoGallery.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
-import { TextField } from '../components/ui/TextField.tsx'
 import type {
   CatalogSearchFunction,
   GenusSearchResult,
   SpeciesSearchResult,
 } from '../lib/catalogSearch.ts'
-import { enumValues, type PlantType } from '../lib/database.ts'
 import { localDateString } from '../lib/localDate.ts'
 import {
   checkPlantPhotoDetails,
@@ -52,15 +49,9 @@ import {
 import { PhotoStorageError, type PhotoStorage } from '../photos/storage.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { useStoredThumbnails } from '../photos/useStoredThumbnails.ts'
-import {
-  ChoiceField,
-  FORM_CHIP_CLASSES,
-  LOCKED_CHIP_CLASSES,
-} from '../registration/ChoiceField.tsx'
 import { DuplicateNotice } from '../registration/DuplicateNotice.tsx'
 import {
   isPendingName,
-  PLANT_TEXT_MAX_LENGTH,
   plantFormReducer,
   plantFormValuesFrom,
   plantPatch,
@@ -82,11 +73,13 @@ import {
   type LoadReferencePhoto,
 } from '../registration/SpeciesPreview.tsx'
 import {
-  FLOWER_COLOR_LABEL,
-  PLANT_EDIT_NOTICE_TEXT,
-  PLANT_FORM_TEXT,
-  PLANT_TYPE_LABEL,
-} from '../registration/texts.ts'
+  AcquiredOnField,
+  FlowerColorField,
+  NicknameField,
+  PhotoPrepareErrors,
+  PlantTypeField,
+} from '../registration/PlantFields.tsx'
+import { PLANT_EDIT_NOTICE_TEXT } from '../registration/texts.ts'
 import {
   isNewEntry,
   storedPhotoEntry,
@@ -150,8 +143,6 @@ export interface EditPlantFormProps {
   /** Reloj, para las pruebas. */
   now?: () => Date
 }
-
-const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
 
 /** Campos en el orden de la pantalla: el primero con error recibe el foco. */
 const FIELD_ORDER: readonly PlantFormField[] = [
@@ -497,7 +488,6 @@ export function EditPlantForm({
   }, [])
 
   const preparing = entries.some((entry) => entry.kind === 'preparing')
-  const locked = values.species !== null
 
   const cancel = () => {
     if (saving) return
@@ -962,49 +952,20 @@ export function EditPlantForm({
         containerRef={genusRef}
       />
 
-      <ChoiceField
-        label={PLANT_FORM_TEXT.typeLabel}
-        lockedHint={locked ? PLANT_FORM_TEXT.lockedHint : undefined}
+      <PlantTypeField
+        values={values}
+        dispatch={dispatch}
         error={errors.type}
         containerRef={typeRef}
-        segmented
-      >
-        {(describedBy) =>
-          PLANT_TYPES.map((plantType) => {
-            const selected = values.type === plantType
-            return (
-              <Chip
-                key={plantType}
-                className={[
-                  FORM_CHIP_CLASSES,
-                  locked && !selected ? LOCKED_CHIP_CLASSES : '',
-                ].join(' ')}
-                selected={selected}
-                aria-disabled={locked || undefined}
-                aria-describedby={describedBy}
-                onClick={() => dispatch({ type: 'typeSelected', plantType })}
-              >
-                {PLANT_TYPE_LABEL[plantType]}
-              </Chip>
-            )
-          })
-        }
-      </ChoiceField>
+      />
 
       <FormPair>
-        <TextField
-          ref={dateRef}
-          label={PLANT_FORM_TEXT.dateLabel}
-          type="date"
-          max={today}
+        <AcquiredOnField
           value={values.acquiredOn}
+          max={today}
           error={errors.acquiredOn}
-          onChange={(event) =>
-            dispatch({
-              type: 'acquiredOnChanged',
-              acquiredOn: event.target.value,
-            })
-          }
+          dispatch={dispatch}
+          inputRef={dateRef}
         />
         <OriginField
           field="location"
@@ -1049,38 +1010,13 @@ export function EditPlantForm({
             error={errors.origin}
             inputRef={originRef}
           />
-          <TextField
-            ref={nicknameRef}
-            label={PLANT_FORM_TEXT.nicknameLabel}
-            hint={PLANT_FORM_TEXT.nicknameHint}
+          <NicknameField
             value={values.nickname}
-            maxLength={PLANT_TEXT_MAX_LENGTH}
-            autoCapitalize="sentences"
             error={errors.nickname}
-            onChange={(event) =>
-              dispatch({
-                type: 'textChanged',
-                field: 'nickname',
-                value: event.target.value,
-              })
-            }
+            dispatch={dispatch}
+            inputRef={nicknameRef}
           />
-          <ChoiceField label={PLANT_FORM_TEXT.flowerColorLabel}>
-            {() =>
-              enumValues.flower_color.map((flowerColor) => (
-                <Chip
-                  key={flowerColor}
-                  className={FORM_CHIP_CLASSES}
-                  selected={values.flowerColor === flowerColor}
-                  onClick={() =>
-                    dispatch({ type: 'flowerColorToggled', flowerColor })
-                  }
-                >
-                  {FLOWER_COLOR_LABEL[flowerColor]}
-                </Chip>
-              ))
-            }
-          </ChoiceField>
+          <FlowerColorField value={values.flowerColor} dispatch={dispatch} />
           <div className="orki-field">
             <label className="orki-field__label" htmlFor={notesId}>
               {EDIT_TEXT.notesLabel}
@@ -1156,22 +1092,7 @@ export function EditPlantForm({
           </Button>
         </div>
       )}
-      {prepareErrors.length > 0 && (
-        <div role="alert" className="flex flex-col gap-space-1">
-          {prepareErrors.map((message) => (
-            <p
-              key={message}
-              className="flex items-start gap-space-2 text-sm text-danger"
-            >
-              <Icon
-                name="triangle-alert"
-                className="mt-[2px] size-[16px] flex-none"
-              />
-              {message}
-            </p>
-          ))}
-        </div>
-      )}
+      <PhotoPrepareErrors messages={prepareErrors} />
     </>
   )
 
