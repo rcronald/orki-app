@@ -1,5 +1,10 @@
-import { isBrowserOffline, offlineOr } from './connection.ts'
-import { CatalogSearchError, prepareSearchQuery } from './catalogSearch.ts'
+import { isBrowserOffline } from './connection.ts'
+import {
+  CatalogSearchError,
+  loadClient,
+  prepareSearchQuery,
+  throwIfAborted,
+} from './catalogSearch.ts'
 import type {
   PublicCommonName,
   PublicSpeciesDetail,
@@ -104,10 +109,6 @@ export interface PublicCatalogOptions {
 
 // Errores ----------------------------------------------------------------------
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw new CatalogSearchError('aborted')
-}
-
 /**
  * Clasifica el `error` de postgrest-js: con status 0 la petición no obtuvo
  * respuesta (sin conexión si el navegador lo sabe; si no, fallo de red).
@@ -126,18 +127,9 @@ function toError(
   return new CatalogSearchError('failed', { cause: error })
 }
 
-async function loadClient(signal: AbortSignal | undefined) {
-  try {
-    const supabase = await getPublicSupabase()
-    throwIfAborted(signal)
-    return supabase
-  } catch (error) {
-    if (error instanceof CatalogSearchError) throw error
-    throwIfAborted(signal)
-    throw new CatalogSearchError(offlineOr('failed'), {
-      cause: error,
-    })
-  }
+/** El cliente público, con los errores de la búsqueda (catalogSearch.ts). */
+function loadPublicClient(signal: AbortSignal | undefined) {
+  return loadClient(signal, getPublicSupabase)
 }
 
 /** Ejecuta la llamada (con el AbortSignal) y devuelve sus filas o el error. */
@@ -185,7 +177,7 @@ export async function searchPublicSpecies(
     Math.max(1, Math.trunc(options.maxResults ?? PUBLIC_SEARCH_MAX_RESULTS)),
   )
 
-  const supabase = await loadClient(signal)
+  const supabase = await loadPublicClient(signal)
   const rows = await run(
     supabase.rpc('search_public_species', {
       query: prepared,
@@ -219,7 +211,7 @@ export async function listAllPublicGenera(
 ): Promise<PublicGenus[]> {
   const { signal } = options
   throwIfAborted(signal)
-  const supabase = await loadClient(signal)
+  const supabase = await loadPublicClient(signal)
   const page = (pageNumber: number) =>
     run(
       supabase.rpc('list_public_genera', {
@@ -260,7 +252,7 @@ export async function listPublicGenusSpecies(
   const { signal } = options
   throwIfAborted(signal)
   if (!isCatalogId(genusId)) return null
-  const supabase = await loadClient(signal)
+  const supabase = await loadPublicClient(signal)
   const rows =
     (await run(
       supabase.rpc('list_public_genus_species', {
@@ -313,7 +305,7 @@ export async function getPublicSpecies(
   const { signal } = options
   throwIfAborted(signal)
   if (!isCatalogId(speciesId)) return null
-  const supabase = await loadClient(signal)
+  const supabase = await loadPublicClient(signal)
   const rows = await run(
     supabase.rpc('get_public_species', { target_species_id: speciesId }),
     signal,

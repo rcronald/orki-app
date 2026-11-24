@@ -5,7 +5,11 @@ import type {
   SpeciesStatus,
   SpeciesType,
 } from './database.ts'
-import { getSupabase, sessionTokenFailure } from './supabase.ts'
+import {
+  getSupabase,
+  sessionTokenFailure,
+  type OrkiSupabaseClient,
+} from './supabase.ts'
 
 // Búsqueda en el catálogo desde la app (issue #71).
 //
@@ -169,7 +173,8 @@ function clampResults(maxResults: number | undefined): number {
   return Math.min(SEARCH_MAX_RESULTS, Math.max(1, Math.trunc(maxResults)))
 }
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
+/** CatalogSearchError('aborted') si la señal ya se canceló. */
+export function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new CatalogSearchError('aborted')
 }
 
@@ -196,12 +201,16 @@ function toSearchError(
 }
 
 /**
- * Carga el cliente. Si no llega (por ejemplo, el chunk del cliente de Supabase no se
- * pudo descargar), el error es de conexión o de red.
+ * Carga el cliente (por defecto, el de la app; el catálogo público pasa
+ * getPublicSupabase). Si no llega (por ejemplo, el chunk del cliente de
+ * Supabase no se pudo descargar), el error es de conexión o de red.
  */
-async function loadClient(signal: AbortSignal | undefined) {
+export async function loadClient(
+  signal: AbortSignal | undefined,
+  getClient: () => Promise<OrkiSupabaseClient> = getSupabase,
+): Promise<OrkiSupabaseClient> {
   try {
-    const supabase = await getSupabase()
+    const supabase = await getClient()
     throwIfAborted(signal)
     return supabase
   } catch (error) {
