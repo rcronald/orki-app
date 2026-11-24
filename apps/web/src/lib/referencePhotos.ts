@@ -14,7 +14,7 @@ import { getSupabase, type OrkiSupabaseClient } from './supabase.ts'
 //   detalle de una especie del backoffice (embebida). Los tres se convierten
 //   aquí en un ReferencePicture con las direcciones ya resueltas.
 // - No se guardan en el dispositivo: ni van en el precaché ni en Cache Storage
-//   (ver «Sin conexión» en el README). Sin conexión no se piden y, si una
+//   (ver «Sin conexión» en docs/app/autenticacion.md). Sin conexión no se piden y, si una
 //   imagen no carga, la pieza que la muestra se retira (ReferencePhoto.tsx).
 // - Lo que llega se valida: una forma inesperada (una licencia que no es de
 //   las aceptadas, una dirección de la foto que no es de iNaturalist) se trata

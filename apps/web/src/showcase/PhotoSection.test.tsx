@@ -7,7 +7,7 @@ import { fixture } from '../test/photo-fixtures.ts'
 import { PhotoSection } from './PhotoSection.tsx'
 
 // jsdom no tiene canvas: el procesamiento se sustituye por uno fijo. La
-// sección se prueba de verdad en un navegador (ver README, "Fotos").
+// sección se prueba de verdad en un navegador (ver docs/app/fotos.md).
 
 const processPhoto = vi.fn<(file: Blob) => Promise<ProcessedPhoto>>()
 

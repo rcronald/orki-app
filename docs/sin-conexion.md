@@ -195,8 +195,9 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
 - **Sin red:** la tarjeta lee de esa caché, como siempre; si falta alguna,
   el marcador neutro "sin foto" con el texto alternativo "no se pudo
   cargar". La foto grande del detalle no se guarda en el dispositivo (solo
-  en memoria mientras dura la pestaña): sin red, el detalle muestra la
-  miniatura guardada en su lugar (`detail/PlantPhoto.tsx`).
+  en memoria mientras dura la pestaña): sin red, el visor del detalle
+  muestra la miniatura guardada en su lugar, con un aviso (`ViewerPhoto` en
+  `detail/PlantGallery.tsx`; en la página solo hay miniaturas desde el #183).
 - **Limpieza:** en cada pasada se borran de la caché del usuario las
   miniaturas que ya no son de ninguna planta suya (planta eliminada o foto
   reemplazada: la ruta lleva la versión). Las de otros usuarios se borran al
@@ -265,7 +266,7 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   IndexedDB `orki-registro`) y solo «Registrar orquídea» espera, con su motivo
   («Borrador guardado en este dispositivo. Podrás registrarla cuando vuelva la
   conexión.»). Nada se envía solo: sin cola ni sincronización. Ver «Registro
-  de una planta» en el README.
+  de una planta» en [docs/app/coleccion-y-registro.md](app/coleccion-y-registro.md#registro-de-una-planta).
 - **Siguen funcionando:** buscar, filtrar, "¿Ya la tengo?" (con sinónimos y
   abreviaturas de la copia), agrupar, el detalle (con la miniatura en lugar
   de la foto grande) y exportar a CSV (sale de la colección en memoria).
@@ -283,7 +284,8 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   así que sin conexión se sigue abriendo la versión que estaba en el
   dispositivo, con todos sus chunks. Sin conexión no se buscan versiones
   nuevas, y un chunk que no carga sin red no recarga la página (no es un
-  despliegue). Ver «Service worker: versiones nuevas» en el README.
+  despliegue). Ver «Service worker: versiones nuevas» en
+  [docs/app/autenticacion.md](app/autenticacion.md#service-worker-versiones-nuevas).
 
 ## 6. Eventos de producto sin conexión (#146)
 

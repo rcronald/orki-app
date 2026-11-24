@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 // Pruebas de extremo a extremo (#148). Corren contra el build de
 // apps/web/dist-medicion/e2e (npm run build:e2e: la app de producción con Clerk
 // simulado), servido en local como en Vercel. Supabase se simula en la red
-// (e2e/soporte/). Ver la sección "Pruebas de extremo a extremo" del README.
+// (e2e/soporte/). Ver docs/pruebas.md.
 //
 //   npm run test:e2e                       # construye y prueba en los 4 perfiles
 //   npm run test:e2e -- --project=webkit   # un solo motor (sin volver a construir:

@@ -9,7 +9,7 @@ import type { SentryModule } from './types.ts'
 
 declare global {
   interface Window {
-    /** Provoca un error de prueba (ver el README, Errores en Sentry). */
+    /** Provoca un error de prueba (ver docs/operacion/errores-en-sentry.md). */
     orkiErrorDePrueba?: () => void
   }
 }
