@@ -37,8 +37,7 @@ import {
 // borran (el registro, la planta o la cuenta).
 // Con el #284 se añadieron las fotos de una planta ya registrada que no
 // llegaron a subirse (qué, para qué, cuándo se borran y que caducan a los
-// siete días). Pendiente de aprobar por el responsable: hasta entonces no
-// cambia la fecha de arriba.
+// siete días). Publicado al fusionar el #309, el 24 de noviembre de 2026.
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
 // aprobado.
 //
@@ -46,8 +45,8 @@ import {
 // El enlace de volver lo pone TextPage según de dónde se vino.
 
 /** Fecha de la última actualización del texto, en el formato que se muestra. */
-const PRIVACY_LAST_UPDATED = '23 de noviembre de 2026'
-const PRIVACY_LAST_UPDATED_ISO = '2026-11-23'
+const PRIVACY_LAST_UPDATED = '24 de noviembre de 2026'
+const PRIVACY_LAST_UPDATED_ISO = '2026-11-24'
 
 function sections(state: unknown): TextPageSection[] {
   return [

@@ -69,6 +69,9 @@ const APPROVED_TEXT = [
   'Puedes eliminar un registro de la bitácora desde la ficha de su planta: se borra con su foto. Al eliminar una planta se borran también sus notas, toda su bitácora y todas sus fotos. Las dos cosas necesitan conexión y no se pueden deshacer.',
   'Antes, o cuando quieras, puedes descargar tu inventario en un archivo CSV con «Exportar a CSV», al final de Mi colección. Incluye todas tus plantas, también las perdidas y regaladas, con todos sus datos, sus notas y la fecha en que las registraste. No incluye las fotos ni la bitácora.',
   `Para cualquier consulta sobre tus datos, escribe a ${PRIVACY_CONTACT}.`,
+  // Fotos por subir de una planta ya registrada (#284, publicado el 24 de
+  // noviembre de 2026).
+  'Las fotos de una planta ya registrada que no llegaron a subirse (por ejemplo, si saliste de la pantalla, recargaste la página o te quedaste sin conexión mientras subían), para que puedas subirlas desde su ficha. Se borran al subirlas o al descartarlas, si se entra con otra cuenta en este dispositivo y al eliminar tu cuenta, y caducan a los siete días.',
 ]
 
 const TOC = [
@@ -118,9 +121,9 @@ describe('PrivacyPage', () => {
         .getAllByRole('heading', { level: 2 })
         .map((heading) => heading.textContent),
     ).toEqual(['En esta página', ...TOC.map(([title]) => title), 'Contacto'])
-    expect(screen.getByText('23 de noviembre de 2026')).toHaveAttribute(
+    expect(screen.getByText('24 de noviembre de 2026')).toHaveAttribute(
       'datetime',
-      '2026-11-23',
+      '2026-11-24',
     )
     const toc = screen.getByRole('navigation', { name: 'En esta página' })
     expect(
