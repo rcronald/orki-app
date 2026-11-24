@@ -4,6 +4,11 @@ import { ProposalsTab } from './ProposalsTab.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import { SpeciesTab } from './SpeciesTab.tsx'
 import { Attribution, SummaryPanel } from './SummaryPanel.tsx'
+import {
+  bumpRevisions,
+  INITIAL_CATALOG_REVISIONS,
+  type CatalogChanged,
+} from './revisions.ts'
 import { formatCount, proposalGroupCountText } from './texts.ts'
 import {
   INITIAL_CATALOG_ADMIN_STATE,
@@ -36,7 +41,8 @@ const TABS: readonly { id: CatalogAdminTab; label: string }[] = [
  * La usa CatalogAdminPage con la URL y Supabase, y la página de muestra con
  * estado propio y datos en memoria.
  *
- * Tras cada escritura, `revision` sube: el resumen, la tabla y el detalle se
+ * Tras cada escritura suben las revisiones de lo que cambió (revisions.ts,
+ * #285; por defecto, todo): el resumen, la tabla y el detalle se
  * vuelven a leer sin perder la búsqueda, los filtros ni la página (están en
  * el estado), mostrando lo de antes hasta que llega lo nuevo, y el resultado
  * se anuncia en una región de estado (y se ve junto a la acción, #257).
@@ -47,22 +53,22 @@ export function CatalogAdminView({
   source,
   hrefFor,
 }: CatalogAdminViewProps) {
-  const [revision, setRevision] = useState(0)
+  const [revisions, setRevisions] = useState(INITIAL_CATALOG_REVISIONS)
   const [announcement, setAnnouncement] = useState('')
-  const onCatalogChanged = (message: string) => {
-    setRevision((value) => value + 1)
+  const onCatalogChanged: CatalogChanged = (message, areas) => {
+    setRevisions((current) => bumpRevisions(current, areas))
     setAnnouncement(message)
   }
   const summary = useRemoteData(
     'resumen',
     (signal) => source.summary({ signal }),
-    { revision },
+    { revision: revisions.summary },
   )
   // Grupos de la cola de propuestas, para el número de la pestaña.
   const proposalCount = useRemoteData(
     'propuestas:numero',
     (signal) => source.countProposals({ signal }),
-    { revision },
+    { revision: revisions.proposals },
   )
   const pendingGroups =
     proposalCount.status === 'success' ? proposalCount.data : null
@@ -178,7 +184,7 @@ export function CatalogAdminView({
               state={state.proposals}
               onChange={(proposals) => onStateChange({ ...state, proposals })}
               source={source}
-              revision={revision}
+              revision={revisions.proposals}
               onCatalogChanged={onCatalogChanged}
             />
           ) : state.tab === 'especies' ? (
@@ -190,7 +196,7 @@ export function CatalogAdminView({
               source={source}
               fullState={state}
               hrefFor={hrefFor}
-              revision={revision}
+              revisions={revisions}
               onCatalogChanged={onCatalogChanged}
             />
           ) : (
@@ -212,7 +218,7 @@ export function CatalogAdminView({
               source={source}
               fullState={state}
               hrefFor={hrefFor}
-              revision={revision}
+              revision={revisions.genera}
               onCatalogChanged={onCatalogChanged}
             />
           )}

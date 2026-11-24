@@ -2025,6 +2025,13 @@ async function choosePhotos(
 }
 
 /** Peticiones en orden, como "MÉTODO ruta". */
+/** Lecturas de las fotos de la planta (GET plant_photos). */
+function photoRowReads(): number {
+  return requests().filter(
+    (r) => r.method === 'GET' && r.url.pathname === '/rest/v1/plant_photos',
+  ).length
+}
+
 function requestLog(): string[] {
   return requests().map((r) => `${r.method} ${r.url.pathname}`)
 }
@@ -2449,6 +2456,8 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
       const id = String(lastInsert().id)
       expect(photoRowsOf(id)).toHaveLength(2)
       expect(window.localStorage.getItem(draftKey)).toBeNull()
+      // La planta recién creada no tiene fotos: no se leen (#285).
+      expect(photoRowReads()).toBe(0)
       await expectNoAxeViolations()
 
       // Reintentar solo esa, desde su miniatura.
@@ -2469,6 +2478,8 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
       // Conserva su lugar entre las demás.
       expect(photoRowsOf(id).map((row) => row.position)).toEqual([0, 1, 2])
       expect(photoRowInserts()).toHaveLength(3)
+      // El reintento sí lee: el intento anterior dejó filas.
+      expect(photoRowReads()).toBe(1)
     })
 
     it('«Reintentar fotos» reintenta todas las que fallaron', async () => {

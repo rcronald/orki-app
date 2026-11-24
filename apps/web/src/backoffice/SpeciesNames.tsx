@@ -11,6 +11,7 @@ import type { SpeciesNameType } from '../lib/database.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { InlineForm } from './InlineForm.tsx'
 import { SelectField } from './parts.tsx'
+import { NAME_CHANGE_AREAS, type CatalogChanged } from './revisions.ts'
 import type { CatalogAdminSource } from './source.ts'
 import { NAME_TYPE_LABEL } from './texts.ts'
 
@@ -55,7 +56,8 @@ type Editing =
 export interface SpeciesNamesProps {
   species: CatalogSpeciesDetail
   source: CatalogAdminSource
-  onChanged: (message: string) => void
+  /** Se guardó un nombre: la pantalla relee lo que cambia (NAME_CHANGE_AREAS). */
+  onChanged: CatalogChanged
 }
 
 export function SpeciesNames({
@@ -93,6 +95,7 @@ export function SpeciesNames({
       setRemoveBusy(false)
       onChanged(
         `Se quitó ${LIST_TEXT[name.type].one} «${name.name}» de «${species.scientificName}».`,
+        NAME_CHANGE_AREAS,
       )
     } catch (caught) {
       setRemoveBusy(false)
@@ -131,7 +134,10 @@ export function SpeciesNames({
                           await source.updateName(name.id, input)
                           setEditing(null)
                           focusTarget.current = editId(name.id)
-                          onChanged(`Se guardó el nombre «${input.name}».`)
+                          onChanged(
+                            `Se guardó el nombre «${input.name}».`,
+                            NAME_CHANGE_AREAS,
+                          )
                         }}
                         onCancel={() => {
                           setEditing(null)
@@ -201,6 +207,7 @@ export function SpeciesNames({
                   focusTarget.current = addId(type)
                   onChanged(
                     `Se añadió ${LIST_TEXT[input.type].one} «${input.name}» a «${species.scientificName}».`,
+                    NAME_CHANGE_AREAS,
                   )
                 }}
                 onCancel={() => {

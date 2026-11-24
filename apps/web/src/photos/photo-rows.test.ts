@@ -32,6 +32,7 @@ function fakeClient(
         'delete',
         'update',
         'eq',
+        'in',
         'order',
         'single',
       ]) {
@@ -136,6 +137,67 @@ describe('filas de plant_photos con PostgREST', () => {
         position: 0,
       },
     ])
+  })
+
+  it('inserta varias filas en una sola petición y las devuelve en orden (#285)', async () => {
+    const second = { ...ROW, id: 'segunda', position: 1 }
+    const { calls, rows } = fakeClient(() => ({
+      data: [second, ROW],
+      error: null,
+      status: 201,
+    }))
+    const insert = (position: number) => ({
+      plantId: PLANT_ID,
+      userId: USER_ID,
+      photoPath: `${USER_ID}/${PLANT_ID}/photo-v${String(position)}.webp`,
+      thumbnailPath: `${USER_ID}/${PLANT_ID}/thumb-v${String(position)}.webp`,
+      inBloom: false,
+      takenAt: null,
+      note: position === 1 ? 'Segunda' : null,
+      position,
+    })
+    const stored = await rows.insertMany([insert(0), insert(1)])
+    expect(stored.map((photo) => photo.position)).toEqual([0, 1])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({
+      table: 'plant_photos',
+      steps: [
+        [
+          'insert',
+          [
+            expect.objectContaining({ position: 0, note: null }),
+            expect.objectContaining({ position: 1, note: 'Segunda' }),
+          ],
+        ],
+        ['select', PLANT_PHOTO_SELECT],
+      ],
+    })
+    // Sin filas no se envía nada.
+    await expect(rows.insertMany([])).resolves.toEqual([])
+    expect(calls).toHaveLength(1)
+  })
+
+  it('borra varias filas en una sola petición, filtrando por usuario (#285)', async () => {
+    const { calls, rows } = fakeClient(() => ({
+      data: [ROW],
+      error: null,
+      status: 200,
+    }))
+    const deleted = await rows.removeMany([ROW.id, 'ya-no-esta'], USER_ID)
+    expect(deleted.map((photo) => photo.id)).toEqual([ROW.id])
+    expect(calls).toEqual([
+      {
+        table: 'plant_photos',
+        steps: [
+          ['delete'],
+          ['in', 'id', [ROW.id, 'ya-no-esta']],
+          ['eq', 'user_id', USER_ID],
+          ['select', PLANT_PHOTO_SELECT],
+        ],
+      },
+    ])
+    await expect(rows.removeMany([], USER_ID)).resolves.toEqual([])
+    expect(calls).toHaveLength(1)
   })
 
   it('una posición ocupada (23505) es "position-taken"', async () => {
