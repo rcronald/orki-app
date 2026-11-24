@@ -293,6 +293,13 @@ jobs:
       - name: Pruebas de base de datos
         run: npm run db:test
 
+      # Dos sesiones a la vez sobre otra base desechable del mismo servidor (#295): fusiones
+      # simultáneas, contador de identificadores, bitácora sin duplicados y la séptima foto.
+      # Corre aunque fallen las anteriores, para ver los dos resultados.
+      - name: Pruebas de concurrencia de la base de datos
+        if: ${{ !cancelled() }}
+        run: npm run db:concurrencia
+
       # Genera los tipos desde las migraciones sobre el mismo Postgres y falla si no coinciden
       # con apps/web/src/lib/database.types.ts. Corre aunque fallen las pruebas, para ver
       # ambos resultados en la misma ejecución.

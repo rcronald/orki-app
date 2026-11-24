@@ -7,7 +7,8 @@
 -- Las peticiones de la API se reproducen con "set local role" y "set local request.jwt.claims";
 -- para mirar la tabla sin RLS se vuelve a "set local role postgres". No se puede probar aquí la
 -- concurrencia real (cada prueba es una sola sesión): el máximo con inserciones concurrentes
--- se apoya en el rango de position y en su índice único (ver la migración).
+-- se apoya en el rango de position y en su índice único (ver la migración), y lo prueba con
+-- dos sesiones concurrencia.test.mjs (npm run db:concurrencia).
 --
 -- Datos de partida, insertados como postgres con marcas de tiempo antiguas (al insertar no
 -- actúa set_updated_at), para ver cuándo cambia updated_at. Las plantas con foto se crean con

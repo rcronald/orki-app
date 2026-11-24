@@ -69,6 +69,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run db:seed:dev`        | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.                                                                                      |
 | `npm run db:seed:plants`     | Carga plantas de ejemplo para un usuario en el proyecto de desarrollo (`-- <id de usuario> [cantidad]`), o las borra con `--borrar`.                                                            |
 | `npm run db:test`            | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.                                                                                       |
+| `npm run db:concurrencia`    | Ejecuta las pruebas de concurrencia de la base (dos sesiones a la vez, con `node:test`) en otro Postgres desechable. Lo usa el CI.                                                              |
 | `npm run db:perf`            | Mide la búsqueda con un catálogo sintético en un Postgres desechable. No corre en el CI (ver [Rendimiento de la búsqueda](supabase/README.md#rendimiento-de-la-búsqueda)).                      |
 | `npm run db:types`           | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.                                                                                      |
 | `npm run db:types:check`     | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.                                                                                            |
@@ -1112,7 +1113,10 @@ npm run db:seed:plants -- <id de usuario de Clerk> --borrar     # quita solo las
 ```sh
 npm run db:test
 npm run db:test -- sincronizacion acceso   # solo los archivos cuyo nombre contiene alguna palabra
+npm run db:concurrencia                    # dos sesiones a la vez (supabase/tests/concurrencia.test.mjs)
 ```
+
+`npm run db:concurrencia` prepara la misma base desechable, con el mismo servidor, y abre dos conexiones a la vez para lo que una sola sesión no puede probar: fusiones simultáneas de especies, el contador de identificadores de planta, la bitácora sin duplicados y la séptima foto (#295). Cada prueba deja a una sesión esperando el bloqueo de la otra (lo comprueba en `pg_stat_activity`, sin pausas), confirma o revierte la primera y mira qué le pasó a la segunda.
 
 Las pruebas comprueban el esquema sin tocar los proyectos de Supabase. El comando crea una base de datos Postgres vacía y desechable, le añade lo mínimo de Supabase que necesitan las migraciones, aplica todas las migraciones de `supabase/migrations` en orden, ejecuta las pruebas de `supabase/tests` y, al terminar, borra la base. Cada prueba corre en una transacción que se revierte, así que no deja datos (y el comando lo comprueba al final). La salida dice qué prueba falló, en qué línea y por qué; el comando termina con código distinto de cero si falla alguna prueba o alguna migración.
 
