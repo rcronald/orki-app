@@ -1,5 +1,6 @@
 import { useClerk } from '@clerk/react'
 import { useEffect, useState } from 'react'
+import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 
 /**
  * Estado del acceso para la interfaz:
@@ -18,10 +19,6 @@ export type AuthAvailability = 'loading' | 'ready' | 'offline' | 'failed'
  */
 export const AUTH_LOAD_TIMEOUT_MS = 10_000
 
-function isBrowserOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
 /**
  * Traduce el estado de Clerk (useClerk().status: loading, ready, degraded o
  * error) a lo que la interfaz necesita, con un límite de tiempo para la carga.
@@ -33,7 +30,7 @@ export function useAuthAvailability(
 ): AuthAvailability {
   const { status } = useClerk()
   const [timedOut, setTimedOut] = useState(false)
-  const [offline, setOffline] = useState(isBrowserOffline)
+  const online = useOnlineStatus()
 
   useEffect(() => {
     if (status !== 'loading') return
@@ -41,18 +38,8 @@ export function useAuthAvailability(
     return () => window.clearTimeout(id)
   }, [status, timeoutMs])
 
-  useEffect(() => {
-    const update = () => setOffline(isBrowserOffline())
-    window.addEventListener('online', update)
-    window.addEventListener('offline', update)
-    return () => {
-      window.removeEventListener('online', update)
-      window.removeEventListener('offline', update)
-    }
-  }, [])
-
   if (status === 'ready' || status === 'degraded') return 'ready'
-  if (offline) return 'offline'
+  if (!online) return 'offline'
   if (status === 'error' || timedOut) return 'failed'
   return 'loading'
 }
