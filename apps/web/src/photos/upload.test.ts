@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { PLANT_ID, processedPhoto, USER_ID } from '../test/photos.ts'
 import { createMemoryPhotoStorage } from './memory-storage.ts'
 import { PhotoStorageError } from './storage.ts'
@@ -104,6 +104,12 @@ describe('uploadPhotoFiles', () => {
   })
 
   it('cancelar rechaza enseguida y borra lo que llegue a subirse', async () => {
+    // Con temporizadores falsos: cada operación del bucket tarda 20 ms
+    // exactos, y la prueba no depende de lo cargado que esté el equipo (#295).
+    vi.useFakeTimers()
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
     const storage = createMemoryPhotoStorage(20)
     const files = processedPhoto()
     const version = photoVersionFor(files)
@@ -117,11 +123,11 @@ describe('uploadPhotoFiles', () => {
     controller.abort()
 
     await expect(pending).rejects.toMatchObject({ reason: 'aborted' })
-    // Las subidas terminan después y se borran.
-    await vi.waitFor(() => {
-      expect(storage.objects.size).toBe(0)
-    })
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    // Las subidas siguen en curso: terminan a los 20 ms y llegan al bucket…
+    await vi.advanceTimersByTimeAsync(20)
+    expect(storage.objects.size).toBe(2)
+    // …y enseguida se borran.
+    await vi.runAllTimersAsync()
     expect(storage.objects.size).toBe(0)
     // El reintento usará otra versión, que el borrado tardío no toca.
     expect(photoVersionFor(files)).not.toBe(version)

@@ -125,6 +125,10 @@ describe('createPlantImageSource', () => {
   })
 
   it('limita las descargas a la vez', async () => {
+    // Con temporizadores falsos, las descargas siguen en curso hasta que la
+    // prueba adelanta el reloj: todas las que vayan a empezar a la vez lo han
+    // hecho antes, por cargado que esté el equipo (#295).
+    vi.useFakeTimers()
     const paths = Array.from(
       { length: 5 },
       (_, index) => `${USER_ID}/${PLANT_ID}/thumb-v${index}.webp`,
@@ -145,7 +149,11 @@ describe('createPlantImageSource', () => {
       thumbnailCache: null,
       maxConcurrent: 2,
     })
-    await Promise.all(paths.map((path) => source.acquire(path, 'thumbnail')))
+    const pending = Promise.all(
+      paths.map((path) => source.acquire(path, 'thumbnail')),
+    )
+    await vi.runAllTimersAsync()
+    await pending
     expect(peak).toBe(2)
   })
 

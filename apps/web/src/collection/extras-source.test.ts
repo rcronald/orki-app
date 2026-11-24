@@ -66,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 const signal = () => new AbortController().signal
@@ -160,6 +161,10 @@ describe('extras de la colección para "¿Ya la tengo?"', () => {
   })
 
   it('pide todos los grupos a la vez, no uno tras otro (#169)', async () => {
+    // Con temporizadores falsos, las consultas siguen en curso hasta que la
+    // prueba adelanta el reloj: todas las que vayan a empezar a la vez lo han
+    // hecho antes, por cargado que esté el equipo (#295).
+    vi.useFakeTimers()
     let enCurso = 0
     let maximo = 0
     fetchMock.mockImplementation(async (input) => {
@@ -181,7 +186,9 @@ describe('extras de la colección para "¿Ya la tengo?"', () => {
       }),
     )
 
-    await createExtrasFetcher(client)(plants, signal())
+    const pending = createExtrasFetcher(client)(plants, signal())
+    await vi.runAllTimersAsync()
+    await pending
 
     // 120 especies son 3 grupos de sinónimos, más el de las abreviaturas.
     expect(fetchMock).toHaveBeenCalledTimes(4)
