@@ -13,6 +13,11 @@ import {
 import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
+import {
+  MAX_PLANT_NOTES_LENGTH,
+  normalizePlantNotes,
+  plantNotesLength,
+} from '../detail/notes.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Collapsible } from '../components/ui/Collapsible.tsx'
 import {
@@ -164,20 +169,6 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
   | { status: 'error'; error: PlantEditError }
-
-/** Tope de las notas (restricción plants_notes_valid). */
-const PLANT_NOTES_MAX_LENGTH = 2000
-
-/** Notas como se guardan: sin espacios a los lados; vacías, null. */
-function normalizeNotes(text: string): string | null {
-  const trimmed = text.trim()
-  return trimmed === '' ? null : trimmed
-}
-
-/** Largo como lo cuenta Postgres (char_length). */
-function characters(text: string): number {
-  return [...text].length
-}
 
 function storedDetails(photo: StoredPlantPhoto): PhotoDetailsText {
   return {
@@ -406,7 +397,7 @@ export function EditPlantForm({
       { ...values, photoInBloom: base.photoInBloom },
       base,
     )
-    const nextNotes = normalizeNotes(notes)
+    const nextNotes = normalizePlantNotes(notes)
     if (notesBase !== undefined && nextNotes !== notesBase) {
       patch.notes = nextNotes
     }
@@ -438,8 +429,8 @@ export function EditPlantForm({
     ? validatePlantForm(values, today)
     : {}
   const notesError =
-    submitted && characters(notes.trim()) > PLANT_NOTES_MAX_LENGTH
-      ? EDIT_TEXT.notesTooLong(PLANT_NOTES_MAX_LENGTH)
+    submitted && plantNotesLength(notes) > MAX_PLANT_NOTES_LENGTH
+      ? EDIT_TEXT.notesTooLong(MAX_PLANT_NOTES_LENGTH)
       : undefined
   const photoErrors = (entry: PhotoEntry): PhotoDetailsErrors => {
     if (!submitted || entry.kind === 'preparing') return {}
@@ -702,7 +693,7 @@ export function EditPlantForm({
     setSubmitted(true)
     const found = validatePlantForm(values, today)
     const firstInvalid = FIELD_ORDER.find((field) => found[field])
-    const notesTooLong = characters(notes.trim()) > PLANT_NOTES_MAX_LENGTH
+    const notesTooLong = plantNotesLength(notes) > MAX_PLANT_NOTES_LENGTH
     if (firstInvalid || notesTooLong) {
       // Un error dentro de «Más detalles» la abre, para que se vea.
       const inDetails =
@@ -765,7 +756,7 @@ export function EditPlantForm({
           return
         case 'data-saved':
           savedValues.current = values
-          savedNotes.current = normalizeNotes(notes)
+          savedNotes.current = normalizePlantNotes(notes)
           setPartial(true)
           onPlantStored(edit.plant)
           return
@@ -1045,8 +1036,8 @@ export function EditPlantForm({
             )}
             <span className="orki-field__hint" id={notesHintId}>
               {`${EDIT_TEXT.notesHint} ${EDIT_TEXT.notesCount(
-                characters(notes.trim()),
-                PLANT_NOTES_MAX_LENGTH,
+                plantNotesLength(notes),
+                MAX_PLANT_NOTES_LENGTH,
               )}`}
             </span>
           </div>
