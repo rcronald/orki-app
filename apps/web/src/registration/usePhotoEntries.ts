@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import { loadPhotoProcessing } from '../photos/load.ts'
 import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
 import type { StoredPlantPhoto } from '../photos/photo-rows.ts'
@@ -209,4 +216,62 @@ export function usePhotoEntries(
   const current = useCallback(() => ref.current, [])
 
   return { entries, replace: commit, update, add, remove, insert, current }
+}
+
+/** Los anuncios al elegir fotos, con los textos de cada pantalla. */
+export interface PhotoSelectionText {
+  photosLeftOut: (accepted: number, leftOut: number, max: number) => string
+  photosAdding: (accepted: number) => string
+  photoAdded: (count: number, max: number) => string
+  photoPrepareFailed: (fileName: string, message: string) => string
+}
+
+export interface PhotoSelection {
+  photos: PhotoEntriesApi
+  /** Lo que se anuncia (role="status", solo para el lector). */
+  photoStatus: string
+  setPhotoStatus: Dispatch<SetStateAction<string>>
+  /** A la vista: cuántas fotos quedaron fuera de la última selección. */
+  leftOutNotice: string | null
+  setLeftOutNotice: Dispatch<SetStateAction<string | null>>
+  /** Las fotos que no se pudieron preparar, con su motivo. */
+  prepareErrors: string[]
+  setPrepareErrors: Dispatch<SetStateAction<string[]>>
+}
+
+/**
+ * Las fotos de la galería (usePhotoEntries) con lo que el registro y la
+ * edición dicen al elegirlas: el anuncio para el lector, el aviso de las que
+ * quedaron fuera y los errores al prepararlas.
+ */
+export function usePhotoSelection(text: PhotoSelectionText): PhotoSelection {
+  const [photoStatus, setPhotoStatus] = useState('')
+  const [leftOutNotice, setLeftOutNotice] = useState<string | null>(null)
+  const [prepareErrors, setPrepareErrors] = useState<string[]>([])
+  const photos = usePhotoEntries({
+    onSelected: (accepted, leftOut) => {
+      const notice =
+        leftOut > 0
+          ? text.photosLeftOut(accepted, leftOut, MAX_PLANT_PHOTOS)
+          : null
+      setLeftOutNotice(notice)
+      setPhotoStatus(notice ?? text.photosAdding(accepted))
+    },
+    onPrepared: (count) =>
+      setPhotoStatus(text.photoAdded(count, MAX_PLANT_PHOTOS)),
+    onPrepareFailed: (fileName, message) =>
+      setPrepareErrors((list) => [
+        ...list,
+        text.photoPrepareFailed(fileName, message),
+      ]),
+  })
+  return {
+    photos,
+    photoStatus,
+    setPhotoStatus,
+    leftOutNotice,
+    setLeftOutNotice,
+    prepareErrors,
+    setPrepareErrors,
+  }
 }

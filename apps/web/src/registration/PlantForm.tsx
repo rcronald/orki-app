@@ -109,7 +109,7 @@ import { useDeducedGenus } from './useDeducedGenus.ts'
 import { useQuickGenera } from './useQuickGenera.ts'
 import {
   newPhotoEntry,
-  usePhotoEntries,
+  usePhotoSelection,
   type NewPhotoEntry,
   type PhotoEntry,
 } from './usePhotoEntries.ts'
@@ -670,26 +670,15 @@ function PlantFormBody(props: PlantFormBodyProps) {
   // Lo que se anuncia (role="status", solo para el lector: la galería ya lo
   // muestra) y, aparte y a la vista, cuántas fotos quedaron fuera de la
   // última selección.
-  const [photoStatus, setPhotoStatus] = useState('')
-  const [leftOutNotice, setLeftOutNotice] = useState<string | null>(null)
-  const [prepareErrors, setPrepareErrors] = useState<string[]>([])
-  const photos = usePhotoEntries({
-    onSelected: (accepted, leftOut) => {
-      const notice =
-        leftOut > 0
-          ? text.photosLeftOut(accepted, leftOut, MAX_PLANT_PHOTOS)
-          : null
-      setLeftOutNotice(notice)
-      setPhotoStatus(notice ?? text.photosAdding(accepted))
-    },
-    onPrepared: (count) =>
-      setPhotoStatus(text.photoAdded(count, MAX_PLANT_PHOTOS)),
-    onPrepareFailed: (fileName, message) =>
-      setPrepareErrors((list) => [
-        ...list,
-        text.photoPrepareFailed(fileName, message),
-      ]),
-  })
+  const {
+    photos,
+    photoStatus,
+    setPhotoStatus,
+    leftOutNotice,
+    setLeftOutNotice,
+    prepareErrors,
+    setPrepareErrors,
+  } = usePhotoSelection(text)
   const { entries } = photos
   // Si la persona ya eligió o quitó una foto: las del borrador, que llegan
   // después (IndexedDB es asíncrono), ya no las sustituyen; y desde entonces

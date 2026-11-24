@@ -89,7 +89,7 @@ import {
 } from '../registration/texts.ts'
 import {
   storedPhotoEntry,
-  usePhotoEntries,
+  usePhotoSelection,
   type NewPhotoEntry,
   type PhotoEntry,
 } from '../registration/usePhotoEntries.ts'
@@ -314,26 +314,15 @@ export function EditPlantForm({
   }, [originalNotes])
 
   // Fotos ----------------------------------------------------------------------
-  const [photoStatus, setPhotoStatus] = useState('')
-  const [leftOutNotice, setLeftOutNotice] = useState<string | null>(null)
-  const [prepareErrors, setPrepareErrors] = useState<string[]>([])
-  const photos = usePhotoEntries({
-    onSelected: (accepted, leftOut) => {
-      const notice =
-        leftOut > 0
-          ? EDIT_TEXT.photosLeftOut(accepted, leftOut, MAX_PLANT_PHOTOS)
-          : null
-      setLeftOutNotice(notice)
-      setPhotoStatus(notice ?? EDIT_TEXT.photosAdding(accepted))
-    },
-    onPrepared: (count) =>
-      setPhotoStatus(EDIT_TEXT.photoAdded(count, MAX_PLANT_PHOTOS)),
-    onPrepareFailed: (fileName, message) =>
-      setPrepareErrors((list) => [
-        ...list,
-        EDIT_TEXT.photoPrepareFailed(fileName, message),
-      ]),
-  })
+  const {
+    photos,
+    photoStatus,
+    setPhotoStatus,
+    leftOutNotice,
+    setLeftOutNotice,
+    prepareErrors,
+    setPrepareErrors,
+  } = usePhotoSelection(EDIT_TEXT)
   const { entries } = photos
   const [details, setDetails] = useState<Record<string, PhotoDetailsText>>({})
   // Las fotos tal como estaban (orden y datos), para saber si cambiaron.
