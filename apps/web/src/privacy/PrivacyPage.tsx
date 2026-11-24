@@ -247,9 +247,10 @@ function sections(state: unknown): TextPageSection[] {
               avisar al servicio de acceso.
             </li>
             <li>
-              El borrador de la planta que estás registrando, con su foto si la
-              elegiste, para no perderlo si se recarga la página. Se borra al
-              guardarla o al descartarla, y caduca a las 24 horas.
+              Los borradores de las plantas que estás registrando (hasta dos),
+              con sus fotos si las elegiste, para no perderlos si se recarga la
+              página o te quedas sin conexión. Cada uno se borra al registrarla
+              o al descartarlo, y caduca a las 24 horas de su último cambio.
             </li>
             <li>Cómo prefieres ver el inventario (lista o cuadrícula).</li>
             <li>
@@ -289,8 +290,8 @@ function sections(state: unknown): TextPageSection[] {
             bitácora, sus fotos (también las de la bitácora), tu perfil, tus
             eventos de uso y tu cuenta de acceso. También lo que orqui.app
             guarda en ese dispositivo: la copia de tu inventario, las
-            miniaturas, los eventos pendientes de enviar, tu identificador, el
-            borrador y tus preferencias. No se puede deshacer.
+            miniaturas, los eventos pendientes de enviar, tu identificador, los
+            borradores y tus preferencias. No se puede deshacer.
           </p>
           <p>
             No se borran los informes de errores que ya se enviaron a Sentry

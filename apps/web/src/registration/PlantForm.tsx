@@ -10,6 +10,7 @@ import {
 import { flushSync } from 'react-dom'
 import { Link } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
+import { normalizeSearchText } from '../collection/normalize.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
 import { Collapsible } from '../components/ui/Collapsible.tsx'
@@ -48,10 +49,19 @@ import {
   FORM_CHIP_CLASSES,
   LOCKED_CHIP_CLASSES,
 } from './ChoiceField.tsx'
-import { clearPlantDraft, readPlantDraft, writePlantDraft } from './draft.ts'
+import {
+  clearPlantDraft,
+  readPlantDrafts,
+  writePlantDraft,
+  type PlantDraft,
+} from './draft.ts'
+import { decideStart, startName } from './draft-choice.ts'
+import { DraftChoice, DraftNameText } from './DraftChoice.tsx'
 import {
   appDraftPhotoBackend,
   clearDraftPhotos,
+  pruneDraftPhotos,
+  readDraftPhotoCounts,
   readDraftPhotos,
   writeDraftPhotos,
   type DraftPhotoBackend,
@@ -73,7 +83,7 @@ import {
   type PlantFormField,
   type PlantFormValues,
 } from './form-state.ts'
-import { GenusField } from './GenusField.tsx'
+import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField, type NameResolution } from './NameField.tsx'
 import { OriginField } from './OriginField.tsx'
 import { PendingPhotoNotice } from './PendingPhotoNotice.tsx'
@@ -137,8 +147,19 @@ export interface PlantFormServices extends PlantFormBaseServices {
 }
 
 interface PlantFormCommonProps {
-  /** Si hay conexión (useOnlineStatus). Sin ella, el formulario se desactiva. */
+  /**
+   * Si hay conexión (useOnlineStatus). Sin ella no se envía nada ni se busca
+   * en el catálogo; con un usuario (draftUserId), lo demás se sigue
+   * completando y queda en el borrador del dispositivo (#296). Sin usuario,
+   * el formulario se desactiva.
+   */
   online: boolean
+  /**
+   * La sesión es la recordada en el dispositivo, sin que Clerk la confirme
+   * (useReadOnly, #120): como sin conexión, el envío espera, pero con red se
+   * sigue buscando en el catálogo (es público).
+   */
+  sessionUnverified?: boolean
   /**
    * El registro terminó: la planta está guardada y sus fotos subidas (o la
    * persona eligió seguir sin las que fallaron). Para salir del formulario.
@@ -157,15 +178,15 @@ interface PlantFormCommonProps {
   /**
    * Nombre con el que empieza el registro, como si se hubiera escrito en el
    * campo: lo buscado en "¿Ya la tengo?" (#123, ?nombre=). Si hay un borrador
-   * guardado, gana el borrador; al descartarlo, el formulario vuelve a
-   * empezar con este nombre.
+   * guardado con otro nombre, la persona elige (#296, draft-choice.ts); al
+   * descartar el borrador, el formulario vuelve a empezar con este nombre.
    */
   initialName?: string
   /**
    * Especie del catálogo con la que empieza el registro, ya elegida como si se
    * hubiera escogido en el autocompletado: «Registrar esta especie» de la
-   * ficha del catálogo (#232). Gana a initialName y, como él, pierde ante un
-   * borrador guardado y vuelve al descartarlo.
+   * ficha del catálogo (#232). Gana a initialName y, como él, se ofrece junto
+   * a un borrador de otra cosa (#296) y vuelve al descartarlo.
    */
   initialSpecies?: FormSpecies | null
   /**
@@ -187,11 +208,11 @@ interface PlantFormCommonProps {
    */
   knownPlants?: readonly CollectionPlant[] | null
   /**
-   * Usuario activo (id de Clerk): dueño de las fotos y del borrador. Lo
+   * Usuario activo (id de Clerk): dueño de las fotos y de los borradores. Lo
    * escrito y las fotos se guardan en el dispositivo y se recuperan al volver
    * a abrir el formulario (draft.ts y draft-photo.ts); sin usuario, no hay
    * borrador. Si cambia, hay que volver a montar el formulario (key), porque
-   * el borrador se lee al montarse.
+   * los borradores se leen al montarse.
    */
   draftUserId?: string | null
   /** Reloj, para las pruebas. Por defecto, la hora del dispositivo. */
@@ -232,6 +253,43 @@ function withStart(
     : plantFormReducer(values, { type: 'speciesSelected', species })
 }
 
+/** Los géneros de la colección (sin repetir, por nombre), para usarlos sin conexión. */
+function generaOf(
+  plants: readonly CollectionPlant[] | null,
+): readonly FormGenus[] {
+  if (plants === null) return []
+  const byId = new Map<string, FormGenus>()
+  for (const plant of plants) {
+    byId.set(plant.genus.id, { id: plant.genus.id, name: plant.genus.name })
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+}
+
+/**
+ * Si `after` es `before` con solo su nombre enlazado a una especie del
+ * catálogo (el mismo texto, con la especie, su género y su tipo).
+ */
+function isOnlyLinked(
+  before: PlantFormValues,
+  after: PlantFormValues,
+): boolean {
+  if (before.species !== null || after.species === null) return false
+  const same = (field: keyof PlantFormValues) => before[field] === after[field]
+  return (
+    normalizeSearchText(before.name) === normalizeSearchText(after.name) &&
+    (
+      [
+        'acquiredOn',
+        'origin',
+        'location',
+        'nickname',
+        'flowerColor',
+        'photoInBloom',
+      ] as const
+    ).every(same)
+  )
+}
+
 /** Si hay algo escrito dentro de "Más detalles". */
 function hasDetails(values: PlantFormValues): boolean {
   return (
@@ -264,13 +322,32 @@ function isNew(entry: PhotoEntry): entry is NewPhotoEntry {
   return entry.kind === 'new'
 }
 
+/** Otro borrador guardado, que se puede continuar en vez del que está abierto. */
+interface OtherDraft {
+  draft: PlantDraft
+  photos: number
+}
+
 /**
- * Aviso discreto de borrador recuperado, con "Descartar borrador". La región
+ * Aviso discreto de borrador recuperado, con "Descartar borrador", y de los
+ * otros borradores guardados (#296), con «Continuar ese borrador». La región
  * role="status" se pinta vacía y el texto llega en el pintado siguiente, para
  * que el lector de pantalla lo anuncie.
  */
-function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
+function DraftNotice({
+  restored,
+  others,
+  onDiscard,
+  onSwitch,
+}: {
+  restored: boolean
+  /** Vacío mientras se guarda: entonces no se cambia de borrador. */
+  others: readonly OtherDraft[]
+  onDiscard: () => void
+  onSwitch: (draft: PlantDraft) => void
+}) {
   const [visible, setVisible] = useState(false)
+  const baseId = useId()
   useEffect(() => {
     const frame = requestAnimationFrame(() => setVisible(true))
     return () => cancelAnimationFrame(frame)
@@ -278,18 +355,199 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
 
   return (
     <div role="status">
-      {visible && (
-        <div className="flex flex-wrap items-center justify-between gap-space-2 rounded-lg bg-neutral-50 px-space-4 py-space-2">
-          <p className="text-sm text-neutral-900">
-            {PLANT_FORM_TEXT.draftRestored}
-          </p>
-          <Button className="flex-none" onClick={onDiscard}>
-            {PLANT_FORM_TEXT.draftDiscard}
-          </Button>
+      {visible && (restored || others.length > 0) && (
+        <div className="flex flex-col gap-space-2 rounded-lg bg-neutral-50 px-space-4 py-space-2">
+          {restored && (
+            <div className="flex flex-wrap items-center justify-between gap-space-2">
+              <p className="text-sm text-neutral-900">
+                {PLANT_FORM_TEXT.draftRestored}
+              </p>
+              <Button className="flex-none" onClick={onDiscard}>
+                {PLANT_FORM_TEXT.draftDiscard}
+              </Button>
+            </div>
+          )}
+          {others.map(({ draft, photos }) => {
+            const textId = `${baseId}-${draft.plantId}`
+            return (
+              <div
+                key={draft.plantId}
+                className="flex flex-wrap items-center justify-between gap-space-2"
+              >
+                <p
+                  id={textId}
+                  className="text-sm text-neutral-900 [overflow-wrap:anywhere]"
+                >
+                  {PLANT_FORM_TEXT.otherDraftBefore}
+                  <DraftNameText draft={draft} />
+                  {PLANT_FORM_TEXT.draftPhotos(photos)}
+                  {PLANT_FORM_TEXT.otherDraftAfter}
+                </p>
+                <Button
+                  className="flex-none"
+                  aria-describedby={textId}
+                  onClick={() => onSwitch(draft)}
+                >
+                  {PLANT_FORM_TEXT.otherDraftContinue}
+                </Button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
+}
+
+/** Qué muestra el registro: la elección (#296) o el formulario con un borrador. */
+type Selection =
+  | { kind: 'choice' }
+  | {
+      kind: 'form'
+      /** El borrador con el que empieza; null, con lo que llega (o vacío). */
+      draft: PlantDraft | null
+      /** Para volver a montar el formulario al cambiar de borrador. */
+      key: string
+      /** Se llegó eligiendo (la elección o «Continuar ese borrador»). */
+      chosen: boolean
+    }
+
+/**
+ * Registro de una planta: decide con qué empieza (draft-choice.ts, #296) y
+ * monta el formulario (PlantFormBody) con ese borrador. Si hay un borrador de
+ * otra cosa que lo que llega de la ficha del catálogo o de «¿Ya la tengo?»,
+ * primero se elige (DraftChoice). Los borradores se leen al montarse; cambiar
+ * de borrador vuelve a montar el formulario.
+ */
+export function PlantForm(props: PlantFormProps) {
+  const {
+    draftUserId = null,
+    initialName = '',
+    initialSpecies = null,
+    photoDraftBackend = appDraftPhotoBackend(),
+    now = deviceNow,
+  } = props
+  const readDrafts = () =>
+    draftUserId === null ? [] : readPlantDrafts(draftUserId, now())
+  const [drafts, setDrafts] = useState<readonly PlantDraft[]>(readDrafts)
+  const [selection, setSelection] = useState<Selection>(() => {
+    const decision = decideStart(drafts, {
+      species: initialSpecies,
+      name: initialName,
+    })
+    return decision.kind === 'choice'
+      ? { kind: 'choice' }
+      : {
+          kind: 'form',
+          draft: decision.draft,
+          key: decision.draft?.plantId ?? 'nuevo',
+          chosen: false,
+        }
+  })
+  const fresh = useRef(0)
+
+  // Las fotos que ya no son de ningún borrador (o de otra cuenta, o
+  // caducadas) se borran al abrir el registro.
+  const [initialDrafts] = useState(drafts)
+  useEffect(() => {
+    if (draftUserId === null) return
+    void pruneDraftPhotos(photoDraftBackend, draftUserId, {
+      plantIds: initialDrafts.map((draft) => draft.plantId),
+      now: now(),
+    })
+  }, [draftUserId, photoDraftBackend, initialDrafts, now])
+
+  // Cuántas fotos tiene cada borrador, para nombrarlos.
+  const [photoCounts, setPhotoCounts] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  )
+  useEffect(() => {
+    if (draftUserId === null || drafts.length === 0) return
+    let active = true
+    void readDraftPhotoCounts(photoDraftBackend, draftUserId, {
+      plantIds: drafts.map((draft) => draft.plantId),
+      now: now(),
+    }).then((counts) => {
+      if (active) setPhotoCounts(counts)
+    })
+    return () => {
+      active = false
+    }
+  }, [draftUserId, photoDraftBackend, drafts, now])
+
+  const openDraft = (plantId: string) => {
+    const all = readDrafts()
+    setDrafts(all)
+    const draft = all.find((item) => item.plantId === plantId) ?? null
+    fresh.current += 1
+    setSelection({
+      kind: 'form',
+      draft,
+      key: draft?.plantId ?? `nuevo-${String(fresh.current)}`,
+      chosen: true,
+    })
+  }
+
+  if (selection.kind === 'choice') {
+    return (
+      <DraftChoice
+        drafts={drafts}
+        photoCounts={photoCounts}
+        incomingName={startName({ species: initialSpecies, name: initialName })}
+        incomingIsSpecies={initialSpecies !== null}
+        onContinue={(draft) => openDraft(draft.plantId)}
+        onRegister={() => {
+          // Ningún borrador se toca: siguen guardados para retomarlos.
+          setDrafts(readDrafts())
+          fresh.current += 1
+          setSelection({
+            kind: 'form',
+            draft: null,
+            key: `nuevo-${String(fresh.current)}`,
+            chosen: true,
+          })
+        }}
+        onDiscard={(draft) => {
+          if (draftUserId === null) return
+          clearPlantDraft(draftUserId, draft.plantId)
+          void clearDraftPhotos(photoDraftBackend, draftUserId, draft.plantId)
+          setDrafts(readDrafts())
+        }}
+      />
+    )
+  }
+
+  const current = selection.draft?.plantId
+  const others = drafts
+    .filter((draft) => draft.plantId !== current)
+    .map((draft) => ({
+      draft,
+      photos: photoCounts.get(draft.plantId) ?? 0,
+    }))
+  return (
+    <PlantFormBody
+      key={selection.key}
+      {...props}
+      draft={selection.draft}
+      otherDrafts={others}
+      onSwitchDraft={(draft) => openDraft(draft.plantId)}
+      focusNameOnMount={selection.chosen}
+    />
+  )
+}
+
+interface PlantFormBodyProps extends PlantFormProps {
+  /** El borrador con el que empieza; null, con lo que llega (o vacío). */
+  draft: PlantDraft | null
+  /** Los demás borradores guardados, que se pueden continuar en su lugar. */
+  otherDrafts: readonly OtherDraft[]
+  /** Cambiar al borrador `draft` (lo que se escribió aquí ya está guardado). */
+  onSwitchDraft: (draft: PlantDraft) => void
+  /**
+   * Se monta porque la persona eligió con qué seguir (#296): con
+   * autoFocusName, el foco va a «Nombre» aunque estuviera en otro sitio.
+   */
+  focusNameOnMount: boolean
 }
 
 /**
@@ -304,10 +562,12 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
  * borrador en el dispositivo (draft.ts y draft-photo.ts).
  *
  * Borrador: cada cambio se guarda; si el formulario vuelve a estar vacío, se
- * borra. Se recupera al montarse, con un aviso y "Descartar borrador". Se
- * borra al guardar con éxito, al descartarlo y al salir con "Cancelar" (que
- * avisa antes de perder lo escrito). Salir de otra forma (otra pestaña de la
- * app, cerrar o recargar) lo conserva: es lo que protege de una recarga.
+ * borra. Se recupera al montarse (PlantForm decide cuál, #296), con un aviso y
+ * "Descartar borrador". Se borra al guardar con éxito, al descartarlo y al
+ * salir con "Cancelar" (que avisa antes de perder lo escrito). Salir de otra
+ * forma (otra pestaña de la app, cerrar o recargar) lo conserva: es lo que
+ * protege de una recarga. Todo eso toca solo el borrador de este formulario
+ * (su id de planta): los demás borradores guardados siguen ahí.
  *
  * Fotos (#221): primero se guarda la planta y después se suben las fotos
  * (uploadPlantPhotos), con el progreso de cada una en su miniatura. Si alguna
@@ -315,7 +575,7 @@ function DraftNotice({ onDiscard }: { onDiscard: () => void }) {
  * cuáles fallaron y deja reintentar solo esas (la API no duplica las que ya
  * subió) o continuar sin ellas.
  */
-export function PlantForm(props: PlantFormProps) {
+function PlantFormBody(props: PlantFormBodyProps) {
   const {
     services,
     online,
@@ -330,12 +590,16 @@ export function PlantForm(props: PlantFormProps) {
     photoDraftBackend = appDraftPhotoBackend(),
     now = deviceNow,
     camera = 'auto',
+    otherDrafts,
+    onSwitchDraft,
+    focusNameOnMount,
+    sessionUnverified = false,
   } = props
-  // Lo que se lee una sola vez al montarse: el formulario vacío de hoy y el
-  // borrador, si lo hay.
+  // Lo que se fija una sola vez al montarse: el formulario vacío de hoy y el
+  // borrador con el que empieza, si lo hay.
   const [start] = useState(() => {
     const fresh = initialPlantFormValues(localDateString(now()))
-    const draft = draftUserId ? readPlantDraft(draftUserId, now()) : null
+    const draft = draftUserId === null ? null : props.draft
     const prefilled = withStart(fresh, initialName, initialSpecies)
     return { fresh, draft, values: draft?.values ?? prefilled }
   })
@@ -358,9 +622,29 @@ export function PlantForm(props: PlantFormProps) {
   const [detailsOpen, setDetailsOpen] = useState(() => hasDetails(start.values))
   // Evita el doble envío antes de que React pinte el estado "guardando".
   const savingRef = useRef(false)
-  const [quickGenera, retryQuickGenera] = useQuickGenera(
+  const [loadedGenera, retryQuickGenera] = useQuickGenera(
     services.loadQuickGenera,
     online,
+  )
+  // Sin conexión, si los géneros frecuentes no cargaron (o aún no se sabe:
+  // la petición tarda en fallar), los de la colección, que están en el
+  // dispositivo, para poder elegir uno igual (#296).
+  const collectionGenera = generaOf(knownPlants)
+  const quickGenera: QuickGeneraState =
+    ((!online && loadedGenera.status === 'loading') ||
+      (loadedGenera.status === 'error' && loadedGenera.reason === 'offline')) &&
+    collectionGenera.length > 0
+      ? { status: 'ready', genera: collectionGenera }
+      : loadedGenera
+
+  // Si el envío tiene que esperar (#296): sin conexión o con la sesión sin
+  // confirmar. Con un usuario se sigue completando el borrador; sin él, el
+  // formulario se desactiva como antes.
+  const blocked = !online || sessionUnverified
+  const keepsDraft = draftUserId !== null
+  // Qué hay del borrador en el dispositivo, para el aviso sin conexión.
+  const [stored, setStored] = useState<'none' | 'saved' | 'failed'>(
+    props.draft !== null ? 'saved' : 'none',
   )
 
   // Fotos ----------------------------------------------------------------
@@ -417,24 +701,33 @@ export function PlantForm(props: PlantFormProps) {
   const hasNewPhotos = newPhotos.length > 0
   useEffect(() => {
     if (draftOwner === null || values === start.values) return
+    // Enlazar solo el nombre con el que se abrió (#280) no es un cambio de la
+    // persona: no crea un borrador ni renueva la caducidad del recuperado.
+    if (!hasNewPhotos && isOnlyLinked(start.values, values)) return
+    let next: 'none' | 'saved' | 'failed' = 'none'
     if (isPlantFormDirty(values, initial) || hasNewPhotos) {
-      writePlantDraft(draftOwner, {
+      const saved = writePlantDraft(draftOwner, {
         plantId,
         values,
         savedAt: now().getTime(),
       })
+      next = saved ? 'saved' : 'failed'
     } else {
-      clearPlantDraft(draftOwner)
+      clearPlantDraft(draftOwner, plantId)
     }
+    // El aviso sin conexión dice si el borrador quedó guardado (#296): es el
+    // resultado de escribir en localStorage, un sistema externo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStored((current) => (current === next ? current : next))
   }, [values, draftOwner, plantId, now, start.values, initial, hasNewPhotos])
 
-  // Las fotos del borrador, en su orden, si van con su id de planta. Sin
-  // borrador de texto, las que hubiera se borran.
+  // Las fotos del borrador con el que empezó, en su orden. Las que no son de
+  // ningún borrador las borra PlantForm al abrir el registro.
   useEffect(() => {
-    if (draftOwner === null) return
+    if (draftOwner === null || start.draft === null) return
     let active = true
     void readDraftPhotos(photoDraftBackend, draftOwner, {
-      plantId: start.draft?.plantId ?? null,
+      plantId: start.draft.plantId,
       now: now(),
     }).then((found) => {
       if (!active || found === null || photosTouched.current) return
@@ -464,19 +757,23 @@ export function PlantForm(props: PlantFormProps) {
     }
     const list = photos.current().filter(isNew)
     const savedAt = now().getTime()
+    let textSaved = true
     if (list.length > 0) {
-      writePlantDraft(draftOwner, {
+      textSaved = writePlantDraft(draftOwner, {
         plantId,
         values: valuesRef.current,
         savedAt,
       })
     } else if (!isPlantFormDirty(valuesRef.current, initial)) {
-      clearPlantDraft(draftOwner)
+      clearPlantDraft(draftOwner, plantId)
     }
     void writeDraftPhotos(photoDraftBackend, draftOwner, {
       plantId,
       savedAt,
       photos: list.map(({ fileName, photo }) => ({ fileName, photo })),
+    }).then((photosSaved) => {
+      if (!textSaved || !photosSaved) setStored('failed')
+      else if (list.length > 0) setStored('saved')
     })
     // Solo cuando cambian las fotos (draftPhotosKey).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -494,13 +791,17 @@ export function PlantForm(props: PlantFormProps) {
   // no admite el foco: se lleva al activarse, una sola vez y solo si la
   // persona no lo puso ya en otro sitio (sigue en la página o en el título).
   const nameFocused = useRef(false)
-  const nameDisabled = !online || registered !== null
+  const fieldsDisabled = registered !== null || (blocked && !keepsDraft)
+  const nameDisabled = fieldsDisabled
   useEffect(() => {
     if (!autoFocusName || nameFocused.current || nameDisabled) return
     nameFocused.current = true
     queueMicrotask(() => {
+      // Tras elegir un borrador o lo que llega (#296), el botón pulsado ya no
+      // está: el foco va al nombre (WebKit lo deja en <main>, que se pulsó).
       const active = document.activeElement
       if (
+        !focusNameOnMount &&
         active !== null &&
         active !== document.body &&
         active.tagName !== 'H1'
@@ -509,7 +810,7 @@ export function PlantForm(props: PlantFormProps) {
       }
       nameRef.current?.focus()
     })
-  }, [autoFocusName, nameDisabled])
+  }, [autoFocusName, nameDisabled, focusNameOnMount])
 
   // Nombre exacto (#280): si se envía mientras aún se busca el nombre (Enter
   // justo después de escribirlo), el guardado espera a saber si es una especie
@@ -698,7 +999,7 @@ export function PlantForm(props: PlantFormProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (savingRef.current || !online || registered !== null) return
+    if (savingRef.current || blocked || registered !== null) return
     // Con fotos a medio preparar no se guarda: el botón lo dice.
     if (preparing) return
     if (nameResolution === 'resolving') {
@@ -735,11 +1036,11 @@ export function PlantForm(props: PlantFormProps) {
       return
     }
     savingRef.current = false
-    // La planta ya existe: el borrador (y sus fotos) sobran. Las fotos siguen
+    // La planta ya existe: su borrador (y sus fotos) sobran. Las fotos siguen
     // en memoria para subirlas y reintentarlo.
     if (draftOwner !== null) {
-      clearPlantDraft(draftOwner)
-      void clearDraftPhotos(photoDraftBackend, draftOwner)
+      clearPlantDraft(draftOwner, plantId)
+      void clearDraftPhotos(photoDraftBackend, draftOwner, plantId)
     }
     setSave({ status: 'idle' })
     onPlantStored?.(plant)
@@ -790,7 +1091,7 @@ export function PlantForm(props: PlantFormProps) {
   const cancelUpload = () => uploadController.current?.abort()
 
   const openPicker = (input: HTMLInputElement | null) => {
-    if (registered !== null || saving || !online) return
+    if (saving || fieldsDisabled) return
     input?.click()
   }
 
@@ -826,20 +1127,20 @@ export function PlantForm(props: PlantFormProps) {
     if (saving || registered !== null) return
     if (dirty && !window.confirm(text.confirmDiscard)) return
     if (draftOwner !== null) {
-      clearPlantDraft(draftOwner)
-      void clearDraftPhotos(photoDraftBackend, draftOwner)
+      clearPlantDraft(draftOwner, plantId)
+      void clearDraftPhotos(photoDraftBackend, draftOwner, plantId)
     }
     onCancel()
   }
 
   // Empieza de cero: formulario vacío con la fecha de hoy, sin fotos y otro
   // id de planta (el del borrador pudo llegar a la base en un intento
-  // anterior).
+  // anterior). Los demás borradores guardados no se tocan.
   const discardDraft = () => {
     if (saving || registered !== null) return
     if (draftOwner !== null) {
-      clearPlantDraft(draftOwner)
-      void clearDraftPhotos(photoDraftBackend, draftOwner)
+      clearPlantDraft(draftOwner, plantId)
+      void clearDraftPhotos(photoDraftBackend, draftOwner, plantId)
     }
     dispatch({
       type: 'restored',
@@ -931,9 +1232,8 @@ export function PlantForm(props: PlantFormProps) {
   const primaryBlocked =
     registered !== null
       ? uploading || (canRetry && !online)
-      : saving || preparing || !online
+      : saving || preparing || blocked
 
-  const fieldsDisabled = !online || registered !== null
   const galleryDisabled = fieldsDisabled || saving
 
   const main = (
@@ -951,6 +1251,7 @@ export function PlantForm(props: PlantFormProps) {
           inputRef={nameRef}
           linkInitialName
           onResolutionChange={setNameResolution}
+          offline={!online}
         />
         <DuplicateNotice
           species={values.species}
@@ -1201,11 +1502,45 @@ export function PlantForm(props: PlantFormProps) {
       className="flex flex-col gap-space-5"
       onSubmit={(event) => void handleSubmit(event)}
     >
-      {draftRestored && <DraftNotice onDiscard={discardDraft} />}
+      {(draftRestored || otherDrafts.length > 0) && (
+        <DraftNotice
+          restored={draftRestored}
+          // Con la planta ya guardando o guardada, no se cambia de borrador.
+          others={saving || registered !== null ? [] : otherDrafts}
+          onDiscard={discardDraft}
+          onSwitch={onSwitchDraft}
+        />
+      )}
 
-      {/* Región siempre presente: así se anuncia al perder la conexión. */}
+      {/*
+        Región siempre presente: así se anuncia al perder la conexión. Con un
+        usuario, dice que el borrador queda en el dispositivo y que el envío
+        espera (#296); sin él, que el formulario se activará al volver.
+      */}
       <div id={offlineId} role="status">
-        {!online && (
+        {blocked && registered === null && !keepsDraft && (
+          <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-sm text-neutral-900">
+            <Icon
+              name="triangle-alert"
+              className="mt-[2px] size-[16px] flex-none"
+            />
+            {text.offline}
+          </p>
+        )}
+        {blocked && registered === null && keepsDraft && (
+          <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-sm text-neutral-900">
+            <Icon name="cloud-off" className="mt-[2px] size-[16px] flex-none" />
+            {`${online ? text.unverifiedTitle : text.offlineTitle} ${(stored ===
+              'saved'
+              ? text.draftSavedHere
+              : stored === 'failed'
+                ? text.draftNotSavedHere
+                : text.draftWillSaveHere)(
+              online ? text.whenVerified : text.whenOnline,
+            )}`}
+          </p>
+        )}
+        {blocked && registered !== null && !online && (
           <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-sm text-neutral-900">
             <Icon
               name="triangle-alert"
@@ -1217,9 +1552,10 @@ export function PlantForm(props: PlantFormProps) {
       </div>
 
       {/*
-        Sin conexión, los campos quedan desactivados; lo escrito y las fotos
-        se conservan. Con la planta ya guardada (subiendo sus fotos), no hay
-        nada más que editar.
+        Sin conexión, con un usuario, todo se sigue completando y va al
+        borrador (#296); sin usuario, los campos quedan desactivados y lo
+        escrito y las fotos se conservan. Con la planta ya guardada (subiendo
+        sus fotos), no hay nada más que editar.
       */}
       <FormLayout main={main} aside={gallery} extra={extra} />
 
@@ -1236,7 +1572,7 @@ export function PlantForm(props: PlantFormProps) {
             {save.error.message}
           </p>
           <div className="flex flex-wrap gap-space-3">
-            <Button type="submit" aria-disabled={!online || undefined}>
+            <Button type="submit" aria-disabled={blocked || undefined}>
               {PLANT_FORM_TEXT.retry}
             </Button>
             {save.error.reason === 'session-ended' && (
@@ -1320,7 +1656,9 @@ export function PlantForm(props: PlantFormProps) {
           variant="primary"
           aria-disabled={primaryBlocked || undefined}
           aria-describedby={
-            !online && (registered === null || canRetry) ? offlineId : undefined
+            (blocked && registered === null) || (!online && canRetry)
+              ? offlineId
+              : undefined
           }
           onClick={
             registered === null || uploading

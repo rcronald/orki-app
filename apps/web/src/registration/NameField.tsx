@@ -54,6 +54,12 @@ interface NameFieldProps {
   linkInitialName?: boolean
   /** Avisa cuando cambia NameResolution; el registro espera a ella para guardar. */
   onResolutionChange?: (resolution: NameResolution) => void
+  /**
+   * Sin conexión (#296, el registro): no se busca en el catálogo, se dice, y
+   * el nombre queda como texto. Al volver se busca solo y se aplica la regla
+   * del nombre exacto, sin cambiar lo que la persona eligió mientras tanto.
+   */
+  offline?: boolean
 }
 
 const renderScientificName = (option: AutocompleteOption) => (
@@ -100,13 +106,24 @@ export function NameField({
   inputRef,
   linkInitialName = false,
   onResolutionChange,
+  offline = false,
 }: NameFieldProps) {
   const errorId = useId()
   const linked = values.species !== null
   // Con una especie elegida no se busca: el texto es su nombre científico.
+  // Sin conexión, tampoco (#296).
   const search = useCatalogSearch(searchSpecies, values.name, {
-    enabled: !linked,
+    enabled: !linked && !offline,
   })
+  // Si el nombre se escribió sin conexión (o ya estaba al perderla): al
+  // volver, la especie exacta solo se enlaza sola si no cambia el género ni
+  // el tipo que la persona eligió entretanto; si no, se ofrece.
+  const [checkedLater, setCheckedLater] = useState(
+    () => offline && values.name.trim() !== '',
+  )
+  if (offline && !checkedLater && !linked && values.name.trim() !== '') {
+    setCheckedLater(true)
+  }
 
   const options: AutocompleteOption[] = search.results.map((result) => ({
     id: result.id,
@@ -126,10 +143,17 @@ export function NameField({
   // linkInitialName).
   const [typed, setTyped] = useState(false)
   const autoLink = linkInitialName || typed
-  const exact: NameMatch =
+  const found: NameMatch =
     linked || search.status !== 'success'
       ? { kind: 'none' }
       : exactNameMatch(values.name, search.results)
+  const keepsChoices = (result: SpeciesSearchResult) =>
+    (values.genus === null || values.genus.id === result.genusId) &&
+    (values.type === null || values.type === result.type)
+  const exact: NameMatch =
+    checkedLater && found.kind === 'link' && !keepsChoices(found.result)
+      ? { kind: 'offer', result: found.result, by: 'scientific' }
+      : found
   // Lo exacto que no se enlaza solo, se ofrece.
   const match: NameMatch =
     exact.kind === 'link' && (!autoLink || freeChosen)
@@ -162,6 +186,7 @@ export function NameField({
   // El aviso de "por validar" sale al elegir la acción o cuando la búsqueda
   // ya terminó sin coincidencia exacta; mientras busca, no se adelanta.
   const pending =
+    !offline &&
     isPendingName(values) &&
     (freeChosen || (search.status !== 'loading' && offered === null))
   // Con una especie elegida, la insignia «Coincidencia en el catálogo»
@@ -174,6 +199,8 @@ export function NameField({
       </MatchBadge>{' '}
       <span>{PLANT_FORM_TEXT.nameHint}</span>
     </span>
+  ) : offline ? (
+    PLANT_FORM_TEXT.nameOfflineHint
   ) : pending ? (
     PLANT_FORM_TEXT.namePendingHint
   ) : (
@@ -228,6 +255,7 @@ export function NameField({
         value={values.name}
         onValueChange={(name) => {
           setTyped(true)
+          setCheckedLater(offline)
           dispatch({ type: 'nameChanged', name })
         }}
         options={options}
@@ -237,7 +265,7 @@ export function NameField({
         // catálogo»): se cierra, también si se enlazó sola mientras estaba
         // abierta.
         minQueryLength={
-          linked ? Number.POSITIVE_INFINITY : SEARCH_QUERY_MIN_LENGTH
+          linked || offline ? Number.POSITIVE_INFINITY : SEARCH_QUERY_MIN_LENGTH
         }
         emptyText="No está en el catálogo."
         hint={hint}
@@ -254,7 +282,7 @@ export function NameField({
           if (result) choose(result)
         }}
         action={
-          !linked && freeName !== ''
+          !linked && !offline && freeName !== ''
             ? {
                 label: PLANT_FORM_TEXT.freeNameAction(freeName),
                 // El nombre ya está escrito: elegir la acción solo cierra la

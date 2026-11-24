@@ -291,7 +291,8 @@ describe('ShowcasePage', () => {
     )
     expect(within(section).getByText(/"species_id"/)).toBeInTheDocument()
 
-    // Sin conexión: el formulario se ve desactivado con el motivo.
+    // Sin conexión (#296): con su usuario de muestra, el formulario sigue
+    // activo y «Registrar orquídea» espera, con el motivo.
     await user.click(
       within(section).getByRole('button', { name: 'Registrar otra' }),
     )
@@ -300,7 +301,10 @@ describe('ShowcasePage', () => {
     )
     expect(
       within(section).getByRole('combobox', { name: 'Nombre' }),
-    ).toBeDisabled()
+    ).toBeEnabled()
+    expect(
+      within(section).getByRole('button', { name: 'Registrar orquídea' }),
+    ).toHaveAttribute('aria-disabled', 'true')
     await expectNoAxeViolations()
   })
 

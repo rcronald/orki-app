@@ -259,7 +259,13 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   conexión o el de sesión sin confirmar). Si se abre directamente
   `/coleccion/nueva` o `/coleccion/:id/editar`, el formulario se desactiva
   con su aviso de sin conexión (el mismo texto también con la sesión sin
-  confirmar; no se tocó `registration/`).
+  confirmar). Desde el #296 el registro es la excepción: con el usuario
+  identificado en el dispositivo (el de Clerk o el recordado), se sigue
+  completando el borrador del dispositivo (texto en `localStorage`, fotos en
+  IndexedDB `orki-registro`) y solo «Registrar orquídea» espera, con su motivo
+  («Borrador guardado en este dispositivo. Podrás registrarla cuando vuelva la
+  conexión.»). Nada se envía solo: sin cola ni sincronización. Ver «Registro
+  de una planta» en el README.
 - **Siguen funcionando:** buscar, filtrar, "¿Ya la tengo?" (con sinónimos y
   abreviaturas de la copia), agrupar, el detalle (con la miniatura en lugar
   de la foto grande) y exportar a CSV (sale de la colección en memoria).
