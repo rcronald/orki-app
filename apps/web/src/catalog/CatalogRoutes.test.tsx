@@ -6,8 +6,14 @@ import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import type { CollectionPlant } from '../collection/model.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
+import { SEARCH_DEBOUNCE_MS } from '../lib/useCatalogSearch.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
+import {
+  advanceClock,
+  finishWait,
+  typeWithClockStopped,
+} from '../test/stopped-clock.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
 import {
   fakeCollectionSource,
@@ -52,6 +58,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   expect(catalog.unexpected).toEqual([])
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -212,9 +219,15 @@ describe('portada del catálogo', () => {
 
 describe('buscador', () => {
   it('busca desde 2 letras, sin token, y dice por qué nombre coincidió', async () => {
-    const user = userEvent.setup()
     renderAt('/catalogo')
-    await user.type(field(), 'laelia')
+    // Con el reloj parado entre pulsaciones (#311): con el real, una pulsación
+    // lenta en un equipo cargado dejaba salir una búsqueda a medias («lae»).
+    await typeWithClockStopped(field(), 'laelia')
+    const searchCalls = () =>
+      catalog.calls.filter((call) => call.fn === 'search_public_species')
+    await advanceClock(SEARCH_DEBOUNCE_MS - 1)
+    expect(searchCalls()).toHaveLength(0)
+    await finishWait(1)
 
     const result = await screen.findByRole('link', {
       name: /Cattleya purpurata/,
@@ -230,9 +243,7 @@ describe('buscador', () => {
     expect(
       screen.queryByRole('navigation', { name: 'Géneros por letra' }),
     ).toBeNull()
-    const searches = catalog.calls.filter(
-      (call) => call.fn === 'search_public_species',
-    )
+    const searches = searchCalls()
     // Una sola petición por lo escrito (la espera entre pulsaciones).
     expect(searches).toHaveLength(1)
     expect(searches[0]?.args).toEqual({ query: 'laelia', max_results: 15 })
