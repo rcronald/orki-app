@@ -12,7 +12,7 @@ import { appPhotoStorage, type PhotoStorage } from './storage.ts'
 //   seguiría bajando la imagen otra vez en cada sesión.
 // - La ruta, en cambio, es una clave estable y su contenido nunca cambia
 //   (lleva la versión; ver paths.ts). Descargando con el token de la sesión
-//   (supabase-js download, una petición por imagen, con AbortSignal) y
+//   (download de storage-js, una petición por imagen, con AbortSignal) y
 //   guardando el Blob por ruta, cada miniatura se baja una sola vez por
 //   dispositivo: en memoria mientras dura la pestaña y, las miniaturas, en
 //   Cache Storage (persistente, legible sin red y desde el service worker).

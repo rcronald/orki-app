@@ -14,7 +14,7 @@ interface Call {
 }
 
 /**
- * Doble mínimo de supabase-js: anota la cadena de cada consulta y responde
+ * Doble mínimo del cliente de Supabase: anota la cadena de cada consulta y responde
  * con `reply` al esperarla.
  */
 function fakeClient(

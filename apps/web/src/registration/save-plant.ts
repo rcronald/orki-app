@@ -32,7 +32,7 @@ export interface PlantStatusPatch {
 //   reintentar el mismo registro. Si el primer intento sí llegó a la base pero
 //   la respuesta se perdió, el segundo choca con la clave primaria (23505) y
 //   se lee la planta ya guardada en lugar de crear otra.
-// - supabase-js no reintenta las escrituras: un fallo llega enseguida.
+// - postgrest-js no reintenta las escrituras: un fallo llega enseguida.
 
 /**
  * Por qué no se pudo guardar:
@@ -125,7 +125,7 @@ function postgrestError(error: unknown): PostgrestLikeError {
 }
 
 /**
- * Traduce el `error` de supabase-js con el estado HTTP de la respuesta.
+ * Traduce el `error` de postgrest-js con el estado HTTP de la respuesta.
  * Estado 0: la petición no obtuvo respuesta (sin red, DNS, portal cautivo).
  */
 export function toPlantSaveError(

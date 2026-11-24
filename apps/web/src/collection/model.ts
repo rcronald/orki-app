@@ -64,7 +64,7 @@ export type CollectionPlantRow = Pick<
 > & {
   /**
    * Identificador (#264). Nunca es null en la base, pero los tipos generados
-   * dan nullable toda columna generada y supabase-js lo infiere así.
+   * dan nullable toda columna generada y postgrest-js lo infiere así.
    */
   code: string | null
   /**

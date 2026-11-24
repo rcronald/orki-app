@@ -230,7 +230,7 @@ test.describe('solo a 360 px', () => {
         await page.route(esDeExtras, (route) => route.abort('failed'))
         await page.goto('/ya-la-tengo')
         await campo(page).fill('Blc. Waikiki')
-        // supabase-js reintenta un GET que falla por la red tres veces (1, 2
+        // postgrest-js reintenta un GET que falla por la red tres veces (1, 2
         // y 4 s) antes de rendirse; mientras tanto, «Comprobando…».
         await expect(
           respuesta(page, 'Comprobando sinónimos y abreviaturas…'),

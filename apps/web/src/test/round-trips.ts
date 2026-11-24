@@ -2,7 +2,7 @@
 // en memoria de las filas, del bucket y de la planta.
 //
 // Cada llamada envuelta cuenta como una petición (en la app, cada una es una
-// petición HTTP de supabase-js). Los viajes se cuentan con un reloj lógico:
+// petición HTTP del cliente de Supabase). Los viajes se cuentan con un reloj lógico:
 // una petición empieza en el instante en que se llama y termina un instante
 // después; el reloj avanza al terminar. Las que salen a la vez (sin esperar a
 // otra) empiezan en el mismo instante y cuentan un solo viaje; las que

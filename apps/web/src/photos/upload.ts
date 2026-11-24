@@ -115,7 +115,7 @@ export interface UploadPhotoFilesOptions {
   plantId: string
   storage?: PhotoStorage
   /**
-   * Cancela. supabase-js no deja abortar una subida en curso: se deja de
+   * Cancela. storage-js no deja abortar una subida en curso: se deja de
    * esperar enseguida y lo que llegue a subirse se borra al terminar.
    */
   signal?: AbortSignal

@@ -240,7 +240,7 @@ describe('createSupabaseAccountDataEffects', () => {
     }
   })
 
-  it('si no carga supabase-js sin conexión, offline', async () => {
+  it('si no carga el cliente de Supabase sin conexión, offline', async () => {
     const spy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     const effects = createSupabaseAccountDataEffects({
       getClient: () => Promise.reject(new Error('chunk')),

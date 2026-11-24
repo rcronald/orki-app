@@ -8,7 +8,7 @@ import { getSupabase } from './supabase.ts'
 // iniciada (auth/ProfileBootstrap.tsx), con la política "Cada usuario crea su
 // perfil" (with check: id = requesting_user_id()).
 //
-// La inserción es idempotente: upsert con ignoreDuplicates, que supabase-js
+// La inserción es idempotente: upsert con ignoreDuplicates, que postgrest-js
 // envía como POST /profiles?on_conflict=id con
 // "Prefer: resolution=ignore-duplicates" y que PostgREST traduce a
 // "insert ... on conflict (id) do nothing". Si el perfil ya existe no da error,
