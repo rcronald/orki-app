@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   CATTLEYA,
   PHALAENOPSIS,
@@ -6,6 +6,7 @@ import {
   RHYNCHOLAELIOCATTLEYA,
   speciesNamed,
 } from '../test/collection.ts'
+import { countWork } from '../test/work.ts'
 import type { CollectionPlant } from './model.ts'
 import {
   answerOwnership,
@@ -339,36 +340,16 @@ describe('rendimiento con colecciones grandes (#292)', () => {
   }
 
   /**
-   * El trabajo de una operación, sin reloj (#311): cuenta cada lectura de un
-   * elemento de la lista o de un campo de una planta, y cada consulta a las
-   * cachés por planta (WeakMap), que es lo que hace cada comparación al
-   * ordenar. Con la máquina cargada el tiempo cambia y esto no; una regresión
-   * de complejidad (un bucle dentro de otro, normalizar en cada comparación)
-   * lo hace crecer más que la lista.
+   * El trabajo de una operación con `count` plantas, sin reloj (#311): ver
+   * countWork. Las consultas a las cachés por planta son lo que hace cada
+   * comparación al ordenar.
    */
   function work(
     count: number,
     run: (plants: readonly CollectionPlant[]) => unknown,
-    { warm }: { warm?: (plants: readonly CollectionPlant[]) => unknown } = {},
+    options: { warm?: (plants: readonly CollectionPlant[]) => unknown } = {},
   ): { fields: number; total: number } {
-    let fields = 0
-    const counting = <T extends object>(target: T): T =>
-      new Proxy(target, {
-        get(object, key, receiver) {
-          fields += 1
-          return Reflect.get(object, key, receiver) as unknown
-        },
-      })
-    const plants = counting(synthetic(count).map(counting))
-    warm?.(plants)
-    fields = 0
-    const lookups = vi.spyOn(WeakMap.prototype, 'get')
-    try {
-      run(plants)
-      return { fields, total: fields + lookups.mock.calls.length }
-    } finally {
-      lookups.mockRestore()
-    }
+    return countWork(synthetic(count), run, options)
   }
 
   const OPERATIONS: Record<
