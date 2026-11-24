@@ -1005,6 +1005,8 @@ npm run test:e2e:sin-build -- e2e/registro.spec.ts --headed   # un archivo, vien
 npm run test:e2e:sin-build -- --ui              # modo interactivo de Playwright
 ```
 
+El servidor de las pruebas escucha en el puerto 4317, o en el de `ORKI_E2E_PUERTO` (por ejemplo, `ORKI_E2E_PUERTO=4441 npm run test:e2e:sin-build`) para lanzarlas a la vez desde otra copia de trabajo. Playwright nunca reutiliza un servidor que ya esté en ese puerto, porque podría servir el build de otra copia: si está ocupado, se para con «is already used» y basta con elegir otro (#295).
+
 En Linux, la primera vez hace falta `npx playwright install --with-deps` (instala también las bibliotecas del sistema). Al terminar, `npx playwright show-report apps/web/playwright-report` abre el informe; de cada prueba que falla quedan en `apps/web/test-results/` la captura, el vídeo y la traza (`npx playwright show-trace <ruta de trace.zip>`). No hace falta ninguna variable de entorno ni conexión con Clerk, Supabase o Sentry.
 
 ### Qué se prueba y qué se simula

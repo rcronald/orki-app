@@ -5,7 +5,7 @@
 // compresión Brotli. Lo arranca Playwright (webServer en
 // apps/web/playwright.config.ts); no hace falta lanzarlo a mano.
 //
-//   node scripts/servir-e2e.mjs [puerto]
+//   node scripts/servir-e2e.mjs [puerto]   # por defecto, ORKI_E2E_PUERTO o 4317
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -24,6 +24,6 @@ if (!existsSync(path.join(CARPETA, 'index.html'))) {
   process.exit(1)
 }
 
-const puerto = Number(process.argv[2] ?? 4317)
+const puerto = Number(process.argv[2] ?? (process.env.ORKI_E2E_PUERTO || 4317))
 const { url } = await servirCarpeta(CARPETA, { puerto })
 console.log(`Build de las pruebas servido en ${url}`)
