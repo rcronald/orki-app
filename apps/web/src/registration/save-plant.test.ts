@@ -18,7 +18,7 @@ describe('toPlantSaveError', () => {
     )
   })
 
-  it('reconoce que faltó el token de sesión, como lo devuelve supabase-js', () => {
+  it('reconoce que faltó el token de sesión, como lo devuelve postgrest-js', () => {
     const error = {
       message: `SessionTokenError: ${new SessionTokenError('offline').message}`,
     }

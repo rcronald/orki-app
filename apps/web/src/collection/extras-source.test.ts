@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Database } from '../lib/database.ts'
+import { createOrkiSupabaseClient } from '../lib/supabase-client.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
 import { createExtrasFetcher } from './extras-source.ts'
 
@@ -48,11 +47,11 @@ function respond(input: string | URL | Request): Promise<Response> {
   )
 }
 
-// Con accessToken, como el de la app: sin Supabase Auth.
-const sharedClient = createClient<Database>(
+// El cliente de la app, sin sesión.
+const sharedClient = createOrkiSupabaseClient(
   'https://ejemplo.supabase.co',
   'sb_publishable_x',
-  { accessToken: () => Promise.resolve(null) },
+  () => Promise.resolve(null),
 )
 const client = () => Promise.resolve(sharedClient)
 

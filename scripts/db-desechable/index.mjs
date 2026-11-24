@@ -99,7 +99,7 @@ export function comprobarVersionPostgres(
       `no estén en el PATH (/opt/homebrew/opt/postgresql@${versionMinimaPostgres}/bin); si están en otro ` +
       'sitio, indica el directorio en ORKI_PG_BINDIR.\n' +
       `  - O un contenedor desechable con postgres:${versionMinimaPostgres} y su URL en ORKI_TEST_DB_URL ` +
-      '(ver "Pruebas de la base de datos" en el README).\n' +
+      '(ver "Pruebas de la base de datos" en docs/operacion/base-de-datos.md).\n' +
       '  - Para usar esta versión de todos modos (sin garantías), ORKI_PERMITIR_PG_ANTIGUO=1.',
   )
 }

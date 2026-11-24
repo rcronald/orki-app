@@ -763,7 +763,7 @@ Sin red y sin Storage reales. `tests/test_reference_photos.py` prueba la elecci�
 
 La carga necesita que el ambiente tenga aplicadas todas las migraciones del catálogo: las de la fuente `col` (`20261120220000_fuente_col_en_especies.sql` y `20261120220100_col_exige_referencia.sql`) las de la búsqueda (`search_species`, `search_genera` y sus índices) y, para escribir, la de la auditoría (`20261121140000_auditoria_del_catalogo.sql`) y la de la fusión de especies (`20261121160000_fusion_de_especies.sql`, con la memoria de las fusiones), además de las anteriores del catálogo. `orki-catalogo cargar` solo comprueba que exista el valor `col` de la fuente y, al escribir, la función de la auditoría y la memoria de las fusiones; si falta algo, termina sin escribir nada. El resto no lo comprueba, así que mira antes que no quede ninguna migración pendiente. El orden es siempre:
 
-1. Aplicar las migraciones en el ambiente: `npm run db:push` en desarrollo o el workflow «Migraciones» en producción, que corre solo al fusionar en `main` (ver [Base de datos y migraciones](../../README.md#base-de-datos-y-migraciones)). `npm run db:status` dice cuáles están aplicadas.
+1. Aplicar las migraciones en el ambiente: `npm run db:push` en desarrollo o el workflow «Migraciones» en producción, que corre solo al fusionar en `main` (ver [Base de datos y migraciones](../../docs/operacion/base-de-datos.md#base-de-datos-y-migraciones)). `npm run db:status` dice cuáles están aplicadas.
 2. Simular la carga y revisar el reporte.
 3. Escribir.
 

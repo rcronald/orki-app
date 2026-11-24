@@ -49,7 +49,7 @@ export function createSupabaseAccountDataEffects({
     try {
       return await getClient()
     } catch (error) {
-      // El chunk de supabase-js no llegó o la app no se inicializó.
+      // El chunk del cliente de Supabase no llegó o la app no se inicializó.
       throw new AccountDeletionError(
         navigator.onLine === false ? 'offline' : 'failed',
         { cause: error },
@@ -145,7 +145,7 @@ function fromStorage(error: unknown): AccountDeletionError {
 }
 
 /**
- * Error de supabase-js con el estado HTTP. Estado 0: la petición no obtuvo
+ * Error de postgrest-js con el estado HTTP. Estado 0: la petición no obtuvo
  * respuesta (sin red). 401: Supabase no aceptó el token.
  */
 function fromPostgrest(error: unknown, status: number): AccountDeletionError {

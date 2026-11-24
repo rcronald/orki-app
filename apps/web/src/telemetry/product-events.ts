@@ -3,7 +3,7 @@ import type { ProductEventsRuntime, ProductEventsSession } from './runtime.ts'
 
 // Punto de entrada de los eventos de producto (#146). Es lo único que
 // importan las pantallas: no pesa nada, y la cola y el envío (runtime.ts, con
-// IndexedDB y supabase-js) se cargan de forma diferida la primera vez que hay
+// IndexedDB y el cliente de Supabase) se cargan de forma diferida la primera vez que hay
 // algo que hacer.
 //
 // - ProductEventsSync (dentro de Clerk) dice quién usa la app con

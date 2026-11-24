@@ -77,6 +77,27 @@ export default defineConfig([
       ],
     },
   },
+  // Cliente ligero de Supabase (#286): la app usa postgrest-js y storage-js a
+  // través de src/lib/supabase-client.ts. supabase-js sigue instalado en la
+  // raíz para los scripts de Node, así que una importación desde la app
+  // resolvería y volvería a meter Auth y Realtime en el bundle.
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@supabase/supabase-js', '@supabase/supabase-js/*'],
+              message:
+                'La app no usa supabase-js: pide el cliente con getSupabase() o getPublicSupabase() (src/lib/supabase.ts).',
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Va al final para desactivar las reglas de estilo que chocan con Prettier.
   prettier,
 ])

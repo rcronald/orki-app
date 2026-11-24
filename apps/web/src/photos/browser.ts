@@ -17,7 +17,7 @@ import {
 // Safari 16.4; mdn/browser-compat-data), o un <canvas> sin insertar en la
 // página. No hace falta un Web Worker: lo que bloquea el hilo es dibujar y
 // codificar una foto de 1600 px, decenas de milisegundos por paso, y entre
-// pasos se cede el hilo (ver la medición en el README, sección "Fotos").
+// pasos se cede el hilo (ver la medición en docs/app/fotos.md).
 
 /** Fondo para aplanar la transparencia (JPEG no la tiene). */
 const OPAQUE_BACKGROUND = '#ffffff'

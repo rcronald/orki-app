@@ -156,7 +156,7 @@ describe('createSupabasePhotoStorage', () => {
     )
   })
 
-  it('sin cliente (sin conexión al cargar supabase-js) da offline', async () => {
+  it('sin cliente (sin conexión al cargar el cliente de Supabase) da offline', async () => {
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     const storage = createSupabasePhotoStorage({
       getClient: () => Promise.reject(new Error('chunk')),

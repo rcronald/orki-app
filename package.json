@@ -16,6 +16,7 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
+    "enlaces": "node scripts/enlaces/index.mjs",
     "test": "npm run test --workspace=apps/web --",
     "test:watch": "npm run test:watch --workspace=apps/web --",
     "db:new": "node scripts/supabase-db.mjs nueva",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@supabase/supabase-js": "^2.119.2",
     "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",

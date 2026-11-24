@@ -38,6 +38,12 @@ jobs:
       - name: Verificar formato
         run: npm run format:check
 
+      # Enlaces relativos de los .md (#288): cada archivo y cada #sección a la que
+      # apunta la documentación existe. Al mover o renombrar un encabezado, corrige
+      # los enlaces que lo citan.
+      - name: Enlaces de la documentación
+        run: npm run enlaces
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -65,7 +71,7 @@ jobs:
   # Firefox, WebKit y un perfil de iPhone, contra la app construida como
   # producción con Clerk simulado y Supabase simulado en la red de Playwright.
   # No usa secretos ni sale a ningún servicio (las pruebas fallan si la app lo
-  # intenta). Por ahora no es obligatorio para fusionar; ver el README.
+  # intenta). Por ahora no es obligatorio para fusionar; ver docs/pruebas.md.
   #
   # Un job por perfil, en paralelo: cada uno instala solo su navegador y corre
   # solo sus pruebas, así el CI no espera a los cuatro en fila y un fallo dice

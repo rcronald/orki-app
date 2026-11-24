@@ -9,7 +9,7 @@ import type {
 // rápido y el bucket de fotos. Los disparadores de la base se imitan: con
 // especie, el género, el tipo y "validated" son los suyos; sin ella, la
 // planta queda "pending" (o como estaba, si no se tocó la especie). La app
-// real llega hasta supabase-js; solo fetch es un doble.
+// real llega hasta el cliente de Supabase; solo fetch es un doble.
 
 export const CONFIG = {
   supabaseUrl: 'https://ejemplo.supabase.co',
