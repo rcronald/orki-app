@@ -163,11 +163,12 @@ export function CollectionPiecesSection() {
       </Example>
       <Example
         title="Tarjeta de ejemplar con borde (CollectionCard)"
-        description="Borde fino color-neutral-200 sobre color-neutral-0, sin sombra; foto 3:2, nombre en cursiva, apodo, insignia solo si aplica y ubicación con map-pin. Con más de una foto (photoCount), el número sobre la esquina de la foto (orki-count con el icono image), descrito como «3 fotos» para el lector. Con layout «list», la fila de la vista en lista."
+        description="Borde fino color-neutral-200 sobre color-neutral-0, sin sombra; foto 3:2, nombre en cursiva, apodo, insignia solo si aplica y ubicación con map-pin. Con más de una foto (photoCount), el número sobre la esquina de la foto (orki-count con el icono image), descrito como «3 fotos» para el lector. Bajo el nombre, el identificador (code, orki-card__meta), que el lector lee en la descripción. Con layout «list», la fila de la vista en lista."
       >
         <div className="grid grid-cols-2 gap-space-3 md:grid-cols-3">
           <CollectionCard
             scientificName="Cattleya trianae"
+            code="CAT-012"
             location="Invernadero este"
             photo={PHOTO}
             renderName={(name) => (
@@ -178,6 +179,7 @@ export function CollectionPiecesSection() {
           />
           <CollectionCard
             scientificName="Phalaenopsis bellina"
+            code="PHA-001"
             nickname="La del balcón"
             location="Terrario"
             photo={PHOTO}
@@ -194,6 +196,7 @@ export function CollectionPiecesSection() {
           <CollectionCard
             layout="list"
             scientificName="Vanda coerulea"
+            code="VAN-003"
             nickname="Azul"
             location="Colgante de la terraza"
             photo={PHOTO}

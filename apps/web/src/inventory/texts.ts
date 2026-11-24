@@ -1,3 +1,4 @@
+import type { PlantSort } from '../collection/selectors.ts'
 import type { CollectionErrorReason } from '../collection/source.ts'
 import type { PlantStatus, PlantValidation } from '../lib/database.ts'
 
@@ -79,9 +80,24 @@ export const COLLECTION_ACTIONS_TEXT = {
 /** Buscador único de «Mi colección» (#208). */
 export const SEARCH_TEXT = {
   label: 'Buscar en mi colección',
-  placeholder: 'Nombre, género, apodo u origen',
+  /**
+   * Corto para que quepa entero a 360 px (#292): el de antes, «Nombre,
+   * género, apodo u origen», se cortaba. El género, el apodo y el origen se
+   * siguen buscando; lo nuevo es el identificador y la ubicación.
+   */
+  placeholder: 'Nombre, código o ubicación',
   /** El mismo texto que el botón de «sin coincidencias». */
   clear: 'Limpiar la búsqueda',
+} as const
+
+/** «Ordenar» de «Mi colección» (#292). */
+export const SORT_TEXT = {
+  label: 'Ordenar',
+  options: {
+    newest: 'Más recientes',
+    name: 'Nombre (A–Z)',
+    acquired: 'Fecha de adquisición',
+  } satisfies Record<PlantSort, string>,
 } as const
 
 export const FILTERS_TEXT = {

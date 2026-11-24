@@ -1,8 +1,11 @@
 import { useCallback, useState } from 'react'
+import { isPlantSort, type PlantSort } from '../collection/selectors.ts'
 
 // Preferencias de la pantalla de inventario, recordadas en este dispositivo
-// (localStorage): cómo se ve la colección y si se agrupa por género. No van a
-// la base de datos: en otro celular cada uno elige la suya.
+// (localStorage): cómo se ve la colección, si se agrupa por género y en qué
+// orden va (#292). No van a la base de datos: en otro celular cada uno elige
+// la suya. Tampoco a la dirección, a diferencia de la búsqueda y los
+// filtros: no cambian qué plantas se ven, solo cómo.
 //
 // localStorage puede no existir o fallar (navegación privada de Safari, datos
 // del sitio bloqueados, cuota llena): cada lectura y escritura va en try/catch
@@ -14,17 +17,24 @@ export type InventoryView = 'list' | 'grid'
 export interface InventoryPreferences {
   /** Lista (una por fila, miniatura a la izquierda) o cuadrícula. */
   view: InventoryView
-  /** Agrupar por género; sin agrupar, las más recientes primero. */
+  /** Agrupar por género (los géneros en orden alfabético). */
   grouped: boolean
+  /** Orden de las plantas (dentro de cada género si se agrupa). */
+  sort: PlantSort
 }
 
-/** Clave en localStorage. Si cambia la forma del valor, cambia la versión. */
+/**
+ * Clave en localStorage. Si cambia la forma del valor, cambia la versión.
+ * Añadir un campo no la cambia: lo que falta se lee por defecto, así que el
+ * orden (#292) se añadió sin perder la vista que cada uno ya había elegido.
+ */
 export const PREFERENCES_KEY = 'orki:inventario:preferencias:v1'
 
 // Sin preferencia guardada, cuadrícula (la vista de la maqueta del #208).
 export const DEFAULT_PREFERENCES: InventoryPreferences = {
   view: 'grid',
   grouped: false,
+  sort: 'newest',
 }
 
 function storage(): Storage | null {
@@ -54,10 +64,12 @@ export function readPreferences(): InventoryPreferences {
   if (typeof value !== 'object' || value === null) return DEFAULT_PREFERENCES
   const view = 'view' in value ? value.view : undefined
   const grouped = 'grouped' in value ? value.grouped : undefined
+  const sort = 'sort' in value ? value.sort : undefined
   return {
     view: view === 'list' || view === 'grid' ? view : DEFAULT_PREFERENCES.view,
     grouped:
       typeof grouped === 'boolean' ? grouped : DEFAULT_PREFERENCES.grouped,
+    sort: isPlantSort(sort) ? sort : DEFAULT_PREFERENCES.sort,
   }
 }
 

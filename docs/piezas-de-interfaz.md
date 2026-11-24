@@ -176,7 +176,8 @@ posición), usa la misma técnica que el detalle (`detail/navigation.ts`,
 ## Barra de búsqueda del inventario
 
 Tres piezas dentro de `<div className="orki-toolbar">` (fila que se parte; el
-primer hijo, el campo, ocupa lo que sobra):
+primer hijo, el campo, ocupa lo que sobra), y en escritorio «Ordenar» entre
+«Filtros» y la vista (ver más abajo):
 
 ### `SearchField` (`components/ui/SearchField.tsx`)
 
@@ -264,6 +265,25 @@ verde. 44 × 44 px. Marcado: `div.orki-segmented[role=group]` >
 </div>
 ```
 
+### «Ordenar» (`inventory/SortSelect.tsx`, #292)
+
+Un `select` nativo con la etiqueta visible «Ordenar» (`orki-field__label`) y
+las opciones «Más recientes», «Nombre (A–Z)» y «Fecha de adquisición». Sin CSS
+nuevo: el mismo patrón que el filtro de la bitácora (`orki-field__input`,
+`appearance-none`, 48 px de alto como mínimo y `chevron-down` encima, porque
+Safari ignora el alto de un `select` nativo). Dos disposiciones:
+
+- `layout="inline"`: la etiqueta a la izquierda, en la barra del buscador
+  entre `FiltersButton` y `SegmentedControl`, solo desde 721 px
+  (`publico-estrecho:hidden`).
+- `layout="stacked"`: la etiqueta encima, dentro del panel de filtros, en
+  «Organizar», solo hasta 720 px (`min-[721px]:hidden`). A 360 px, junto a
+  «Filtros» (126 px) y la vista (96 px) le quedarían unos 80 px y pasaría a
+  otra fila antes de la primera tarjeta.
+
+Los dos cambian la misma preferencia; en cada ancho solo uno está en el
+documento accesible (el otro va con `display: none`).
+
 ## Fila de chips desplazable
 
 `ChipGroup` (`components/ui/ChipGroup.tsx`) con `scroll`: una sola fila con
@@ -301,6 +321,7 @@ type CollectionCardProps = ArticleProps & {
   nickname?: ReactNode // segunda línea (apodo)
   badge?: ReactNode // insignia, solo si aplica: <StatusBadge status="pending" />
   location?: ReactNode // fila con map-pin («Ubicación:» para el lector)
+  code?: string // identificador bajo el nombre: «PHA-001» (#292)
   photo?: { src: string; alt: string } // sin foto, el marcador sin-foto.svg
   photoCount?: number // con más de 1, el número de fotos sobre la foto
   headingLevel?: 2 | 3 | 4 // h3 por defecto
@@ -314,7 +335,16 @@ Borde `color-neutral-200` sobre `color-neutral-0`, `radius-lg`, sin sombra; foto
 toda la tarjeta (también la foto) y pinta el anillo de foco por dentro.
 Marcado: `article.orki-card.orki-card--outline[.orki-card--row]` >
 `img.orki-card__photo` + `div.orki-card__body` > `hN.orki-card__name` +
-`p.orki-card__common` + insignia + `p.orki-card__place`.
+`p.orki-card__meta` (identificador) + `p.orki-card__common` + insignia +
+`p.orki-card__place`.
+
+Identificador (`code`, #292): justo bajo el nombre, en `orki-card__meta` (12 px,
+`color-neutral-700`; la clase que antes llevaba el género) con `mt-[0]`, sin
+CSS nuevo. Distingue las tarjetas de varias plantas de la misma especie. El
+lector lo lee en la descripción de la tarjeta («Identificador PHA-001.», con
+el rótulo `sr-only`), antes de «3 fotos» si las hay; el nombre accesible sigue
+siendo el del encabezado. Sin `code` (una copia sin conexión anterior al
+#265), ni línea ni descripción.
 
 Número de fotos (`photoCount > 1`, #181): la píldora `orki-count` (la de
 `FiltersButton`, `color-secondary-strong` con el número en `color-neutral-0`)
@@ -335,6 +365,7 @@ accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
   nameStyle={plant.displayNameIsScientific ? 'scientific' : 'plain'}
   nickname={plant.nickname ?? undefined}
   location={plant.location ?? undefined}
+  code={plant.code ?? undefined}
   badge={
     status !== 'validated' ? <StatusBadge status={status} /> : undefined
   }
@@ -354,8 +385,11 @@ accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
 />
 ```
 
-La rejilla (tres por fila en escritorio, dos en móvil) se compone con Tailwind:
-`grid grid-cols-2 gap-space-3 md:grid-cols-3`.
+La rejilla (dos por fila en móvil, tres desde 768 px y cuatro desde 1200 px,
+#292) se compone con Tailwind: `grid grid-cols-2 gap-space-3
+md:max-[1199px]:grid-cols-3 min-[1200px]:grid-cols-4`. Las tres columnas van
+acotadas hasta 1199 px porque Tailwind escribe la regla de `min-[1200px]`
+antes que la de `md` y, si se solaparan, ganaría `md`.
 
 ## Resultado de consulta
 
