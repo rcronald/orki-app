@@ -37,7 +37,7 @@ describe('CollectionStore: carga bajo demanda', () => {
     expect(source.last().request.signal.aborted).toBe(false)
 
     const plants = [plant()]
-    source.last().resolve(plants)
+    await source.respond(plants)
     await settle()
 
     expect(store.getSnapshot()).toEqual({
@@ -52,7 +52,7 @@ describe('CollectionStore: carga bajo demanda', () => {
     const { source, store } = setup()
     store.retain()
     store.retain()
-    source.last().resolve([])
+    await source.respond([])
     await settle()
     const release = store.retain()
     release()
@@ -68,7 +68,7 @@ describe('CollectionStore: carga bajo demanda', () => {
     release() // Soltar dos veces no descuenta dos.
 
     expect(source.last().request.signal.aborted).toBe(false)
-    source.last().resolve([plant()])
+    await source.respond([plant()])
     await settle()
     expect(store.getSnapshot().status).toBe('ready')
 
@@ -91,7 +91,7 @@ describe('CollectionStore: carga bajo demanda', () => {
     const unsubscribe = store.subscribe(listener)
     store.retain()
     expect(listener).toHaveBeenCalledTimes(1)
-    source.last().resolve([])
+    await source.respond([])
     await settle()
     expect(listener).toHaveBeenCalledTimes(2)
 
@@ -105,7 +105,7 @@ describe('CollectionStore: cambio de usuario', () => {
   it('descarta los datos del usuario anterior', async () => {
     const { source, store } = setup()
     store.retain()
-    source.last().resolve([plant()])
+    await source.respond([plant()])
     await settle()
 
     store.setUser('user_b')
@@ -121,7 +121,7 @@ describe('CollectionStore: cambio de usuario', () => {
   it('al cerrar sesión, descarta todo', async () => {
     const { source, store } = setup()
     store.retain()
-    source.last().resolve([plant()])
+    await source.respond([plant()])
     await settle()
 
     store.setUser(null)
@@ -174,7 +174,7 @@ describe('CollectionStore: cambio de usuario', () => {
   it('volver a fijar el mismo usuario no hace nada', async () => {
     const { source, store } = setup()
     store.retain()
-    source.last().resolve([plant()])
+    await source.respond([plant()])
     await settle()
     const before = store.getSnapshot()
 
@@ -190,7 +190,7 @@ describe('CollectionStore: errores y recarga', () => {
     async (reason) => {
       const { source, store } = setup()
       store.retain()
-      source.last().reject(new CollectionLoadError(reason))
+      await source.fail(new CollectionLoadError(reason))
       await settle()
 
       const { status, error, plants } = store.getSnapshot()
@@ -204,7 +204,7 @@ describe('CollectionStore: errores y recarga', () => {
     const { source, store } = setup()
     store.retain()
     const cause = new Error('inesperado')
-    source.last().reject(cause)
+    await source.fail(cause)
     await settle()
 
     const { error } = store.getSnapshot()
@@ -216,7 +216,7 @@ describe('CollectionStore: errores y recarga', () => {
   it('tras un error no se reintenta solo; reload() sí', async () => {
     const { source, store } = setup()
     store.retain()
-    source.last().reject(new CollectionLoadError('offline'))
+    await source.fail(new CollectionLoadError('offline'))
     await settle()
 
     store.retain()
@@ -228,7 +228,7 @@ describe('CollectionStore: errores y recarga', () => {
       error: null,
     })
     const plants = [plant()]
-    source.last().resolve(plants)
+    await source.respond(plants)
     await settle()
     expect(store.getSnapshot()).toMatchObject({ status: 'ready', plants })
   })
@@ -237,7 +237,7 @@ describe('CollectionStore: errores y recarga', () => {
     const { source, store } = setup()
     store.retain()
     const first = [plant()]
-    source.last().resolve(first)
+    await source.respond(first)
     await settle()
 
     store.reload()
@@ -248,7 +248,7 @@ describe('CollectionStore: errores y recarga', () => {
     })
 
     const second = [plant(), plant()]
-    source.last().resolve(second)
+    await source.respond(second)
     await settle()
     expect(store.getSnapshot()).toMatchObject({
       status: 'ready',
@@ -260,11 +260,11 @@ describe('CollectionStore: errores y recarga', () => {
     const { source, store } = setup()
     store.retain()
     const first = [plant()]
-    source.last().resolve(first)
+    await source.respond(first)
     await settle()
 
     store.reload()
-    source.last().reject(new CollectionLoadError('offline'))
+    await source.fail(new CollectionLoadError('offline'))
     await settle()
     expect(store.getSnapshot()).toMatchObject({
       status: 'error',
@@ -285,7 +285,7 @@ describe('CollectionStore: errores y recarga', () => {
     expect(store.getSnapshot().status).toBe('loading')
 
     const fresh = [plant({ id: 'nueva' })]
-    source.last().resolve(fresh)
+    await source.respond(fresh)
     await settle()
     expect(store.getSnapshot().plants).toBe(fresh)
   })
@@ -302,7 +302,7 @@ describe('CollectionStore: actualización en segundo plano (#141)', () => {
     const { source, store } = setup()
     store.retain()
     const first = [plant({ id: 'a', validation: 'pending' })]
-    source.last().resolve(first)
+    await source.respond(first)
     await settle()
 
     store.refresh()
@@ -313,7 +313,7 @@ describe('CollectionStore: actualización en segundo plano (#141)', () => {
     })
 
     const second = [plant({ id: 'a', validation: 'unidentifiable' })]
-    source.last().resolve(second)
+    await source.respond(second)
     await settle()
     expect(store.getSnapshot()).toMatchObject({
       status: 'ready',
@@ -326,11 +326,11 @@ describe('CollectionStore: actualización en segundo plano (#141)', () => {
     const { source, store } = setup()
     store.retain()
     const first = [plant()]
-    source.last().resolve(first)
+    await source.respond(first)
     await settle()
 
     store.refresh()
-    source.last().reject(new CollectionLoadError('offline'))
+    await source.fail(new CollectionLoadError('offline'))
     await settle()
     expect(store.getSnapshot()).toMatchObject({
       status: 'ready',
@@ -342,14 +342,14 @@ describe('CollectionStore: actualización en segundo plano (#141)', () => {
   it('una operación local durante la lectura de fondo no se pierde al llegar', async () => {
     const { source, store } = setup()
     store.retain()
-    source.last().resolve([plant({ id: 'a' })])
+    await source.respond([plant({ id: 'a' })])
     await settle()
 
     store.refresh()
     const added = plant({ id: 'b' })
     store.upsertPlant(added)
     // La respuesta salió antes de la escritura: no la trae.
-    source.last().resolve([plant({ id: 'a' })])
+    await source.respond([plant({ id: 'a' })])
     await settle()
     expect(store.getSnapshot().plants?.map((item) => item.id)).toEqual([
       'a',
@@ -364,7 +364,7 @@ describe('CollectionStore: actualización en segundo plano (#141)', () => {
     store.retain()
     store.refresh()
     expect(source.loads).toHaveLength(1)
-    source.last().reject(new CollectionLoadError('failed'))
+    await source.fail(new CollectionLoadError('failed'))
     await settle()
     store.refresh()
     expect(source.loads).toHaveLength(1)
@@ -384,7 +384,7 @@ describe('CollectionStore: resultado provisional', () => {
     })
 
     const fresh = [plant({ id: 'de-la-red' })]
-    source.last().resolve(fresh)
+    await source.respond(fresh)
     await settle()
     expect(store.getSnapshot()).toMatchObject({
       status: 'ready',
@@ -397,7 +397,7 @@ describe('CollectionStore: resultado provisional', () => {
     store.retain()
     const cached = [plant()]
     source.last().request.provide(cached)
-    source.last().reject(new CollectionLoadError('offline'))
+    await source.fail(new CollectionLoadError('offline'))
     await settle()
 
     expect(store.getSnapshot()).toMatchObject({
@@ -424,7 +424,7 @@ describe('CollectionStore: operaciones locales', () => {
     context.store.retain()
     const a = plant({ id: 'a', nickname: 'Antes' })
     const b = plant({ id: 'b' })
-    context.source.last().resolve([a, b])
+    await context.source.respond([a, b])
     await settle()
     return { ...context, a, b }
   }
@@ -491,12 +491,10 @@ describe('CollectionStore: operaciones locales', () => {
 
     // La respuesta salió antes de las escrituras: trae la versión vieja de
     // "a", la borrada y no trae la nueva.
-    source
-      .last()
-      .resolve([
-        plant({ id: 'a', nickname: 'Vieja' }),
-        plant({ id: 'borrada' }),
-      ])
+    await source.respond([
+      plant({ id: 'a', nickname: 'Vieja' }),
+      plant({ id: 'borrada' }),
+    ])
     await settle()
 
     expect(store.getSnapshot().plants).toEqual([edited, created])
@@ -518,7 +516,7 @@ describe('CollectionStore: operaciones locales', () => {
     store.upsertPlant(plant({ id: 'de-a' }))
     store.setUser('user_b')
 
-    source.last().resolve([])
+    await source.respond([])
     await settle()
     expect(store.getSnapshot().plants).toEqual([])
   })
@@ -526,7 +524,7 @@ describe('CollectionStore: operaciones locales', () => {
   it('tras una recarga fallida, se aplican sobre los datos que se ven', async () => {
     const { source, store, b } = await loaded()
     store.reload()
-    source.last().reject(new CollectionLoadError('offline'))
+    await source.fail(new CollectionLoadError('offline'))
     await settle()
 
     store.removePlant('a')
@@ -546,7 +544,7 @@ describe('CollectionStore: copia local (#18)', () => {
   it('pasa la colección completa a save() tras cada cambio local', async () => {
     const { source, store, save } = setupWithSave()
     store.retain()
-    source.last().resolve([plant({ id: 'a' })])
+    await source.respond([plant({ id: 'a' })])
     await settle()
     expect(save).not.toHaveBeenCalled()
 
@@ -562,7 +560,7 @@ describe('CollectionStore: copia local (#18)', () => {
     store.retain()
     store.upsertPlant(plant({ id: 'nueva' }))
     expect(save).not.toHaveBeenCalled()
-    source.last().resolve([plant({ id: 'a' })])
+    await source.respond([plant({ id: 'a' })])
     await settle()
     expect(save).toHaveBeenCalledTimes(1)
     expect(
@@ -574,7 +572,7 @@ describe('CollectionStore: copia local (#18)', () => {
     const { source, store, save } = setupWithSave()
     store.retain()
     source.last().request.provide([plant({ id: 'a' })])
-    source.last().reject(new CollectionLoadError('failed'))
+    await source.fail(new CollectionLoadError('failed'))
     await settle()
     store.upsertPlant(plant({ id: 'b' }))
     expect(save).not.toHaveBeenCalled()
@@ -589,7 +587,7 @@ describe('CollectionStore: copia local (#18)', () => {
     // Con una lectura en curso, no la repite.
     store.resume()
     expect(source.loads).toHaveLength(1)
-    source.last().reject(new CollectionLoadError('offline'))
+    await source.fail(new CollectionLoadError('offline'))
     await settle()
     expect(store.getSnapshot().status).toBe('error')
 
@@ -597,7 +595,7 @@ describe('CollectionStore: copia local (#18)', () => {
     store.resume()
     expect(source.loads).toHaveLength(2)
     expect(store.getSnapshot().status).toBe('loading')
-    source.last().resolve([plant()])
+    await source.respond([plant()])
     await settle()
 
     // Con datos: en segundo plano, como refresh() (#141).
@@ -610,12 +608,12 @@ describe('CollectionStore: copia local (#18)', () => {
   it('un cambio local durante la lectura de fondo se guarda también al terminar', async () => {
     const { source, store, save } = setupWithSave()
     store.retain()
-    source.last().resolve([plant({ id: 'a' })])
+    await source.respond([plant({ id: 'a' })])
     await settle()
     store.refresh()
     store.upsertPlant(plant({ id: 'b' }))
     expect(save).toHaveBeenCalledTimes(1)
-    source.last().resolve([plant({ id: 'a' })])
+    await source.respond([plant({ id: 'a' })])
     await settle()
     expect(save).toHaveBeenCalledTimes(2)
     expect(

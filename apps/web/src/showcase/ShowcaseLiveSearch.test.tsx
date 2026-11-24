@@ -1,11 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { render, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CATALOG_SEARCH_ERROR_TEXT } from '../lib/catalogSearch.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
-import ShowcasePage from './ShowcasePage.tsx'
+import { ComponentSections } from './ComponentSections.tsx'
 
 // La muestra con configuración de Supabase: los buscadores de especies y de
 // géneros usan la búsqueda real (con fetch simulado). Va en un archivo aparte
@@ -103,34 +102,43 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function speciesInput() {
-  return screen.getByRole('combobox', { name: 'Nombre científico' })
+// Se pintan solo las secciones de componentes, donde está el buscador, y las
+// consultas y axe van solo a él. La muestra entera tiene miles de nodos (con
+// un inventario de 300 plantas): pintarla, recorrerla en cada consulta
+// (findBy… repite la suya cada 50 ms) y pasarle axe es trabajo síncrono que,
+// con el equipo cargado, hacía pasar estas pruebas de los 5 s, aunque solas
+// tardaban uno (#295). La página entera ya la revisa ShowcasePage.test.tsx.
+function searchSection(): HTMLElement {
+  const section = document.getElementById('buscador')
+  if (section === null) throw new Error('No está la sección del buscador.')
+  return section
 }
 
-// La muestra incluye la pantalla de inventario, que usa enlaces del enrutador.
+const search = () => within(searchSection())
+
+function speciesInput() {
+  return search().getByRole('combobox', { name: 'Nombre científico' })
+}
+
 function renderShowcase() {
-  return render(
-    <MemoryRouter>
-      <ShowcasePage />
-    </MemoryRouter>,
-  )
+  return render(<ComponentSections />)
 }
 
 describe('ShowcasePage con Supabase', () => {
   it('el buscador de especies usa la búsqueda real, sin sesión', async () => {
     const user = userEvent.setup()
     renderShowcase()
-    expect(screen.queryByText(/^Datos fijos/)).not.toBeInTheDocument()
+    expect(search().queryByText(/^Datos fijos/)).not.toBeInTheDocument()
 
     // Con un carácter no se busca ni se dice "sin resultados".
     await user.type(speciesInput(), 'p')
-    expect(screen.queryByText('Sin resultados')).not.toBeInTheDocument()
+    expect(search().queryByText('Sin resultados')).not.toBeInTheDocument()
 
     await user.type(speciesInput(), 'hal')
-    expect(screen.getByText('Buscando…', { selector: 'p' })).toBeVisible()
+    expect(search().getByText('Buscando…', { selector: 'p' })).toBeVisible()
 
-    await screen.findByRole('option', { name: 'Phalaenopsis amabilis' })
-    const listbox = screen.getByRole('listbox', { name: 'Nombre científico' })
+    await search().findByRole('option', { name: 'Phalaenopsis amabilis' })
+    const listbox = search().getByRole('listbox', { name: 'Nombre científico' })
     const options = within(listbox).getAllByRole('option')
     expect(options[0]).toHaveAccessibleName('Phalaenopsis amabilis')
     expect(options[1]).toHaveAccessibleName(
@@ -156,9 +164,9 @@ describe('ShowcasePage con Supabase', () => {
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}')
     expect(speciesInput()).toHaveValue('Phalaenopsis aphrodite')
     expect(
-      screen.getByText('Elegiste Phalaenopsis aphrodite.'),
+      search().getByText('Elegiste Phalaenopsis aphrodite.'),
     ).toBeInTheDocument()
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(searchSection())
   })
 
   it('el buscador de géneros dice por qué abreviatura coincidió', async () => {
@@ -166,11 +174,11 @@ describe('ShowcasePage con Supabase', () => {
     renderShowcase()
 
     await user.type(
-      screen.getByRole('combobox', { name: 'Otro género' }),
+      search().getByRole('combobox', { name: 'Otro género' }),
       'phal.',
     )
     expect(
-      await screen.findByRole('option', {
+      await search().findByRole('option', {
         name: /^Phalaenopsis,\s*Abreviatura: Phal\.$/,
       }),
     ).toBeVisible()
@@ -184,16 +192,16 @@ describe('ShowcasePage con Supabase', () => {
 
     await user.type(speciesInput(), 'stanhopea')
     expect(
-      await screen.findByText('Sin resultados', {
+      await search().findByText('Sin resultados', {
         selector: '.orki-autocomplete__message',
       }),
     ).toBeVisible()
     expect(
-      screen.getByRole('option', {
+      search().getByRole('option', {
         name: 'No la encuentro: guardarla con este nombre',
       }),
     ).toBeVisible()
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(searchSection())
   })
 
   it('sin conexión muestra el aviso y el campo sigue usable', async () => {
@@ -205,7 +213,7 @@ describe('ShowcasePage con Supabase', () => {
     await user.type(speciesInput(), 'phal')
     const message = { selector: '.orki-autocomplete__message' }
     expect(
-      await screen.findByText(CATALOG_SEARCH_ERROR_TEXT.offline, message),
+      await search().findByText(CATALOG_SEARCH_ERROR_TEXT.offline, message),
     ).toBeVisible()
     // El anuncio del propio buscador (su región role="status").
     const field = speciesInput().closest('.orki-autocomplete')
@@ -215,12 +223,12 @@ describe('ShowcasePage con Supabase', () => {
         CATALOG_SEARCH_ERROR_TEXT.offline,
       )
     }
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(searchSection())
 
     // Se puede seguir escribiendo y usar la acción final.
     await user.keyboard('{ArrowDown}{Enter}')
     expect(
-      screen.getByText('Se guardaría con el nombre «phal», por validar.'),
+      search().getByText('Se guardaría con el nombre «phal», por validar.'),
     ).toBeInTheDocument()
   })
 
@@ -233,7 +241,7 @@ describe('ShowcasePage con Supabase', () => {
 
     await user.type(speciesInput(), 'phal')
     expect(
-      await screen.findByText(CATALOG_SEARCH_ERROR_TEXT.failed, {
+      await search().findByText(CATALOG_SEARCH_ERROR_TEXT.failed, {
         selector: '.orki-autocomplete__message',
       }),
     ).toBeVisible()
@@ -247,7 +255,7 @@ describe('ShowcasePage con Supabase', () => {
 
     await user.type(speciesInput(), 'phal')
     await waitFor(() => expect(rpcCalls('search_species')).toHaveLength(1))
-    expect(screen.getByText('Buscando…', { selector: 'p' })).toBeVisible()
-    await expectNoAxeViolations()
+    expect(search().getByText('Buscando…', { selector: 'p' })).toBeVisible()
+    await expectNoAxeViolations(searchSection())
   })
 })

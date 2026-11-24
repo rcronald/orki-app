@@ -69,6 +69,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run db:seed:dev`        | Carga los datos de ejemplo del catálogo en el proyecto de desarrollo. Se niega a ejecutarse en producción.                                                                                      |
 | `npm run db:seed:plants`     | Carga plantas de ejemplo para un usuario en el proyecto de desarrollo (`-- <id de usuario> [cantidad]`), o las borra con `--borrar`.                                                            |
 | `npm run db:test`            | Ejecuta las pruebas de base de datos en un Postgres local y desechable. Acepta un filtro después de `--`.                                                                                       |
+| `npm run db:concurrencia`    | Ejecuta las pruebas de concurrencia de la base (dos sesiones a la vez, con `node:test`) en otro Postgres desechable. Lo usa el CI.                                                              |
 | `npm run db:perf`            | Mide la búsqueda con un catálogo sintético en un Postgres desechable. No corre en el CI (ver [Rendimiento de la búsqueda](supabase/README.md#rendimiento-de-la-búsqueda)).                      |
 | `npm run db:types`           | Regenera los tipos de TypeScript del esquema (`apps/web/src/lib/database.types.ts`) desde las migraciones.                                                                                      |
 | `npm run db:types:check`     | Comprueba, sin escribir nada, que los tipos versionados coinciden con las migraciones. Lo usa el CI.                                                                                            |
@@ -1005,6 +1006,8 @@ npm run test:e2e:sin-build -- e2e/registro.spec.ts --headed   # un archivo, vien
 npm run test:e2e:sin-build -- --ui              # modo interactivo de Playwright
 ```
 
+El servidor de las pruebas escucha en el puerto 4317, o en el de `ORKI_E2E_PUERTO` (por ejemplo, `ORKI_E2E_PUERTO=4441 npm run test:e2e:sin-build`) para lanzarlas a la vez desde otra copia de trabajo. Playwright nunca reutiliza un servidor que ya esté en ese puerto, porque podría servir el build de otra copia: si está ocupado, se para con «is already used» y basta con elegir otro (#295).
+
 En Linux, la primera vez hace falta `npx playwright install --with-deps` (instala también las bibliotecas del sistema). Al terminar, `npx playwright show-report apps/web/playwright-report` abre el informe; de cada prueba que falla quedan en `apps/web/test-results/` la captura, el vídeo y la traza (`npx playwright show-trace <ruta de trace.zip>`). No hace falta ninguna variable de entorno ni conexión con Clerk, Supabase o Sentry.
 
 ### Qué se prueba y qué se simula
@@ -1113,7 +1116,10 @@ npm run db:seed:plants -- <id de usuario de Clerk> --borrar     # quita solo las
 ```sh
 npm run db:test
 npm run db:test -- sincronizacion acceso   # solo los archivos cuyo nombre contiene alguna palabra
+npm run db:concurrencia                    # dos sesiones a la vez (supabase/tests/concurrencia.test.mjs)
 ```
+
+`npm run db:concurrencia` prepara la misma base desechable, con el mismo servidor, y abre dos conexiones a la vez para lo que una sola sesión no puede probar: fusiones simultáneas de especies, el contador de identificadores de planta, la bitácora sin duplicados y la séptima foto (#295). Cada prueba deja a una sesión esperando el bloqueo de la otra (lo comprueba en `pg_stat_activity`, sin pausas), confirma o revierte la primera y mira qué le pasó a la segunda.
 
 Las pruebas comprueban el esquema sin tocar los proyectos de Supabase. El comando crea una base de datos Postgres vacía y desechable, le añade lo mínimo de Supabase que necesitan las migraciones, aplica todas las migraciones de `supabase/migrations` en orden, ejecuta las pruebas de `supabase/tests` y, al terminar, borra la base. Cada prueba corre en una transacción que se revierte, así que no deja datos (y el comando lo comprueba al final). La salida dice qué prueba falló, en qué línea y por qué; el comando termina con código distinto de cero si falla alguna prueba o alguna migración.
 

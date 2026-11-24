@@ -24,6 +24,7 @@
     "db:seed:dev": "node scripts/supabase-db.mjs datos-ejemplo",
     "db:seed:plants": "node scripts/supabase-db.mjs plantas-ejemplo",
     "db:test": "node scripts/db-test.mjs",
+    "db:concurrencia": "node --test supabase/tests/concurrencia.test.mjs",
     "db:perf": "node scripts/db-perf.mjs",
     "db:types": "node scripts/db-types.mjs",
     "db:types:check": "node scripts/db-types.mjs --comprobar",

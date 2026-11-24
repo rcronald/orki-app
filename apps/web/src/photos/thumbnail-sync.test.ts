@@ -58,6 +58,7 @@ const signal = () => new AbortController().signal
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('miniaturas sin conexión', () => {
@@ -92,6 +93,10 @@ describe('miniaturas sin conexión', () => {
   })
 
   it('no baja más de dos a la vez', async () => {
+    // Con temporizadores falsos, las descargas siguen en curso hasta que la
+    // prueba adelanta el reloj: todas las que vayan a empezar a la vez lo han
+    // hecho antes, por cargado que esté el equipo (#295).
+    vi.useFakeTimers()
     const paths = Array.from({ length: 7 }, (_, index) => thumb(index + 1))
     const storage = storageWith(paths)
     let active = 0
@@ -104,7 +109,7 @@ describe('miniaturas sin conexión', () => {
       active -= 1
       return original(path)
     })
-    await syncThumbnails({
+    const pending = syncThumbnails({
       userId: USER_ID,
       plants: plantsWith(...paths),
       signal: signal(),
@@ -112,6 +117,8 @@ describe('miniaturas sin conexión', () => {
       cache: memoryCache(),
       canDownload: () => true,
     })
+    await vi.runAllTimersAsync()
+    await pending
     expect(peak).toBe(2)
   })
 

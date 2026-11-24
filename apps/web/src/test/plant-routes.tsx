@@ -175,9 +175,7 @@ export async function renderPlantRoutes({
       </NavigationFocusProvider>
     </MemoryRouter>,
   )
-  await act(async () => {
-    if (plants !== null) source.last().resolve(plants)
-    await Promise.resolve()
-  })
+  if (plants !== null) await source.respond(plants)
+  else await act(() => Promise.resolve())
   return { ...view, source }
 }

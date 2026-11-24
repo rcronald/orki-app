@@ -247,10 +247,7 @@ describe('PlantDetailPage', () => {
     const loadingHeading = heading()
     await expectNoAxeViolations()
 
-    await act(async () => {
-      source.last().resolve([AMABILIS])
-      await Promise.resolve()
-    })
+    await source.respond([AMABILIS])
     expect(heading()).toHaveTextContent('Phalaenopsis amabilis')
     // El mismo h1: si tenía el foco, lo conserva.
     expect(heading()).toBe(loadingHeading)
@@ -297,19 +294,13 @@ describe('PlantDetailPage', () => {
       plants: null,
       source,
     })
-    await act(async () => {
-      source.last().reject(new CollectionLoadError('offline'))
-      await Promise.resolve()
-    })
+    await source.fail(new CollectionLoadError('offline'))
     expect(heading()).toHaveTextContent(DETAIL_TEXT.errorTitle)
     expect(screen.getByRole('alert')).toHaveTextContent('Sin conexión')
     await expectNoAxeViolations()
 
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
-    await act(async () => {
-      source.last().resolve([AMABILIS])
-      await Promise.resolve()
-    })
+    await source.respond([AMABILIS])
     expect(heading()).toHaveTextContent('Phalaenopsis amabilis')
   })
 

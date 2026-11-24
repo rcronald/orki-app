@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -244,11 +244,16 @@ describe('eliminar la cuenta no deja nada del usuario en el dispositivo', () => 
 
     // Y nada de esta cuenta se envía después.
     const sends = send.mock.calls.length
+    // Sin sesión, recordProductEvent no guarda nada, y el cambio de conexión
+    // llega a los eventos por los efectos de React, que act() ejecuta antes de
+    // seguir: no hace falta una pausa, que con el equipo cargado podría no
+    // bastar (#295).
     recordProductEvent(searchEvent('e3'))
-    window.dispatchEvent(new Event('online'))
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(send.mock.calls.length).toBe(sends)
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
     expect(await createIndexedDbEventQueue().read(USER, NOW)).toEqual([])
+    expect(send.mock.calls.length).toBe(sends)
   })
 
   it('si Clerk sigue con la sesión abierta, la app ya la trata como cerrada y se la pide cerrar', async () => {

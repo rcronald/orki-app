@@ -59,6 +59,24 @@ export default defineConfig([
       'react-hooks/rules-of-hooks': 'off',
     },
   },
+  // Pruebas unitarias (#295): responder a un doble de la colección sin esperar
+  // antes a la petición (`source.last().resolve(...)` tras contar microtareas)
+  // se rompe con añadir un solo await en la app. Se espera con
+  // `await source.respond(...)` (src/test/collection-source.ts).
+  {
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(resolve|reject)$/][callee.object.type='CallExpression'][callee.object.callee.property.name='last']",
+          message:
+            'Espera a la petición antes de responderla: await source.respond(...) o source.fail(...), o (await source.pending()).resolve(...), en vez de source.last().resolve(...) (src/test/collection-source.ts).',
+        },
+      ],
+    },
+  },
   // Va al final para desactivar las reglas de estilo que chocan con Prettier.
   prettier,
 ])

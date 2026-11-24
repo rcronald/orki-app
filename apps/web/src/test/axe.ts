@@ -14,8 +14,12 @@ const WCAG_A_AA = [
   'wcag22aa',
 ]
 
-export async function expectNoAxeViolations() {
-  const results = await axe.run(document, {
+/**
+ * Revisa el documento entero o, con "context", solo ese elemento: en una
+ * página muy grande, axe tarda segundos con el equipo cargado (#295).
+ */
+export async function expectNoAxeViolations(context: Element = document.body) {
+  const results = await axe.run(context, {
     runOnly: { type: 'tag', values: WCAG_A_AA },
     resultTypes: ['violations'],
   })

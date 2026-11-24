@@ -25,7 +25,7 @@
 //   import { conBaseDesechable } from './db-desechable/index.mjs'
 //   await conBaseDesechable(async ({ conexion, consultar, ejecutarPsql }) => { ... })
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
   existsSync,
@@ -287,6 +287,112 @@ export function ejecutarPsql(conexion, argumentos, { entrada } = {}) {
     ok: resultado.status === 0,
     stdout: resultado.stdout,
     stderr: resultado.stderr,
+  }
+}
+
+// Sesión de psql abierta (#295), para las pruebas que necesitan varias conexiones a la vez:
+// cada sesión es una conexión propia que guarda su transacción entre una orden y la
+// siguiente. Se llama "orki-sesion-<nombre>" (application_name), así otra conexión puede ver
+// en pg_stat_activity si está esperando un bloqueo. A diferencia de ejecutarPsql, no para en
+// el primer error: la orden devuelve el error y la sesión sigue, con la transacción abortada
+// hasta el siguiente rollback.
+//
+//   const sesion = abrirSesionPsql(conexion, { nombre: 'a' })
+//   await sesion.ejecutar('begin; update ...')        // { ok, error, valor: null }
+//   await sesion.ejecutar('select count(*) from ...', { valor: true })  // valor: '3'
+//   await sesion.cerrar()
+//
+// psql retiene su salida normal cuando no va a una terminal, así que no se lee: lo que la
+// prueba necesita saber de una consulta lo pide con { valor: true } y llega por la salida
+// de errores, que psql no retiene (\gset y \warn), junto con los errores y la marca del
+// final de cada orden.
+export function abrirSesionPsql(conexion, { nombre }) {
+  const proceso = spawn(
+    buscarBinario('psql'),
+    [
+      '-X',
+      '-q',
+      '-A',
+      '-t',
+      '-v',
+      'ON_ERROR_STOP=0',
+      '-v',
+      'SHOW_CONTEXT=never',
+      // Con el código de cada error (ERROR:  23505: ...), que es lo que comprueban las pruebas.
+      '-v',
+      'VERBOSITY=verbose',
+    ],
+    {
+      env: { ...entornoPsql(conexion), PGAPPNAME: `orki-sesion-${nombre}` },
+      stdio: ['pipe', 'ignore', 'pipe'],
+    },
+  )
+  proceso.stderr.setEncoding('utf8')
+  let texto = ''
+  let pendientes = []
+  let numero = 0
+  let terminado = false
+  proceso.stderr.on('data', (trozo) => {
+    texto += trozo
+    while (pendientes.length > 0) {
+      const { marca, resolver } = pendientes[0]
+      const posicion = texto.indexOf(`${marca}\n`)
+      if (posicion === -1) break
+      const salida = texto.slice(0, posicion)
+      texto = texto.slice(posicion + marca.length + 1)
+      pendientes.shift()
+      const lineas = salida.split('\n')
+      // Con VERBOSITY=verbose: "ERROR:  23505: ..." y, si lo hay, "DETAIL:  ...".
+      const error = lineas
+        .filter((linea) => /^(psql:.*)?(ERROR|DETAIL):/.test(linea))
+        .join('\n')
+      const ok = !/ERROR:/.test(error)
+      const valor = lineas.find((linea) => linea.startsWith(`${marca}=`))
+      resolver({
+        ok,
+        error,
+        valor: ok && valor !== undefined ? valor.slice(marca.length + 1) : null,
+      })
+    }
+  })
+  proceso.on('close', () => {
+    terminado = true
+    for (const { rechazar } of pendientes)
+      rechazar(new ErrorDeBaseDesechable(`la sesión ${nombre} de psql terminó`))
+    pendientes = []
+  })
+
+  return {
+    nombre,
+    // Envía una orden (una o varias sentencias) y espera a que termine. Mientras espera un
+    // bloqueo, la promesa sigue pendiente: se puede no esperarla y seguir con otra sesión.
+    // Con { valor: true }, la última sentencia es una consulta de una fila y una columna, y
+    // su resultado (como texto) llega en "valor".
+    ejecutar(sql, { valor = false } = {}) {
+      if (terminado)
+        return Promise.reject(
+          new ErrorDeBaseDesechable(`la sesión ${nombre} de psql está cerrada`),
+        )
+      numero += 1
+      const marca = `orki_fin_${numero}`
+      // Sin el punto y coma final, psql esperaría más texto antes de enviar la sentencia y
+      // ejecutaría antes las órdenes de barra de detrás.
+      const sentencias = sql.trim().replace(/;$/, '')
+      const orden = valor
+        ? `${sentencias} \\gset ${marca}_\n\\warn ${marca}=:${marca}_valor\n`
+        : `${sentencias};\n`
+      return new Promise((resolver, rechazar) => {
+        pendientes.push({ marca, resolver, rechazar })
+        proceso.stdin.write(`${orden}\\warn ${marca}\n`)
+      })
+    },
+    cerrar() {
+      if (terminado) return Promise.resolve()
+      return new Promise((resolver) => {
+        proceso.on('close', resolver)
+        proceso.stdin.end('\\q\n')
+      })
+    },
   }
 }
 
