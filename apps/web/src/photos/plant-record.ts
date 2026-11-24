@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import {
   getSupabase,
   sessionTokenFailure,
@@ -60,10 +61,7 @@ export function createSupabasePlantPhotoRecords({
     try {
       return await getClient()
     } catch (error) {
-      throw new PhotoStorageError(
-        navigator.onLine === false ? 'offline' : 'failed',
-        { cause: error },
-      )
+      throw new PhotoStorageError(offlineOr('failed'), { cause: error })
     }
   }
 

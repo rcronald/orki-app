@@ -1,3 +1,4 @@
+import { isBrowserOffline, offlineOr } from './connection.ts'
 import type {
   Database,
   SpeciesMatchType,
@@ -168,10 +169,6 @@ function clampResults(maxResults: number | undefined): number {
   return Math.min(SEARCH_MAX_RESULTS, Math.max(1, Math.trunc(maxResults)))
 }
 
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new CatalogSearchError('aborted')
 }
@@ -192,7 +189,7 @@ function toSearchError(
   if (sessionTokenFailure(error) === 'offline') {
     return new CatalogSearchError('offline', { cause: error })
   }
-  if (status === 0 && isOffline()) {
+  if (status === 0 && isBrowserOffline()) {
     return new CatalogSearchError('offline', { cause: error })
   }
   return new CatalogSearchError('failed', { cause: error })
@@ -210,7 +207,7 @@ async function loadClient(signal: AbortSignal | undefined) {
   } catch (error) {
     if (error instanceof CatalogSearchError) throw error
     throwIfAborted(signal)
-    throw new CatalogSearchError(isOffline() ? 'offline' : 'failed', {
+    throw new CatalogSearchError(offlineOr('failed'), {
       cause: error,
     })
   }

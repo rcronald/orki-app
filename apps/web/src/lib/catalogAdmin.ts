@@ -1,3 +1,4 @@
+import { offlineOr } from './connection.ts'
 import type {
   Database,
   Json,
@@ -243,10 +244,6 @@ export function catalogAdminFailure(error: unknown): CatalogAdminFailure {
   return error instanceof CatalogAdminError ? error.reason : 'failed'
 }
 
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new CatalogAdminError('aborted')
 }
@@ -267,7 +264,7 @@ export function toAdminError(
     return new CatalogAdminError(tokenFailure, { cause: error })
   }
   if (status === 0) {
-    return new CatalogAdminError(isOffline() ? 'offline' : 'failed', {
+    return new CatalogAdminError(offlineOr('failed'), {
       cause: error,
     })
   }
@@ -293,7 +290,7 @@ export async function loadClient(
   } catch (error) {
     if (error instanceof CatalogAdminError) throw error
     throwIfAborted(signal)
-    throw new CatalogAdminError(isOffline() ? 'offline' : 'failed', {
+    throw new CatalogAdminError(offlineOr('failed'), {
       cause: error,
     })
   }

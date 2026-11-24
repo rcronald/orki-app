@@ -1,3 +1,4 @@
+import { isBrowserOffline, offlineOr } from './connection.ts'
 import { CatalogSearchError, prepareSearchQuery } from './catalogSearch.ts'
 import type {
   PublicCommonName,
@@ -103,10 +104,6 @@ export interface PublicCatalogOptions {
 
 // Errores ----------------------------------------------------------------------
 
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new CatalogSearchError('aborted')
 }
@@ -123,7 +120,7 @@ function toError(
   if (signal?.aborted) {
     return new CatalogSearchError('aborted', { cause: error })
   }
-  if (status === 0 && isOffline()) {
+  if (status === 0 && isBrowserOffline()) {
     return new CatalogSearchError('offline', { cause: error })
   }
   return new CatalogSearchError('failed', { cause: error })
@@ -137,7 +134,7 @@ async function loadClient(signal: AbortSignal | undefined) {
   } catch (error) {
     if (error instanceof CatalogSearchError) throw error
     throwIfAborted(signal)
-    throw new CatalogSearchError(isOffline() ? 'offline' : 'failed', {
+    throw new CatalogSearchError(offlineOr('failed'), {
       cause: error,
     })
   }

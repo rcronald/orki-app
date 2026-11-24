@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import {
   getSupabase,
   sessionTokenFailure,
@@ -50,10 +51,7 @@ export function createSupabaseAccountDataEffects({
       return await getClient()
     } catch (error) {
       // El chunk del cliente de Supabase no llegó o la app no se inicializó.
-      throw new AccountDeletionError(
-        navigator.onLine === false ? 'offline' : 'failed',
-        { cause: error },
-      )
+      throw new AccountDeletionError(offlineOr('failed'), { cause: error })
     }
   }
 

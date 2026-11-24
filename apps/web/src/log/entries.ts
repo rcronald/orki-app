@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import type { PlantLogEntryType } from '../lib/database.ts'
 import {
   getSupabase,
@@ -140,10 +141,7 @@ export function createSupabasePlantLogEntries({
       return await getClient()
     } catch (error) {
       // El chunk del cliente de Supabase no llegó o la app no se inicializó.
-      throw new PlantLogError(
-        navigator.onLine === false ? 'offline' : 'failed',
-        { cause: error },
-      )
+      throw new PlantLogError(offlineOr('failed'), { cause: error })
     }
   }
 
