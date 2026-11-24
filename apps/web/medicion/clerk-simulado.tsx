@@ -20,6 +20,11 @@ import {
 // - rol: el claim app_role del token (catalog_admin, el del backoffice).
 // - nombre y foto (opcionales): user.fullName y la foto de la cuenta. Sin la
 //   clave, NOMBRE_POR_DEFECTO y sin foto (iniciales); null, sin nombre.
+// - salidaInmediata (opcional): true hace que signOut() no espere a la red
+//   simulada y avise de que ya no hay sesión enseguida, antes de que el
+//   enrutador termine de pintar el destino (que navega en una transición).
+//   Es el peor orden posible de un cierre real con la red rápida y el
+//   dispositivo lento; lo usa e2e/salida-voluntaria.spec.ts.
 //
 // openUserProfile() (el editor de perfil de Clerk, #207) no abre nada: marca
 // <body data-perfil-simulado="abierto"> para que la prueba lo compruebe. Para
@@ -45,6 +50,7 @@ interface Sesion {
   rol: string | null
   nombre?: string | null
   foto?: string | null
+  salidaInmediata?: boolean
 }
 
 function leerSesion(): Sesion {
@@ -60,6 +66,7 @@ function leerSesion(): Sesion {
           ? valor.nombre
           : null,
       foto: typeof valor.foto === 'string' ? valor.foto : null,
+      salidaInmediata: valor.salidaInmediata === true,
     }
   } catch {
     return { usuario: USUARIO_POR_DEFECTO, rol: null }
@@ -106,9 +113,13 @@ let destinoAlSalir = '/'
 
 // Como el real: el cierre pasa por la red de Clerk (aquí, una espera
 // mínima), después navega a afterSignOutUrl y al final avisa de que ya no hay
-// sesión, para no pintar un momento una ruta protegida sin sesión.
+// sesión. Como el real, no espera a que el enrutador pinte el destino: la
+// navegación de React Router va en una transición y routerPush no devuelve
+// nada que esperar.
 async function signOut() {
-  await new Promise((resolver) => setTimeout(resolver, 50))
+  if (!sesion.salidaInmediata) {
+    await new Promise((resolver) => setTimeout(resolver, 50))
+  }
   await navegar?.(destinoAlSalir)
   cambiarSesion({ usuario: null, rol: null })
 }

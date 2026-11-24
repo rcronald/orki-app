@@ -39,6 +39,11 @@ export interface Sesion {
   nombre?: string | null
   /** URL de la foto de la cuenta (del mismo origen); sin ella, sin foto. */
   foto?: string | null
+  /**
+   * signOut() del Clerk simulado sin la espera de la red: avisa de que ya no
+   * hay sesión antes de que el enrutador pinte el destino.
+   */
+  salidaInmediata?: boolean
 }
 
 interface Opciones {
@@ -132,6 +137,7 @@ export const test = base.extend<Opciones & Fixtures>({
           rol: sesion.rol ?? null,
           ...(sesion.nombre !== undefined && { nombre: sesion.nombre }),
           ...(sesion.foto != null && { foto: sesion.foto }),
+          ...(sesion.salidaInmediata === true && { salidaInmediata: true }),
         }),
       ] as const,
     )
