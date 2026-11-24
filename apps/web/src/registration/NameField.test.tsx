@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useReducer, useRef } from 'react'
+import { useReducer, useRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { SpeciesSearchResult } from '../lib/catalogSearch.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -116,6 +116,62 @@ describe('NameField: nombre exacto (#280)', () => {
     render(<Field start={pendingPlant} linkInitialName />)
     await waitFor(() => expect(linkedSpecies()).toBe('amabilis'))
     expect(input()).toHaveValue('Phalaenopsis amabilis')
+  })
+
+  it('el formulario sabe que el nombre se está buscando en cuanto se escribe, aunque se envíe en el mismo instante (#311)', () => {
+    // Como lo hace el registro: guarda la resolución en su estado y, al
+    // enviar, mira la de su último pintado.
+    const submittedWith: NameResolution[] = []
+    function Form() {
+      const [values, dispatch] = useReducer(
+        plantFormReducer,
+        initialPlantFormValues('2026-11-23'),
+      )
+      const [resolution, setResolution] = useState<NameResolution>('settled')
+      const ref = useRef<HTMLInputElement>(null)
+      return (
+        <form
+          aria-label="Registro"
+          onSubmit={(event) => {
+            event.preventDefault()
+            submittedWith.push(resolution)
+          }}
+        >
+          <NameField
+            values={values}
+            dispatch={dispatch}
+            searchSpecies={searchSpecies}
+            inputRef={ref}
+            onResolutionChange={setResolution}
+          />
+        </form>
+      )
+    }
+    render(<Form />)
+
+    // Eventos del navegador sin act(): React trabaja como en la página, y lo
+    // que no haga dentro del propio evento se queda para después.
+    const reactGlobals = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    reactGlobals.IS_REACT_ACT_ENVIRONMENT = false
+    try {
+      const field = input()
+      // El valor por el prototipo, como el navegador: React vigila el del
+      // propio campo y, si no, no vería el cambio.
+      Reflect.set(
+        HTMLInputElement.prototype,
+        'value',
+        'Phalaenopsis amabilis',
+        field,
+      )
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+      screen
+        .getByRole<HTMLFormElement>('form', { name: 'Registro' })
+        .requestSubmit()
+    } finally {
+      reactGlobals.IS_REACT_ACT_ENVIRONMENT = true
+    }
+    // Con 'settled' se habría guardado sin esperar a enlazar la especie.
+    expect(submittedWith).toEqual(['resolving'])
   })
 
   it('«No la encuentro: guardarla con este nombre» deja el nombre por validar', async () => {
