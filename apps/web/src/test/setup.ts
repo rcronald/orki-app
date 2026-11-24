@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import { resetOfflineIdentity } from '../auth/offline-identity.ts'
+import { finishVoluntarySignOut } from '../auth/voluntary-sign-out.ts'
 
 // findBy… y waitFor esperan 1 s por defecto. Con la máquina cargada (varias
 // tandas de pruebas a la vez), la primera carga de una página diferida lo
@@ -18,4 +19,7 @@ afterEach(() => {
   if (typeof window !== 'undefined') window.localStorage.clear()
   // Y el último usuario recordado (#18), que se lee de ahí.
   resetOfflineIdentity()
+  // Y la salida voluntaria en curso, que vive en memoria: una prueba que
+  // cierra sesión y no pinta el inicio de verdad (HomeRoute) la dejaría puesta.
+  finishVoluntarySignOut()
 })

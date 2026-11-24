@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router'
 import { NoAccessPage } from '../pages/NoAccessPage.tsx'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
@@ -5,6 +6,10 @@ import { AuthLoading, AuthUnavailable } from './AuthStatus.tsx'
 import { useIsCatalogAdmin } from './roles.ts'
 import { useOfflineIdentity } from './offline-identity.ts'
 import { useAppIdentity } from './useAppIdentity.ts'
+import {
+  finishVoluntarySignOut,
+  useVoluntarySignOut,
+} from './voluntary-sign-out.ts'
 
 /**
  * Rutas que exigen sesión. Sin sesión, redirige al inicio de sesión con la
@@ -15,11 +20,24 @@ import { useAppIdentity } from './useAppIdentity.ts'
  *
  * Sin Clerk pero con un usuario recordado en este dispositivo (#18, #120),
  * deja pasar: las pantallas muestran su copia local en solo lectura.
+ *
+ * Si la persona acaba de pulsar «Cerrar sesión», al inicio y no a volver a
+ * entrar, también cuando Clerk ya confirmó el cierre y el inicio aún no se ha
+ * pintado (ver voluntary-sign-out.ts). Solo cuando la sesión cae sin pulsarlo
+ * (caducó, o se cerró en otra pestaña) se pide entrar para volver a la
+ * pantalla.
  */
 export function RequireAuth() {
   const identity = useAppIdentity()
   const { pendingSignOut } = useOfflineIdentity()
+  const leavingVoluntarily = useVoluntarySignOut()
   const location = useLocation()
+  const signedIn = identity.kind === 'signed-in'
+
+  // Volvió a entrar: ya no se está saliendo.
+  useEffect(() => {
+    if (signedIn) finishVoluntarySignOut()
+  }, [signedIn])
 
   switch (identity.kind) {
     // También cuando Clerk actualiza la sesión (isLoaded vuelve un momento a
@@ -29,9 +47,12 @@ export function RequireAuth() {
     case 'unavailable':
       return <AuthUnavailable reason={identity.reason} />
     case 'signed-out': {
-      // Acaba de cerrar sesión aquí (quizá sin conexión): al inicio, no a
-      // volver a entrar.
-      if (pendingSignOut !== null) return <Navigate to={PATHS.home} replace />
+      // Acaba de cerrar sesión aquí (quizá sin conexión, o Clerk ya lo
+      // confirmó y el inicio aún no se pintó): al inicio, no a volver a
+      // entrar.
+      if (pendingSignOut !== null || leavingVoluntarily) {
+        return <Navigate to={PATHS.home} replace />
+      }
       const requested = `${location.pathname}${location.search}${location.hash}`
       return <Navigate to={signInPathFor(requested)} replace />
     }
