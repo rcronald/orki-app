@@ -70,7 +70,7 @@ test.describe('con el service worker', () => {
   test.beforeEach(({ browserName }) => {
     test.skip(
       browserName !== 'chromium',
-      'Playwright solo intercepta la red de una página con service worker en Chromium (README, «Qué se prueba y qué se simula»).',
+      'Playwright solo intercepta la red de una página con service worker en Chromium (docs/pruebas.md, «Qué se prueba y qué se simula»).',
     )
   })
 

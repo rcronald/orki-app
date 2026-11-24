@@ -4,7 +4,7 @@
 //
 // Vercel (rewrites de vercel.json) y el service worker (navigateFallback)
 // responden cualquier ruta con index.html, así que abrir o recargar cualquiera
-// de estas funciona; ver el README.
+// de estas funciona; ver «Rutas» en docs/app/autenticacion.md.
 export const PATHS = {
   home: '/',
   catalog: '/catalogo',

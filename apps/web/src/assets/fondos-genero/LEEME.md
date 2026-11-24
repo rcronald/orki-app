@@ -7,10 +7,11 @@
 
 Fotos del fondo dinámico del registro (#13): una por género de acceso rápido,
 con el nombre del género en minúsculas (`phalaenopsis.avif`, `cattleya.avif`,
-`dendrobium.avif`, `oncidium.avif`, `vanda.avif`). La app las enlaza en
-`src/registration/genus-backgrounds.ts`, las pinta bajo el velo `overlay-genus`
-(`src/registration/GenusBackdrop.tsx`) y el service worker las precachea
-(`globPatterns` de `vite.config.ts`).
+`dendrobium.avif`, `oncidium.avif`, `vanda.avif`). Hasta el #221 la app las
+enlazaba en `src/registration/genus-backgrounds.ts`, las pintaba bajo el velo
+`overlay-genus` (`src/registration/GenusBackdrop.tsx`) y el service worker las
+precacheaba. Hoy ningún módulo las importa, así que no entran en el build ni en
+el precaché; el token `overlay-genus` sigue en `src/styles/tokens.css`.
 
 Las cinco son las definitivas (#126 y #128). `npm run fondos --workspace=apps/web
 -- provisionales` sigue existiendo para generar fondos de prueba al añadir un
@@ -41,7 +42,8 @@ atribución que pida la licencia.
 - **Formato:** AVIF (lo leen Chrome, Edge, Firefox y Safari 16 o posterior; si
   un navegador no puede, se queda el fondo neutro).
 - **Peso:** menos de 100 KB cada una; lo normal con estas medidas es entre 30 y
-  80 KB. La prueba de contraste falla si alguna pasa de 100 KB.
+  80 KB. La prueba de contraste, mientras existió, fallaba si alguna pasaba de
+  100 KB.
 
 ## Cómo sustituir una foto
 
@@ -64,23 +66,25 @@ atribución que pida la licencia.
    en un Mac con `npm run fondos --workspace=apps/web -- medir`.
 
 3. Actualizar la fila de la tabla de arriba con su fuente y su licencia.
-4. Pasar las pruebas: `npx vitest run src/registration/genus-backdrop-contrast.test.ts`
-   (desde `apps/web`). Comprueban que cada foto pesa menos de 100 KB, que
+4. Si el fondo vuelve, recuperar del historial de git su prueba
+   (`src/registration/genus-backdrop-contrast.test.ts`, retirada en el #221) y
+   pasarla desde `apps/web`. Comprobaba que cada foto pesa menos de 100 KB, que
    `medidas.json` corresponde a la foto versionada y que el texto del formulario
    cumple contraste AA sobre el velo en su zona más clara y en la más oscura.
-5. Revisar a ojo en `/muestra` (sección «Formulario de registro») y en el
-   celular que la flor se reconoce y el formulario se lee bien.
+5. Revisar a ojo, con el fondo de nuevo en el registro, y en el celular que la
+   flor se reconoce y el formulario se lee bien.
 
 ## Cómo se mide el contraste
 
 `medir` reduce la foto ya codificada a 180 × 320 (cada muestra es una zona de
 4 × 4 píxeles de la foto, unos 2 × 2 px de pantalla en un celular) y se queda
-con la muestra de mayor y la de menor luminancia relativa. La prueba compone el
-velo `overlay-genus` sobre cada una como lo hace el navegador (mezcla en sRGB)
-y exige 4,5:1 a los textos y 3:1 a los bordes que el formulario pinta
-directamente sobre el fondo (`BACKDROP_FOREGROUNDS` en
-`src/styles/contrast.ts`). Con el velo al 85 %, incluso sobre negro puro el
-peor caso (texto `color-danger`) queda en 4,9:1.
+con la muestra de mayor y la de menor luminancia relativa. La prueba retirada
+en el #221 componía el velo `overlay-genus` sobre cada una como lo hace el
+navegador (mezcla en sRGB) y exigía 4,5:1 a los textos y 3:1 a los bordes que
+el formulario pintaba directamente sobre el fondo (`BACKDROP_FOREGROUNDS`, que
+estaba en `src/styles/contrast.ts`). Con el velo al 85 %, incluso sobre negro
+puro el peor caso (texto `color-danger`) quedaba en 4,9:1.
 
-Añadir un género con foto: añadir su archivo aquí y su entrada en
-`src/registration/genus-backgrounds.ts`; la prueba exige que coincidan.
+Añadir un género con foto, si el fondo vuelve: añadir su archivo aquí y su
+entrada en `src/registration/genus-backgrounds.ts` (recuperado del historial);
+la prueba exigía que coincidan.
