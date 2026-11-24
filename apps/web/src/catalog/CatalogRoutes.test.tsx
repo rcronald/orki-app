@@ -142,7 +142,7 @@ describe('portada del catálogo', () => {
       `/catalogo/genero/${GENUS.cattleya}`,
     )
     expect(screen.getByText('2 especies')).toBeInTheDocument()
-    expect(document.title).toBe('Catálogo · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Catálogo · orqui.app'))
     // Sin sesión y sin token: solo la clave publicable.
     expect(catalog.calls.map((call) => call.fn)).toEqual(['list_public_genera'])
     expect(catalog.calls[0]?.authorization).toBe(
@@ -518,7 +518,9 @@ describe('ficha de la especie', () => {
     )
     expect(screen.queryByText('La tienes')).toBeNull()
     expect(screen.queryByText('Registrar esta especie')).toBeNull()
-    expect(document.title).toBe('Phalaenopsis amabilis · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Phalaenopsis amabilis · orqui.app'),
+    )
     await expectNoAxeViolations()
   })
 

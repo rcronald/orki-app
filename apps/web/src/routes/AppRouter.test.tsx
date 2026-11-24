@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -102,7 +102,7 @@ describe('rutas públicas', () => {
     renderAt('/')
 
     expect(await findHeading(/./)).toBeInTheDocument()
-    expect(document.title).toBe('orqui.app')
+    await waitFor(() => expect(document.title).toBe('orqui.app'))
     expect(currentLocation()).toBe('/')
     expect(
       screen.queryByRole('navigation', { name: 'Principal' }),
@@ -128,7 +128,7 @@ describe('rutas públicas', () => {
     renderAt('/catalogo')
 
     expect(await findHeading('Catálogo')).toBeInTheDocument()
-    expect(document.title).toBe('Catálogo · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Catálogo · orqui.app'))
     expect(currentLocation()).toBe('/catalogo')
     await expectNoAxeViolations()
   })
@@ -170,7 +170,9 @@ describe('rutas públicas', () => {
     renderAt('/no-existe')
 
     expect(await findHeading('Página no encontrada')).toBeInTheDocument()
-    expect(document.title).toBe('Página no encontrada · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Página no encontrada · orqui.app'),
+    )
     expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
       'href',
       '/',
@@ -274,7 +276,9 @@ describe('rutas con sesión', () => {
     await user.click(screen.getByRole('link', { name: 'Registrar orquídea' }))
     expect(await findHeading('Registrar una orquídea')).toBeInTheDocument()
     expect(currentLocation()).toBe('/coleccion/nueva')
-    expect(document.title).toBe('Registrar una orquídea · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Registrar una orquídea · orqui.app'),
+    )
     await expectNoAxeViolations()
   })
 
@@ -499,7 +503,7 @@ describe('navegación', () => {
     // El foco pasa al título de la página nueva y la pestaña cambia.
     const heading = await findHeading('Mi colección')
     expect(heading).toHaveFocus()
-    expect(document.title).toBe('Mi colección · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Mi colección · orqui.app'))
     expect(collection).toHaveAttribute('aria-current', 'page')
     await expectNoAxeViolations()
   })
