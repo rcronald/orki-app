@@ -2,10 +2,10 @@ import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
 import type { ProcessedPhoto } from '../photos/process.ts'
 import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 
-// Fotos pendientes del borrador del registro (#87; varias desde el #219). Lo
-// escrito va en localStorage (draft.ts); cada foto ya preparada son dos Blob
-// (foto y miniatura, unos 200-300 KB), que no caben ahí: van en IndexedDB, que
-// guarda Blob tal cual.
+// Fotos pendientes de los borradores del registro (#87; varias desde el #219;
+// una entrada por borrador desde el #296). Lo escrito va en localStorage
+// (draft.ts); cada foto ya preparada son dos Blob (foto y miniatura, unos
+// 200-300 KB), que no caben ahí: van en IndexedDB, que guarda Blob tal cual.
 //
 // Para qué sirve: si iOS descarga la app instalada después de elegir las
 // fotos (por ejemplo, al salir a otra app a buscar el nombre), al volver se
@@ -13,13 +13,18 @@ import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 // ocurre mientras la cámara está abierta: entonces la foto aún no llegó a la
 // página y hay que volver a tomarla; lo escrito sí se conserva.
 //
-// - Una entrada por usuario (clave: id de Clerk) con hasta 6 fotos en orden
-//   (la primera será la principal). Al leer se borran las de otros usuarios y
-//   las caducadas: una foto no aparece con otra cuenta.
-// - Va con el id de planta del borrador de texto: solo se recupera si
-//   coincide con él. Sin borrador de texto, o con otro id, se borra.
-// - Caduca como el borrador (24 horas desde la última vez que se guardaron
-//   las fotos) y se borra al guardar la planta, al descartar el borrador, al
+// - Una entrada por borrador, con hasta 6 fotos en orden (la primera será la
+//   principal), con la clave draftPhotoKey(usuario, id de planta): así, dejar
+//   un borrador para después (#296) no mueve sus fotos, y guardar las de un
+//   borrador no reescribe las del otro. Hasta el #296 había una sola entrada
+//   por usuario, con la clave del id de Clerk y el id de planta dentro: se
+//   sigue leyendo como la del borrador de ese id, y se borra al escribir las
+//   de ese borrador.
+// - Al leer se borran las de otros usuarios: una foto no aparece con otra
+//   cuenta. pruneDraftPhotos borra además las de borradores que ya no existen
+//   (sin borrador de texto con su id) y las caducadas.
+// - Caducan como el borrador (24 horas desde la última vez que se guardaron
+//   las fotos) y se borran al guardar la planta, al descartar el borrador, al
 //   quitar la última foto y al salir con "Cancelar".
 // - IndexedDB puede no existir o fallar (navegación privada, cuota llena,
 //   datos del sitio bloqueados): todo va en try/catch y, si falla, el
@@ -30,15 +35,30 @@ import { PLANT_DRAFT_MAX_AGE_MS } from './draft.ts'
 // - Versión 1 (una sola foto): { version, plantId, savedAt, fileName, photo }. Se lee
 //   como un borrador de una foto, con las mismas comprobaciones; la siguiente escritura
 //   lo guarda ya en la versión 2. No cambia la base de IndexedDB: es el mismo almacén y
-//   la misma clave, así que no hay migración de esquema (onupgradeneeded) que pueda
-//   fallar en WebKit.
+//   la misma forma de cada entrada, así que no hay migración de esquema (onupgradeneeded)
+//   que pueda fallar en WebKit.
 // Cualquier otra cosa (otra versión, una foto sin Blob, más de 6) se borra al leer.
 //
-// API: readDraftPhotos, writeDraftPhotos y clearDraftPhotos para varias fotos
-// (el formulario con galería, #221). readDraftPhoto, writeDraftPhoto y
-// clearDraftPhoto, de una foto, siguen para quien ya los usa (la limpieza del
-// dispositivo de «Tu cuenta» borra con clearDraftPhoto, que es el mismo
-// borrado).
+// API: readDraftPhotos, writeDraftPhotos y clearDraftPhotos para las fotos de
+// un borrador (el formulario con galería, #221); pruneDraftPhotos y
+// readDraftPhotoCounts para todos los de un usuario (#296). readDraftPhoto,
+// writeDraftPhoto y clearDraftPhoto, de una foto, siguen para quien ya los usa
+// (la limpieza del dispositivo de «Tu cuenta» borra con clearDraftPhoto, que
+// es el mismo borrado: sin id de planta, todas las del usuario).
+
+/** Separa el usuario del id de planta en la clave; ninguno de los dos lo lleva. */
+const KEY_SEPARATOR = '/'
+
+/** Clave de las fotos del borrador `plantId` del usuario. */
+export function draftPhotoKey(userId: string, plantId: string): string {
+  return `${userId}${KEY_SEPARATOR}${plantId}`
+}
+
+/** El usuario de una clave: la de un borrador, o la de antes del #296 (el id solo). */
+function ownerOf(key: string): string {
+  const at = key.lastIndexOf(KEY_SEPARATOR)
+  return at === -1 ? key : key.slice(0, at)
+}
 
 /** Una foto pendiente: el nombre del archivo elegido y la foto ya preparada. */
 export interface DraftPhotoItem {
@@ -157,45 +177,87 @@ async function quietly(run: () => Promise<void>): Promise<void> {
   }
 }
 
+/** Si las fotos guardadas siguen valiendo a la hora `now`. */
+function isFresh(found: DraftPhotos, now: Date): boolean {
+  const age = now.getTime() - found.savedAt
+  return age >= 0 && age <= PLANT_DRAFT_MAX_AGE_MS
+}
+
+/** Borra las fotos de los demás usuarios; devuelve las claves de este. */
+async function forgetOtherUsers(
+  backend: DraftPhotoBackend,
+  userId: string,
+): Promise<string[]> {
+  const own: string[] = []
+  for (const key of await backend.keys()) {
+    if (ownerOf(key) === userId) own.push(key)
+    else await backend.delete(key)
+  }
+  return own
+}
+
+/** Borra la entrada de antes del #296 si es del borrador `plantId` o no se entiende. */
+async function forgetLegacyOf(
+  backend: DraftPhotoBackend,
+  userId: string,
+  plantId: string,
+): Promise<void> {
+  const legacy: unknown = await backend.get(userId)
+  if (legacy === undefined || legacy === null) return
+  const found = toDraftPhotos(legacy)
+  if (found === null || found.plantId === plantId) {
+    await backend.delete(userId)
+  }
+}
+
 /**
- * Las fotos pendientes del usuario si van con el borrador de `plantId` y no
- * caducaron; null si no hay (lo que no vale se borra, también un formato
- * desconocido). Borra también las de otros usuarios. Con `plantId` null (no
- * hay borrador de texto), borra las del usuario y devuelve null.
+ * Las fotos pendientes del borrador `plantId` del usuario si no caducaron;
+ * null si no hay (lo que no vale se borra, también un formato desconocido).
+ * Borra también las de otros usuarios. Con `plantId` null (no hay borrador de
+ * texto), borra todas las del usuario y devuelve null.
  */
 export async function readDraftPhotos(
   backend: DraftPhotoBackend,
   userId: string,
   { plantId, now }: { plantId: string | null; now: Date },
 ): Promise<DraftPhotos | null> {
+  if (plantId === null) {
+    await clearDraftPhotos(backend, userId)
+    return null
+  }
+  const key = draftPhotoKey(userId, plantId)
   let raw: unknown
+  let legacy: unknown
   try {
-    for (const key of await backend.keys()) {
-      if (key !== userId) await backend.delete(key)
-    }
-    raw = await backend.get(userId)
+    await forgetOtherUsers(backend, userId)
+    raw = await backend.get(key)
+    if (raw === undefined || raw === null) legacy = await backend.get(userId)
   } catch {
     return null
   }
-  if (raw === undefined || raw === null) return null
+  if (raw === undefined || raw === null) {
+    // La entrada de antes del #296, si es de este borrador.
+    if (legacy === undefined || legacy === null) return null
+    const found = toDraftPhotos(legacy)
+    if (found !== null && found.plantId !== plantId) return null
+    if (found === null || !isFresh(found, now)) {
+      await quietly(() => backend.delete(userId))
+      return null
+    }
+    return found
+  }
   const found = toDraftPhotos(raw)
-  const age = found ? now.getTime() - found.savedAt : Number.NaN
-  if (
-    found === null ||
-    plantId === null ||
-    found.plantId !== plantId ||
-    !(age >= 0 && age <= PLANT_DRAFT_MAX_AGE_MS)
-  ) {
-    await quietly(() => backend.delete(userId))
+  if (found === null || found.plantId !== plantId || !isFresh(found, now)) {
+    await quietly(() => backend.delete(key))
     return null
   }
   return found
 }
 
 /**
- * Guarda las fotos pendientes en su orden, en lugar de las anteriores. Sin
- * fotos, las borra. Devuelve false si no se pudo, o si son más de 6 (entonces
- * no cambia nada).
+ * Guarda las fotos pendientes del borrador en su orden, en lugar de las
+ * anteriores. Sin fotos, las borra. Devuelve false si no se pudo, o si son
+ * más de 6 (entonces no cambia nada).
  */
 export async function writeDraftPhotos(
   backend: DraftPhotoBackend,
@@ -204,29 +266,108 @@ export async function writeDraftPhotos(
 ): Promise<boolean> {
   if (draft.photos.length > MAX_PLANT_PHOTOS) return false
   try {
+    const key = draftPhotoKey(userId, draft.plantId)
     if (draft.photos.length === 0) {
-      await backend.delete(userId)
-      return true
+      await backend.delete(key)
+    } else {
+      const stored: StoredDraftPhotos = {
+        version: STORED_VERSION,
+        plantId: draft.plantId,
+        savedAt: draft.savedAt,
+        photos: draft.photos.map(({ fileName, photo }) => ({
+          fileName,
+          photo,
+        })),
+      }
+      await backend.put(key, stored)
     }
-    const stored: StoredDraftPhotos = {
-      version: STORED_VERSION,
-      plantId: draft.plantId,
-      savedAt: draft.savedAt,
-      photos: draft.photos.map(({ fileName, photo }) => ({ fileName, photo })),
-    }
-    await backend.put(userId, stored)
+    await forgetLegacyOf(backend, userId, draft.plantId)
     return true
   } catch {
     return false
   }
 }
 
-/** Borra las fotos pendientes del usuario. */
+/**
+ * Borra las fotos pendientes del borrador `plantId` del usuario o, sin él,
+ * todas las del usuario.
+ */
 export function clearDraftPhotos(
   backend: DraftPhotoBackend,
   userId: string,
+  plantId?: string,
 ): Promise<void> {
-  return quietly(() => backend.delete(userId))
+  return quietly(async () => {
+    if (plantId !== undefined) {
+      await backend.delete(draftPhotoKey(userId, plantId))
+      await forgetLegacyOf(backend, userId, plantId)
+      return
+    }
+    for (const key of await backend.keys()) {
+      if (ownerOf(key) === userId) await backend.delete(key)
+    }
+  })
+}
+
+/** Si `key` es donde deben estar las fotos de `found` (la suya o la de antes del #296). */
+function isKeyOf(key: string, userId: string, found: DraftPhotos): boolean {
+  return key === userId || key === draftPhotoKey(userId, found.plantId)
+}
+
+/**
+ * Deja solo las fotos de los borradores `plantIds` del usuario que no
+ * caducaron: borra las de otros usuarios, las de borradores que ya no existen,
+ * las caducadas y las que no se entienden.
+ */
+export function pruneDraftPhotos(
+  backend: DraftPhotoBackend,
+  userId: string,
+  { plantIds, now }: { plantIds: readonly string[]; now: Date },
+): Promise<void> {
+  return quietly(async () => {
+    for (const key of await forgetOtherUsers(backend, userId)) {
+      const found = toDraftPhotos(await backend.get(key))
+      const valid =
+        found !== null &&
+        plantIds.includes(found.plantId) &&
+        isKeyOf(key, userId, found) &&
+        isFresh(found, now)
+      if (!valid) await backend.delete(key)
+    }
+  })
+}
+
+/**
+ * Cuántas fotos pendientes tiene cada borrador `plantIds` del usuario (0 si
+ * ninguna o si no se pueden leer). No borra nada.
+ */
+export async function readDraftPhotoCounts(
+  backend: DraftPhotoBackend,
+  userId: string,
+  { plantIds, now }: { plantIds: readonly string[]; now: Date },
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>(plantIds.map((id) => [id, 0]))
+  try {
+    for (const key of await backend.keys()) {
+      if (ownerOf(key) !== userId) continue
+      const found = toDraftPhotos(await backend.get(key))
+      if (
+        found === null ||
+        !counts.has(found.plantId) ||
+        !isKeyOf(key, userId, found) ||
+        !isFresh(found, now)
+      ) {
+        continue
+      }
+      // La de un borrador gana a la de antes del #296.
+      if (key !== userId || counts.get(found.plantId) === 0) {
+        counts.set(found.plantId, found.photos.length)
+      }
+    }
+  } catch {
+    // Sin almacenamiento: ninguna.
+  }
+  return counts
 }
 
 // Una sola foto (formulario actual) -------------------------------------------
@@ -264,8 +405,13 @@ export function writeDraftPhoto(
   })
 }
 
-/** Borra la foto pendiente del usuario (todas, si hay varias). */
-export const clearDraftPhoto = clearDraftPhotos
+/** Borra las fotos pendientes del usuario (todas, de todos sus borradores). */
+export function clearDraftPhoto(
+  backend: DraftPhotoBackend,
+  userId: string,
+): Promise<void> {
+  return clearDraftPhotos(backend, userId)
+}
 
 // IndexedDB --------------------------------------------------------------------
 
@@ -280,8 +426,8 @@ function promised<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 /**
- * Almacén en IndexedDB: una base con un solo almacén de objetos, con el id de
- * usuario como clave. Cada operación abre la base, hace su transacción y la
+ * Almacén en IndexedDB: una base con un solo almacén de objetos, con
+ * draftPhotoKey (o, antes del #296, el id de usuario) como clave. Cada operación abre la base, hace su transacción y la
  * cierra; van en fila, una detrás de otra, para que "guardar" y "quitar"
  * seguidos se apliquen en ese orden.
  */

@@ -6,6 +6,7 @@ import { Page } from '../components/Page.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { registeredPlantState } from '../inventory/registered-plant.ts'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
+import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import { uploadPlantPhotos } from '../photos/gallery.ts'
 import {
   PlantForm,
@@ -76,13 +77,15 @@ export default function NewPlantPage() {
   // formulario se vuelve a montar con él antes de que se vea (key).
   const { upsertPlant, plants, status, userId } = useCollection()
   const knownPlants = status === 'loading' ? null : plants
-  // Solo con conexión y la sesión confirmada (#18): si no, el formulario se
-  // desactiva con su aviso de sin conexión.
-  const online = useReadOnly() === null
+  // Registrar necesita conexión y la sesión confirmada (#18). Sin ellas, con
+  // el usuario identificado en el dispositivo (el de Clerk o el recordado,
+  // userId), se sigue completando el borrador y el envío espera (#296).
+  const readOnly = useReadOnly()
+  const online = useOnlineStatus()
   const [search] = useSearchParams()
   const location = useLocation()
   const initialName = prefilledName(search)
-  const registration = useRegistrationEvent({ offline: !online })
+  const registration = useRegistrationEvent({ offline: readOnly !== null })
 
   return (
     <Page
@@ -105,6 +108,7 @@ export default function NewPlantPage() {
         key={userId ?? ''}
         services={SUPABASE_SERVICES}
         online={online}
+        sessionUnverified={readOnly === 'unverified'}
         knownPlants={knownPlants}
         draftUserId={userId}
         initialName={initialName}
