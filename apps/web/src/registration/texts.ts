@@ -172,8 +172,27 @@ export const PLANT_FORM_TEXT = {
   signIn: 'Iniciar sesión',
   confirmDiscard:
     '¿Salir sin registrar? Se perderá lo que escribiste en el formulario.',
+  /** Sin una sesión identificada en el dispositivo: no hay borrador posible. */
   offline:
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',
+  /**
+   * Sin conexión (o con la sesión sin confirmar) y con la sesión identificada
+   * en el dispositivo (#296): se sigue completando el borrador y el envío
+   * espera. Empieza con offlineTitle o unverifiedTitle.
+   */
+  offlineTitle: 'Sin conexión.',
+  unverifiedTitle: 'Sesión sin confirmar.',
+  draftSavedHere: (when: string) =>
+    `Borrador guardado en este dispositivo. Podrás registrarla cuando ${when}.`,
+  draftWillSaveHere: (when: string) =>
+    `Lo que completes se guarda en este dispositivo. Podrás registrarla cuando ${when}.`,
+  draftNotSavedHere: (when: string) =>
+    `No pudimos guardar el borrador en este dispositivo: no cierres esta pantalla. Podrás registrarla cuando ${when}.`,
+  whenOnline: 'vuelva la conexión',
+  whenVerified: 'se confirme tu sesión',
+  /** Bajo el nombre, sin conexión (#296). */
+  nameOfflineHint:
+    'Sin conexión no podemos buscar en el catálogo; al volver se comprobará el nombre.',
 } as const
 
 /** Avisos propios de la edición. */

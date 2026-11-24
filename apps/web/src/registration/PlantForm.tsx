@@ -83,7 +83,7 @@ import {
   type PlantFormField,
   type PlantFormValues,
 } from './form-state.ts'
-import { GenusField } from './GenusField.tsx'
+import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField, type NameResolution } from './NameField.tsx'
 import { OriginField } from './OriginField.tsx'
 import { PendingPhotoNotice } from './PendingPhotoNotice.tsx'
@@ -147,8 +147,19 @@ export interface PlantFormServices extends PlantFormBaseServices {
 }
 
 interface PlantFormCommonProps {
-  /** Si hay conexión (useOnlineStatus). Sin ella, el formulario se desactiva. */
+  /**
+   * Si hay conexión (useOnlineStatus). Sin ella no se envía nada ni se busca
+   * en el catálogo; con un usuario (draftUserId), lo demás se sigue
+   * completando y queda en el borrador del dispositivo (#296). Sin usuario,
+   * el formulario se desactiva.
+   */
   online: boolean
+  /**
+   * La sesión es la recordada en el dispositivo, sin que Clerk la confirme
+   * (useReadOnly, #120): como sin conexión, el envío espera, pero con red se
+   * sigue buscando en el catálogo (es público).
+   */
+  sessionUnverified?: boolean
   /**
    * El registro terminó: la planta está guardada y sus fotos subidas (o la
    * persona eligió seguir sin las que fallaron). Para salir del formulario.
@@ -240,6 +251,18 @@ function withStart(
   return species === null
     ? withName(values, name)
     : plantFormReducer(values, { type: 'speciesSelected', species })
+}
+
+/** Los géneros de la colección (sin repetir, por nombre), para usarlos sin conexión. */
+function generaOf(
+  plants: readonly CollectionPlant[] | null,
+): readonly FormGenus[] {
+  if (plants === null) return []
+  const byId = new Map<string, FormGenus>()
+  for (const plant of plants) {
+    byId.set(plant.genus.id, { id: plant.genus.id, name: plant.genus.name })
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
 }
 
 /**
@@ -570,6 +593,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
     otherDrafts,
     onSwitchDraft,
     focusNameOnMount,
+    sessionUnverified = false,
   } = props
   // Lo que se fija una sola vez al montarse: el formulario vacío de hoy y el
   // borrador con el que empieza, si lo hay.
@@ -598,9 +622,29 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const [detailsOpen, setDetailsOpen] = useState(() => hasDetails(start.values))
   // Evita el doble envío antes de que React pinte el estado "guardando".
   const savingRef = useRef(false)
-  const [quickGenera, retryQuickGenera] = useQuickGenera(
+  const [loadedGenera, retryQuickGenera] = useQuickGenera(
     services.loadQuickGenera,
     online,
+  )
+  // Sin conexión, si los géneros frecuentes no cargaron (o aún no se sabe:
+  // la petición tarda en fallar), los de la colección, que están en el
+  // dispositivo, para poder elegir uno igual (#296).
+  const collectionGenera = generaOf(knownPlants)
+  const quickGenera: QuickGeneraState =
+    ((!online && loadedGenera.status === 'loading') ||
+      (loadedGenera.status === 'error' && loadedGenera.reason === 'offline')) &&
+    collectionGenera.length > 0
+      ? { status: 'ready', genera: collectionGenera }
+      : loadedGenera
+
+  // Si el envío tiene que esperar (#296): sin conexión o con la sesión sin
+  // confirmar. Con un usuario se sigue completando el borrador; sin él, el
+  // formulario se desactiva como antes.
+  const blocked = !online || sessionUnverified
+  const keepsDraft = draftUserId !== null
+  // Qué hay del borrador en el dispositivo, para el aviso sin conexión.
+  const [stored, setStored] = useState<'none' | 'saved' | 'failed'>(
+    props.draft !== null ? 'saved' : 'none',
   )
 
   // Fotos ----------------------------------------------------------------
@@ -660,15 +704,21 @@ function PlantFormBody(props: PlantFormBodyProps) {
     // Enlazar solo el nombre con el que se abrió (#280) no es un cambio de la
     // persona: no crea un borrador ni renueva la caducidad del recuperado.
     if (!hasNewPhotos && isOnlyLinked(start.values, values)) return
+    let next: 'none' | 'saved' | 'failed' = 'none'
     if (isPlantFormDirty(values, initial) || hasNewPhotos) {
-      writePlantDraft(draftOwner, {
+      const saved = writePlantDraft(draftOwner, {
         plantId,
         values,
         savedAt: now().getTime(),
       })
+      next = saved ? 'saved' : 'failed'
     } else {
       clearPlantDraft(draftOwner, plantId)
     }
+    // El aviso sin conexión dice si el borrador quedó guardado (#296): es el
+    // resultado de escribir en localStorage, un sistema externo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStored((current) => (current === next ? current : next))
   }, [values, draftOwner, plantId, now, start.values, initial, hasNewPhotos])
 
   // Las fotos del borrador con el que empezó, en su orden. Las que no son de
@@ -707,8 +757,9 @@ function PlantFormBody(props: PlantFormBodyProps) {
     }
     const list = photos.current().filter(isNew)
     const savedAt = now().getTime()
+    let textSaved = true
     if (list.length > 0) {
-      writePlantDraft(draftOwner, {
+      textSaved = writePlantDraft(draftOwner, {
         plantId,
         values: valuesRef.current,
         savedAt,
@@ -720,6 +771,9 @@ function PlantFormBody(props: PlantFormBodyProps) {
       plantId,
       savedAt,
       photos: list.map(({ fileName, photo }) => ({ fileName, photo })),
+    }).then((photosSaved) => {
+      if (!textSaved || !photosSaved) setStored('failed')
+      else if (list.length > 0) setStored('saved')
     })
     // Solo cuando cambian las fotos (draftPhotosKey).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -737,7 +791,8 @@ function PlantFormBody(props: PlantFormBodyProps) {
   // no admite el foco: se lleva al activarse, una sola vez y solo si la
   // persona no lo puso ya en otro sitio (sigue en la página o en el título).
   const nameFocused = useRef(false)
-  const nameDisabled = !online || registered !== null
+  const fieldsDisabled = registered !== null || (blocked && !keepsDraft)
+  const nameDisabled = fieldsDisabled
   useEffect(() => {
     if (!autoFocusName || nameFocused.current || nameDisabled) return
     nameFocused.current = true
@@ -944,7 +999,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (savingRef.current || !online || registered !== null) return
+    if (savingRef.current || blocked || registered !== null) return
     // Con fotos a medio preparar no se guarda: el botón lo dice.
     if (preparing) return
     if (nameResolution === 'resolving') {
@@ -1036,7 +1091,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const cancelUpload = () => uploadController.current?.abort()
 
   const openPicker = (input: HTMLInputElement | null) => {
-    if (registered !== null || saving || !online) return
+    if (saving || fieldsDisabled) return
     input?.click()
   }
 
@@ -1177,9 +1232,8 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const primaryBlocked =
     registered !== null
       ? uploading || (canRetry && !online)
-      : saving || preparing || !online
+      : saving || preparing || blocked
 
-  const fieldsDisabled = !online || registered !== null
   const galleryDisabled = fieldsDisabled || saving
 
   const main = (
@@ -1197,6 +1251,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
           inputRef={nameRef}
           linkInitialName
           onResolutionChange={setNameResolution}
+          offline={!online}
         />
         <DuplicateNotice
           species={values.species}
@@ -1457,9 +1512,35 @@ function PlantFormBody(props: PlantFormBodyProps) {
         />
       )}
 
-      {/* Región siempre presente: así se anuncia al perder la conexión. */}
+      {/*
+        Región siempre presente: así se anuncia al perder la conexión. Con un
+        usuario, dice que el borrador queda en el dispositivo y que el envío
+        espera (#296); sin él, que el formulario se activará al volver.
+      */}
       <div id={offlineId} role="status">
-        {!online && (
+        {blocked && registered === null && !keepsDraft && (
+          <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-sm text-neutral-900">
+            <Icon
+              name="triangle-alert"
+              className="mt-[2px] size-[16px] flex-none"
+            />
+            {text.offline}
+          </p>
+        )}
+        {blocked && registered === null && keepsDraft && (
+          <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-sm text-neutral-900">
+            <Icon name="cloud-off" className="mt-[2px] size-[16px] flex-none" />
+            {`${online ? text.unverifiedTitle : text.offlineTitle} ${(stored ===
+              'saved'
+              ? text.draftSavedHere
+              : stored === 'failed'
+                ? text.draftNotSavedHere
+                : text.draftWillSaveHere)(
+              online ? text.whenVerified : text.whenOnline,
+            )}`}
+          </p>
+        )}
+        {blocked && registered !== null && !online && (
           <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-sm text-neutral-900">
             <Icon
               name="triangle-alert"
@@ -1471,9 +1552,10 @@ function PlantFormBody(props: PlantFormBodyProps) {
       </div>
 
       {/*
-        Sin conexión, los campos quedan desactivados; lo escrito y las fotos
-        se conservan. Con la planta ya guardada (subiendo sus fotos), no hay
-        nada más que editar.
+        Sin conexión, con un usuario, todo se sigue completando y va al
+        borrador (#296); sin usuario, los campos quedan desactivados y lo
+        escrito y las fotos se conservan. Con la planta ya guardada (subiendo
+        sus fotos), no hay nada más que editar.
       */}
       <FormLayout main={main} aside={gallery} extra={extra} />
 
@@ -1490,7 +1572,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
             {save.error.message}
           </p>
           <div className="flex flex-wrap gap-space-3">
-            <Button type="submit" aria-disabled={!online || undefined}>
+            <Button type="submit" aria-disabled={blocked || undefined}>
               {PLANT_FORM_TEXT.retry}
             </Button>
             {save.error.reason === 'session-ended' && (
@@ -1574,7 +1656,9 @@ function PlantFormBody(props: PlantFormBodyProps) {
           variant="primary"
           aria-disabled={primaryBlocked || undefined}
           aria-describedby={
-            !online && (registered === null || canRetry) ? offlineId : undefined
+            (blocked && registered === null) || (!online && canRetry)
+              ? offlineId
+              : undefined
           }
           onClick={
             registered === null || uploading

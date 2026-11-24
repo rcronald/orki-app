@@ -12,10 +12,12 @@ import {
   vi,
 } from 'vitest'
 import { CollectionProvider } from '../collection/CollectionProvider.tsx'
+import { SessionUnverifiedContext } from '../collection/useReadOnly.ts'
 import type {
   CollectionPlant,
   CollectionPlantRow,
 } from '../collection/model.ts'
+import { resetOfflineIdentity } from '../auth/offline-identity.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { localDateString } from '../lib/localDate.ts'
 import { PhotoProcessingError } from '../photos/errors.ts'
@@ -1156,7 +1158,11 @@ describe('NewPlantPage', () => {
     expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
-  it('sin conexión, el registro se muestra desactivado con el motivo y vuelve solo', async () => {
+  it('sin conexión y sin una sesión identificada en el dispositivo, el registro se muestra desactivado con el motivo y vuelve solo', async () => {
+    // Nadie recordado: sin conexión, la app no sabe de quién sería el
+    // borrador (#296), así que sigue como antes.
+    setFakeClerk({ signedIn: false })
+    resetOfflineIdentity()
     const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     const user = userEvent.setup()
     render(
@@ -2689,7 +2695,7 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
     ).toBeTruthy()
   })
 
-  it('sin conexión, la galería se desactiva con el resto y las fotos se conservan', async () => {
+  it('sin conexión, la galería sigue activa y las fotos van al borrador (#296)', async () => {
     const user = userEvent.setup()
     const { container } = await renderPage()
     await choosePhotos(user, container)
@@ -2697,13 +2703,19 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
     act(() => {
       window.dispatchEvent(new Event('offline'))
     })
-    expect(chooseButton()).toHaveAttribute('aria-disabled', 'true')
-    expect(
-      within(gallery()).getByRole('button', { name: 'Quitar foto principal' }),
-    ).toHaveAttribute('aria-disabled', 'true')
-    const open = vi.spyOn(filesInput(container), 'click')
-    await user.click(chooseButton())
-    expect(open).not.toHaveBeenCalled()
+    expect(chooseButton()).not.toHaveAttribute('aria-disabled')
+    await choosePhotos(user, container, 1)
+    expect(thumbnails()).toEqual(['Foto principal', 'Foto 2 de 2'])
+    await waitFor(() =>
+      expect(
+        draftPhotos.entries.get(
+          draftPhotoKey('user_prueba', storedDraft()?.plantId ?? ''),
+        )?.photos,
+      ).toHaveLength(2),
+    )
+    await user.click(
+      within(gallery()).getByRole('button', { name: 'Quitar foto 2 de 2' }),
+    )
     expect(thumbnails()).toEqual(['Foto principal'])
     await expectNoAxeViolations()
   })
@@ -3006,5 +3018,219 @@ describe('NewPlantPage: un borrador y la especie recién elegida (#296)', () => 
     await user.keyboard('{Enter}')
     expect(nameInput()).toHaveValue('Vanda coerulea')
     await waitFor(() => expect(nameInput()).toHaveFocus())
+  })
+})
+
+describe('NewPlantPage: sin conexión, con la sesión identificada en el dispositivo (#296)', () => {
+  const offlineSaved = `${PLANT_FORM_TEXT.offlineTitle} ${PLANT_FORM_TEXT.draftSavedHere(PLANT_FORM_TEXT.whenOnline)}`
+  const offlineEmpty = `${PLANT_FORM_TEXT.offlineTitle} ${PLANT_FORM_TEXT.draftWillSaveHere(PLANT_FORM_TEXT.whenOnline)}`
+
+  /** Sin red de verdad: el navegador lo dice y las peticiones fallan. */
+  function goOffline() {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    fetchMock.mockImplementation(() =>
+      Promise.reject(new TypeError('Failed to fetch')),
+    )
+    act(() => {
+      window.dispatchEvent(new Event('offline'))
+    })
+  }
+
+  function goOnline() {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    fetchMock.mockImplementation(respond)
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+  }
+
+  const speciesSearches = () =>
+    requests().filter((r) => r.url.pathname === '/rest/v1/rpc/search_species')
+
+  it('perder la conexión mientras se registra una planta: se sigue completando el borrador y el envío espera a que vuelva', async () => {
+    const user = userEvent.setup()
+    const { container } = await renderPage()
+    await user.type(nameInput(), 'La naranja')
+
+    goOffline()
+    // Nada se desactiva: se sigue escribiendo.
+    expect(nameInput()).toBeEnabled()
+    await user.type(nameInput(), ' del mercado')
+    expect(nameInput()).toHaveValue('La naranja del mercado')
+    expect(nameInput()).toHaveAccessibleDescription(
+      PLANT_FORM_TEXT.nameOfflineHint,
+    )
+    await user.click(
+      within(genusGroup()).getByRole('button', { name: 'Cattleya' }),
+    )
+    await user.click(within(typeGroup()).getByRole('button', { name: 'No sé' }))
+    await user.clear(dateInput())
+    await user.type(dateInput(), '2026-11-01')
+    await user.type(originInput(), 'Feria de Lima')
+    await user.click(detailsButton())
+    await user.type(locationInput(), 'Balcón')
+    await user.type(nicknameInput(), 'La naranja')
+    await user.click(chip('Naranja'))
+    await choosePhotos(user, container)
+
+    // El aviso dice qué pasa y el botón queda desactivado con su motivo.
+    expect(await screen.findByText(/Borrador guardado/)).toHaveTextContent(
+      offlineSaved,
+    )
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true')
+    expect(submitButton()).toHaveAccessibleDescription(offlineSaved)
+    await user.click(submitButton())
+    expect(plantInserts()).toHaveLength(0)
+    expect(storedDraft()?.values).toMatchObject({
+      name: 'La naranja del mercado',
+      genus: GENERA.cattleya,
+      type: 'unknown',
+      acquiredOn: '2026-11-01',
+      origin: 'Feria de Lima',
+      location: 'Balcón',
+      nickname: 'La naranja',
+      flowerColor: 'orange',
+    })
+    await waitFor(() =>
+      expect(
+        draftPhotos.entries.get(
+          draftPhotoKey('user_prueba', storedDraft()?.plantId ?? ''),
+        )?.photos,
+      ).toHaveLength(1),
+    )
+    await expectNoAxeViolations()
+
+    // Al volver, nada se envía solo: la persona pulsa.
+    goOnline()
+    expect(screen.queryByText(offlineSaved)).toBeNull()
+    expect(submitButton()).not.toHaveAttribute('aria-disabled')
+    await waitFor(() => expect(speciesSearches().length).toBeGreaterThan(0))
+    expect(plantInserts()).toHaveLength(0)
+    await user.click(submitButton())
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'La naranja del mercado',
+      genus_id: GENERA.cattleya.id,
+      type: 'unknown',
+      origin: 'Feria de Lima',
+    })
+  })
+
+  it('sin conexión no se busca en el catálogo; al volver se comprueba el nombre y el exacto se enlaza solo', async () => {
+    speciesRows = [AMABILIS]
+    const user = userEvent.setup()
+    await renderPage()
+    goOffline()
+    const before = speciesSearches().length
+    await user.type(nameInput(), 'Phalaenopsis amabilis')
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(screen.queryByText(PLANT_FORM_TEXT.namePendingHint)).toBeNull()
+    expect(screen.getByText(PLANT_FORM_TEXT.nameOfflineHint)).toBeVisible()
+    expect(speciesSearches()).toHaveLength(before)
+
+    goOnline()
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    expect(chip('Phalaenopsis')).toHaveAttribute('aria-disabled', 'true')
+    expect(
+      screen.getByText('Enlazada con Phalaenopsis amabilis, del catálogo.'),
+    ).toBeInTheDocument()
+  })
+
+  it('al volver, lo que la persona eligió sin conexión no cambia: si el género o el tipo no son los de la especie exacta, se ofrece', async () => {
+    speciesRows = [AMABILIS]
+    const user = userEvent.setup()
+    await renderPage()
+    goOffline()
+    await user.type(nameInput(), 'Phalaenopsis amabilis')
+    await user.click(
+      within(typeGroup()).getByRole('button', { name: 'Híbrido' }),
+    )
+
+    goOnline()
+    expect(
+      await screen.findByRole('button', {
+        name: 'Elegir Phalaenopsis amabilis',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    expect(
+      within(typeGroup()).getByRole('button', { name: 'Híbrido' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('si al abrir el registro hay un borrador y no hay conexión, se retoma igual; los géneros salen de la colección', async () => {
+    const user = userEvent.setup()
+    const view = await renderPage()
+    await user.type(nameInput(), 'Stanhopea')
+    view.unmount()
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    fetchMock.mockImplementation(() =>
+      Promise.reject(new TypeError('Failed to fetch')),
+    )
+    clearQuickAccessGeneraCache()
+    await renderPage(
+      [plant({ genus: GENERA.masdevallia, species: null })],
+      '/coleccion/nueva',
+      { form: false },
+    )
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.draftRestored),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('Stanhopea')
+    expect(nameInput()).toBeEnabled()
+    expect(screen.getByText(offlineSaved)).toBeInTheDocument()
+    // Sin los géneros frecuentes (no cargaron), los de la colección.
+    await user.click(
+      await within(genusGroup()).findByRole('button', { name: 'Masdevallia' }),
+    )
+    expect(storedDraft()?.values.genus).toEqual(GENERA.masdevallia)
+  })
+
+  it('sin conexión con el formulario vacío, dice que lo que se complete se guardará', async () => {
+    await renderPage()
+    goOffline()
+    expect(await screen.findByText(offlineEmpty)).toBeInTheDocument()
+    expect(nameInput()).toBeEnabled()
+  })
+
+  it('si el dispositivo no puede guardar el borrador, lo dice', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Lleno', 'QuotaExceededError')
+    })
+    goOffline()
+    await user.type(nameInput(), 'Stanhopea')
+    expect(
+      await screen.findByText(
+        `${PLANT_FORM_TEXT.offlineTitle} ${PLANT_FORM_TEXT.draftNotSavedHere(PLANT_FORM_TEXT.whenOnline)}`,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('con la sesión sin confirmar (con red), se completa igual y el envío espera a que se confirme', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/coleccion/nueva']}>
+        <CollectionProvider source={source}>
+          <SessionUnverifiedContext.Provider value>
+            <Routes>
+              <Route path="/coleccion/nueva" element={<NewPlantPage />} />
+            </Routes>
+          </SessionUnverifiedContext.Provider>
+        </CollectionProvider>
+      </MemoryRouter>,
+    )
+    await user.type(
+      await screen.findByRole('combobox', { name: 'Nombre' }),
+      'Sta',
+    )
+    const notice = `${PLANT_FORM_TEXT.unverifiedTitle} ${PLANT_FORM_TEXT.draftSavedHere(PLANT_FORM_TEXT.whenVerified)}`
+    expect(await screen.findByText(notice)).toBeInTheDocument()
+    expect(submitButton()).toHaveAttribute('aria-disabled', 'true')
+    expect(submitButton()).toHaveAccessibleDescription(notice)
   })
 })
