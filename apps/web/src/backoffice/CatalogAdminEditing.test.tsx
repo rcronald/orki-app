@@ -180,6 +180,12 @@ function requestsTo(path: string): SentRequest[] {
 type Handler = (request: SentRequest) => Promise<Response>
 let handlers: Record<string, Handler>
 
+/** Páginas llenas de 50 especies, de 120 en total. */
+const fullPages: Handler = ({ body }) =>
+  body.after_id === speciesId(50)
+    ? jsonResponse(listPage(51, 100, 120))
+    : jsonResponse(listPage(1, 50, 120))
+
 // Cada prueba encadena varias peticiones (guardar y volver a leer): con toda la
 // suite en marcha, el segundo de espera por defecto se queda corto.
 const defaultTimeout = getConfig().asyncUtilTimeout
@@ -190,10 +196,12 @@ beforeEach(() => {
   document.documentElement.lang = 'es'
   handlers = {
     'rpc/catalog_summary': () => jsonResponse([SUMMARY]),
-    'rpc/list_catalog_species': ({ body }) =>
-      body.after_id === speciesId(50)
-        ? jsonResponse(listPage(51, 100, 120))
-        : jsonResponse(listPage(1, 50, 120)),
+    // Una página corta: con 50 filas, la página tenía casi mil nodos que
+    // recorrían cada consulta, cada pintado y cada pasada de axe; con el
+    // equipo cargado, las pruebas largas agotaban el tiempo (#311). La tabla
+    // llena la prueban CatalogAdminPage.test.tsx y, aquí, la selección de la
+    // página entera.
+    'rpc/list_catalog_species': () => jsonResponse(listPage(1, 5, 5)),
     'rpc/count_species_plants': () => jsonResponse(3),
     'rpc/species_history': () => jsonResponse([]),
     'rpc/search_genera': () =>
@@ -287,10 +295,6 @@ describe('Backoffice: escritura de especies', () => {
           source_ref: null,
         }),
       )
-    // Una página corta: con 50 filas, la página tenía casi mil nodos y cada
-    // consulta, pulsación y pasada de axe los recorría; con el equipo cargado
-    // agotaba el tiempo (#311). La tabla llena la prueban las demás.
-    handlers['rpc/list_catalog_species'] = () => jsonResponse(listPage(1, 5, 5))
     const user = userEvent.setup()
     renderAt('?estado=validated')
     await waitForTable()
@@ -628,6 +632,7 @@ describe('Backoffice: escritura de especies', () => {
   })
 
   it('lote: seleccionar la página entera, y cambiar de página la vacía', async () => {
+    handlers['rpc/list_catalog_species'] = fullPages
     const user = userEvent.setup()
     renderAt()
     await waitForTable()
