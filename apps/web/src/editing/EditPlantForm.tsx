@@ -95,6 +95,7 @@ import {
   type NewPhotoEntry,
   type PhotoEntry,
 } from '../registration/usePhotoEntries.ts'
+import { usePlantFieldFocus } from '../registration/usePlantFieldFocus.ts'
 import { useQuickGenera } from '../registration/useQuickGenera.ts'
 import { PATHS, plantEditPath, signInPathFor } from '../routes/paths.ts'
 import {
@@ -512,44 +513,17 @@ export function EditPlantForm({
 
   // Foco de los campos -----------------------------------------------------------
   const offlineId = useId()
-  const nameRef = useRef<HTMLInputElement>(null)
-  const genusRef = useRef<HTMLDivElement>(null)
-  const typeRef = useRef<HTMLDivElement>(null)
-  const dateRef = useRef<HTMLInputElement>(null)
-  const originRef = useRef<HTMLInputElement>(null)
-  const locationRef = useRef<HTMLInputElement>(null)
-  const nicknameRef = useRef<HTMLInputElement>(null)
+  const {
+    nameRef,
+    genusRef,
+    typeRef,
+    dateRef,
+    originRef,
+    locationRef,
+    nicknameRef,
+    focusField,
+  } = usePlantFieldFocus(values.otherGenusOpen)
   const notesRef = useRef<HTMLTextAreaElement>(null)
-
-  const focusField = (field: PlantFormField) => {
-    switch (field) {
-      case 'name':
-        nameRef.current?.focus()
-        return
-      case 'genus':
-        genusRef.current
-          ?.querySelector<HTMLElement>(
-            values.otherGenusOpen ? 'input' : 'button',
-          )
-          ?.focus()
-        return
-      case 'type':
-        typeRef.current?.querySelector<HTMLElement>('button')?.focus()
-        return
-      case 'acquiredOn':
-        dateRef.current?.focus()
-        return
-      case 'origin':
-        originRef.current?.focus()
-        return
-      case 'location':
-        locationRef.current?.focus()
-        return
-      case 'nickname':
-        nicknameRef.current?.focus()
-        return
-    }
-  }
 
   // Fotos: acciones ------------------------------------------------------------------
   const setUpload = (key: string, upload: NewPhotoEntry['upload']) =>

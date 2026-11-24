@@ -82,7 +82,6 @@ import {
   type FormGenus,
   type FormSpecies,
   type NewPlantInsert,
-  type PlantFormField,
   type PlantFormValues,
 } from './form-state.ts'
 import { GenusField, type QuickGeneraState } from './GenusField.tsx'
@@ -106,6 +105,7 @@ import {
 } from './texts.ts'
 import { SpeciesPreview, type LoadReferencePhoto } from './SpeciesPreview.tsx'
 import { useDeducedGenus } from './useDeducedGenus.ts'
+import { usePlantFieldFocus } from './usePlantFieldFocus.ts'
 import { useQuickGenera } from './useQuickGenera.ts'
 import {
   isNewEntry,
@@ -837,7 +837,16 @@ function PlantFormBody(props: PlantFormBodyProps) {
 
   const offlineId = useId()
   const formRef = useRef<HTMLFormElement>(null)
-  const nameRef = useRef<HTMLInputElement>(null)
+  const {
+    nameRef,
+    genusRef,
+    typeRef,
+    dateRef,
+    originRef,
+    locationRef,
+    nicknameRef,
+    focusField,
+  } = usePlantFieldFocus(values.otherGenusOpen)
 
   // Después del efecto de Page, que lleva el foco al título al navegar. Este
   // componente va dentro de Page y su efecto corre antes que el de Page (en
@@ -866,7 +875,8 @@ function PlantFormBody(props: PlantFormBodyProps) {
       }
       nameRef.current?.focus()
     })
-  }, [autoFocusName, nameDisabled, focusNameOnMount])
+    // nameRef no cambia: es una referencia de usePlantFieldFocus.
+  }, [autoFocusName, nameDisabled, focusNameOnMount, nameRef])
 
   // Nombre exacto (#280): si se envía mientras aún se busca el nombre (Enter
   // justo después de escribirlo), el guardado espera a saber si es una especie
@@ -896,12 +906,6 @@ function PlantFormBody(props: PlantFormBodyProps) {
     deducedGenus.forget()
     dispatch(action)
   }
-  const genusRef = useRef<HTMLDivElement>(null)
-  const typeRef = useRef<HTMLDivElement>(null)
-  const dateRef = useRef<HTMLInputElement>(null)
-  const originRef = useRef<HTMLInputElement>(null)
-  const locationRef = useRef<HTMLInputElement>(null)
-  const nicknameRef = useRef<HTMLInputElement>(null)
 
   const today = localDateString(now())
   // Sin validar mientras se escribe: los errores aparecen al intentar
@@ -909,37 +913,6 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const errors = submitted ? validatePlantForm(values, today) : {}
   const saving = save.status === 'saving'
   const locked = values.species !== null
-
-  const focusField = (field: PlantFormField) => {
-    switch (field) {
-      case 'name':
-        nameRef.current?.focus()
-        return
-      case 'genus':
-        // El buscador de "Otro" si está abierto; si no, el primer chip.
-        genusRef.current
-          ?.querySelector<HTMLElement>(
-            values.otherGenusOpen ? 'input' : 'button',
-          )
-          ?.focus()
-        return
-      case 'type':
-        typeRef.current?.querySelector<HTMLElement>('button')?.focus()
-        return
-      case 'acquiredOn':
-        dateRef.current?.focus()
-        return
-      case 'origin':
-        originRef.current?.focus()
-        return
-      case 'location':
-        locationRef.current?.focus()
-        return
-      case 'nickname':
-        nicknameRef.current?.focus()
-        return
-    }
-  }
 
   /** Guarda en el dispositivo las fotos que aún quedan por subir. */
   const savePending = (): Promise<boolean> => {
