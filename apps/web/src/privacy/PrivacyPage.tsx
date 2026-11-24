@@ -35,6 +35,10 @@ import {
 // dónde, que solo las ve su dueño (tampoco el equipo del catálogo), que la
 // bitácora no se guarda en el dispositivo, que no va en el CSV y cómo se
 // borran (el registro, la planta o la cuenta).
+// Con el #284 se añadieron las fotos de una planta ya registrada que no
+// llegaron a subirse (qué, para qué, cuándo se borran y que caducan a los
+// siete días). Pendiente de aprobar por el responsable: hasta entonces no
+// cambia la fecha de arriba.
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
 // aprobado.
 //
@@ -251,6 +255,14 @@ function sections(state: unknown): TextPageSection[] {
               con sus fotos si las elegiste, para no perderlos si se recarga la
               página o te quedas sin conexión. Cada uno se borra al registrarla
               o al descartarlo, y caduca a las 24 horas de su último cambio.
+            </li>
+            <li>
+              Las fotos de una planta ya registrada que no llegaron a subirse
+              (por ejemplo, si saliste de la pantalla, recargaste la página o te
+              quedaste sin conexión mientras subían), para que puedas subirlas
+              desde su ficha. Se borran al subirlas o al descartarlas, si se
+              entra con otra cuenta en este dispositivo y al eliminar tu cuenta,
+              y caducan a los siete días.
             </li>
             <li>Cómo prefieres ver el inventario (lista o cuadrícula).</li>
             <li>
