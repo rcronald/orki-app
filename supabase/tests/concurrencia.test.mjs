@@ -16,7 +16,8 @@
 // verdad: la base entera se borra al terminar.
 //
 // Usa el mismo servidor que npm run db:test: ORKI_TEST_DB_URL o un clúster temporal (ver
-// scripts/db-desechable/index.mjs y la sección del README).
+// scripts/db-desechable/index.mjs y «Pruebas de la base de datos» en
+// docs/operacion/base-de-datos.md).
 
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
