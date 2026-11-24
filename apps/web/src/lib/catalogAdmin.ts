@@ -252,7 +252,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 /**
- * Clasifica el `error` de supabase-js: cancelada, sin token de sesión, sin
+ * Clasifica el `error` de postgrest-js: cancelada, sin token de sesión, sin
  * respuesta (estado 0), token rechazado (401), sin permiso (código 42501 de
  * Postgres) o fallo. También la usan las escrituras (catalogWrites.ts).
  */

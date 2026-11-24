@@ -177,7 +177,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 /**
- * Clasifica el `error` que devuelve supabase-js. Con status 0 la petición no
+ * Clasifica el `error` que devuelve postgrest-js. Con status 0 la petición no
  * obtuvo respuesta (fetch falló): sin conexión si el navegador lo sabe, si no
  * fallo de red. Si faltó el token de una sesión iniciada por estar sin
  * conexión, también es "sin conexión".
@@ -199,7 +199,7 @@ function toSearchError(
 }
 
 /**
- * Carga el cliente. Si no llega (por ejemplo, el chunk de supabase-js no se
+ * Carga el cliente. Si no llega (por ejemplo, el chunk del cliente de Supabase no se
  * pudo descargar), el error es de conexión o de red.
  */
 async function loadClient(signal: AbortSignal | undefined) {

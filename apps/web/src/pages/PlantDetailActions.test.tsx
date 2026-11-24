@@ -20,7 +20,7 @@ vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
 // Baja, reactivación y eliminación definitiva desde el detalle (#16), dentro
 // de «Gestionar planta» desde el #265, y las notas de la ficha (#265), con la
-// app real hasta supabase-js y PostgREST y Storage en memoria.
+// app real hasta el cliente de Supabase y PostgREST y Storage en memoria.
 
 const USER = 'user_prueba'
 const AMABILIS_ID = '6f1c2a4e-8b3d-4e5f-9a7b-0c1d2e3f4a5b'

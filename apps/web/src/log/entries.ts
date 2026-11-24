@@ -139,7 +139,7 @@ export function createSupabasePlantLogEntries({
     try {
       return await getClient()
     } catch (error) {
-      // El chunk de supabase-js no llegó o la app no se inicializó.
+      // El chunk del cliente de Supabase no llegó o la app no se inicializó.
       throw new PlantLogError(
         navigator.onLine === false ? 'offline' : 'failed',
         { cause: error },

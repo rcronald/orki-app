@@ -7,12 +7,12 @@ import { PLANT_PHOTOS_BUCKET, type PlantPhotoType } from './paths.ts'
 
 // Acceso al bucket de fotos de plantas (#82, #83) detrás de una interfaz
 // mínima, PhotoStorage: la subida, la lectura y el borrado no saben de
-// supabase-js, y las pruebas y la página de muestra pasan un doble.
+// storage-js, y las pruebas y la página de muestra pasan un doble.
 //
 // Lo comprobado en la documentación de supabase-js Storage (referencia y
 // tipos de @supabase/storage-js 2.119, 21 de noviembre de 2026):
 // - upload(path, body, { cacheControl, contentType, upsert }): con un Blob,
-//   supabase-js envía un FormData; el campo cacheControl va en el formulario
+//   storage-js envía un FormData; el campo cacheControl va en el formulario
 //   y el tipo de contenido lo toma Storage de la parte del archivo, es decir,
 //   del type del Blob (contentType solo se usa con cuerpos que no son Blob).
 //   Por eso se sube siempre un Blob con el type correcto. cacheControl se
@@ -125,7 +125,7 @@ interface StorageErrorLike {
 }
 
 /**
- * Motivo de un error de supabase-js Storage. Los rechazos del servidor
+ * Motivo de un error de storage-js. Los rechazos del servidor
  * (StorageApiError) son seguros: la operación no se aplicó. Un fallo de red
  * (StorageUnknownError con un TypeError de fetch) es incierto.
  */
@@ -222,7 +222,7 @@ interface SupabasePhotoStorageOptions {
 
 const LIST_PAGE = 100
 
-/** Implementación con supabase-js y el cliente compartido de la app. */
+/** Implementación con storage-js y el cliente compartido de la app. */
 export function createSupabasePhotoStorage({
   getClient = getSupabase,
 }: SupabasePhotoStorageOptions = {}): PhotoStorage {
@@ -231,7 +231,7 @@ export function createSupabasePhotoStorage({
     try {
       client = await getClient()
     } catch (error) {
-      // El chunk de supabase-js no llegó o la app no se inicializó.
+      // El chunk del cliente de Supabase no llegó o la app no se inicializó.
       throw new PhotoStorageError(
         navigator.onLine === false ? 'offline' : 'failed',
         { cause: error },

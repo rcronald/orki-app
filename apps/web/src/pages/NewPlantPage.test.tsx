@@ -88,7 +88,7 @@ const draftPhotos = appDraftPhotoBackend() as ReturnType<
   typeof createMemoryDraftPhotoBackend
 >
 
-// Pantalla de registro con la app real hasta supabase-js; solo fetch está
+// Pantalla de registro con la app real hasta el cliente de Supabase; solo fetch está
 // simulado (PostgREST en memoria): géneros de acceso rápido, las dos
 // búsquedas y la inserción en plants. La colección usa una fuente controlada.
 

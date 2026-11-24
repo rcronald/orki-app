@@ -112,7 +112,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 /**
- * Clasifica el `error` de supabase-js: con status 0 la petición no obtuvo
+ * Clasifica el `error` de postgrest-js: con status 0 la petición no obtuvo
  * respuesta (sin conexión si el navegador lo sabe; si no, fallo de red).
  */
 function toError(
