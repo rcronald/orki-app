@@ -88,13 +88,34 @@ describe('enlace al detalle', () => {
   })
 })
 
+describe('identificador', () => {
+  it('se ve bajo el nombre y describe la tarjeta sin cambiar su nombre', async () => {
+    const { source } = fakeSource()
+    renderCard(source, { ...withPhoto(), code: 'CAT-012' })
+    const card = screen.getByRole('article', {
+      name: 'Cattleya labiata',
+      description: 'Identificador CAT-012.',
+    })
+    expect(card).toHaveTextContent('CAT-012')
+    await expectNoAxeViolations()
+  })
+
+  it('sin identificador (una copia antigua), nada', () => {
+    const { source } = fakeSource()
+    renderCard(source, { ...withPhoto(), code: null })
+    const card = screen.getByRole('article', { name: 'Cattleya labiata' })
+    expect(card).not.toHaveAttribute('aria-describedby')
+    expect(card).not.toHaveTextContent('Identificador')
+  })
+})
+
 describe('número de fotos', () => {
   it('con más de una foto, «3 fotos» describe la tarjeta sin cambiar su nombre', async () => {
     const { source } = fakeSource()
     renderCard(source, { ...withPhoto(), photoCount: 3 })
     const card = screen.getByRole('article', {
       name: 'Cattleya labiata',
-      description: '3 fotos',
+      description: 'Identificador PHA-001. 3 fotos',
     })
     expect(card.querySelector('.orki-count')).toHaveTextContent('3')
     expect(

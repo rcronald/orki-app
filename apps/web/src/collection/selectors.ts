@@ -43,13 +43,16 @@ function searchTextOf(plant: CollectionPlant): string {
   if (text === undefined) {
     // Cada campo normalizado por separado y unidos con un salto de línea, que
     // la normalización nunca deja: una palabra de la búsqueda no puede casar
-    // con el final de un campo y el principio del siguiente.
+    // con el final de un campo y el principio del siguiente. El identificador
+    // no va aquí: se busca aparte, entero (ver codeTermsOf), para que «12» no
+    // encuentre PHA-012, CAT-120 y DEN-112.
     text = [
       plant.displayName,
       plant.enteredName,
       plant.genus.name,
       plant.nickname,
       plant.origin,
+      plant.location,
     ]
       .filter((field): field is string => field !== null)
       .map(normalizeSearchText)
@@ -108,6 +111,81 @@ function matchesWithTypos(
   return true
 }
 
+// Búsqueda por identificador (#292) ------------------------------------------
+//
+// El identificador es «CAT-012» (#264): tres letras y un correlativo de al
+// menos tres cifras. Una palabra de la búsqueda (ya normalizada: minúsculas,
+// sin tildes) cuenta como identificador si son tres letras y un número, con
+// un guion, un espacio o nada entre medio: «CAT-012», «cat-12», «cat 12» y
+// «CAT012» son el mismo, y el número vale por su valor, sin los ceros de
+// delante. Encuentra solo la planta con ese identificador exacto: «cat 1» no
+// encuentra CAT-012 ni CAT-100. Un número suelto («12») no es un
+// identificador y se busca como texto en los demás campos, donde el
+// identificador no está. Mientras se escribe, «cat-» (tres letras y el guion,
+// al final de la búsqueda) enseña todas las de ese prefijo.
+
+/** Un identificador en la búsqueda: el prefijo y, si lo hay, el número. */
+interface CodeTerm {
+  prefix: string
+  number: number | null
+}
+
+const CODE_TERMS = /(?:^| )([a-z]{3})[ -]?(\d+)(?= |$)/g
+const CODE_PREFIX_AT_END = /(?:^| )([a-z]{3})-$/
+const PLANT_CODE = /^([a-z]{3})-(\d+)$/
+
+/**
+ * Los identificadores de una búsqueda normalizada y lo que queda de ella sin
+ * ellos, para buscarlo como texto.
+ */
+function codeTermsOf(normalized: string): {
+  terms: CodeTerm[]
+  rest: string
+} {
+  const terms: CodeTerm[] = []
+  let rest = normalized.replace(CODE_TERMS, (_match, prefix, digits) => {
+    terms.push({ prefix: prefix as string, number: Number(digits) })
+    return ' '
+  })
+  rest = rest.replace(CODE_PREFIX_AT_END, (_match, prefix) => {
+    terms.push({ prefix: prefix as string, number: null })
+    return ' '
+  })
+  return { terms, rest }
+}
+
+/** El identificador de una planta, partido: «CAT-012» es cat y 12. */
+interface PlantCode {
+  prefix: string
+  number: number
+}
+
+const plantCodes = new WeakMap<CollectionPlant, PlantCode | null>()
+
+/** El identificador de la planta partido; null si no lo tiene (copia antigua). */
+function plantCodeOf(plant: CollectionPlant): PlantCode | null {
+  let code = plantCodes.get(plant)
+  if (code === undefined) {
+    const parts =
+      plant.code === null
+        ? null
+        : PLANT_CODE.exec(normalizeSearchText(plant.code))
+    code = parts ? { prefix: parts[1], number: Number(parts[2]) } : null
+    plantCodes.set(plant, code)
+  }
+  return code
+}
+
+function matchesCode(plant: CollectionPlant, terms: readonly CodeTerm[]) {
+  const code = plantCodeOf(plant)
+  if (code === null) return false
+  return terms.some(
+    (term) =>
+      term.prefix === code.prefix &&
+      (term.number === null || term.number === code.number),
+  )
+}
+
 export interface TextFilterOptions extends StatusOptions {
   /**
    * Las coincidencias de "¿Ya la tengo?" por nombre, por id de planta
@@ -118,11 +196,16 @@ export interface TextFilterOptions extends StatusOptions {
 
 /**
  * Filtra por texto sobre el nombre mostrado, el nombre ingresado, el género, el
- * apodo y el origen, sin distinguir mayúsculas, tildes ni el signo de híbrido
- * (ver normalize.ts). Cada palabra de la búsqueda tiene que aparecer en alguno
- * de esos campos, en cualquier posición: "phal amab" encuentra "Phalaenopsis
- * amabilis" y "amabilis vivero" la encuentra si su origen es "Vivero Sol". Una
- * búsqueda vacía (o que se queda vacía al normalizar) no filtra por texto.
+ * apodo, el origen y la ubicación, sin distinguir mayúsculas, tildes ni el
+ * signo de híbrido (ver normalize.ts). Cada palabra de la búsqueda tiene que
+ * aparecer en alguno de esos campos, en cualquier posición: "phal amab"
+ * encuentra "Phalaenopsis amabilis" y "amabilis vivero" la encuentra si su
+ * origen es "Vivero Sol". Una búsqueda vacía (o que se queda vacía al
+ * normalizar) no filtra por texto.
+ *
+ * Encuentra también por el identificador («CAT-012», «cat 12», «cat012»; la
+ * regla está en codeTermsOf), solo entero: es una búsqueda del inventario,
+ * no de nombres, y no la usa "¿Ya la tengo?" (ownership.ts no pasa por aquí).
  *
  * Con nameMatches, coinciden también las plantas que "¿Ya la tengo?" encuentra
  * por sus nombres, entre ellos los sinónimos y nombres comunes de su especie
@@ -143,8 +226,25 @@ export function filterByText(
   { nameMatches, ...options }: TextFilterOptions = {},
 ): readonly CollectionPlant[] {
   const candidates = plantsByStatus(plants, options)
-  const words = normalizeSearchText(query).split(' ').filter(Boolean)
+  const normalized = normalizeSearchText(query)
+  const words = normalized.split(' ').filter(Boolean)
   if (words.length === 0) return candidates
+
+  // Con un identificador, las plantas que lo tienen (con varios, las que
+  // tienen cualquiera de ellos) y en las que el resto de la búsqueda aparece
+  // tal cual. Si no hay ninguna, se busca todo como texto: un nombre que
+  // lleve «abc 12» se sigue encontrando.
+  const codes = codeTermsOf(normalized)
+  if (codes.terms.length > 0) {
+    const rest = codes.rest.split(' ').filter(Boolean)
+    const byCode = candidates.filter((plant) => {
+      if (!matchesCode(plant, codes.terms)) return false
+      const text = searchTextOf(plant)
+      return rest.every((word) => text.includes(word))
+    })
+    if (byCode.length > 0) return byCode
+  }
+
   const byName = (plant: CollectionPlant) => nameMatches?.get(plant.id)?.quality
   const matches = candidates.filter((plant) => {
     const quality = byName(plant)
@@ -178,28 +278,118 @@ export function compareNames(a: string, b: string): number {
 }
 
 /**
+ * Órdenes de la lista (#292): las más recientes (por fecha de alta, el de
+ * siempre), por nombre (A–Z) y por fecha de adquisición (la más reciente
+ * primero). Sin el inverso de ninguno: para «la más antigua» basta bajar al
+ * final de la lista.
+ */
+export type PlantSort = 'newest' | 'name' | 'acquired'
+
+export const PLANT_SORTS: readonly PlantSort[] = ['newest', 'name', 'acquired']
+
+export function isPlantSort(value: unknown): value is PlantSort {
+  return PLANT_SORTS.includes(value as PlantSort)
+}
+
+// Claves de orden por planta, calculadas una vez por objeto (como el texto
+// de búsqueda): con 2000 plantas, ordenar compara unas 22 000 veces y no
+// conviene normalizar el nombre ni leer la fecha en cada comparación.
+const nameKeys = new WeakMap<CollectionPlant, string>()
+const createdTimes = new WeakMap<CollectionPlant, number>()
+
+function nameKeyOf(plant: CollectionPlant): string {
+  let key = nameKeys.get(plant)
+  if (key === undefined) {
+    key = sortKey(plant.displayName)
+    nameKeys.set(plant, key)
+  }
+  return key
+}
+
+function createdTimeOf(plant: CollectionPlant): number {
+  let time = createdTimes.get(plant)
+  if (time === undefined) {
+    time = Date.parse(plant.createdAt)
+    createdTimes.set(plant, time)
+  }
+  return time
+}
+
+/**
+ * Por identificador, en orden natural (PHA-002 antes que PHA-010); las que
+ * no lo tienen (copia antigua), al final.
+ */
+function compareCodes(a: CollectionPlant, b: CollectionPlant): number {
+  const codeA = plantCodeOf(a)
+  const codeB = plantCodeOf(b)
+  if (codeA === null || codeB === null) {
+    return codeA === codeB ? 0 : codeA === null ? 1 : -1
+  }
+  return compareIds(codeA.prefix, codeB.prefix) || codeA.number - codeB.number
+}
+
+function byName(a: CollectionPlant, b: CollectionPlant): number {
+  return (
+    collator.compare(nameKeyOf(a), nameKeyOf(b)) ||
+    compareCodes(a, b) ||
+    compareIds(a.id, b.id)
+  )
+}
+
+function byNewest(a: CollectionPlant, b: CollectionPlant): number {
+  return createdTimeOf(b) - createdTimeOf(a) || compareIds(a.id, b.id)
+}
+
+// acquiredOn es "AAAA-MM-DD": se compara como texto. Mismo día: la dada de
+// alta más tarde primero.
+function byAcquired(a: CollectionPlant, b: CollectionPlant): number {
+  return compareIds(b.acquiredOn, a.acquiredOn) || byNewest(a, b)
+}
+
+const COMPARATORS: Record<
+  PlantSort,
+  (a: CollectionPlant, b: CollectionPlant) => number
+> = {
+  newest: byNewest,
+  name: byName,
+  acquired: byAcquired,
+}
+
+/**
  * Orden alfabético por nombre mostrado, ignorando el signo de híbrido, las
  * tildes y las mayúsculas ("× Rhyncholaeliocattleya" va con la R). Empates:
- * por id, para que el orden sea siempre el mismo.
+ * por identificador (PHA-001, PHA-002…) y después por id, para que el orden
+ * sea siempre el mismo.
  */
 export function sortByName(
   plants: readonly CollectionPlant[],
 ): CollectionPlant[] {
-  return plants.toSorted(
-    (a, b) =>
-      compareNames(a.displayName, b.displayName) || compareIds(a.id, b.id),
-  )
+  return plants.toSorted(byName)
 }
 
 /** Las más recientes primero, por fecha de alta. Empates: por id. */
 export function sortByNewest(
   plants: readonly CollectionPlant[],
 ): CollectionPlant[] {
-  return plants.toSorted(
-    (a, b) =>
-      Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
-      compareIds(a.id, b.id),
-  )
+  return plants.toSorted(byNewest)
+}
+
+/**
+ * Por fecha de adquisición, la más reciente primero. Empates (el mismo día):
+ * la dada de alta más tarde primero, y después por id.
+ */
+export function sortByAcquired(
+  plants: readonly CollectionPlant[],
+): CollectionPlant[] {
+  return plants.toSorted(byAcquired)
+}
+
+/** Ordena según `sort`, sin cambiar la lista recibida. */
+export function sortPlants(
+  plants: readonly CollectionPlant[],
+  sort: PlantSort,
+): CollectionPlant[] {
+  return plants.toSorted(COMPARATORS[sort])
 }
 
 function compareIds(a: string, b: string): number {
@@ -208,9 +398,14 @@ function compareIds(a: string, b: string): number {
 
 // Agrupación y contadores ------------------------------------------------------
 
+export interface GroupOptions extends StatusOptions {
+  /** Orden de las plantas dentro de cada género; por defecto, por nombre. */
+  sort?: PlantSort
+}
+
 export interface GenusGroup {
   genus: CollectionGenus
-  /** Plantas del género, en orden alfabético por nombre mostrado. */
+  /** Plantas del género, en el orden pedido (por nombre si no se pide). */
   plants: CollectionPlant[]
   /** Número de plantas del grupo. */
   count: number
@@ -220,14 +415,15 @@ export interface GenusGroup {
  * Agrupa por género (el de la planta: el de su especie o, sin especie, el que
  * eligió el usuario). Los grupos van en orden alfabético por nombre del género,
  * ignorando el signo de híbrido, y las plantas de cada grupo por nombre
- * mostrado. Solo activas por defecto.
+ * mostrado o en el orden de `sort` (el que se eligió en «Mi colección»).
+ * Solo activas por defecto.
  */
 export function groupByGenus(
   plants: readonly CollectionPlant[],
-  options?: StatusOptions,
+  { sort = 'name', ...options }: GroupOptions = {},
 ): GenusGroup[] {
   const groups = new Map<string, GenusGroup>()
-  for (const plant of sortByName(plantsByStatus(plants, options))) {
+  for (const plant of sortPlants(plantsByStatus(plants, options), sort)) {
     const group = groups.get(plant.genus.id)
     if (group) {
       group.plants.push(plant)
