@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CATTLEYA,
   PHALAENOPSIS,
@@ -338,50 +338,95 @@ describe('rendimiento con colecciones grandes (#292)', () => {
     })
   }
 
-  /** Mediana de varias pasadas, con objetos nuevos (sin claves en caché). */
-  function median(run: () => void, times = 5): number {
-    const samples: number[] = []
-    for (let i = 0; i < times; i += 1) {
-      const start = performance.now()
-      run()
-      samples.push(performance.now() - start)
+  /**
+   * El trabajo de una operación, sin reloj (#311): cuenta cada lectura de un
+   * elemento de la lista o de un campo de una planta, y cada consulta a las
+   * cachés por planta (WeakMap), que es lo que hace cada comparación al
+   * ordenar. Con la máquina cargada el tiempo cambia y esto no; una regresión
+   * de complejidad (un bucle dentro de otro, normalizar en cada comparación)
+   * lo hace crecer más que la lista.
+   */
+  function work(
+    count: number,
+    run: (plants: readonly CollectionPlant[]) => unknown,
+    { warm }: { warm?: (plants: readonly CollectionPlant[]) => unknown } = {},
+  ): { fields: number; total: number } {
+    let fields = 0
+    const counting = <T extends object>(target: T): T =>
+      new Proxy(target, {
+        get(object, key, receiver) {
+          fields += 1
+          return Reflect.get(object, key, receiver) as unknown
+        },
+      })
+    const plants = counting(synthetic(count).map(counting))
+    warm?.(plants)
+    fields = 0
+    const lookups = vi.spyOn(WeakMap.prototype, 'get')
+    try {
+      run(plants)
+      return { fields, total: fields + lookups.mock.calls.length }
+    } finally {
+      lookups.mockRestore()
     }
-    return samples.sort((a, b) => a - b)[Math.floor(times / 2)]
   }
 
-  it.each([500, 2000])(
-    'con %i plantas, ordenar y buscar no se nota',
-    (count) => {
-      const times: Record<string, number> = {}
-      for (const sort of ['newest', 'name', 'acquired'] as const) {
-        times[sort] = median(() => sortPlants(synthetic(count), sort))
-      }
-      // Buscar la primera vez (plantas nuevas: sin el texto normalizado en
-      // caché) y las siguientes, como al escribir letra a letra.
-      const plants = synthetic(count)
-      for (const query of ['amabilis', 'PHA-013', 'estante 3', 'amabils']) {
-        times[`${query} (primera)`] = median(() =>
-          filterByText(synthetic(count), query),
-        )
-        times[query] = median(() => filterByText(plants, query))
-      }
-      times['crear las plantas'] = median(() => synthetic(count))
-      // Lo que mide la prueba, para el informe del issue.
-      console.info(
-        `${String(count)} plantas (ms; ordenar y «primera» incluyen crear las plantas):`,
-        JSON.stringify(
-          Object.fromEntries(
-            Object.entries(times).map(([key, ms]) => [key, ms.toFixed(1)]),
-          ),
-        ),
-      )
-      // Umbral holgado (un fotograma largo), para que la prueba no falle
-      // con la máquina cargada; los tiempos reales están muy por debajo.
-      for (const [key, ms] of Object.entries(times)) {
-        expect(ms, key).toBeLessThan(count <= 500 ? 50 : 150)
-      }
+  const OPERATIONS: Record<
+    string,
+    {
+      run: (plants: readonly CollectionPlant[]) => unknown
+      warm?: (plants: readonly CollectionPlant[]) => unknown
+      /**
+       * Lecturas de campos por planta como mucho, si cada una se calcula una
+       * vez.
+       */
+      perPlant?: number
+    }
+  > = {
+    // Por fecha de alta y por nombre, la clave de cada planta se calcula una
+    // vez, no en cada comparación (#292). Por fecha de adquisición se lee el
+    // campo al comparar: n·log n.
+    'ordenar (newest)': {
+      run: (plants) => sortPlants(plants, 'newest'),
+      perPlant: 3,
     },
-  )
+    'ordenar (name)': {
+      run: (plants) => sortPlants(plants, 'name'),
+      perPlant: 3,
+    },
+    'ordenar (acquired)': { run: (plants) => sortPlants(plants, 'acquired') },
+    'agrupar por género': { run: (plants) => groupByGenus(plants) },
+    ...Object.fromEntries(
+      ['amabilis', 'PHA-013', 'estante 3', 'amabils'].flatMap((query) => {
+        const search = (plants: readonly CollectionPlant[]) =>
+          filterByText(plants, query)
+        // La primera vez (plantas nuevas: sin el texto normalizado en caché)
+        // y las siguientes, como al escribir letra a letra, sin volver a leer
+        // los campos de cada planta.
+        return [
+          [`buscar «${query}» (primera)`, { run: search }],
+          [`buscar «${query}»`, { run: search, warm: search, perPlant: 3 }],
+        ]
+      }),
+    ),
+  }
+
+  it('el trabajo crece con la colección, no con su cuadrado', () => {
+    const report: Record<string, string> = {}
+    for (const [name, { run, warm, perPlant }] of Object.entries(OPERATIONS)) {
+      const small = work(500, run, { warm })
+      const large = work(2000, run, { warm })
+      report[name] = `${String(small.total)} → ${String(large.total)}`
+      // Cuatro veces más plantas: lineal es ×4 y n·log n, ×4,9; cuadrático
+      // sería ×16.
+      expect(large.total / small.total, name).toBeLessThan(6)
+      if (perPlant !== undefined) {
+        expect(large.fields / 2000, name).toBeLessThanOrEqual(perPlant)
+      }
+    }
+    // Lo que mide la prueba, para el informe del issue.
+    console.info('Trabajo con 500 → 2000 plantas:', JSON.stringify(report))
+  })
 })
 
 describe('filterByText', () => {

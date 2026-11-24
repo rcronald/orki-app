@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useState,
   type Dispatch,
   type ReactNode,
@@ -179,7 +180,10 @@ export function NameField({
         : offered !== null
           ? 'offer'
           : 'settled'
-  useEffect(() => {
+  // En la misma confirmación que lo que se ve (#311): con useEffect, el
+  // registro se enteraba en una tarea posterior y, con el equipo cargado, un
+  // Enter que llegara antes podía guardar sin esperar a enlazar la especie.
+  useLayoutEffect(() => {
     onResolutionChange?.(resolution)
   }, [resolution, onResolutionChange])
 

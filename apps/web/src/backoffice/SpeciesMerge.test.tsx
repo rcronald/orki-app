@@ -73,11 +73,17 @@ async function idOf(source: CatalogAdminSource, name: string) {
   return row.id
 }
 
-/** Busca la especie en la tabla y abre su detalle. */
+/**
+ * Busca la especie en la tabla y abre su detalle. El nombre se pega: letra a
+ * letra, cada pulsación vuelve a pintar la tabla entera y, con el equipo
+ * cargado, era la fase más lenta de estas pruebas (#311). Escribir en el
+ * buscador de la tabla lo prueba CatalogAdminPage.test.tsx.
+ */
 async function openDetail(user: User, name: string) {
   const [search] = await screen.findAllByRole('searchbox')
   if (!search) throw new Error('sin buscador')
-  await user.type(search, name)
+  await user.click(search)
+  await user.paste(name)
   await user.click(
     await screen.findByRole('button', { name }, { timeout: 3000 }),
   )
@@ -146,7 +152,9 @@ describe('Fusión de especies', () => {
     )
     await user.click(confirmButton(dialog))
     expect(mergeSpecies).not.toHaveBeenCalled()
-    await expectNoAxeViolations()
+    // axe, solo en el diálogo: la página entera con el diálogo abierto la
+    // revisa «sin conexión en la vista previa…» (#311).
+    await expectNoAxeViolations(dialog)
 
     // El buscador no ofrece la especie del detalle.
     await user.type(field, 'phal eq')
@@ -231,7 +239,7 @@ describe('Fusión de especies', () => {
     expect(confirmButton(dialog)).toHaveAccessibleDescription(
       'La fusión no se puede deshacer: «Phalaenopsis equestris» desaparecerá del catálogo.',
     )
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(dialog)
 
     // Fusionar: se cierra el diálogo y se abre la conservada.
     confirmButton(dialog).focus()
@@ -280,7 +288,9 @@ describe('Fusión de especies', () => {
     expect(
       await screen.findByText('Sinónimo: Phalaenopsis equestris'),
     ).toBeInTheDocument()
-    await expectNoAxeViolations()
+    // La conservada; la tabla con el nombre por el que coincide la revisa
+    // CatalogAdminPage.test.tsx en la página entera.
+    await expectNoAxeViolations(kept)
   })
 
   it('avisa si cambia el género y cuando las especies ya no existen ofrece salir', async () => {
@@ -304,7 +314,7 @@ describe('Fusión de especies', () => {
         'Atención: Cambia el género: las plantas de «Phalaenopsis equestris» pasarán de Phalaenopsis a Vanda.',
       ),
     )
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(dialog)
 
     // Otra persona borra la que se conserva antes de confirmar.
     await source.deleteSpecies(coerulea)
@@ -314,7 +324,7 @@ describe('Fusión de especies', () => {
       '«Vanda coerulea» ya no está en el catálogo: puede que otra persona la haya fusionado o borrado. No se cambió nada.',
     )
     expect(confirmButton(dialog)).toHaveAttribute('aria-disabled', 'true')
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(dialog)
     await user.click(
       within(gone).getByRole('button', { name: 'Elegir otra especie' }),
     )
