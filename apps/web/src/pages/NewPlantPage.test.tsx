@@ -503,10 +503,8 @@ async function renderPage(
   )
   // La colección del usuario (vacía si no se indica) y los géneros de acceso
   // rápido.
-  await act(async () => {
-    if (plants !== null) source.last().resolve(plants)
-    await Promise.resolve()
-  })
+  if (plants !== null) await source.respond(plants)
+  else await act(() => Promise.resolve())
   if (form) await screen.findByRole('button', { name: 'Phalaenopsis' })
   return view
 }
@@ -1957,20 +1955,14 @@ describe('NewPlantPage: aviso de duplicado (#88)', () => {
     await chooseAmabilis(user)
     expect(screen.queryByText(/^Ya tienes/)).toBeNull()
 
-    await act(async () => {
-      source.last().resolve([amabilisPlant()])
-      await Promise.resolve()
-    })
+    await source.respond([amabilisPlant()])
     expect(duplicateRegion()).toHaveTextContent('Ya tienes 1 ejemplar')
   })
 
   it('si la colección no se pudo leer, no hay aviso y el formulario funciona', async () => {
     const user = userEvent.setup()
     await renderPage(null)
-    await act(async () => {
-      source.last().reject(new Error('Fallo de la colección'))
-      await Promise.resolve()
-    })
+    await source.fail(new Error('Fallo de la colección'))
 
     await chooseAmabilis(user)
     expect(screen.queryByText(/^Ya tienes/)).toBeNull()

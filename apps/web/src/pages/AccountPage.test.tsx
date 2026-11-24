@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -239,10 +239,7 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
 
   async function withPlants(plants = PLANTS) {
     const source = renderAt('/cuenta')
-    await act(async () => {
-      source.last().resolve(plants)
-      await Promise.resolve()
-    })
+    await source.respond(plants)
     return source
   }
 
@@ -371,10 +368,7 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
   it('si la colección no carga, lo dice y deja volver a cargarla', async () => {
     const user = userEvent.setup()
     const source = renderAt('/cuenta')
-    await act(async () => {
-      source.last().reject(new Error('fallo'))
-      await Promise.resolve()
-    })
+    await source.fail(new Error('fallo'))
     expect(exportRow()).toHaveAccessibleName(
       'Exportar inventario a CSV No se pudo cargar tu colección. Vuelve a intentarlo.',
     )
@@ -382,10 +376,7 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
       screen.getByRole('button', { name: 'Volver a cargar la colección' }),
     )
     expect(source.loads).toHaveLength(2)
-    await act(async () => {
-      source.last().resolve(PLANTS)
-      await Promise.resolve()
-    })
+    await source.respond(PLANTS)
     expect(exportRow()).not.toHaveAttribute('aria-disabled')
   })
 

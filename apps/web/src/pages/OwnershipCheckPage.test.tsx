@@ -148,10 +148,7 @@ function renderAt(
 }
 
 async function resolveLast(plants: readonly CollectionPlant[] = PLANTS) {
-  await act(async () => {
-    source.last().resolve(plants)
-    await Promise.resolve()
-  })
+  await source.respond(plants)
 }
 
 async function settle() {
@@ -409,11 +406,7 @@ describe('OwnershipCheckPage', () => {
       })
       online = false
       renderAt(['/ya-la-tengo'], cached)
-      await settle()
-      await act(async () => {
-        source.last().reject(new CollectionLoadError('offline'))
-        await Promise.resolve()
-      })
+      await source.fail(new CollectionLoadError('offline'))
 
       const notice = screen.getAllByRole('status')[0]
       expect(notice).toHaveTextContent('Sin conexión')
@@ -441,11 +434,7 @@ describe('OwnershipCheckPage', () => {
       })
       online = false
       renderAt(['/ya-la-tengo'], cached)
-      await settle()
-      await act(async () => {
-        source.last().reject(new CollectionLoadError('offline'))
-        await Promise.resolve()
-      })
+      await source.fail(new CollectionLoadError('offline'))
 
       expect(answer()).toHaveTextContent('Sin copia disponible')
       expect(answer()).toHaveTextContent(/abre Mi colección una vez/)
@@ -520,8 +509,8 @@ describe('OwnershipCheckPage', () => {
         onSaved: () => {},
       })
       const view = renderAt(['/ya-la-tengo'], cached)
-      await settle()
-      await respond(() => source.last().resolve(plants))
+      const load = await source.pending()
+      await respond(() => load.resolve(plants))
       expect(extras.calls).toHaveLength(1)
       return { ...extras, view }
     }
@@ -609,9 +598,9 @@ describe('OwnershipCheckPage', () => {
         onSaved: () => {},
       })
       renderAt(['/ya-la-tengo'], cached)
-      await settle()
+      const load = await source.pending()
       // Registrada después de la copia (desde otro dispositivo).
-      await respond(() => source.last().resolve(WITH_RLC))
+      await respond(() => load.resolve(WITH_RLC))
       await respond(() => extras.calls[0].reject(new TypeError('red')))
       await ask('Hsinying')
       expect(answer()).toHaveTextContent('Sí, la tienes')
@@ -642,10 +631,8 @@ describe('OwnershipCheckPage', () => {
       })
       online = false
       renderAt(['/ya-la-tengo'], cached)
-      await settle()
-      await respond(() =>
-        source.last().reject(new CollectionLoadError('offline')),
-      )
+      const load = await source.pending()
+      await respond(() => load.reject(new CollectionLoadError('offline')))
 
       await ask('Rlc. Hsinying')
       expect(answer()).not.toHaveTextContent('Aún no la tienes')
@@ -679,10 +666,8 @@ describe('OwnershipCheckPage', () => {
       })
       online = false
       renderAt(['/ya-la-tengo'], cached)
-      await settle()
-      await respond(() =>
-        source.last().reject(new CollectionLoadError('offline')),
-      )
+      const load = await source.pending()
+      await respond(() => load.reject(new CollectionLoadError('offline')))
       await ask('Vanda coerulea')
       expect(answer()).toHaveTextContent('No pudimos comprobarlo todo')
       expect(screen.queryByText(/Aún no la tienes/)).toBeNull()
@@ -805,11 +790,7 @@ describe('OwnershipCheckPage', () => {
       })
       online = false
       const view = renderAt(['/ya-la-tengo'], cached)
-      await settle()
-      await act(async () => {
-        source.last().reject(new CollectionLoadError('offline'))
-        await Promise.resolve()
-      })
+      await source.fail(new CollectionLoadError('offline'))
       await ask('Vanda coerulea')
       view.unmount()
       expect(recordProductEvent).toHaveBeenCalledTimes(1)

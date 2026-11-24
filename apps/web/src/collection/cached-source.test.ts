@@ -53,9 +53,13 @@ function load(
   return { promise, provided }
 }
 
-/** Deja correr las promesas pendientes (lecturas de la copia en memoria). */
-async function flush() {
-  for (let index = 0; index < 5; index += 1) await Promise.resolve()
+/** La copia guardada de "userId", cuando la tenga. */
+async function savedCopy(
+  storage: ReturnType<typeof setup>['storage'],
+  userId: string,
+  check: (copy: LocalCopy | null) => void,
+) {
+  await vi.waitFor(async () => check(await storage.read(userId)))
 }
 
 describe('fuente con copia local', () => {
@@ -67,7 +71,8 @@ describe('fuente con copia local', () => {
     source.setActiveUser('user_a')
 
     const { promise, provided } = load(source, 'user_a')
-    await flush()
+    // La copia se entrega antes de pedir la colección a la red.
+    const request = await network.pending()
     expect(provided).toEqual([old])
     expect(source.getInfo()).toMatchObject({
       userId: 'user_a',
@@ -75,9 +80,9 @@ describe('fuente con copia local', () => {
       unreachable: null,
     })
 
-    network.last().resolve(fresh)
+    request.resolve(fresh)
     await expect(promise).resolves.toEqual(fresh)
-    await flush()
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled())
     const saved = await storage.read('user_a')
     expect(saved?.plants).toEqual(fresh)
     expect(saved?.savedAt).toBe(NOW.toISOString())
@@ -88,23 +93,22 @@ describe('fuente con copia local', () => {
       savedAt: NOW.toISOString(),
       unreachable: null,
     })
-    expect(onSaved).toHaveBeenCalled()
   })
 
   it('entrega las plantas de la red sin esperar a los extras (#169)', async () => {
     let finishExtras: (extras: OwnershipExtras) => void = () => undefined
-    const { network, source } = setup({
-      fetchExtras: () =>
+    const fetchExtras = vi.fn<ExtrasFetcher>(
+      () =>
         new Promise<OwnershipExtras>((resolve) => {
           finishExtras = resolve
         }),
-    })
+    )
+    const { network, source } = setup({ fetchExtras })
     source.setActiveUser('user_a')
     const fresh = [plant({ id: 'nueva' })]
     const { promise, provided } = load(source, 'user_a')
-    await flush()
-    network.last().resolve(fresh)
-    await flush()
+    await network.respond(fresh)
+    await vi.waitFor(() => expect(fetchExtras).toHaveBeenCalled())
 
     // Los extras siguen pendientes y las plantas ya están entregadas.
     expect(provided).toEqual([fresh])
@@ -116,9 +120,9 @@ describe('fuente con copia local', () => {
     const { network, source } = setup()
     source.setActiveUser('user_a')
     const { promise, provided } = load(source, 'user_a')
-    await flush()
+    const request = await network.pending()
     expect(provided).toEqual([])
-    network.last().resolve([])
+    request.resolve([])
     await expect(promise).resolves.toEqual([])
   })
 
@@ -129,8 +133,7 @@ describe('fuente con copia local', () => {
     source.setActiveUser('user_a')
 
     const { promise } = load(source, 'user_a')
-    await flush()
-    network.last().reject(new CollectionLoadError('offline'))
+    await network.fail(new CollectionLoadError('offline'))
     await expect(promise).resolves.toEqual(old)
     expect(source.getInfo()).toMatchObject({
       savedAt: EARLIER,
@@ -145,8 +148,7 @@ describe('fuente con copia local', () => {
     const { network, source } = setup()
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
-    await flush()
-    network.last().reject(new CollectionLoadError('offline'))
+    await network.fail(new CollectionLoadError('offline'))
     await expect(promise).rejects.toMatchObject({ reason: 'offline' })
   })
 
@@ -155,8 +157,7 @@ describe('fuente con copia local', () => {
     await storage.write(copyOf('user_a', [plant()]))
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
-    await flush()
-    network.last().reject(new CollectionLoadError('session-ended'))
+    await network.fail(new CollectionLoadError('session-ended'))
     await expect(promise).rejects.toMatchObject({ reason: 'session-ended' })
   })
 
@@ -168,29 +169,32 @@ describe('fuente con copia local', () => {
     source.setActiveUser('user_a')
     const fresh = [plant({ id: 'nueva' })]
     const { promise } = load(source, 'user_a')
-    await flush()
-    network.last().resolve(fresh)
+    await network.respond(fresh)
     await expect(promise).resolves.toEqual(fresh)
-    await flush()
-    const saved = await storage.read('user_a')
-    expect(saved?.plants).toEqual(fresh)
-    expect(saved?.extras.speciesNames?.get('species-amabilis')).toHaveLength(1)
+    await savedCopy(storage, 'user_a', (saved) => {
+      expect(saved?.plants).toEqual(fresh)
+      expect(saved?.extras.speciesNames?.get('species-amabilis')).toHaveLength(
+        1,
+      )
+    })
   })
 
   it('save() guarda los cambios hechos en la app con la fecha de la última lectura', async () => {
     const { network, storage, source } = setup()
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
-    await flush()
-    network.last().resolve([plant({ id: 'una' })])
+    await network.respond([plant({ id: 'una' })])
     await promise
-    await flush()
+    await savedCopy(storage, 'user_a', (saved) =>
+      expect(saved?.plants).toHaveLength(1),
+    )
 
     const changed = [plant({ id: 'una' }), plant({ id: 'otra' })]
     source.save('user_a', changed)
-    await flush()
+    await savedCopy(storage, 'user_a', (saved) =>
+      expect(saved?.plants.map((item) => item.id)).toEqual(['una', 'otra']),
+    )
     const saved = await storage.read('user_a')
-    expect(saved?.plants.map((item) => item.id)).toEqual(['una', 'otra'])
     expect(saved?.savedAt).toBe(NOW.toISOString())
     expect(saved?.extras.genusAbbreviations?.size).toBe(1)
   })
@@ -200,26 +204,27 @@ describe('fuente con copia local', () => {
     await storage.write(copyOf('user_a', [plant()]))
     await storage.write(copyOf('user_b', [plant()]))
     source.setActiveUser('user_b')
-    await flush()
-    expect([...storage.copies.keys()]).toEqual(['user_b'])
+    await vi.waitFor(() =>
+      expect([...storage.copies.keys()]).toEqual(['user_b']),
+    )
 
     source.setActiveUser(null)
-    await flush()
-    expect(storage.copies.size).toBe(0)
+    await vi.waitFor(() => expect(storage.copies.size).toBe(0))
   })
 
   it('una lectura de otra cuenta que termina tarde no guarda su copia', async () => {
     const { network, storage, source } = setup()
+    const write = vi.spyOn(storage, 'write')
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
-    await flush()
+    const request = await network.pending()
     source.setActiveUser(null)
-    network.last().resolve([plant()])
+    request.resolve([plant()])
     await promise
-    await flush()
-    expect(storage.copies.size).toBe(0)
     source.save('user_a', [plant()])
-    await flush()
+    // Ni la lectura ni save() llegan a escribir: lo deciden antes del primer
+    // await (no hace falta esperar para saber que no escribirán).
+    expect(write).not.toHaveBeenCalled()
     expect(storage.copies.size).toBe(0)
   })
 
@@ -227,8 +232,7 @@ describe('fuente con copia local', () => {
     const { network, source } = setup()
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
-    await flush()
-    network.last().resolve([])
+    await network.respond([])
     await promise
     expect(source.getInfo()?.userId).toBe('user_a')
     const listener = vi.fn()
@@ -314,9 +318,8 @@ describe('fuente con copia local', () => {
         signal: new AbortController().signal,
         provide: () => seen.push(source.getInfo()?.extrasRequest),
       })
-      await flush()
-      network.last().resolve([AMABILIS])
-      await flush()
+      await network.respond([AMABILIS])
+      await vi.waitFor(() => expect(extras.calls).toHaveLength(1))
       expect(seen).toEqual(['loading'])
       expect(source.getInfo()?.extrasCoverage).toBeNull()
       expect(stateOf(source, [AMABILIS])).toBe('pending')
@@ -338,12 +341,12 @@ describe('fuente con copia local', () => {
       })
       source.setActiveUser('user_a')
       const { promise } = load(source, 'user_a')
-      await flush()
+      const request = await network.pending()
       // Con la copia, antes de la red: completos para sus plantas.
       expect(stateOf(source, [AMABILIS])).toBe('complete')
 
-      network.last().resolve([AMABILIS, RLC])
-      await flush()
+      request.resolve([AMABILIS, RLC])
+      await vi.waitFor(() => expect(extras.calls).toHaveLength(1))
       expect(stateOf(source, [AMABILIS, RLC])).toBe('pending')
       extras.calls[0].reject(new TypeError('red'))
       await expect(promise).resolves.toEqual([AMABILIS, RLC])
@@ -351,10 +354,10 @@ describe('fuente con copia local', () => {
       expect(stateOf(source, [AMABILIS, RLC])).toBe('failed')
       // Las plantas que ya estaban siguen completas.
       expect(stateOf(source, [AMABILIS])).toBe('complete')
-      await flush()
-      const saved = await storage.read('user_a')
-      expect(saved?.plants).toEqual([AMABILIS, RLC])
-      expect(saved?.extrasCoverage).toEqual(coverageOf([AMABILIS]))
+      await savedCopy(storage, 'user_a', (saved) => {
+        expect(saved?.plants).toEqual([AMABILIS, RLC])
+        expect(saved?.extrasCoverage).toEqual(coverageOf([AMABILIS]))
+      })
     })
 
     it('una copia de una versión anterior (sin cobertura) no da sus extras por completos', async () => {
@@ -362,9 +365,9 @@ describe('fuente con copia local', () => {
       await storage.write(copyOf('user_a', [AMABILIS]))
       source.setActiveUser('user_a')
       const { promise } = load(source, 'user_a')
-      await flush()
+      const request = await network.pending()
       expect(stateOf(source, [AMABILIS])).toBe('outdated')
-      network.last().reject(new CollectionLoadError('offline'))
+      request.reject(new CollectionLoadError('offline'))
       await promise
       expect(stateOf(source, [AMABILIS])).toBe('outdated')
     })
@@ -373,8 +376,7 @@ describe('fuente con copia local', () => {
       const { network, storage, source, fetchExtras } = setup()
       source.setActiveUser('user_a')
       const { promise } = load(source, 'user_a')
-      await flush()
-      network.last().resolve([AMABILIS])
+      await network.respond([AMABILIS])
       await promise
       vi.mocked(fetchExtras).mockClear()
 
@@ -389,9 +391,10 @@ describe('fuente con copia local', () => {
       expect(fetchExtras).toHaveBeenCalledTimes(1)
       expect(vi.mocked(fetchExtras).mock.calls[0][0]).toEqual([RLC])
       expect(stateOf(source, [AMABILIS, RLC])).toBe('pending')
-      await flush()
 
-      expect(stateOf(source, [AMABILIS, RLC])).toBe('complete')
+      await vi.waitFor(() =>
+        expect(stateOf(source, [AMABILIS, RLC])).toBe('complete'),
+      )
       const info = source.getInfo()
       expect(info?.extras.genusAbbreviations?.get('genus-rlc')).toEqual([
         'Rlc.',
@@ -400,13 +403,13 @@ describe('fuente con copia local', () => {
       expect(info?.extras.genusAbbreviations?.get('genus-phal')).toEqual([
         'Phal.',
       ])
-      await flush()
-      const saved = await storage.read('user_a')
-      expect(saved?.plants).toEqual([AMABILIS, RLC])
-      expect(saved?.extras.genusAbbreviations?.get('genus-rlc')).toEqual([
-        'Rlc.',
-      ])
-      expect(saved?.extrasCoverage).toEqual(coverageOf([AMABILIS, RLC]))
+      await savedCopy(storage, 'user_a', (saved) => {
+        expect(saved?.plants).toEqual([AMABILIS, RLC])
+        expect(saved?.extras.genusAbbreviations?.get('genus-rlc')).toEqual([
+          'Rlc.',
+        ])
+        expect(saved?.extrasCoverage).toEqual(coverageOf([AMABILIS, RLC]))
+      })
       // Completos: no pide nada más.
       source.ensureExtras('user_a', [AMABILIS, RLC])
       expect(fetchExtras).toHaveBeenCalledTimes(1)
@@ -417,9 +420,8 @@ describe('fuente con copia local', () => {
       const { network, source } = setup({ fetchExtras: extras.fetchExtras })
       source.setActiveUser('user_a')
       const { promise } = load(source, 'user_a')
-      await flush()
-      network.last().resolve([AMABILIS])
-      await flush()
+      await network.respond([AMABILIS])
+      await vi.waitFor(() => expect(extras.calls).toHaveLength(1))
       // En curso: no se piden dos veces.
       source.ensureExtras('user_a', [AMABILIS], { force: true })
       expect(extras.calls).toHaveLength(1)
@@ -436,8 +438,9 @@ describe('fuente con copia local', () => {
       expect(extras.calls).toHaveLength(2)
       expect(stateOf(source, [AMABILIS])).toBe('pending')
       extras.calls[1].resolve(EXTRAS)
-      await flush()
-      expect(stateOf(source, [AMABILIS])).toBe('complete')
+      await vi.waitFor(() =>
+        expect(stateOf(source, [AMABILIS])).toBe('complete'),
+      )
     })
 
     it('los extras pedidos para otra cuenta se descartan', async () => {
@@ -445,9 +448,8 @@ describe('fuente con copia local', () => {
       const { network, source } = setup({ fetchExtras: extras.fetchExtras })
       source.setActiveUser('user_a')
       const { promise } = load(source, 'user_a')
-      await flush()
-      network.last().resolve([AMABILIS])
-      await flush()
+      await network.respond([AMABILIS])
+      await vi.waitFor(() => expect(extras.calls).toHaveLength(1))
       extras.calls[0].resolve({})
       await promise
       source.save('user_a', [AMABILIS, RLC])
@@ -455,9 +457,15 @@ describe('fuente con copia local', () => {
       expect(extras.calls).toHaveLength(2)
 
       source.setActiveUser('user_b')
+      const listener = vi.fn()
+      source.subscribe(listener)
       extras.calls[1].resolve(EXTRAS)
-      await flush()
+      // La respuesta llega (la promesa ya se cumplió) y no cambia nada.
+      await expect(
+        extras.fetchExtras.mock.results[1]?.value,
+      ).resolves.toBeDefined()
       expect(source.getInfo()).toBeNull()
+      expect(listener).not.toHaveBeenCalled()
     })
   })
 })
