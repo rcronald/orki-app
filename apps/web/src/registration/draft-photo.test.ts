@@ -140,15 +140,28 @@ describe('foto pendiente del borrador', () => {
       })
     const unhandled = vi.fn()
     process.on('unhandledRejection', unhandled)
+    // Con temporizadores falsos, fake-indexeddb no avanza hasta que la prueba
+    // adelanta el reloj: al terminar, ya ha corrido todo lo que tenía en
+    // cola, también el aborto de la transacción, por cargado que esté el
+    // equipo (#311).
+    vi.useFakeTimers()
     try {
       const factory = new IDBFactory()
       const backend = createIndexedDbDraftPhotoBackend(() => factory)
-      expect(await writeDraftPhoto(backend, USER, draft())).toBe(true)
-      expect(await writeDraftPhoto(backend, USER, draft())).toBe(false)
-      // Da tiempo a que se notifique un rechazo sin atender.
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      const first = writeDraftPhoto(backend, USER, draft())
+      await vi.runAllTimersAsync()
+      expect(await first).toBe(true)
+      const second = writeDraftPhoto(backend, USER, draft())
+      await vi.runAllTimersAsync()
+      expect(await second).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+      // Node avisa de un rechazo sin atender al acabar la tarea en la que se
+      // produjo: basta con una tarea más, sin esperar ningún tiempo.
+      vi.useRealTimers()
+      await new Promise((resolve) => setTimeout(resolve, 0))
       expect(unhandled).not.toHaveBeenCalled()
     } finally {
+      vi.useRealTimers()
       process.off('unhandledRejection', unhandled)
       put.mockRestore()
     }
