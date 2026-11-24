@@ -195,6 +195,70 @@ export const PLANT_FORM_TEXT = {
     'Sin conexión no podemos buscar en el catálogo; al volver se comprobará el nombre.',
 } as const
 
+/**
+ * Fotos que quedaron por subir al registrar una planta (#284): el aviso al
+ * salir del registro con fotos sin subir, «Fotos pendientes de subir» en la
+ * ficha y el aviso del registro que lleva a ella.
+ */
+export const PENDING_UPLOAD_TEXT = {
+  leaveTitle: '¿Salir con fotos sin subir?',
+  leaveKept:
+    'Tu orquídea ya quedó registrada. Las fotos que faltan se quedan en este dispositivo y podrás subirlas desde su ficha.',
+  leaveLost:
+    'Tu orquídea ya quedó registrada, pero no pudimos guardar en este dispositivo las fotos que faltan: si sales, se perderán.',
+  leaveConfirm: 'Salir sin subirlas',
+  leaveStay: 'Seguir aquí',
+
+  title: 'Fotos pendientes de subir',
+  description: (count: number) =>
+    count === 1
+      ? 'Al registrar esta planta, 1 foto no llegó a subirse. Sigue guardada en este dispositivo.'
+      : `Al registrar esta planta, ${String(count)} fotos no llegaron a subirse. Siguen guardadas en este dispositivo.`,
+  listLabel: 'Fotos sin subir',
+  photoLabel: (index: number, total: number) =>
+    `Foto sin subir ${String(index + 1)} de ${String(total)}`,
+  /** La planta ya tiene seis: no cabe ninguna. */
+  noRoom: (max: number) =>
+    `La planta ya tiene ${String(max)} fotos, el máximo. Para subir estas, quita alguna desde «Editar planta» o descártalas.`,
+  /** Caben solo algunas. */
+  someRoom: (room: number, count: number, max: number) =>
+    `Caben ${String(room)} de estas ${String(count)}: el máximo es ${String(max)} por planta. Las demás seguirán aquí.`,
+  upload: 'Subir fotos',
+  uploadOne: 'Subir foto',
+  uploadingButton: 'Subiendo…',
+  uploading: (done: number, total: number) =>
+    `Subiendo las fotos… (${String(done)} de ${String(total)})`,
+  uploadCancel: 'Cancelar subida',
+  discard: 'Descartar fotos',
+  discardOne: 'Descartar foto',
+  discardTitle: '¿Descartar las fotos sin subir?',
+  discardDescription:
+    'Se borrarán de este dispositivo y no se añadirán a la planta. No se puede deshacer.',
+  discardKeep: 'Conservarlas',
+  uploaded: (count: number) =>
+    count === 1
+      ? 'Se subió la foto pendiente.'
+      : `Se subieron las ${String(count)} fotos pendientes.`,
+  /** Se subieron las que cabían; las demás siguen pendientes. */
+  uploadedSome: (count: number) =>
+    count === 1 ? 'Se subió 1 foto.' : `Se subieron ${String(count)} fotos.`,
+  discarded: 'Descartaste las fotos sin subir.',
+  failed: (count: number) =>
+    count === 1
+      ? 'No se pudo subir 1 foto.'
+      : `No se pudieron subir ${String(count)} fotos.`,
+  cancelled: 'Se canceló la subida.',
+  retryHint:
+    'Siguen guardadas en este dispositivo: puedes volver a intentarlo.',
+  /** El registro avisa de las de otra planta: «Quedaron 2 fotos sin subir de X.». */
+  noticeBefore: (count: number) =>
+    count === 1
+      ? 'Quedó 1 foto sin subir de '
+      : `Quedaron ${String(count)} fotos sin subir de `,
+  noticeAfter: '.',
+  noticeAction: 'Subirlas desde su ficha',
+} as const
+
 /** Avisos propios de la edición. */
 export const PLANT_EDIT_NOTICE_TEXT = {
   /** Al cambiar el nombre de una planta enlazada por uno que no es del catálogo. */

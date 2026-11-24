@@ -90,6 +90,17 @@ export interface LeaveGuard {
   dialog: ReactNode
 }
 
+/**
+ * Textos del diálogo de salir, si no son los de la edición: el registro con
+ * fotos por subir (#284).
+ */
+export interface LeaveGuardText {
+  title: string
+  description: ReactNode
+  confirm: string
+  stay: string
+}
+
 type Pending =
   | { kind: 'confirm'; proceed: () => void; stay: () => void }
   /** Se intentó salir durante el guardado: solo se avisa. */
@@ -98,16 +109,19 @@ type Pending =
 /**
  * Protege la edición de salir con cambios sin guardar. `partial`: un intento
  * de guardar ya dejó parte de los cambios en la base (el diálogo lo dice).
- * `busy`: hay un guardado en curso; mientras dure no se puede salir.
+ * `busy`: hay un guardado en curso; mientras dure no se puede salir. `text`:
+ * otros textos para el diálogo (por defecto, los de la edición).
  */
 export function useLeaveGuard({
   dirty,
   partial = false,
   busy = false,
+  text,
 }: {
   dirty: boolean
   partial?: boolean
   busy?: boolean
+  text?: LeaveGuardText
 }): LeaveGuard {
   const navigate = useNavigate()
   const [pending, setPending] = useState<Pending | null>(null)
@@ -279,15 +293,19 @@ export function useLeaveGuard({
       </Modal>
     ) : (
       <ConfirmDialog
-        title={EDIT_LEAVE_TEXT.title}
+        title={text?.title ?? EDIT_LEAVE_TEXT.title}
         description={
-          <>
-            <p>{EDIT_LEAVE_TEXT.description}</p>
-            {partial && <p className="mt-space-2">{EDIT_LEAVE_TEXT.partial}</p>}
-          </>
+          text?.description ?? (
+            <>
+              <p>{EDIT_LEAVE_TEXT.description}</p>
+              {partial && (
+                <p className="mt-space-2">{EDIT_LEAVE_TEXT.partial}</p>
+              )}
+            </>
+          )
         }
-        confirmLabel={EDIT_LEAVE_TEXT.confirm}
-        cancelLabel={EDIT_LEAVE_TEXT.stay}
+        confirmLabel={text?.confirm ?? EDIT_LEAVE_TEXT.confirm}
+        cancelLabel={text?.stay ?? EDIT_LEAVE_TEXT.stay}
         initialFocus="cancel"
         onConfirm={shown.proceed}
         onCancel={shown.stay}

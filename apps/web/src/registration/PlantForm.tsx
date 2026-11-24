@@ -42,7 +42,9 @@ import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
 import { PhotoStorageError, photoStorageErrorFrom } from '../photos/storage.ts'
 import { useTouchDevice } from '../photos/useCoarsePointer.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
+import { photoVersionFor } from '../photos/upload.ts'
 import { canRetryUpload } from '../photos/usePhotoUpload.ts'
+import { useLeaveGuard } from '../editing/useLeaveGuard.tsx'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
 import {
   ChoiceField,
@@ -87,9 +89,18 @@ import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField, type NameResolution } from './NameField.tsx'
 import { OriginField } from './OriginField.tsx'
 import { PendingPhotoNotice } from './PendingPhotoNotice.tsx'
+import {
+  clearPendingUpload,
+  listPendingUploads,
+  writePendingUpload,
+  type PendingUpload,
+  type PendingUploadPhoto,
+} from './pending-upload.ts'
+import { PendingUploadsNotice } from './PendingUploadsNotice.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
 import {
   FLOWER_COLOR_LABEL,
+  PENDING_UPLOAD_TEXT,
   PLANT_FORM_TEXT,
   PLANT_TYPE_LABEL,
 } from './texts.ts'
@@ -574,6 +585,14 @@ interface PlantFormBodyProps extends PlantFormProps {
  * falla, la planta ya existe: el formulario se queda con las fotos, dice
  * cuáles fallaron y deja reintentar solo esas (la API no duplica las que ya
  * subió) o continuar sin ellas.
+ *
+ * Fotos por subir (#284): al guardar la planta, sus fotos pasan del borrador a
+ * las «fotos por subir» de esa planta (pending-upload.ts) y cada una que se
+ * sube se quita de ahí. Mientras quede alguna sin subir, salir pide
+ * confirmación (useLeaveGuard: enlaces de la app, «atrás», cerrar o recargar
+ * la pestaña); si se sale igual, se recarga o se pierde la conexión, la ficha
+ * de la planta las ofrece para subirlas o descartarlas, y este formulario
+ * avisa de ellas al volver a abrirlo.
  */
 function PlantFormBody(props: PlantFormBodyProps) {
   const {
@@ -687,12 +706,63 @@ function PlantFormBody(props: PlantFormBodyProps) {
   const latestPlant = useRef<CollectionPlant | null>(null)
   const uploadController = useRef<AbortController | null>(null)
   useEffect(() => () => uploadController.current?.abort(), [])
+  // Si el formulario sigue montado: tras salir, una subida que termina ya no
+  // lleva a ningún sitio.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  // Las fotos por subir de la planta guardada (#284), por clave de la foto,
+  // y si quedaron en el dispositivo (para el aviso al salir).
+  const pendingRef = useRef<{
+    plant: CollectionPlant
+    photos: Map<string, PendingUploadPhoto>
+  } | null>(null)
+  const [pendingKept, setPendingKept] = useState(false)
+  // Las de otras plantas, de antes (una recarga a mitad de la subida).
+  const [otherUploads, setOtherUploads] = useState<readonly PendingUpload[]>([])
+  useEffect(() => {
+    if (draftUserId === null) return
+    let active = true
+    void listPendingUploads(photoDraftBackend, draftUserId, {
+      now: now(),
+    }).then((found) => {
+      if (active) setOtherUploads(found)
+    })
+    return () => {
+      active = false
+    }
+  }, [draftUserId, photoDraftBackend, now])
   const primaryRef = useRef<HTMLButtonElement>(null)
   const uploadAlertRef = useRef<HTMLDivElement>(null)
   const cameraInput = useRef<HTMLInputElement>(null)
   const filesInput = useRef<HTMLInputElement>(null)
   const touch = useTouchDevice()
   const showCamera = camera === 'show' || (camera === 'auto' && touch)
+
+  // Con la planta guardada y alguna foto sin subir, salir pide confirmación
+  // (#284). El aviso dice si las que faltan quedaron en el dispositivo.
+  const photosLeft =
+    registered !== null &&
+    newPhotos.some((entry) => entry.upload.status !== 'saved')
+  const guard = useLeaveGuard({
+    dirty: photosLeft,
+    text: {
+      title: PENDING_UPLOAD_TEXT.leaveTitle,
+      description: (
+        <p>
+          {pendingKept
+            ? PENDING_UPLOAD_TEXT.leaveKept
+            : PENDING_UPLOAD_TEXT.leaveLost}
+        </p>
+      ),
+      confirm: PENDING_UPLOAD_TEXT.leaveConfirm,
+      stay: PENDING_UPLOAD_TEXT.leaveStay,
+    },
+  })
 
   // Guarda el borrador de texto con cada cambio. Los valores con los que se
   // montó no se reescriben: recuperar un borrador no renueva su caducidad.
@@ -885,6 +955,34 @@ function PlantFormBody(props: PlantFormBodyProps) {
     }
   }
 
+  /** Guarda en el dispositivo las fotos que aún quedan por subir. */
+  const savePending = (): Promise<boolean> => {
+    const pending = pendingRef.current
+    if (pending === null || draftOwner === null) return Promise.resolve(false)
+    return writePendingUpload(photoDraftBackend, draftOwner, {
+      plantId: pending.plant.id,
+      plantName: pending.plant.displayName,
+      plantNameIsScientific: pending.plant.displayNameIsScientific,
+      savedAt: now().getTime(),
+      photos: [...pending.photos.values()],
+    })
+  }
+
+  /** La foto `key` ya está guardada: deja de estar por subir. */
+  const forgetPending = (key: string) => {
+    const pending = pendingRef.current
+    if (pending === null || !pending.photos.delete(key)) return
+    void savePending()
+  }
+
+  /** Ninguna foto queda por subir (todas subidas o la persona sigue sin ellas). */
+  const clearPending = () => {
+    const pending = pendingRef.current
+    pendingRef.current = null
+    if (pending === null || draftOwner === null) return
+    void clearPendingUpload(photoDraftBackend, draftOwner, pending.plant.id)
+  }
+
   /**
    * Fotos tras guardar la planta: sube las nuevas que faltan (todas, o solo
    * `onlyKeys`). Termina el registro si todo salió bien; si no, deja el
@@ -951,6 +1049,10 @@ function PlantFormBody(props: PlantFormBodyProps) {
                   })
                 } else if (progress.step === 'saving') {
                   setUpload(key, { status: 'uploading', progress: 1 })
+                } else if (progress.result.status === 'uploaded') {
+                  // Aunque ya se haya salido: la entrada del dispositivo
+                  // refleja lo que de verdad falta.
+                  forgetPending(key)
                 }
               },
             },
@@ -985,12 +1087,14 @@ function PlantFormBody(props: PlantFormBodyProps) {
       .current()
       .some((entry) => isNew(entry) && entry.upload.status !== 'saved')
     if (firstError === null && !failedNow) {
-      onSaved(latestPlant.current ?? plant, {
-        changed: true,
-        photos: photos.current().length,
-      })
+      clearPending()
+      if (!mounted.current) return
+      const saved = latestPlant.current ?? plant
+      const count = photos.current().length
+      void guard.leave(() => onSaved(saved, { changed: true, photos: count }))
       return
     }
+    if (!mounted.current) return
     setPhase({
       status: 'failed',
       error: firstError ?? new PhotoStorageError('failed'),
@@ -1036,8 +1140,29 @@ function PlantFormBody(props: PlantFormBodyProps) {
       return
     }
     savingRef.current = false
-    // La planta ya existe: su borrador (y sus fotos) sobran. Las fotos siguen
-    // en memoria para subirlas y reintentarlo.
+    // La planta ya existe: sus fotos pasan del borrador a las «por subir» de
+    // la planta (#284), antes de borrar el borrador, para que una recarga en
+    // medio no las pierda. Siguen en memoria para subirlas y reintentarlo.
+    if (draftOwner !== null && photoCount > 0) {
+      const all = photos.current()
+      const mainKey = all[0]?.key
+      pendingRef.current = {
+        plant,
+        photos: new Map(
+          all.filter(isNew).map((entry) => [
+            entry.key,
+            {
+              fileName: entry.fileName,
+              photo: entry.photo,
+              version: photoVersionFor(entry.photo),
+              inBloom: entry.key === mainKey && values.photoInBloom,
+            },
+          ]),
+        ),
+      }
+      setPendingKept(await savePending())
+    }
+    // El borrador (y sus fotos) ya sobran.
     if (draftOwner !== null) {
       clearPlantDraft(draftOwner, plantId)
       void clearDraftPhotos(photoDraftBackend, draftOwner, plantId)
@@ -1082,10 +1207,12 @@ function PlantFormBody(props: PlantFormBodyProps) {
       .filter(
         (entry) => !isNew(entry) || entry.upload.status === 'saved',
       ).length
-    onSaved(latestPlant.current ?? registered, {
-      changed: true,
-      photos: savedCount,
-    })
+    // La persona decidió seguir sin ellas: no se ofrecen después.
+    clearPending()
+    const saved = latestPlant.current ?? registered
+    void guard.leave(() =>
+      onSaved(saved, { changed: true, photos: savedCount }),
+    )
   }
 
   const cancelUpload = () => uploadController.current?.abort()
@@ -1502,6 +1629,15 @@ function PlantFormBody(props: PlantFormBodyProps) {
       className="flex flex-col gap-space-5"
       onSubmit={(event) => void handleSubmit(event)}
     >
+      {guard.dialog}
+      {registered === null &&
+        otherUploads.some((upload) => upload.plantId !== plantId) && (
+          <PendingUploadsNotice
+            uploads={otherUploads.filter(
+              (upload) => upload.plantId !== plantId,
+            )}
+          />
+        )}
       {(draftRestored || otherDrafts.length > 0) && (
         <DraftNotice
           restored={draftRestored}
