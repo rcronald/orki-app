@@ -3,7 +3,10 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import type { PlantFilters } from '../collection/filters.ts'
 import { countGenera, countPlants } from '../collection/selectors.ts'
 import { useCollection } from '../collection/useCollection.ts'
-import { useCollectionCopy } from '../collection/useCollectionCopy.ts'
+import {
+  useCollectionCopy,
+  useOwnershipExtras,
+} from '../collection/useCollectionCopy.ts'
 import { useReadOnly } from '../collection/useReadOnly.ts'
 import { Page } from '../components/Page.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
@@ -60,8 +63,6 @@ const SEARCH_PARAM = 'q'
 // desactivados citándolo. Buscar, filtrar, ver el detalle, «¿Ya la tengo?» y
 // exportar siguen funcionando.
 
-const NO_EXTRAS = {}
-
 function deletedNotice() {
   const notice = peekPlantNotice()
   return notice?.kind === 'deleted' ? notice : null
@@ -70,7 +71,7 @@ function deletedNotice() {
 export function CollectionPage() {
   const { status, plants, error, reload } = useCollection()
   const copy = useCollectionCopy()
-  const extras = copy?.extras ?? NO_EXTRAS
+  const extras = useOwnershipExtras()
   const readOnly = useReadOnly()
   const offlineNoticeId = useId()
   const offlineReason: OfflineNoticeReason | null =
