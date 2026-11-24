@@ -1,7 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppEnv } from '../config/env.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import {
@@ -21,6 +21,27 @@ import {
 import { AppRouter } from './AppRouter.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
+
+// Los chunks diferidos (la app, sus páginas y la muestra) se cargan una vez
+// antes de las pruebas (#311). Con el equipo cargado, transformar e importar
+// por primera vez uno grande (la muestra, el catálogo) pasaba de los 5 s de
+// findBy… y la prueba que lo abría fallaba sin nada roto. La carga diferida se
+// sigue recorriendo igual: import() devuelve el módulo ya cargado.
+beforeAll(async () => {
+  await Promise.all([
+    import('../App.tsx'),
+    import('../showcase/ShowcasePage.tsx'),
+    import('../diagnostics/IdentityDiagnosticsPage.tsx'),
+    import('../pages/NewPlantPage.tsx'),
+    import('../pages/PlantDetailPage.tsx'),
+    import('../pages/EditPlantPage.tsx'),
+    import('../pages/OwnershipCheckPage.tsx'),
+    import('../backoffice/CatalogAdminPage.tsx'),
+    import('../catalog/CatalogRoutes.tsx'),
+    import('../privacy/PrivacyPage.tsx'),
+    import('../credits/CreditsPage.tsx'),
+  ])
+}, 120_000)
 
 beforeEach(() => {
   resetFakeClerk()
