@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, type InitialEntry } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -115,7 +115,7 @@ describe('PrivacyPage', () => {
     renderAt('/privacidad')
 
     expect(await findTitle()).toBeInTheDocument()
-    expect(document.title).toBe('Privacidad · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Privacidad · orqui.app'))
     expect(
       screen
         .getAllByRole('heading', { level: 2 })
