@@ -148,8 +148,11 @@ describe('fuente con copia local', () => {
     const { network, source } = setup()
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
+    // La expectativa se engancha antes de fallar: si no, la promesa se
+    // rechaza sin nadie escuchando y Node lo da por un error sin manejar.
+    const outcome = expect(promise).rejects.toMatchObject({ reason: 'offline' })
     await network.fail(new CollectionLoadError('offline'))
-    await expect(promise).rejects.toMatchObject({ reason: 'offline' })
+    await outcome
   })
 
   it('con otro fallo, rechaza aunque haya copia', async () => {
@@ -157,8 +160,13 @@ describe('fuente con copia local', () => {
     await storage.write(copyOf('user_a', [plant()]))
     source.setActiveUser('user_a')
     const { promise } = load(source, 'user_a')
+    // La expectativa se engancha antes de fallar: si no, la promesa se
+    // rechaza sin nadie escuchando y Node lo da por un error sin manejar.
+    const outcome = expect(promise).rejects.toMatchObject({
+      reason: 'session-ended',
+    })
     await network.fail(new CollectionLoadError('session-ended'))
-    await expect(promise).rejects.toMatchObject({ reason: 'session-ended' })
+    await outcome
   })
 
   it('si los extras fallan, guarda las plantas con los extras anteriores', async () => {
