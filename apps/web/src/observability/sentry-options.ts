@@ -1,4 +1,5 @@
 import type { BrowserOptions } from '@sentry/react'
+import { esFalloDeCargaDeChunk } from '../pwa/recarga-por-version.ts'
 import { EXTENSION_URLS, isNoise } from './noise.ts'
 import { scrubBreadcrumb, scrubEvent } from './privacy.ts'
 import type { SentrySettings } from './types.ts'
@@ -16,6 +17,12 @@ interface OptionsDeps {
    * recargaEnCurso de pwa/recarga-por-version.ts.
    */
   isReloadingForUpdate?: () => boolean
+  /**
+   * Se resuelve con true si la página empieza a irse poco después (#308); en
+   * la app, esperarSalida de pwa/recarga-por-version.ts. Sin ella, un chunk
+   * que no llegó se envía enseguida.
+   */
+  waitForPageLeave?: () => Promise<boolean>
   /** Solo para pruebas: transporte que no sale a la red. */
   transport?: BrowserOptions['transport']
 }
@@ -32,10 +39,20 @@ interface OptionsDeps {
  * parámetros de URL, sin cabeceras salvo User-Agent y sin variables locales.
  * Encima, beforeSend y beforeBreadcrumb pasan por privacy.ts y descartan el
  * ruido de noise.ts.
+ *
+ * Un chunk que no llegó se envía solo si la página no empieza a irse poco
+ * después (waitForPageLeave): al volver atrás en el historial, Safari
+ * cancela los import() en curso antes de avisar con beforeunload (#308), y
+ * ese rechazo no es un fallo de la app. Si la página se queda, se envía.
  */
 export function buildSentryOptions(
   settings: SentrySettings,
-  { isOnline, isReloadingForUpdate = () => false, transport }: OptionsDeps,
+  {
+    isOnline,
+    isReloadingForUpdate = () => false,
+    waitForPageLeave,
+    transport,
+  }: OptionsDeps,
 ): BrowserOptions {
   return {
     dsn: settings.dsn,
@@ -58,10 +75,16 @@ export function buildSentryOptions(
         (integration) => !DROPPED_INTEGRATIONS.has(integration.name),
       ),
     denyUrls: EXTENSION_URLS,
-    beforeSend: (event, hint) =>
-      isNoise(event, hint.originalException, isOnline(), isReloadingForUpdate())
-        ? null
-        : scrubEvent(event),
+    beforeSend: (event, hint) => {
+      const error = hint.originalException
+      if (isNoise(event, error, isOnline(), isReloadingForUpdate())) return null
+      if (waitForPageLeave === undefined || !esFalloDeCargaDeChunk(error)) {
+        return scrubEvent(event)
+      }
+      return waitForPageLeave().then((leaving) =>
+        leaving || isReloadingForUpdate() ? null : scrubEvent(event),
+      )
+    },
     beforeBreadcrumb: (breadcrumb) => scrubBreadcrumb(breadcrumb),
   }
 }

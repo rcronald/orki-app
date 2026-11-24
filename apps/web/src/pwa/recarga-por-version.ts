@@ -23,6 +23,9 @@
 /** Clave de sessionStorage con la hora (ms) de la última recarga. */
 export const MARCA_DE_RECARGA = 'orki:recarga-por-version'
 
+/** Clave con la que se comprueba que sessionStorage admite escrituras. */
+const PRUEBA_DE_ESCRITURA = 'orki:recarga-por-version:prueba'
+
 /** Tiempo en el que un segundo fallo ya no provoca otra recarga. */
 export const VENTANA_MS = 60_000
 
@@ -58,7 +61,7 @@ export const SALIDA_MS = 10_000
 export interface DependenciasDeRecarga {
   enLinea: () => boolean
   /** sessionStorage, o null si no se puede usar. */
-  almacen: () => Pick<Storage, 'getItem' | 'setItem'> | null
+  almacen: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null
   ahora: () => number
   recargar: () => void
   /** Si la página empezó a irse (beforeunload) hace menos de SALIDA_MS. */
@@ -94,6 +97,17 @@ export function seEstaYendo(ahora = Date.now()): boolean {
 }
 
 /**
+ * Lo que se espera, tras un chunk que no llegó, a que la página diga que se
+ * va (beforeunload) antes de tratarlo como un despliegue o como un fallo
+ * (#308). Al volver atrás o adelante en el historial a otro documento, WebKit
+ * cancela los import() en curso y los rechaza unos milisegundos antes de
+ * disparar beforeunload (medido en las pruebas: entre 1 y 7 ms, también con
+ * la máquina muy cargada); al pulsar un enlace, en cambio, beforeunload llega
+ * primero.
+ */
+export const ESPERA_SALIDA_MS = 500
+
+/**
  * Anota cuándo empieza a irse la página (beforeunload, solo escuchado: no
  * pregunta nada). Safari cancela los import() en curso al empezar una
  * navegación a otra página, antes de que la página se vaya: sin esto, ese
@@ -124,6 +138,28 @@ export function recargaEnCurso(): boolean {
 }
 
 /**
+ * Se resuelve, pasado ESPERA_SALIDA_MS, con si la página empezó a irse: así
+ * un chunk que no llegó porque la navegación lo canceló no se confunde con
+ * un fallo aunque beforeunload llegue después del rechazo (#308). Lo usa el
+ * envío a Sentry (observability/sentry-options.ts).
+ */
+export function esperarSalida(
+  deps: Pick<DependenciasDeRecarga, 'saliendo' | 'programar'> = DEPENDENCIAS,
+): Promise<boolean> {
+  return new Promise((resolver) => {
+    deps.programar(() => resolver(deps.saliendo()), ESPERA_SALIDA_MS)
+  })
+}
+
+/** Recarga pasado SALIDA_MS si la página sigue aquí (no llegó a irse). */
+function recargarSiNoSeVa(deps: DependenciasDeRecarga): void {
+  deps.programar(() => {
+    marcar(deps)
+    deps.recargar()
+  }, SALIDA_MS)
+}
+
+/**
  * Si el error es un chunk que no llegó con conexión y no se recargó hace
  * poco, recarga la página y devuelve true; si no, false (el error sigue su
  * camino: pantalla de fallo y Sentry).
@@ -133,6 +169,12 @@ export function recargaEnCurso(): boolean {
  * pantalla de fallo, ni se envía a Sentry (devuelve true). Si la navegación
  * no llega a ocurrir (por ejemplo, se canceló el aviso de cambios sin
  * guardar), se recarga pasado SALIDA_MS, para no dejar la pantalla a medias.
+ *
+ * La recarga espera ESPERA_SALIDA_MS: al volver atrás en el historial, Safari
+ * rechaza el import() antes de avisar de que la página se va (#308). Si en
+ * ese tiempo llega el aviso, es la navegación y se sigue como arriba; si no,
+ * se deja la marca y se recarga. La marca no se deja antes: la página a la
+ * que se va comparte sessionStorage, y perdería la red de seguridad.
  */
 export function recargarPorVersion(
   error: unknown,
@@ -142,25 +184,31 @@ export function recargarPorVersion(
   if (recargando) return true
   if (deps.saliendo()) {
     recargando = true
-    deps.programar(() => {
-      marcar(deps)
-      deps.recargar()
-    }, SALIDA_MS)
+    recargarSiNoSeVa(deps)
     return true
   }
   if (!deps.enLinea()) return false
   const almacen = deps.almacen()
   if (almacen === null) return false
-  const ahora = deps.ahora()
   try {
     const anterior = Number(almacen.getItem(MARCA_DE_RECARGA))
-    if (anterior > 0 && ahora - anterior < VENTANA_MS) return false
-    almacen.setItem(MARCA_DE_RECARGA, String(ahora))
+    if (anterior > 0 && deps.ahora() - anterior < VENTANA_MS) return false
+    // Ya, y no al recargar: si no se puede escribir, no habría marca contra
+    // los bucles y no se recarga.
+    almacen.setItem(PRUEBA_DE_ESCRITURA, '1')
+    almacen.removeItem(PRUEBA_DE_ESCRITURA)
   } catch {
     return false
   }
   recargando = true
-  deps.recargar()
+  deps.programar(() => {
+    if (deps.saliendo()) {
+      recargarSiNoSeVa(deps)
+      return
+    }
+    marcar(deps)
+    deps.recargar()
+  }, ESPERA_SALIDA_MS)
   return true
 }
 
