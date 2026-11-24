@@ -1,11 +1,10 @@
 import { render, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CATALOG_SEARCH_ERROR_TEXT } from '../lib/catalogSearch.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
-import ShowcasePage from './ShowcasePage.tsx'
+import { ComponentSections } from './ComponentSections.tsx'
 
 // La muestra con configuración de Supabase: los buscadores de especies y de
 // géneros usan la búsqueda real (con fetch simulado). Va en un archivo aparte
@@ -103,11 +102,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// Las consultas y axe van solo a la sección del buscador. La muestra entera
-// tiene miles de nodos: recorrerla en cada consulta (findBy… repite la suya
-// cada 50 ms) y pasarle axe hacía que, con el equipo cargado, estas pruebas
-// pasaran de los 5 s, aunque solas tardan uno (#295). La página entera ya la
-// revisa ShowcasePage.test.tsx.
+// Se pintan solo las secciones de componentes, donde está el buscador, y las
+// consultas y axe van solo a él. La muestra entera tiene miles de nodos (con
+// un inventario de 300 plantas): pintarla, recorrerla en cada consulta
+// (findBy… repite la suya cada 50 ms) y pasarle axe es trabajo síncrono que,
+// con el equipo cargado, hacía pasar estas pruebas de los 5 s, aunque solas
+// tardaban uno (#295). La página entera ya la revisa ShowcasePage.test.tsx.
 function searchSection(): HTMLElement {
   const section = document.getElementById('buscador')
   if (section === null) throw new Error('No está la sección del buscador.')
@@ -120,13 +120,8 @@ function speciesInput() {
   return search().getByRole('combobox', { name: 'Nombre científico' })
 }
 
-// La muestra incluye la pantalla de inventario, que usa enlaces del enrutador.
 function renderShowcase() {
-  return render(
-    <MemoryRouter>
-      <ShowcasePage />
-    </MemoryRouter>,
-  )
+  return render(<ComponentSections />)
 }
 
 describe('ShowcasePage con Supabase', () => {
