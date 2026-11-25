@@ -59,8 +59,9 @@ export const DIALOG_TEXT = {
   title: '¿Eliminar tu cuenta?',
   intro: 'Se borrará todo lo tuyo en orqui.app:',
   items: [
-    'Tus plantas, con todos sus detalles (nombre, género, tipo, fecha de adquisición, origen, ubicación, apodo, color de la flor y estado).',
-    'Las fotos de tus plantas y sus miniaturas.',
+    'Tus plantas, con todos sus detalles (identificador, nombre, género, tipo, fecha de adquisición, origen, ubicación, apodo, color de la flor, estado y notas).',
+    'Las fotos de tus plantas y sus miniaturas, con su orden, la fecha de la foto, su nota y si la planta estaba en floración.',
+    'La bitácora de tus plantas: todos sus registros, con su tipo de actividad, su título, su descripción, su foto y si observaste floración.',
     'Tu perfil y tus eventos de uso (cuándo registraste una planta y cuándo buscaste si ya la tenías).',
     'Tu cuenta de acceso: no podrás volver a entrar con ella.',
     'Lo que orqui.app guarda en este dispositivo: la copia de tu inventario para usarlo sin conexión, las miniaturas, los eventos de uso pendientes de enviar, el borrador del registro y tus preferencias del inventario.',

@@ -26,14 +26,15 @@ beforeEach(() => {
 // tal como estaban antes del rediseño (#202), salvo la atribución del
 // catálogo, que pasó a «Créditos y fuentes» (CreditsPage.test.tsx), y con la
 // frase de la cola de propuestas puesta al día para varias fotos (#184) y con
-// las notas y la bitácora (#267, aprobado el 23 de noviembre de 2026). Si
+// las notas y la bitácora (#267, aprobado el 23 de noviembre de 2026), y con
+// el identificador y los datos de cada foto (#291, 24 de noviembre de 2026). Si
 // falta una, la prueba falla: recortar el texto es una decisión del
 // responsable.
 const APPROVED_TEXT = [
   'Tu cuenta: tu correo y, si entras con Google, los datos de tu perfil de Google que recibe el servicio de acceso (como tu nombre y tu foto). Además, orqui.app guarda un perfil con tu identificador de usuario y el idioma de la app.',
-  'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada). También las notas que escribas sobre ella.',
+  'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada). También las notas que escribas sobre ella y su identificador (como CAT-012), que orqui.app le asigna al registrarla y no cambia.',
   'La bitácora de tus plantas: los registros que añades a cada una: el tipo de actividad (riego, nutrición, mantenimiento preventivo o sanidad preventiva), el título, la fecha y la hora en que lo guardaste y, si los añades, una descripción, una foto y si observaste floración.',
-  'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura. Las fotos de la bitácora se preparan igual.',
+  'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura, el orden en que las colocas y, si los añades, la fecha de la foto, una nota sobre ella y si la planta estaba en floración. Las fotos de la bitácora se preparan igual.',
   'Mediciones de uso y errores: lo explicamos en la sección siguiente.',
   'Los usamos para que la app funcione: que entres en tu cuenta y veas y gestiones tu colección. Las mediciones y los errores, además, para mejorarla.',
   'La app registra dos tipos de evento de uso:',

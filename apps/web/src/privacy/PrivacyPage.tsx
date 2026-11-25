@@ -38,8 +38,13 @@ import {
 // Con el #284 se añadieron las fotos de una planta ya registrada que no
 // llegaron a subirse (qué, para qué, cuándo se borran y que caducan a los
 // siete días). Publicado al fusionar el #309, el 24 de noviembre de 2026.
+// Con el #291 se añadieron el identificador de cada planta (CAT-012) y lo que
+// se guarda de cada foto (orden, fecha, nota y floración), y el diálogo de
+// eliminar la cuenta pasó a enumerar lo mismo, bitácora incluida.
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
-// aprobado.
+// aprobado, y user-data-columns.test.tsx, que este texto y el diálogo citan
+// cada columna que rellena el usuario en plants, plant_photos y
+// plant_log_entries.
 //
 // Va en su propio chunk (carga diferida desde App.tsx), sin importar Clerk.
 // El enlace de volver lo pone TextPage según de dónde se vino.
@@ -69,7 +74,8 @@ function sections(state: unknown): TextPageSection[] {
               nombre, el género, el tipo, la fecha de adquisición, el origen y,
               si los añades, la ubicación, el apodo, el color de la flor y su
               estado (activa, perdida o regalada). También las notas que
-              escribas sobre ella.
+              escribas sobre ella y su identificador (como CAT-012), que
+              orqui.app le asigna al registrarla y no cambia.
             </li>
             <li>
               <strong>La bitácora de tus plantas:</strong> los registros que
@@ -82,7 +88,9 @@ function sections(state: unknown): TextPageSection[] {
               <strong>Las fotos de tus plantas:</strong> antes de subirlas, la
               app las reduce en tu dispositivo y les quita los metadatos que
               guarda la cámara, incluida la ubicación. Se guardan la foto y una
-              miniatura. Las fotos de la bitácora se preparan igual.
+              miniatura, el orden en que las colocas y, si los añades, la fecha
+              de la foto, una nota sobre ella y si la planta estaba en
+              floración. Las fotos de la bitácora se preparan igual.
             </li>
             <li>
               <strong>Mediciones de uso y errores:</strong> lo explicamos en la
