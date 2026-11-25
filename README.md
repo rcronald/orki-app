@@ -16,7 +16,8 @@ La especificación completa de la Fase 1 está en
 ## Estado actual
 
 La Fase 1 está construida y conectada a Supabase,
-y cada fusión en `main` se despliega en producción en Vercel:
+y cada fusión en `main` se despliega en producción en Vercel,
+después de aplicar las migraciones:
 
 - **Acceso** con Clerk (inicio de sesión y registro en español)
   y una portada pública.
@@ -128,7 +129,8 @@ orki-app/
 │   ├── ci.yml                 Integración continua
 │   ├── fotos-de-referencia.yml  Carga manual de las fotos de referencia de iNaturalist
 │   ├── importar-catalogo.yml  Importación manual del catálogo
-│   └── migraciones.yml        Aplicación de migraciones en Supabase
+│   ├── migraciones-y-codigo.yml  Comprueba que un PR no mezcla migraciones y código de la app
+│   └── migraciones.yml        Migraciones en Supabase y, después, publicación de la web
 ├── apps/
 │   └── web/                   App web (React, Vite, TypeScript, Tailwind CSS, PWA)
 │       ├── e2e/               Pruebas de extremo a extremo (Playwright)
@@ -234,7 +236,7 @@ Pruebas, operación y medidas:
 - [Base de datos y migraciones](docs/operacion/base-de-datos.md):
   credenciales, migraciones, datos de ejemplo, pruebas, tipos y producción.
 - [Despliegue e integración continua](docs/operacion/despliegue-y-ci.md):
-  Vercel, flujo de ramas y CI.
+  Vercel, despliegue ordenado tras las migraciones, marcha atrás, flujo de ramas y CI.
 - [Errores en Sentry](docs/operacion/errores-en-sentry.md).
 - [Retención y limpieza de datos](docs/operacion/retencion-y-limpieza.md):
   plazos de conservación, tareas periódicas y lo que hay que configurar.
