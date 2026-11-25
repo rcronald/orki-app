@@ -14,6 +14,14 @@ const WCAG_A_AA = [
   'wcag22aa',
 ]
 
+// axe pide un contexto de canvas al revisar (para detectar iconos hechos con
+// ligaduras). jsdom no lo implementa: devuelve nada y escribe «Not implemented:
+// HTMLCanvasElement's getContext()» una vez por archivo de pruebas. Aquí
+// devuelve lo mismo, null, sin el aviso; axe ya contaba con ello.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = () => null
+}
+
 /**
  * Revisa el documento entero o, con "context", solo ese elemento: en una
  * página muy grande, axe tarda segundos con el equipo cargado (#295).

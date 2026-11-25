@@ -10,6 +10,13 @@ import { finishVoluntarySignOut } from '../auth/voluntary-sign-out.ts'
 // tardan lo mismo; solo esperan más las que de verdad fallan.
 configure({ asyncUtilTimeout: 5000 })
 
+// jsdom no implementa window.scrollTo: no hace nada y escribe «Not
+// implemented: Window's scrollTo()» cada vez. Aquí tampoco hace nada, sin el
+// aviso; la prueba que necesite comprobarlo lo espía con vi.spyOn.
+if (typeof window !== 'undefined') {
+  window.scrollTo = () => {}
+}
+
 // Sin globals de Vitest, Testing Library no limpia el DOM por sí sola.
 afterEach(() => {
   cleanup()
