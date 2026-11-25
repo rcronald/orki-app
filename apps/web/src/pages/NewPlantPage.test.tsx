@@ -1194,30 +1194,39 @@ describe('NewPlantPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('cancelar sin cambios vuelve al inventario; con cambios, pregunta antes', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('cancelar sin cambios vuelve al inventario; con cambios, pregunta antes con el diálogo de la app (#335)', async () => {
     const user = userEvent.setup()
     await renderPage()
 
     await user.click(chip('Dendrobium'))
-    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-    expect(confirm).toHaveBeenCalledWith(PLANT_FORM_TEXT.confirmDiscard)
+    const cancel = screen.getByRole('button', { name: 'Cancelar' })
+    await user.click(cancel)
+    // El de la edición: «Seguir editando» primero y Escape lo cierra.
+    const dialog = screen.getByRole('dialog', { name: '¿Salir sin guardar?' })
+    expect(dialog).toHaveAccessibleDescription(
+      PLANT_FORM_TEXT.discardDescription,
+    )
+    expect(
+      within(dialog).getByRole('button', { name: 'Seguir editando' }),
+    ).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(cancel).toHaveFocus()
     expect(location()).toBe('/coleccion/nueva')
     expect(chip('Dendrobium')).toHaveAttribute('aria-pressed', 'true')
 
-    confirm.mockReturnValue(true)
-    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    await user.click(cancel)
+    await user.click(screen.getByRole('button', { name: 'Salir sin guardar' }))
     expect(location()).toBe('/coleccion')
     expect(plantInserts()).toHaveLength(0)
   })
 
   it('cancelar con el formulario intacto no pregunta', async () => {
-    const confirm = vi.spyOn(window, 'confirm')
     const user = userEvent.setup()
     await renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-    expect(confirm).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(location()).toBe('/coleccion')
   })
 
@@ -1765,7 +1774,6 @@ describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
   })
 
   it('"Cancelar" con borrador pregunta y, si se confirma, lo borra', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     const view = await renderPage()
     await user.type(nameInput(), 'Stanhopea')
@@ -1773,7 +1781,8 @@ describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
     await renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-    expect(confirm).toHaveBeenCalledWith(PLANT_FORM_TEXT.confirmDiscard)
+    expect(window.localStorage.getItem(draftKey)).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Salir sin guardar' }))
     expect(location()).toBe('/coleccion')
     expect(window.localStorage.getItem(draftKey)).toBeNull()
   })
@@ -2680,12 +2689,14 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
     })
 
     it('"Cancelar" con solo una foto pregunta antes de salir', async () => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
       const user = userEvent.setup()
       const { container } = await renderPage()
       await choosePhotos(user, container)
       await user.click(screen.getByRole('button', { name: 'Cancelar' }))
-      expect(confirm).toHaveBeenCalledWith(PLANT_FORM_TEXT.confirmDiscard)
+      expect(
+        screen.getByRole('dialog', { name: '¿Salir sin guardar?' }),
+      ).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Seguir editando' }))
       expect(location()).toBe('/coleccion/nueva')
     })
   })

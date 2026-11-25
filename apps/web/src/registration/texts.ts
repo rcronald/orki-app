@@ -173,8 +173,12 @@ export const PLANT_FORM_TEXT = {
   cancel: 'Cancelar',
   retry: 'Reintentar',
   signIn: 'Iniciar sesión',
-  confirmDiscard:
-    '¿Salir sin registrar? Se perderá lo que escribiste en el formulario.',
+  /**
+   * «Cancelar» con cambios (#335): la descripción del diálogo de salir, que
+   * por lo demás es el de la edición (EDIT_LEAVE_TEXT).
+   */
+  discardDescription:
+    'Perderás lo que escribiste en el formulario y las fotos que elegiste.',
   /** Sin una sesión identificada en el dispositivo: no hay borrador posible. */
   offline:
     'Sin conexión. Registrar una orquídea necesita conexión: el formulario se activará solo cuando vuelva.',

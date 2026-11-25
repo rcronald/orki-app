@@ -102,7 +102,10 @@ export const EDIT_TEXT = {
   goToCollection: 'Ir a Mi colección',
 } as const
 
-/** Diálogo de cambios sin guardar. */
+/**
+ * Diálogo de cambios sin guardar. También lo usa «Cancelar» del registro
+ * (#335), con su propia descripción (PLANT_FORM_TEXT.discardDescription).
+ */
 export const EDIT_LEAVE_TEXT = {
   title: '¿Salir sin guardar?',
   description: 'Perderás los cambios que hiciste en esta planta.',

@@ -13,6 +13,7 @@ import type { CollectionPlant } from '../collection/model.ts'
 import { normalizeSearchText } from '../collection/normalize.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
 import { FormActions, FormLayout } from '../components/ui/FormLayout.tsx'
 import { galleryPhotoLabel } from '../components/ui/gallery-label.ts'
 import { Icon } from '../components/ui/Icon.tsx'
@@ -37,6 +38,7 @@ import { useTouchDevice } from '../photos/useCoarsePointer.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { photoVersionFor } from '../photos/upload.ts'
 import { canRetryUpload } from '../photos/usePhotoUpload.ts'
+import { EDIT_LEAVE_TEXT } from '../editing/texts.ts'
 import { useLeaveGuard } from '../editing/useLeaveGuard.tsx'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
 import { FORM_CHIP_CLASSES } from './ChoiceField.tsx'
@@ -1184,14 +1186,22 @@ function PlantFormBody(props: PlantFormBodyProps) {
   // Si hay algo que se perdería al salir: lo escrito o las fotos.
   const dirty = isPlantFormDirty(values, initial) || photoCount > 0
 
-  const cancel = () => {
-    if (saving || registered !== null) return
-    if (dirty && !window.confirm(text.confirmDiscard)) return
+  // «Cancelar» con cambios pregunta con el diálogo de la app, como la edición
+  // (#335): «Seguir editando» primero, Escape lo cierra y el foco vuelve a
+  // «Cancelar».
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const discardAndLeave = () => {
+    setConfirmingCancel(false)
     if (draftOwner !== null) {
       clearPlantDraft(draftOwner, plantId)
       void clearDraftPhotos(photoDraftBackend, draftOwner, plantId)
     }
     onCancel()
+  }
+  const cancel = () => {
+    if (saving || registered !== null) return
+    if (dirty) setConfirmingCancel(true)
+    else discardAndLeave()
   }
 
   // Empieza de cero: formulario vacío con la fecha de hoy, sin fotos y otro
@@ -1423,6 +1433,17 @@ function PlantFormBody(props: PlantFormBodyProps) {
       onSubmit={(event) => void handleSubmit(event)}
     >
       {guard.dialog}
+      {confirmingCancel && (
+        <ConfirmDialog
+          title={EDIT_LEAVE_TEXT.title}
+          description={<p>{text.discardDescription}</p>}
+          confirmLabel={EDIT_LEAVE_TEXT.confirm}
+          cancelLabel={EDIT_LEAVE_TEXT.stay}
+          initialFocus="cancel"
+          onConfirm={discardAndLeave}
+          onCancel={() => setConfirmingCancel(false)}
+        />
+      )}
       {registered === null &&
         otherUploads.some((upload) => upload.plantId !== plantId) && (
           <PendingUploadsNotice
