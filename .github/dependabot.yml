@@ -27,6 +27,11 @@ updates:
     commit-message:
       prefix: 'Dependencias (npm):'
     open-pull-requests-limit: 5
+    ignore:
+      # Los tipos de Node siguen a la versión de Node del proyecto (24, en
+      # .nvmrc y engines): la mayor se sube a mano, junto con Node.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       menores-y-parches:
         update-types: [minor, patch]
