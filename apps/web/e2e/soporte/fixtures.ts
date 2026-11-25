@@ -31,6 +31,17 @@ export const PAUTAS_AA = [
 
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page']
 
+/**
+ * La página, con el tipo que espera axe. @axe-core/playwright declara
+ * playwright-core como dependencia de pares y npm puede instalarle otra copia
+ * (con los mismos tipos, pero distintos para TypeScript) o la misma, según las
+ * versiones: pasando por unknown, la conversión vale en los dos casos y ESLint
+ * no la da por innecesaria cuando coinciden.
+ */
+function paraAxe(page: unknown): AxePage {
+  return page as AxePage
+}
+
 const CLAVE_SESION = 'orki-sesion-simulada'
 const ORIGEN_SENTRY = 'https://sentry.orki.invalid'
 
@@ -224,12 +235,7 @@ export const test = base.extend<Opciones & Fixtures>({
         return
       }
       await test.step(`Accesibilidad (axe): ${pantalla}`, async () => {
-        // @axe-core/playwright declara playwright-core como dependencia de
-        // pares y npm instala para él la última (otra copia con los mismos
-        // tipos): solo cambia el tipo, la página es la misma.
-        const resultado = await new AxeBuilder({
-          page: page as unknown as AxePage,
-        })
+        const resultado = await new AxeBuilder({ page: paraAxe(page) })
           .withTags(PAUTAS_AA)
           .analyze()
         const informe = resultado.violations.map(
