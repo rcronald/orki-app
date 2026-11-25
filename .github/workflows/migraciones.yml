@@ -8,7 +8,7 @@ name: Migraciones
 #   (git.deploymentEnabled en apps/web/vercel.json): lo hace este workflow con el Deploy Hook.
 # - Manual: desde la pestaña Actions, eligiendo el ambiente. Con dev solo migra; con prod
 #   (solo desde main) migra y publica.
-# Guía y marcha atrás: «Despliegue ordenado» y siguientes en el README.
+# Guía y marcha atrás: «Despliegue ordenado» y siguientes en docs/operacion/despliegue-y-ci.md.
 run-name: Migraciones (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
 
 on:
@@ -73,7 +73,7 @@ jobs:
           fi
           if [[ "$AMBIENTE" == prod ]]; then
             if [[ -z "${VERCEL_DEPLOY_HOOK_URL//[[:space:]]/}" ]]; then
-              echo "::error::Falta el secreto VERCEL_DEPLOY_HOOK_URL del environment prod. Sin él no se puede publicar la web, así que no se ha aplicado ninguna migración. Crea en Vercel el Deploy Hook de producción (proyecto > Settings > Git > Deploy Hooks, rama main) y guarda su URL en GitHub como secreto del environment prod: gh secret set VERCEL_DEPLOY_HOOK_URL --env prod. Después vuelve a lanzar este workflow (Re-run jobs). Ver «Despliegue ordenado» en el README."
+              echo "::error::Falta el secreto VERCEL_DEPLOY_HOOK_URL del environment prod. Sin él no se puede publicar la web, así que no se ha aplicado ninguna migración. Crea en Vercel el Deploy Hook de producción (proyecto > Settings > Git > Deploy Hooks, rama main) y guarda su URL en GitHub como secreto del environment prod: gh secret set VERCEL_DEPLOY_HOOK_URL --env prod. Después vuelve a lanzar este workflow (Re-run jobs). Ver «Despliegue ordenado» en docs/operacion/despliegue-y-ci.md."
               exit 1
             fi
             # Sin mostrarla: solo se comprueba la forma.
@@ -152,7 +152,7 @@ jobs:
 
       - name: Subir la copia del esquema
         if: steps.copia.outputs.hecha == 'si'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: esquema-previo-${{ env.AMBIENTE }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/esquema/

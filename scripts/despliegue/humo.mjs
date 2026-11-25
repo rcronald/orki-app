@@ -179,8 +179,11 @@ export async function comprobarPublicado(config, html, pedir) {
       `${config.supabaseUrl}/rest/v1/rpc/search_public_species`,
       {
         method: 'POST',
+        // Las mismas cabeceras que el cliente de la app sin sesión
+        // (apps/web/src/lib/supabase-client.ts): la clave en `apikey` y en `Authorization`.
         headers: {
           apikey: config.clave,
+          Authorization: `Bearer ${config.clave}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },

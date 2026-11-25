@@ -33,7 +33,7 @@ const SECRETO =
  */
 export function comprobarUrl(url) {
   if (!url?.trim()) {
-    return `Falta ${SECRETO}. Créalo con el Deploy Hook de producción de Vercel (Settings > Git > Deploy Hooks, rama main): gh secret set VERCEL_DEPLOY_HOOK_URL --env prod. Ver «Despliegue ordenado» en el README.`
+    return `Falta ${SECRETO}. Créalo con el Deploy Hook de producción de Vercel (Settings > Git > Deploy Hooks, rama main): gh secret set VERCEL_DEPLOY_HOOK_URL --env prod. Ver «Despliegue ordenado» en docs/operacion/despliegue-y-ci.md.`
   }
   const limpia = url.trim()
   if (!limpia.startsWith(PREFIJO_HOOK) || /\s/.test(limpia)) {
@@ -101,7 +101,7 @@ export function resumenDespliegue(r) {
     const estado = r.estado ? `, estado ${r.estado}` : ''
     return `## Despliegue de producción\n\nDeploy Hook de Vercel llamado: ${codigo}${estado}. Vercel construye y publica \`main\`; el avance está en su panel (Deployments).\n\n`
   }
-  return `## Despliegue de producción\n\n**No se disparó**: el Deploy Hook de Vercel respondió ${codigo}. Las migraciones ya están aplicadas y la web publicada sigue siendo la anterior. Ver «Qué hacer si el despliegue no se dispara» en el README.\n\n`
+  return `## Despliegue de producción\n\n**No se disparó**: el Deploy Hook de Vercel respondió ${codigo}. Las migraciones ya están aplicadas y la web publicada sigue siendo la anterior. Ver «Qué hacer si el despliegue no se dispara» en docs/operacion/despliegue-y-ci.md.\n\n`
 }
 
 /** @param {Record<string, string | undefined>} entorno */

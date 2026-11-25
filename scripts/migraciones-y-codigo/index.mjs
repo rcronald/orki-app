@@ -19,7 +19,7 @@ export const ETIQUETA_EXCEPCION = 'migración con código'
 export const MIGRACIONES = 'supabase/migrations/'
 export const CODIGO = 'apps/web/src/'
 // Los tipos generados del esquema van en el mismo commit que la migración, y sus alias y su
-// prueba de tipos con ellos (README, «Tipos de TypeScript del esquema»).
+// prueba de tipos con ellos (docs/operacion/base-de-datos.md, «Tipos de TypeScript del esquema»).
 export const PERMITIDOS = [
   'apps/web/src/lib/database.types.ts',
   'apps/web/src/lib/database.ts',

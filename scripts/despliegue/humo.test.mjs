@@ -187,7 +187,11 @@ describe('comprobarPublicado', () => {
     assert.equal(rpc.url.pathname, '/rest/v1/rpc/search_public_species')
     assert.equal(rpc.init.method, 'POST')
     assert.equal(rpc.init.headers.apikey, 'sb_publishable_ficticia')
-    assert.equal(rpc.init.headers.Authorization, undefined)
+    // Como el cliente de la app sin sesión (apps/web/src/lib/supabase-client.ts).
+    assert.equal(
+      rpc.init.headers.Authorization,
+      'Bearer sb_publishable_ficticia',
+    )
   })
 
   test('informa de cada fallo', async () => {
