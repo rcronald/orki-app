@@ -240,9 +240,13 @@ const claimsInventario = JSON.stringify({
 })
 const indiceBitacora = 'plant_log_entries_plant_id_created_at_idx'
 const indiceCodigo = 'plants_user_id_code_key'
+// La foto principal va embebida de plant_photos (#186), como la pide la app
+// (plant_photos.order=position.asc&plant_photos.limit=1): la de position más baja.
 const columnasColeccion =
   'p.id, p.entered_name, p.type, p.validation, p.status, p.acquired_on, p.origin, p.location, ' +
-  'p.nickname, p.flower_color, p.photo_in_bloom, p.photo_path, p.thumbnail_path, ' +
+  'p.nickname, p.flower_color, ' +
+  '(select row(f.photo_path, f.thumbnail_path, f.in_bloom, f.position) from public.plant_photos f ' +
+  'where f.plant_id = p.id order by f.position limit 1), ' +
   'public.photo_count(p), p.created_at, p.updated_at, p.code, p.notes, ' +
   's.scientific_name, g.name'
 // count(*) no usa las columnas: Postgres dejaría de calcularlas (photo_count incluido). Por

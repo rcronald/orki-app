@@ -107,7 +107,7 @@ export interface PlantGalleryOptions {
   rows?: PlantPhotoRows
   /**
    * Si la foto principal cambia, se vuelve a leer la planta (con la principal
-   * ya copiada a sus columnas) y se pasa aquí (useCollection().upsertPlant).
+   * nueva embebida) y se pasa aquí (useCollection().upsertPlant).
    */
   onPlantUpdated?: (plant: CollectionPlant) => void
 }
@@ -546,7 +546,7 @@ export function checkPlantPhotoDetails(
 export interface UpdatePlantPhotoOptions extends PlantGalleryOptions {
   /** La foto que se cambia, tal como se leyó. */
   photo: Pick<StoredPlantPhoto, 'id' | 'inBloom'>
-  /** true si es la principal: su "en floración" se copia a la planta. */
+  /** true si es la principal: su "en floración" es el de la planta. */
   main: boolean
   changes: PlantPhotoRowChanges
 }
@@ -562,8 +562,8 @@ export interface UpdatePlantPhotoResult {
  * guarda sin espacios a los lados (vacía, null). Si lo pasado no cumple las
  * reglas (checkPlantPhotoDetails), rechaza con PhotoStorageError `failed` sin
  * enviar nada; si la foto ya no existe, con `not-found`; sin conexión, con
- * `offline`. Si cambió "en floración" de la principal, la base lo copia a la
- * planta y se relee (onPlantUpdated), como al quitar una foto.
+ * `offline`. Si cambió "en floración" de la principal, cambia el de la
+ * planta de la colección: se relee (onPlantUpdated), como al quitar una foto.
  */
 export async function updatePlantPhoto({
   userId,

@@ -219,6 +219,32 @@ describe('formato de la copia', () => {
     expect(await keysRaw(name)).toEqual(['user_a'])
   })
 
+  it('una copia anterior al #186 (foto leída de plants) se lee igual: los campos de la principal no cambian', async () => {
+    const name = freshDbName()
+    const inBloom = plant({
+      photoPath: 'u/p/photo-1.webp',
+      thumbnailPath: 'u/p/thumb-1.webp',
+      photoInBloom: true,
+      photoCount: 2,
+    })
+    const withoutPhoto = plant({ photoPath: null, thumbnailPath: null })
+    const old = toStoredCopy(
+      copyFor('user_a', { plants: [inBloom, withoutPhoto] }),
+    )
+    // Lo que guardaba la app cuando leía plants.photo_path, thumbnail_path y
+    // photo_in_bloom: los mismos campos, con el mismo formato.
+    expect(old.format).toBe(LOCAL_COPY_FORMAT)
+    expect(old.plants[0]).toMatchObject({
+      photoPath: 'u/p/photo-1.webp',
+      thumbnailPath: 'u/p/thumb-1.webp',
+      photoInBloom: true,
+    })
+    await putRaw(name, structuredClone(old))
+
+    const copy = await createIndexedDbCopyStorage(name).read('user_a')
+    expect(copy?.plants).toEqual([inBloom, withoutPhoto])
+  })
+
   it('guarda el identificador y las notas (#265) y los lee igual', async () => {
     const storage = createIndexedDbCopyStorage(freshDbName())
     const withNotes = plant({ code: 'CAT-012', notes: 'Riego cada 5 días.' })

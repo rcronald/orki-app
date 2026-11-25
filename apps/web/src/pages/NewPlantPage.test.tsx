@@ -284,9 +284,7 @@ function createdRow(body: Record<string, unknown>): CollectionPlantRow {
     location: null,
     nickname: null,
     flower_color: null,
-    photo_in_bloom: false,
-    photo_path: null,
-    thumbnail_path: null,
+    plant_photos: [],
     created_at: '2026-11-21T15:00:00+00:00',
     updated_at: '2026-11-21T15:00:00+00:00',
     code: 'CAT-001',
@@ -315,16 +313,23 @@ function respond(...args: FetchArgs): Promise<Response> {
   if (pathname === '/rest/v1/plants' && request.method === 'POST') {
     return insertResponder(request.body as Record<string, unknown>)
   }
-  // La planta releída (readPlant), con la principal ya copiada, como hace la
-  // base (sync_plant).
+  // La planta releída (readPlant), con la principal embebida de plant_photos
+  // (#186).
   if (pathname === '/rest/v1/plants' && request.method === 'GET') {
     const id = request.url.searchParams.get('id')?.replace(/^eq\./, '') ?? ''
     const [main] = photoRowsOf(id)
     return json({
       ...createdRow({ ...lastInsert(), id }),
-      photo_path: main?.photo_path ?? null,
-      thumbnail_path: main?.thumbnail_path ?? null,
-      photo_in_bloom: main?.in_bloom ?? false,
+      plant_photos: main
+        ? [
+            {
+              photo_path: main.photo_path,
+              thumbnail_path: main.thumbnail_path,
+              in_bloom: main.in_bloom,
+              position: main.position,
+            },
+          ]
+        : [],
     })
   }
   if (pathname === '/rest/v1/plant_photos') {
@@ -2256,7 +2261,8 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
     await user.click(bloomChip() as HTMLElement)
     await user.click(submitButton())
     await waitFor(() => expect(location()).toBe('/coleccion'))
-    expect(lastInsert()).toMatchObject({ photo_in_bloom: true })
+    // Va en la fila de la foto principal, no en la planta (#186).
+    expect(lastInsert()).not.toHaveProperty('photo_in_bloom')
     expect(photoRowStore.map((row) => row.in_bloom)).toEqual([true, false])
   })
 

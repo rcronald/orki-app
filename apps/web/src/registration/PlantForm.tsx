@@ -1080,13 +1080,9 @@ function PlantFormBody(props: PlantFormBodyProps) {
     setSave({ status: 'saving' })
     let plant: CollectionPlant
     try {
-      // "En floración" solo tiene sentido con foto.
-      plant = await props.services.savePlant(
-        toPlantInsert(
-          { ...values, photoInBloom: values.photoInBloom && photoCount > 0 },
-          plantId,
-        ),
-      )
+      // "En floración" no va en la planta: se guarda con la foto principal
+      // al subirla (runPhotoPhase, #186).
+      plant = await props.services.savePlant(toPlantInsert(values, plantId))
     } catch (error) {
       savingRef.current = false
       setSave({ status: 'error', error: plantSaveErrorFrom(error) })

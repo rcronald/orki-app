@@ -228,7 +228,7 @@ describe('toPlantInsert', () => {
     expect(insert).not.toHaveProperty('user_id')
   })
 
-  it('los opcionales van limpios y solo si tienen valor', () => {
+  it('los opcionales van limpios y solo si tienen valor; "en floración" no va en la planta (#186)', () => {
     expect(
       toPlantInsert(
         filled({
@@ -249,7 +249,6 @@ describe('toPlantInsert', () => {
       origin: 'Vivero Sol',
       location: 'Balcón',
       flower_color: 'yellow',
-      photo_in_bloom: true,
     })
   })
 })
@@ -324,6 +323,11 @@ describe('edición (#16)', () => {
   it('sin cambios no hay nada que enviar', () => {
     const initial = plantFormValuesFrom(linked)
     expect(plantPatch(initial, initial)).toEqual({})
+  })
+
+  it('"en floración" no va en la planta: es de cada foto (#186)', () => {
+    const initial = plantFormValuesFrom(linked)
+    expect(plantPatch({ ...initial, photoInBloom: false }, initial)).toEqual({})
   })
 
   it('envía solo lo que cambió; vaciar un opcional lo deja en null', () => {

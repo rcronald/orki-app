@@ -96,6 +96,9 @@ describe('lectura de la colección desde Supabase', () => {
     expect(url?.searchParams.get('limit')).toBe(String(COLLECTION_PAGE_SIZE))
     expect(url?.searchParams.has('id')).toBe(false)
     expect(url?.searchParams.has('offset')).toBe(false)
+    // De plant_photos, solo la principal (#186).
+    expect(url?.searchParams.get('plant_photos.order')).toBe('position.asc')
+    expect(url?.searchParams.get('plant_photos.limit')).toBe('1')
     const [, init] = fetchMock.mock.calls[0] ?? []
     expect(new Headers(init?.headers).get('Authorization')).toBe(
       `Bearer ${TOKEN}`,
@@ -153,6 +156,69 @@ describe('lectura de la colección desde Supabase', () => {
     ])
   })
 
+  it('no pide las columnas de foto de plants: la principal llega de plant_photos (#186)', () => {
+    // Las columnas de primer nivel: lo de fuera de los paréntesis.
+    const topLevel = COLLECTION_PLANT_SELECT.replace(/\([^)]*\)/g, '()')
+      .split(',')
+      .map((column) => column.trim())
+    for (const legacy of ['photo_path', 'thumbnail_path', 'photo_in_bloom']) {
+      expect(topLevel).not.toContain(legacy)
+    }
+    expect(COLLECTION_PLANT_SELECT).toContain(
+      'plant_photos (photo_path, thumbnail_path, in_bloom, position)',
+    )
+  })
+
+  it('toma como principal la foto de posición más baja de las que lleguen', async () => {
+    const photo = (position: number, inBloom: boolean) => ({
+      photo_path: `user_prueba/p1/photo-${String(position)}.webp`,
+      thumbnail_path: `user_prueba/p1/thumb-${String(position)}.webp`,
+      in_bloom: inBloom,
+      position,
+    })
+    table = [
+      // Si PostgREST no aplicara el límite, llegarían todas y en otro orden.
+      plantRow({
+        id: 'p1',
+        photo_count: 3,
+        plant_photos: [photo(4, false), photo(1, true), photo(2, false)],
+      }),
+      plantRow({ id: 'p2', photo_count: 0, plant_photos: [] }),
+      // Sin el embebido (una respuesta simulada antigua): sin foto.
+      plantRow({ id: 'p3', photo_count: null, plant_photos: undefined }),
+    ]
+
+    expect(
+      (await load()).map(
+        ({ photoPath, thumbnailPath, photoInBloom, photoCount }) => ({
+          photoPath,
+          thumbnailPath,
+          photoInBloom,
+          photoCount,
+        }),
+      ),
+    ).toEqual([
+      {
+        photoPath: 'user_prueba/p1/photo-1.webp',
+        thumbnailPath: 'user_prueba/p1/thumb-1.webp',
+        photoInBloom: true,
+        photoCount: 3,
+      },
+      {
+        photoPath: null,
+        thumbnailPath: null,
+        photoInBloom: false,
+        photoCount: 0,
+      },
+      {
+        photoPath: null,
+        thumbnailPath: null,
+        photoInBloom: false,
+        photoCount: 0,
+      },
+    ])
+  })
+
   it('pide el número de fotos (photo_count, #184) y lo pasa al modelo', async () => {
     expect(COLLECTION_PLANT_SELECT.split(', ')).toContain('photo_count')
     table = [
@@ -161,12 +227,7 @@ describe('lectura de la colección desde Supabase', () => {
       plantRow({ id: 'p2', photo_count: undefined }),
       // El insert que crea la principal devuelve el recuento de antes.
       plantRow({ id: 'p3', photo_count: 0 }),
-      plantRow({
-        id: 'p4',
-        photo_count: null,
-        photo_path: null,
-        thumbnail_path: null,
-      }),
+      plantRow({ id: 'p4', photo_count: null, plant_photos: [] }),
     ]
 
     expect((await load()).map((plant) => plant.photoCount)).toEqual([
@@ -185,9 +246,7 @@ describe('lectura de la colección desde Supabase', () => {
         location: null,
         nickname: null,
         flower_color: null,
-        photo_in_bloom: false,
-        photo_path: null,
-        thumbnail_path: null,
+        plant_photos: [],
       }),
     ]
     const [plant] = await load()
