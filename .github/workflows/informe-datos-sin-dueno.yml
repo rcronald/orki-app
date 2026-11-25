@@ -55,7 +55,6 @@ jobs:
         shell: bash
     env:
       AMBIENTE: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
-      SALIDA: ${{ runner.temp }}/informe
     steps:
       - name: Comprobar la rama y las credenciales
         id: credenciales
@@ -70,6 +69,10 @@ jobs:
             echo "::error::El informe de producción solo se lanza desde main (se lanzó desde ${RAMA})."
             exit 1
           fi
+          # La carpeta de salida, para este paso y los siguientes. No puede ir en el env del
+          # job: ahí no existe el contexto runner y GitHub rechaza el archivo entero.
+          SALIDA="${RUNNER_TEMP}/informe"
+          echo "SALIDA=${SALIDA}" >> "$GITHUB_ENV"
           mkdir -p "$SALIDA"
           supabase=true
           clerk=true

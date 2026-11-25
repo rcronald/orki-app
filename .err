@@ -1,5 +1,0 @@
-
-Error: el servidor es PostgreSQL 14.21 (Homebrew) y hace falta el 17 o posterior, la misma versión mayor que el CI y Supabase: con otra, una prueba puede pasar aquí y fallar en el CI.
-  - En macOS: "brew install postgresql@17". El script usa sus binarios aunque no estén en el PATH (/opt/homebrew/opt/postgresql@17/bin); si están en otro sitio, indica el directorio en ORKI_PG_BINDIR.
-  - O un contenedor desechable con postgres:17 y su URL en ORKI_TEST_DB_URL (ver "Pruebas de la base de datos" en docs/operacion/base-de-datos.md).
-  - Para usar esta versión de todos modos (sin garantías), ORKI_PERMITIR_PG_ANTIGUO=1.
