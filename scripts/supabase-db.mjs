@@ -4,14 +4,18 @@
 // Uso:
 //   node scripts/supabase-db.mjs nueva <nombre>    Crea una migración vacía en supabase/migrations.
 //   node scripts/supabase-db.mjs estado            Compara las migraciones locales con las aplicadas.
-//   node scripts/supabase-db.mjs aplicar [--yes]   Aplica las migraciones pendientes.
+//   node scripts/supabase-db.mjs aplicar [--yes]   Aplica las migraciones pendientes
+//                                                  (con --dry-run, solo las lista).
+//   node scripts/supabase-db.mjs esquema <archivo> Guarda en <archivo> el esquema del proyecto,
+//                                                  sin datos (`supabase db dump`). Lo usa el
+//                                                  workflow de migraciones como copia previa.
 //   node scripts/supabase-db.mjs datos-ejemplo     Carga los datos de ejemplo del catálogo
 //                                                  (supabase/datos-ejemplo/catalogo.sql).
 //   node scripts/supabase-db.mjs plantas-ejemplo <usuario> [cantidad] [--borrar]
 //                                                  Carga plantas de ejemplo para un usuario
 //                                                  (supabase/datos-ejemplo/plantas.sql), o las borra.
 //
-// "estado", "aplicar", "datos-ejemplo" y "plantas-ejemplo" actúan sobre el proyecto indicado por
+// "estado", "aplicar", "esquema", "datos-ejemplo" y "plantas-ejemplo" actúan sobre el proyecto indicado por
 // SUPABASE_PROJECT_REF y necesitan además SUPABASE_ACCESS_TOKEN y SUPABASE_DB_PASSWORD. Se
 // leen del entorno y, si no están ahí, del archivo supabase/.env (ignorado por git). El
 // entorno tiene prioridad.
@@ -287,6 +291,17 @@ switch (accion) {
   case 'aplicar':
     ejecutarEnProyecto(['db', 'push', '--remote', ...resto])
     break
+  case 'esquema': {
+    // `db dump` sin --data-only ni --role-only vuelca solo el esquema (sin filas ni roles) y
+    // deja fuera los esquemas internos de Supabase.
+    const [archivo, ...sobrantes] = resto
+    if (!archivo || archivo.startsWith('-') || sobrantes.length > 0)
+      fallar(
+        'indica un único archivo de destino: node scripts/supabase-db.mjs esquema <archivo>',
+      )
+    ejecutarEnProyecto(['db', 'dump', '--remote', '--file', archivo])
+    break
+  }
   case 'datos-ejemplo':
     cargarDatosEjemplo(resto)
     break
@@ -295,6 +310,6 @@ switch (accion) {
     break
   default:
     fallar(
-      `acción desconocida${accion ? ` "${accion}"` : ''}. Usa "nueva <nombre>", "estado", "aplicar", "datos-ejemplo" o "plantas-ejemplo".`,
+      `acción desconocida${accion ? ` "${accion}"` : ''}. Usa "nueva <nombre>", "estado", "aplicar", "esquema <archivo>", "datos-ejemplo" o "plantas-ejemplo".`,
     )
 }

@@ -18,7 +18,7 @@ Los scripts y el workflow usan las mismas tres variables:
 | `SUPABASE_DB_PASSWORD`  | Contraseña de la base de datos del proyecto.       | Se define al crear el proyecto; se puede restablecer en Project Settings > Database.                 |
 | `SUPABASE_PROJECT_REF`  | Identificador del proyecto (20 letras minúsculas). | En Project Settings > General (Project ID); también es el subdominio de `https://<ref>.supabase.co`. |
 
-El token puede ser de alcance limitado a los dos proyectos de Orki. Necesita, como mínimo, lectura del proyecto y lectura de la configuración del pooler de conexiones (`database_pooling_config_read`).
+El token puede ser de alcance limitado a un proyecto, y en GitHub se usa uno por ambiente (ver [Producción](#producción)): el de desarrollo no tiene acceso a producción. Necesita, como mínimo, lectura del proyecto y lectura de la configuración del pooler de conexiones (`database_pooling_config_read`). Los permisos que pide cada orden están en su ayuda, sección PERMISSIONS (`npx supabase link --help`, `npx supabase db push --help`, `npx supabase db dump --help`).
 
 El segundo permiso hace falta porque la conexión directa a la base de datos solo funciona por IPv6, que no está disponible en muchas redes ni en los ejecutores de GitHub Actions. Los scripts enlazan el proyecto antes de cada comando (`supabase link`), y el enlace guarda la dirección del pooler, que sí funciona por IPv4, en `supabase/.temp` (ignorado por git). Sin ese permiso el enlace no guarda la dirección y la CLI falla con "IPv6 is not supported on your current network".
 
@@ -151,18 +151,39 @@ Una limitación: al generar desde una URL de base de datos, la CLI no añade la 
 
 ### Producción
 
-Las migraciones nunca se aplican en producción desde una máquina local. El workflow `.github/workflows/migraciones.yml` las aplica:
+Las migraciones nunca se aplican en producción desde una máquina local. El workflow `.github/workflows/migraciones.yml` (Actions > Migraciones) las aplica y, en producción, publica después la web (ver [Despliegue ordenado](despliegue-y-ci.md#despliegue-ordenado)):
 
-- Automáticamente, cuando llega a `main` un cambio en `supabase/migrations/` (al fusionar un pull request). Usa el environment `prod` de GitHub.
-- A mano, desde la pestaña Actions de GitHub con "Run workflow", eligiendo el environment `dev` o `prod`. Producción solo se puede lanzar desde `main`; desarrollo se puede lanzar desde cualquier rama.
+- Automáticamente, en cada push a `main` (al fusionar un pull request), toque o no `supabase/migrations/`. Usa el environment `prod` de GitHub.
+- A mano, desde la pestaña Actions de GitHub con "Run workflow", eligiendo el environment `dev` o `prod`. Con `dev` solo aplica las migraciones y no despliega nada; con `prod`, que solo se puede lanzar desde `main`, aplica y publica la web. Desarrollo se puede lanzar desde cualquier rama, para probar en el proyecto de desarrollo la migración de un pull request antes de fusionarlo.
 
-El workflow instala las dependencias, ejecuta `npm run db:push -- --yes` y después `npm run db:status` para dejar el estado en el registro. Solo aplica las migraciones que faltan en ese ambiente; si no falta ninguna, termina sin cambios. Nunca corren dos ejecuciones a la vez sobre el mismo ambiente: la siguiente espera a que termine la que está en curso.
+En cada ejecución, por este orden:
 
-Las credenciales están registradas en GitHub (Settings > Secrets and variables > Actions, y Settings > Environments):
+1. Comprueba la rama (producción, solo `main`), el identificador del proyecto y, en producción, que existe el secreto del Deploy Hook de Vercel. Si algo falta, termina con un error que dice qué crear y dónde, **antes de tocar la base**: o se aplican las migraciones y se publica la web, o ninguna de las dos cosas.
+2. Simula (`db push --dry-run`) y deja en el resumen de la ejecución la lista de migraciones pendientes, o «Ninguna».
+3. Si hay alguna pendiente, guarda una copia del esquema de la base tal como está (`node scripts/supabase-db.mjs esquema <archivo>`, que llama a `supabase db dump`: solo estructura, sin filas ni roles) como artefacto `esquema-previo-<ambiente>-...` de la ejecución, que se conserva 14 días. Antes de subirla comprueba que no contiene la contraseña ni el token; si los contuviera, la borra y no aplica nada. Si la copia no se puede hacer, avisa y sigue sin ella: es una ayuda, no una condición (el esquema ya está en las migraciones). El repositorio es público: cualquiera con cuenta de GitHub puede descargar los artefactos. El esquema es el de las migraciones, que ya son públicas, más lo que se haya cambiado a mano en el panel.
+4. Aplica las pendientes (`npm run db:push -- --yes`) y deja el estado en el registro (`npm run db:status`). Si no falta ninguna, no cambia nada.
+5. Solo en producción: publica la web, y la prueba de humo comprueba que se publicó (ver [Despliegue ordenado](despliegue-y-ci.md#despliegue-ordenado)).
 
-- `SUPABASE_ACCESS_TOKEN`: secreto del repositorio, compartido por los dos ambientes.
-- `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
-- `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
+Nunca corren dos ejecuciones a la vez sobre el mismo ambiente: la siguiente espera a que termine la que está en curso.
+
+Las credenciales de este workflow están en GitHub, en Settings > Environments, cada una en su environment (`dev` y `prod`):
+
+| Nombre                     | Tipo     | Qué es                                                                                                                                          |
+| -------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_ACCESS_TOKEN`    | Secreto  | Token de la API de gestión de Supabase, **uno por ambiente**, limitado a su proyecto (ver [Credenciales](#credenciales)).                       |
+| `SUPABASE_DB_PASSWORD`     | Secreto  | Contraseña de la base de datos del proyecto del ambiente.                                                                                       |
+| `SUPABASE_PROJECT_REF`     | Variable | Identificador del proyecto del ambiente.                                                                                                        |
+| `VERCEL_DEPLOY_HOOK_URL`   | Secreto  | Solo en `prod`: URL del Deploy Hook de producción de Vercel. Nunca como secreto del repositorio, para que un job de `dev` no pueda usarlo.      |
+| `APP_URL`                  | Variable | Solo en `prod`, opcional: URL pública de la app (`https://...`), para la prueba de humo.                                                        |
+| `SUPABASE_PUBLISHABLE_KEY` | Variable | Solo en `prod`, opcional: la clave publicable del proyecto de producción (la misma de `VITE_SUPABASE_PUBLISHABLE_KEY`), para la prueba de humo. |
+
+Hasta el #281, `SUPABASE_ACCESS_TOKEN` era un único secreto del repositorio con acceso a la cuenta: cualquier job lo leía, también uno de `dev` lanzado desde una rama con el workflow cambiado. Un secreto de environment tiene prioridad sobre uno del repositorio con el mismo nombre, así que, una vez creados los dos de environment, hay que **borrar el del repositorio** para que deje de estar al alcance de los jobs sin environment o de `dev`. Solo lo usa este workflow: los demás (importación, fotos de referencia y los dos programados) no usan la API de gestión.
+
+Protección de los environments (Settings > Environments, la configura el responsable):
+
+- `prod`: «Deployment branches and tags» limitado a `main`. Así ningún workflow lanzado desde otra rama, aunque lo hayan cambiado en ella, recibe los secretos de producción. Es la protección de verdad; la comprobación de rama del propio workflow solo evita equivocarse. Los demás workflows que usan `prod` (importación, fotos de referencia, retención e informe) ya exigen `main` o corren programados desde `main`, así que la restricción no les afecta.
+- `prod`, opcional: «Required reviewers». Cada push a `main` esperaría entonces a que alguien apruebe en Actions antes de migrar y publicar, también los cambios que solo tocan documentación. Afectaría también a la retención diaria y al informe semanal, que se quedarían esperando la aprobación.
+- `dev` se deja sin restricción de rama: probar la migración de un pull request en el proyecto de desarrollo desde Actions es parte del flujo, y lo mismo hacen «Importar catálogo» y «Fotos de referencia». Con un token limitado al proyecto de desarrollo, lo peor que puede hacer un job de `dev` es tocar desarrollo.
 
 Los workflows manuales de carga usan además `SUPABASE_POOLER_HOST` (variable de cada environment, «Importar catálogo» y «Fotos de referencia») y `SUPABASE_SECRET_KEY` (secreto de cada environment, «Fotos de referencia» y los dos programados de abajo); ver sus secciones abajo. El informe semanal usa además `CLERK_SECRET_KEY` (secreto de cada environment, nuevo con el #293).
 
