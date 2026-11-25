@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -22,7 +23,13 @@ import { CatalogAdminError } from '../lib/catalogAdmin.ts'
 import { CatalogWriteError } from '../lib/catalogWrites.ts'
 import { createSampleCatalogSource } from '../showcase/catalog-admin-data.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
+import {
+  finishWait,
+  typeWithClockStopped,
+  withClockStopped,
+} from '../test/stopped-clock.ts'
 import { CatalogAdminView } from './CatalogAdminView.tsx'
+import { SEARCH_DEBOUNCE_MS } from './useRemoteData.ts'
 import type { CatalogAdminSource } from './source.ts'
 import {
   INITIAL_CATALOG_ADMIN_STATE,
@@ -66,6 +73,13 @@ beforeEach(() => {
   document.title = 'Fusión de especies · orqui.app'
 })
 
+// Las búsquedas esperan 250 ms a que se deje de escribir, y en el flujo
+// completo eran casi todo su tiempo (#311): se escribe con el reloj parado y
+// se salta la espera con finishWait (test/stopped-clock.ts).
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 async function idOf(source: CatalogAdminSource, name: string) {
   const { rows } = await source.searchSpecies(name)
   const row = rows.find((item) => item.scientificName === name)
@@ -82,8 +96,11 @@ async function idOf(source: CatalogAdminSource, name: string) {
 async function openDetail(user: User, name: string) {
   const [search] = await screen.findAllByRole('searchbox')
   if (!search) throw new Error('sin buscador')
-  await user.click(search)
-  await user.paste(name)
+  await withClockStopped(async (stopped) => {
+    await stopped.click(search)
+    await stopped.paste(name)
+  })
+  await finishWait(SEARCH_DEBOUNCE_MS)
   await user.click(
     await screen.findByRole('button', { name }, { timeout: 3000 }),
   )
@@ -102,7 +119,8 @@ async function openMerge(user: User, panel: HTMLElement, name: string) {
 /** Elige la otra especie con el teclado: escribir, flecha abajo y Enter. */
 async function pickOther(user: User, dialog: HTMLElement, text: string) {
   const field = within(dialog).getByRole('combobox', { name: 'Otra especie' })
-  await user.type(field, text)
+  await typeWithClockStopped(field, text)
+  await finishWait(SEARCH_DEBOUNCE_MS)
   await within(dialog).findByRole('option', {}, { timeout: 3000 })
   await user.keyboard('{ArrowDown}{Enter}')
 }
@@ -157,7 +175,8 @@ describe('Fusión de especies', () => {
     await expectNoAxeViolations(dialog)
 
     // El buscador no ofrece la especie del detalle.
-    await user.type(field, 'phal eq')
+    await typeWithClockStopped(field, 'phal eq')
+    await finishWait(SEARCH_DEBOUNCE_MS)
     expect(
       await within(dialog).findByText('Ninguna otra especie coincide'),
     ).toBeInTheDocument()
