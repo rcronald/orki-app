@@ -33,6 +33,7 @@
     "datos:sin-dueno": "node scripts/datos-sin-dueno/index.mjs",
     "build:medicion": "node scripts/construir-medicion.mjs",
     "presupuesto": "node scripts/presupuesto-tamano.mjs",
+    "cabeceras": "node scripts/cabeceras/index.mjs",
     "medir:carga": "node scripts/medir-carga.mjs",
     "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
     "build:e2e": "node scripts/construir-e2e.mjs",

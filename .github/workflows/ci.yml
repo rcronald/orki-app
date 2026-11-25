@@ -67,6 +67,14 @@ jobs:
           npm run build:medicion
           npm run presupuesto
 
+      # Cabeceras de seguridad (#282), sobre el build del paso anterior (la app de
+      # producción con las variables ficticias): las firmes siguen en vercel.json, los
+      # scripts en línea de index.html tienen su hash en la CSP y la CSP que genera
+      # apps/web/seguridad/politica.ts cubre los orígenes que usa el build. Ver
+      # docs/operacion/cabeceras-de-seguridad.md.
+      - name: Cabeceras de seguridad
+        run: npm run cabeceras
+
   # Pruebas de extremo a extremo (#148): los flujos principales en Chromium,
   # Firefox, WebKit y un perfil de iPhone, contra la app construida como
   # producción con Clerk simulado y Supabase simulado en la red de Playwright.

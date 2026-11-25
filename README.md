@@ -234,6 +234,8 @@ Pruebas, operación y medidas:
 - [Despliegue e integración continua](docs/operacion/despliegue-y-ci.md):
   Vercel, flujo de ramas y CI.
 - [Errores en Sentry](docs/operacion/errores-en-sentry.md).
+- [Cabeceras de seguridad y CSP](docs/operacion/cabeceras-de-seguridad.md):
+  las cabeceras de Vercel, la CSP por ambiente y lo que hay que revisar.
 - [Medición de la carga y presupuesto de tamaño](docs/medicion-de-carga.md).
 - [Indicadores de eventos](docs/indicadores-de-eventos.sql) (consultas SQL).
 

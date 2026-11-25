@@ -36,6 +36,7 @@ Todos se ejecutan desde la raíz del repositorio.
 | `npm run fotos:huerfanas`    | Lista los archivos del bucket de fotos que ya no cita ninguna planta (`-- --ambiente desarrollo`); solo borra con `--borrar` (ver [Lectura de fotos y borrado sin huérfanos](app/fotos.md#lectura-de-fotos-y-borrado-sin-huérfanos)). |
 | `npm run build:medicion`     | Construye la app como producción con valores ficticios, sin contactar con ningún servicio, en `apps/web/dist` (ver [Medición de la carga](medicion-de-carga.md)). |
 | `npm run presupuesto`        | Compara el build de `build:medicion` con `apps/web/presupuesto-tamano.json` y falla si lo supera. Lo usa el CI. |
+| `npm run cabeceras`          | Comprueba el build de `build:medicion` contra las cabeceras de seguridad: las firmes de `vercel.json`, los scripts en línea y los orígenes que cubre la CSP. Con `-- --actualizar` reescribe los hashes de los scripts en línea. Lo usa el CI (ver [Cabeceras de seguridad y CSP](operacion/cabeceras-de-seguridad.md#comprobación-automática)). |
 | `npm run medir:carga`        | Mide la carga inicial con Lighthouse contra la app construida en local, nunca contra producción. |
 
 La app web tiene además un script propio para regenerar los iconos de la PWA en `apps/web/public` a partir del logotipo (ver [Marca](app/design-system.md#marca)):
