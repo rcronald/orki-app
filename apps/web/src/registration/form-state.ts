@@ -109,7 +109,21 @@ export type PlantFormErrors = Partial<Record<PlantFormField, string>>
 
 export type PlantFormAction =
   | { type: 'nameChanged'; name: string }
+  /** Elegir una especie: la enlaza y pone su nombre aceptado en el campo. */
   | { type: 'speciesSelected'; species: FormSpecies }
+  /**
+   * El enlace automático del nombre exacto (#280), calculado para el texto
+   * `name`. Si el texto ya cambió, no hace nada: llegó tarde (#319). Con
+   * `keepName` (la persona está escribiendo en el campo) no le cambia lo
+   * tecleado; el nombre aceptado se pone al salir del campo y es el que se
+   * guarda (savedPlantName).
+   */
+  | {
+      type: 'speciesMatched'
+      species: FormSpecies
+      name: string
+      keepName: boolean
+    }
   | { type: 'genusSelected'; genus: FormGenus }
   /**
    * Género deducido de la primera palabra de un nombre libre (#280), o null
@@ -162,6 +176,15 @@ export function plantFormReducer(
         type: action.species.type,
         otherGenusOpen: false,
       }
+    case 'speciesMatched':
+      if (state.name !== action.name) return state
+      return {
+        ...plantFormReducer(state, {
+          type: 'speciesSelected',
+          species: action.species,
+        }),
+        name: action.keepName ? state.name : action.species.scientificName,
+      }
     case 'genusSelected':
       if (locked) return state
       return { ...state, genus: action.genus, otherGenusOpen: false }
@@ -201,6 +224,15 @@ export function plantFormReducer(
  */
 export function normalizePlantName(name: string): string {
   return name.trim().replace(/\s+/g, ' ')
+}
+
+/**
+ * El nombre que se guarda (entered_name): con una especie enlazada, su nombre
+ * aceptado, aunque el campo aún muestre lo que se tecleó (#319); si no, el
+ * escrito, normalizado.
+ */
+export function savedPlantName(values: PlantFormValues): string {
+  return values.species?.scientificName ?? normalizePlantName(values.name)
 }
 
 /** Longitud en caracteres (puntos de código), como char_length en Postgres. */
@@ -313,7 +345,7 @@ export function toPlantInsert(
   }
   const insert: NewPlantInsert = {
     id,
-    entered_name: normalizePlantName(values.name),
+    entered_name: savedPlantName(values),
     genus_id: values.genus.id,
     type: values.type,
     acquired_on: values.acquiredOn,
@@ -398,7 +430,7 @@ function toPlantColumns(
     return normalized === '' ? null : normalized
   }
   return {
-    entered_name: normalizePlantName(values.name),
+    entered_name: savedPlantName(values),
     species_id: values.species?.id ?? null,
     genus_id: values.genus?.id,
     type: values.type ?? undefined,

@@ -27,6 +27,10 @@ import type { FormGenus, FormSpecies } from './form-state.ts'
 //   se elige ninguna; se muestran todas ('several').
 // - Solo se parece (error de tipeo, abreviatura de género, una palabra de
 //   más o de menos): nada ('none'); la lista lo ofrece como siempre.
+// - Termina en el signo de híbrido («Masdevallia veitchiana ×» o «… x»):
+//   nada ('none'). Es quien está escribiendo un híbrido («… × otra»), no el
+//   nombre de la especie; la regla del #280 cuenta el «×» que va entre
+//   palabras («Phalaenopsis × intermedia»), no uno suelto al final (#319).
 // - El estado de la especie (importada, validada u observada) no cuenta: es lo
 //   mismo que ya deja elegir el autocompletado.
 //
@@ -52,6 +56,9 @@ export type NameMatch =
 
 const NO_MATCH: NameMatch = { kind: 'none' }
 
+/** Un signo de híbrido al final: «×» pegado o suelto, o una «x» suelta. */
+const TRAILING_HYBRID_SIGN = /(?:×|(?:^|\s)x)\s*$/i
+
 /** Si `name` empieza por `query` palabra a palabra (los dos ya normalizados). */
 function startsByWords(name: string, query: string): boolean {
   const names = name.split(' ')
@@ -72,7 +79,7 @@ export function exactNameMatch(
   maxResults = SEARCH_DEFAULT_RESULTS,
 ): NameMatch {
   const typed = normalizeSearchText(query)
-  if (typed === '') return NO_MATCH
+  if (typed === '' || TRAILING_HYBRID_SIGN.test(query)) return NO_MATCH
   const exact = results.filter(
     (result, index) =>
       results.findIndex((other) => other.id === result.id) === index &&

@@ -112,6 +112,34 @@ describe('NameField: nombre exacto (#280)', () => {
     expect(linkedSpecies()).toBe('ninguna')
   })
 
+  it('como en la edición, enlaza lo que se escribe sin reescribirlo; el nombre aceptado al salir (#319)', async () => {
+    const user = userEvent.setup()
+    render(<Field start={initialPlantFormValues('2026-11-23')} />)
+
+    await user.type(input(), 'phalaenopsis AMABILIS ')
+    await waitFor(() => expect(linkedSpecies()).toBe('amabilis'))
+    expect(input()).toHaveValue('phalaenopsis AMABILIS ')
+    expect(input()).toHaveFocus()
+
+    await user.tab()
+    expect(input()).toHaveValue('Phalaenopsis amabilis')
+    expect(linkedSpecies()).toBe('amabilis')
+  })
+
+  it('una pausa tras el espacio no pega la letra siguiente al nombre (#319)', async () => {
+    const user = userEvent.setup()
+    render(<Field start={initialPlantFormValues('2026-11-23')} />)
+    await user.type(input(), 'Phalaenopsis amabilis')
+    await waitFor(() => expect(linkedSpecies()).toBe('amabilis'))
+
+    await user.type(input(), ' ')
+    await waitFor(() => expect(linkedSpecies()).toBe('amabilis'))
+    expect(input()).toHaveValue('Phalaenopsis amabilis ')
+    await user.type(input(), 'x')
+    expect(input()).toHaveValue('Phalaenopsis amabilis x')
+    expect(linkedSpecies()).toBe('ninguna')
+  })
+
   it('con linkInitialName (el registro), el nombre inicial se enlaza al montarse', async () => {
     render(<Field start={pendingPlant} linkInitialName />)
     await waitFor(() => expect(linkedSpecies()).toBe('amabilis'))
