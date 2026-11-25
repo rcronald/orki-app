@@ -152,7 +152,7 @@ jobs:
       # uv toma su versión de required-version en pyproject.toml e instala el Python de
       # .python-version, como el job de Python del CI. La caché depende de uv.lock.
       - name: Instalar uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           working-directory: scripts/catalog-import
           cache-dependency-glob: uv.lock
