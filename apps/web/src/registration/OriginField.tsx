@@ -31,8 +31,8 @@ const FIELD_TEXT = {
 
 interface OriginFieldProps {
   /**
-   * Qué campo es: el origen (por defecto) o la ubicación, que la edición
-   * (#266) muestra a la vista con las ubicaciones que ya usaste.
+   * Qué campo es: el origen (por defecto) o la ubicación, con las ubicaciones
+   * que ya usaste. Dónde va cada uno lo dice field-order.ts.
    */
   field?: 'origin' | 'location'
   value: string

@@ -166,13 +166,32 @@ describe('OwnershipPanel', () => {
     ).toHaveAttribute('href', '/coleccion/nueva?nombre=Phalaenopsis+amabils')
   })
 
+  it('una especie validada va en cursiva y un nombre por validar en redonda (#336)', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.type(field(), 'Cattleya maxima')
+    expect(region()).toHaveTextContent('Tienes 1 ejemplar de Cattleya maxima.')
+    expect(
+      within(region()).getByText('Cattleya maxima').closest('em'),
+    ).not.toBeNull()
+
+    await user.clear(field())
+    await user.type(field(), 'Orquídea del abuelo')
+    expect(region()).toHaveTextContent(
+      'Tienes 1 ejemplar de Orquídea del abuelo.',
+    )
+    expect(region().querySelector('em')).toBeNull()
+  })
+
   it('"Aún no la tienes" lleva al registro con el nombre puesto', async () => {
     const user = userEvent.setup()
     renderPanel()
 
     await user.type(field(), 'Phragmipedium  kovachii')
     expect(region()).toHaveTextContent(
-      'Aún no la tienesPhragmipedium kovachii no está en tu colección.',
+      // Lo escrito, entre comillas, como en «¿Ya la tengo?» (#336).
+      'Aún no la tienes«Phragmipedium kovachii» no está en tu colección.',
     )
     await user.click(
       screen.getByRole('link', { name: 'Registrarla con este nombre' }),
@@ -401,7 +420,8 @@ describe('OwnershipPanel con el catálogo (#124)', () => {
     // La primera llega tarde: no cuenta para lo escrito ahora.
     await settle(first, [catalogSpecies()])
     expect(region()).toHaveTextContent(
-      'Aún no la tienesPhragmipedium kovachii no está en tu colección.',
+      // Lo escrito, entre comillas, como en «¿Ya la tengo?» (#336).
+      'Aún no la tienes«Phragmipedium kovachii» no está en tu colección.',
     )
     expect(region()).not.toHaveTextContent('Sí, la tienes')
   })

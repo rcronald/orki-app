@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo } from 'react'
 import type { CollectionPlant } from '../collection/model.ts'
+import type { OwnershipNameKind } from '../components/ui/OwnershipAnswer.tsx'
 import {
   answerOwnership,
   ownershipIndexFor,
@@ -125,6 +126,27 @@ export function useOwnershipAnswer({
     catalogName: improved?.catalogName ?? null,
     improvedByCatalog: improved?.improved ?? false,
   }
+}
+
+/**
+ * Cómo se pinta ownershipSubject() en OwnershipAnswer (#336), como en
+ * CheckAnswer: un género o una especie validada, en cursiva; varios géneros o
+ * un nombre por validar, en redonda; lo escrito, entre comillas, salvo que el
+ * catálogo lo haya reconocido (`catalogName`).
+ */
+export function ownershipSubjectKind(
+  ownership: Ownership,
+  catalogName: string | null,
+): OwnershipNameKind {
+  if (ownership.scope === 'genus') {
+    return ownership.genera.length > 1 ? 'entered' : 'scientific'
+  }
+  const [first] = ownership.matches
+  const names = new Set(ownership.matches.map(({ plant }) => plant.displayName))
+  if (names.size === 1 && first !== undefined) {
+    return first.plant.displayNameIsScientific ? 'scientific' : 'entered'
+  }
+  return catalogName === null ? 'typed' : 'scientific'
 }
 
 /**

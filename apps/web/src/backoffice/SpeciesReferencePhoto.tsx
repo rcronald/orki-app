@@ -11,7 +11,8 @@ import {
   toCatalogWriteError,
 } from '../lib/catalogWrites.ts'
 import type { SpeciesPhotoRejectionReason } from '../lib/database.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import type { CatalogAdminSource } from './source.ts'
 import { PHOTO_REJECTION_REASON_LABEL } from './texts.ts'
 
@@ -107,20 +108,27 @@ export function SpeciesReferencePhoto({
       )}
       {open && photo !== null && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={`Retirar la foto de «${species.scientificName}»`}
           confirmLabel="Retirar foto"
-          variant="danger"
+          confirmVariant="danger"
           busy={busy}
-          busyText="Retirando…"
+          busyLabel="Retirando…"
           error={error}
           onConfirm={() => void retire()}
           onCancel={() => setOpen(false)}
+          initialFocus="cancel"
+          description={
+            <>
+              <p>
+                La foto de {photo.credit.author} deja de verse en el catálogo,
+                en el registro y en el detalle de las plantas de esta especie.
+                La carga no la volverá a poner en esta especie; puede proponer
+                otra.
+              </p>
+            </>
+          }
         >
-          <p>
-            La foto de {photo.credit.author} deja de verse en el catálogo, en el
-            registro y en el detalle de las plantas de esta especie. La carga no
-            la volverá a poner en esta especie; puede proponer otra.
-          </p>
           <fieldset className="flex flex-col gap-space-1" disabled={busy}>
             <legend className="orki-field__label mb-space-2">
               ¿Por qué se retira? (obligatorio)

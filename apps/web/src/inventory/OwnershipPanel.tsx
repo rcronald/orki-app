@@ -8,7 +8,11 @@ import type {
 import type { OnOwnershipMeasure } from './ownership-measure.ts'
 import { MatchList, RegisterAction } from './OwnershipMatches.tsx'
 import { OWNERSHIP_TEXT, pastSpecimensText } from './texts.ts'
-import { ownershipSubject, useOwnershipAnswer } from './useOwnershipAnswer.ts'
+import {
+  ownershipSubject,
+  ownershipSubjectKind,
+  useOwnershipAnswer,
+} from './useOwnershipAnswer.ts'
 
 export interface OwnershipPanelProps {
   /** Todas las plantas, también las dadas de baja; null si aún no hay datos. */
@@ -68,7 +72,11 @@ export function OwnershipPanel({
   registerDisabledBy,
   now,
 }: OwnershipPanelProps) {
-  const { ownership, registerName: name } = useOwnershipAnswer({
+  const {
+    ownership,
+    registerName: name,
+    catalogName,
+  } = useOwnershipAnswer({
     plants,
     query,
     extras,
@@ -82,7 +90,11 @@ export function OwnershipPanel({
     <div className="flex flex-col gap-space-3">
       <div role="status">
         {ownership !== null && (
-          <AnswerSummary ownership={ownership} typed={name} />
+          <AnswerSummary
+            ownership={ownership}
+            typed={name}
+            catalogName={catalogName}
+          />
         )}
       </div>
       {ownership !== null && (
@@ -107,12 +119,15 @@ export function OwnershipPanel({
 function AnswerSummary({
   ownership,
   typed,
+  catalogName,
 }: {
   ownership: Ownership
   typed: string
+  catalogName: string | null
 }) {
   const owned = ownership.outcome !== 'not-owned'
   const name = ownershipSubject(ownership, typed)
+  const nameKind = ownershipSubjectKind(ownership, catalogName)
   const past = pastSpecimensText(
     ownership.pastMatches.filter(({ plant }) => plant.status === 'lost').length,
     ownership.pastMatches.filter(({ plant }) => plant.status === 'gifted')
@@ -126,10 +141,16 @@ function AnswerSummary({
           owned
           specimenCount={ownership.matches.length}
           scientificName={name}
+          nameKind={nameKind}
           announce={false}
         />
       ) : (
-        <OwnershipAnswer owned={false} scientificName={name} announce={false} />
+        <OwnershipAnswer
+          owned={false}
+          scientificName={name}
+          nameKind={nameKind}
+          announce={false}
+        />
       )}
       {ownership.outcome === 'similar' && (
         <p className="text-sm text-neutral-900">{OWNERSHIP_TEXT.similar}</p>

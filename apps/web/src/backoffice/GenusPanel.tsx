@@ -16,7 +16,8 @@ import {
   withFinalDot,
   type WrittenGenus,
 } from '../lib/catalogWrites.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { InlineForm } from './InlineForm.tsx'
 import { LoadError } from './parts.tsx'
 import { revealPanel, SIDE_PANEL } from './side-panel.ts'
@@ -283,6 +284,7 @@ function GenusForm({
       </p>
       {confirming && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={
             quick
               ? `Poner «${clean}» como acceso rápido`
@@ -295,19 +297,23 @@ function GenusForm({
           error={dialogError}
           onConfirm={() => void save()}
           onCancel={() => setConfirming(false)}
-        >
-          <p>
-            {quick
-              ? `«${clean}» aparecerá como chip de acceso rápido en el formulario de registro de todos los usuarios.`
-              : `«${clean}» dejará de aparecer como chip de acceso rápido en el formulario de registro de todos los usuarios; se podrá seguir eligiendo con «Otro».`}
-          </p>
-          {clean !== genus.name && (
-            <p>
-              También se guarda el nombre nuevo: «{genus.name}» pasa a llamarse
-              «{clean}».
-            </p>
-          )}
-        </ConfirmDialog>
+          initialFocus="confirm"
+          description={
+            <>
+              <p>
+                {quick
+                  ? `«${clean}» aparecerá como chip de acceso rápido en el formulario de registro de todos los usuarios.`
+                  : `«${clean}» dejará de aparecer como chip de acceso rápido en el formulario de registro de todos los usuarios; se podrá seguir eligiendo con «Otro».`}
+              </p>
+              {clean !== genus.name && (
+                <p>
+                  También se guarda el nombre nuevo: «{genus.name}» pasa a
+                  llamarse «{clean}».
+                </p>
+              )}
+            </>
+          }
+        />
       )}
     </form>
   )
@@ -469,23 +475,28 @@ function Abbreviations({
       )}
       {removing && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={`Quitar la abreviatura «${removing.abbreviation}»`}
           confirmLabel="Quitar"
-          variant="danger"
+          confirmVariant="danger"
           busy={removeBusy}
-          busyText="Quitando…"
+          busyLabel="Quitando…"
           error={removeError}
           onConfirm={() => void remove(removing)}
           onCancel={() => setRemoving(null)}
           returnFocusTo={() =>
             removed.current ? document.getElementById(addId) : null
           }
-        >
-          <p>
-            La búsqueda dejará de entender «{removing.abbreviation}» como{' '}
-            {genus.name}.
-          </p>
-        </ConfirmDialog>
+          initialFocus="cancel"
+          description={
+            <>
+              <p>
+                La búsqueda dejará de entender «{removing.abbreviation}» como{' '}
+                {genus.name}.
+              </p>
+            </>
+          }
+        />
       )}
     </div>
   )
@@ -542,28 +553,34 @@ function GenusDelete({
       </Button>
       {confirming && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={`Borrar el género «${genus.name}»`}
           confirmLabel="Borrar del catálogo"
-          variant="danger"
+          confirmVariant="danger"
           busy={busy}
-          busyText="Borrando…"
+          busyLabel="Borrando…"
           error={error}
           onConfirm={() => void remove()}
           onCancel={() => setConfirming(false)}
-        >
-          <p>
-            No tiene especies.
-            {genus.abbreviations.length > 0
-              ? ` Se borran también sus abreviaturas (${genus.abbreviations.map((item) => item.abbreviation).join(', ')}).`
-              : ''}{' '}
-            No se puede deshacer.
-          </p>
-          {genus.isQuickAccess && (
-            <p>
-              Es de acceso rápido: dejará de salir en el formulario de registro.
-            </p>
-          )}
-        </ConfirmDialog>
+          initialFocus="cancel"
+          description={
+            <>
+              <p>
+                No tiene especies.
+                {genus.abbreviations.length > 0
+                  ? ` Se borran también sus abreviaturas (${genus.abbreviations.map((item) => item.abbreviation).join(', ')}).`
+                  : ''}{' '}
+                No se puede deshacer.
+              </p>
+              {genus.isQuickAccess && (
+                <p>
+                  Es de acceso rápido: dejará de salir en el formulario de
+                  registro.
+                </p>
+              )}
+            </>
+          }
+        />
       )}
     </div>
   )

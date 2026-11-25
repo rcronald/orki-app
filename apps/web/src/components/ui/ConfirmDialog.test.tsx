@@ -92,4 +92,48 @@ describe('ConfirmDialog', () => {
     )
     expect(onConfirm).not.toHaveBeenCalled()
   })
+
+  it('con las capacidades del backoffice (#338): alertdialog, foco en la acción, error y «ocupado» anunciado', () => {
+    const { rerender } = render(
+      <ConfirmDialog
+        role="alertdialog"
+        title="¿Cambiar el estado?"
+        description="Se cambian todas o ninguna."
+        confirmLabel="Cambiar"
+        busyLabel="Guardando…"
+        announceBusy
+        initialFocus="confirm"
+        error="No tienes permiso."
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+    const dialog = screen.getByRole('alertdialog', {
+      name: '¿Cambiar el estado?',
+    })
+    expect(dialog).toHaveAccessibleDescription('Se cambian todas o ninguna.')
+    expect(screen.getByRole('button', { name: 'Cambiar' })).toHaveFocus()
+    expect(screen.getByRole('alert')).toHaveTextContent('No tienes permiso.')
+    expect(screen.getByRole('status')).toHaveTextContent('')
+
+    rerender(
+      <ConfirmDialog
+        role="alertdialog"
+        title="¿Cambiar el estado?"
+        description="Se cambian todas o ninguna."
+        confirmLabel="Cambiar"
+        busyLabel="Guardando…"
+        announceBusy
+        busy
+        initialFocus="confirm"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Guardando…')
+    expect(screen.getByRole('button', { name: 'Guardando…' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+  })
 })

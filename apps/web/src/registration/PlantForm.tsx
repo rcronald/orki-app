@@ -13,19 +13,14 @@ import type { CollectionPlant } from '../collection/model.ts'
 import { normalizeSearchText } from '../collection/normalize.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Chip } from '../components/ui/Chip.tsx'
-import { Collapsible } from '../components/ui/Collapsible.tsx'
-import {
-  FormActions,
-  FormLayout,
-  FormPair,
-} from '../components/ui/FormLayout.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { FormActions, FormLayout } from '../components/ui/FormLayout.tsx'
 import { galleryPhotoLabel } from '../components/ui/gallery-label.ts'
 import { Icon } from '../components/ui/Icon.tsx'
 import {
   PhotoGallery,
   type GalleryPhoto,
 } from '../components/ui/PhotoGallery.tsx'
-import { TextField } from '../components/ui/TextField.tsx'
 import type {
   CatalogSearchFunction,
   GenusSearchResult,
@@ -43,6 +38,7 @@ import { useTouchDevice } from '../photos/useCoarsePointer.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { photoVersionFor } from '../photos/upload.ts'
 import { canRetryUpload } from '../photos/usePhotoUpload.ts'
+import { EDIT_LEAVE_TEXT } from '../editing/texts.ts'
 import { useLeaveGuard } from '../editing/useLeaveGuard.tsx'
 import { PATHS, signInPathFor } from '../routes/paths.ts'
 import { FORM_CHIP_CLASSES } from './ChoiceField.tsx'
@@ -65,12 +61,14 @@ import {
 } from './draft-photo.ts'
 import { DuplicateNotice } from './DuplicateNotice.tsx'
 import {
+  hasDetailValues,
+  PLANT_DETAIL_FIELDS,
+  PLANT_FORM_FIELDS,
+} from './field-order.ts'
+import {
   initialPlantFormValues,
   isPendingName,
   isPlantFormDirty,
-  PLANT_DETAIL_FIELDS,
-  PLANT_FORM_FIELDS,
-  PLANT_TEXT_MAX_LENGTH,
   plantFormReducer,
   toPlantInsert,
   validatePlantForm,
@@ -81,7 +79,6 @@ import {
 } from './form-state.ts'
 import { GenusField, type QuickGeneraState } from './GenusField.tsx'
 import { NameField, type NameResolution } from './NameField.tsx'
-import { OriginField } from './OriginField.tsx'
 import { PendingPhotoNotice } from './PendingPhotoNotice.tsx'
 import {
   clearPendingUpload,
@@ -93,10 +90,9 @@ import {
 import { PendingUploadsNotice } from './PendingUploadsNotice.tsx'
 import { plantSaveErrorFrom, type PlantSaveError } from './save-plant.ts'
 import {
-  AcquiredOnField,
-  FlowerColorField,
-  NicknameField,
+  DateAndPlaceRow,
   PhotoPrepareErrors,
+  PlantDetailsSection,
   PlantTypeField,
 } from './PlantFields.tsx'
 import { PENDING_UPLOAD_TEXT, PLANT_FORM_TEXT } from './texts.ts'
@@ -299,12 +295,7 @@ function isOnlyLinked(
 
 /** Si hay algo escrito dentro de "Más detalles". */
 function hasDetails(values: PlantFormValues): boolean {
-  return (
-    values.location.trim() !== '' ||
-    values.nickname.trim() !== '' ||
-    values.flowerColor !== null ||
-    values.photoInBloom
-  )
+  return hasDetailValues(values) || values.photoInBloom
 }
 
 type SaveState =
@@ -832,16 +823,8 @@ function PlantFormBody(props: PlantFormBodyProps) {
 
   const offlineId = useId()
   const formRef = useRef<HTMLFormElement>(null)
-  const {
-    nameRef,
-    genusRef,
-    typeRef,
-    dateRef,
-    originRef,
-    locationRef,
-    nicknameRef,
-    focusField,
-  } = usePlantFieldFocus(values.otherGenusOpen)
+  const fieldFocus = usePlantFieldFocus(values.otherGenusOpen)
+  const { nameRef, genusRef, typeRef, focusField } = fieldFocus
 
   // Después del efecto de Page, que lleva el foco al título al navegar. Este
   // componente va dentro de Page y su efecto corre antes que el de Page (en
@@ -1199,14 +1182,22 @@ function PlantFormBody(props: PlantFormBodyProps) {
   // Si hay algo que se perdería al salir: lo escrito o las fotos.
   const dirty = isPlantFormDirty(values, initial) || photoCount > 0
 
-  const cancel = () => {
-    if (saving || registered !== null) return
-    if (dirty && !window.confirm(text.confirmDiscard)) return
+  // «Cancelar» con cambios pregunta con el diálogo de la app, como la edición
+  // (#335): «Seguir editando» primero, Escape lo cierra y el foco vuelve a
+  // «Cancelar».
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const discardAndLeave = () => {
+    setConfirmingCancel(false)
     if (draftOwner !== null) {
       clearPlantDraft(draftOwner, plantId)
       void clearDraftPhotos(photoDraftBackend, draftOwner, plantId)
     }
     onCancel()
+  }
+  const cancel = () => {
+    if (saving || registered !== null) return
+    if (dirty) setConfirmingCancel(true)
+    else discardAndLeave()
   }
 
   // Empieza de cero: formulario vacío con la fecha de hoy, sin fotos y otro
@@ -1287,6 +1278,8 @@ function PlantFormBody(props: PlantFormBodyProps) {
       : saving || preparing || blocked
 
   const galleryDisabled = fieldsDisabled || saving
+  // Los campos de lugar, la fecha, el apodo y el color (PlantFields.tsx).
+  const placeProps = { values, errors, dispatch, knownPlants, refs: fieldFocus }
 
   const main = (
     <fieldset
@@ -1337,22 +1330,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
         containerRef={typeRef}
       />
 
-      <FormPair>
-        <AcquiredOnField
-          value={values.acquiredOn}
-          max={today}
-          error={errors.acquiredOn}
-          dispatch={dispatch}
-          inputRef={dateRef}
-        />
-        <OriginField
-          value={values.origin}
-          dispatch={dispatch}
-          knownPlants={knownPlants}
-          error={errors.origin}
-          inputRef={originRef}
-        />
-      </FormPair>
+      <DateAndPlaceRow {...placeProps} today={today} />
     </fieldset>
   )
 
@@ -1416,65 +1394,30 @@ function PlantFormBody(props: PlantFormBodyProps) {
   )
 
   const extra = (
-    <fieldset disabled={fieldsDisabled} className="min-w-[0]">
-      <Collapsible
-        title={
-          <span>
-            {PLANT_FORM_TEXT.detailsTitle}{' '}
-            <span className="font-normal text-neutral-700">
-              {PLANT_FORM_TEXT.optional}
-            </span>
-          </span>
-        }
-        headingLevel={2}
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
-        className="rounded-md border border-secondary"
-      >
-        <div className="flex flex-col gap-space-5 pt-space-3">
-          <TextField
-            ref={locationRef}
-            label={PLANT_FORM_TEXT.locationLabel}
-            hint={PLANT_FORM_TEXT.locationHint}
-            value={values.location}
-            maxLength={PLANT_TEXT_MAX_LENGTH}
-            autoCapitalize="sentences"
-            error={errors.location}
-            onChange={(event) =>
+    <PlantDetailsSection
+      {...placeProps}
+      open={detailsOpen}
+      onOpenChange={setDetailsOpen}
+      disabled={fieldsDisabled}
+    >
+      {/* Solo con alguna foto: sin fotos no tiene sentido. */}
+      {photoCount > 0 && (
+        <div>
+          <Chip
+            className={FORM_CHIP_CLASSES}
+            selected={values.photoInBloom}
+            onClick={() =>
               dispatch({
-                type: 'textChanged',
-                field: 'location',
-                value: event.target.value,
+                type: 'photoInBloomChanged',
+                photoInBloom: !values.photoInBloom,
               })
             }
-          />
-          <NicknameField
-            value={values.nickname}
-            error={errors.nickname}
-            dispatch={dispatch}
-            inputRef={nicknameRef}
-          />
-          <FlowerColorField value={values.flowerColor} dispatch={dispatch} />
-          {/* Solo con alguna foto: sin fotos no tiene sentido. */}
-          {photoCount > 0 && (
-            <div>
-              <Chip
-                className={FORM_CHIP_CLASSES}
-                selected={values.photoInBloom}
-                onClick={() =>
-                  dispatch({
-                    type: 'photoInBloomChanged',
-                    photoInBloom: !values.photoInBloom,
-                  })
-                }
-              >
-                {PLANT_FORM_TEXT.photoInBloom}
-              </Chip>
-            </div>
-          )}
+          >
+            {PLANT_FORM_TEXT.photoInBloom}
+          </Chip>
         </div>
-      </Collapsible>
-    </fieldset>
+      )}
+    </PlantDetailsSection>
   )
 
   return (
@@ -1486,6 +1429,17 @@ function PlantFormBody(props: PlantFormBodyProps) {
       onSubmit={(event) => void handleSubmit(event)}
     >
       {guard.dialog}
+      {confirmingCancel && (
+        <ConfirmDialog
+          title={EDIT_LEAVE_TEXT.title}
+          description={<p>{text.discardDescription}</p>}
+          confirmLabel={EDIT_LEAVE_TEXT.confirm}
+          cancelLabel={EDIT_LEAVE_TEXT.stay}
+          initialFocus="cancel"
+          onConfirm={discardAndLeave}
+          onCancel={() => setConfirmingCancel(false)}
+        />
+      )}
       {registered === null &&
         otherUploads.some((upload) => upload.plantId !== plantId) && (
           <PendingUploadsNotice

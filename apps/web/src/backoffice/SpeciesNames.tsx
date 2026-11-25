@@ -8,7 +8,8 @@ import type {
 } from '../lib/catalogAdmin.ts'
 import { toCatalogWriteError } from '../lib/catalogWrites.ts'
 import type { SpeciesNameType } from '../lib/database.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { InlineForm } from './InlineForm.tsx'
 import { SelectField } from './parts.tsx'
 import { NAME_CHANGE_AREAS, type CatalogChanged } from './revisions.ts'
@@ -233,11 +234,12 @@ export function SpeciesNames({
 
       {removing && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={`Quitar ${LIST_TEXT[removing.type].one} «${removing.name}»`}
           confirmLabel="Quitar"
-          variant="danger"
+          confirmVariant="danger"
           busy={removeBusy}
-          busyText="Quitando…"
+          busyLabel="Quitando…"
           error={removeError}
           onConfirm={() => void remove(removing)}
           onCancel={() => setRemoving(null)}
@@ -246,12 +248,17 @@ export function SpeciesNames({
               ? document.getElementById(addId(removing.type))
               : null
           }
-        >
-          <p>
-            «{species.scientificName}» dejará de encontrarse por este nombre en
-            la búsqueda. No se puede deshacer, pero se puede volver a añadir.
-          </p>
-        </ConfirmDialog>
+          initialFocus="cancel"
+          description={
+            <>
+              <p>
+                «{species.scientificName}» dejará de encontrarse por este nombre
+                en la búsqueda. No se puede deshacer, pero se puede volver a
+                añadir.
+              </p>
+            </>
+          }
+        />
       )}
     </>
   )

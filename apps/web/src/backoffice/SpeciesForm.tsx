@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
+import { normalizeSearchText } from '../collection/normalize.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
@@ -14,7 +15,8 @@ import {
   type WrittenSpecies,
 } from '../lib/catalogWrites.ts'
 import type { SpeciesStatus, SpeciesType } from '../lib/database.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { SelectField } from './parts.tsx'
 import { GenusPicker, type PickedGenus } from './GenusPicker.tsx'
 import type { CatalogAdminSource } from './source.ts'
@@ -69,16 +71,13 @@ export interface SpeciesFormProps {
 
 type FieldErrors = Partial<Record<CatalogWriteField, string>>
 
-/** El nombre empieza por el género (sin contar mayúsculas, tildes ni «×»). */
+/**
+ * El nombre empieza por el género, sin contar mayúsculas, tildes ni el signo
+ * de híbrido: con la normalización de la búsqueda (normalizeSearchText, que
+ * también transcribe ø, æ, œ, ß, ł y đ, #337).
+ */
 function startsWithGenus(name: string, genus: string): boolean {
-  const key = (text: string) =>
-    text
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .replace(/×/g, ' ')
-      .toLowerCase()
-      .trim()
-      .split(/\s+/)[0] ?? ''
+  const key = (text: string) => normalizeSearchText(text).split(' ')[0] ?? ''
   return key(name) === key(genus)
 }
 
@@ -385,6 +384,7 @@ export function SpeciesForm({
 
       {confirmPlants !== null && editing && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title="Cambiar también las plantas de los usuarios"
           confirmLabel="Guardar y actualizar las plantas"
           busy={saving}
@@ -394,18 +394,22 @@ export function SpeciesForm({
             setConfirmPlants(null)
             setDialogError(null)
           }}
-        >
-          <p>
-            {confirmPlants === 1
-              ? '1 planta de usuarios tiene enlazada esta especie.'
-              : `${formatCount(confirmPlants)} plantas de usuarios tienen enlazada esta especie.`}{' '}
-            Al guardar, {confirmPlants === 1 ? 'pasará' : 'pasarán'} a
-            {genusChanged && genus ? ` ser del género ${genus.name}` : ''}
-            {genusChanged && typeChanged ? ' y' : ''}
-            {typeChanged ? ` ser de tipo «${TYPE_LABEL[type]}»` : ''}.
-          </p>
-          <p>Sus dueños lo verán en su colección.</p>
-        </ConfirmDialog>
+          initialFocus="confirm"
+          description={
+            <>
+              <p>
+                {confirmPlants === 1
+                  ? '1 planta de usuarios tiene enlazada esta especie.'
+                  : `${formatCount(confirmPlants)} plantas de usuarios tienen enlazada esta especie.`}{' '}
+                Al guardar, {confirmPlants === 1 ? 'pasará' : 'pasarán'} a
+                {genusChanged && genus ? ` ser del género ${genus.name}` : ''}
+                {genusChanged && typeChanged ? ' y' : ''}
+                {typeChanged ? ` ser de tipo «${TYPE_LABEL[type]}»` : ''}.
+              </p>
+              <p>Sus dueños lo verán en su colección.</p>
+            </>
+          }
+        />
       )}
     </form>
   )

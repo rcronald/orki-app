@@ -1,20 +1,18 @@
+import { normalizeSearchText } from '../collection/normalize.ts'
+
 // Índice alfabético de los géneros (#232).
 //
 // La letra de un género es la primera de su nombre sin el signo de híbrido ni
 // tildes, como el orden de la base (los nothogéneros, guardados como
-// «× Rhyncholaeliocattleya», van con la R). Un nombre que no empieza por una
-// letra de la «a» a la «z» va en «otros».
+// «× Rhyncholaeliocattleya», van con la R), con la normalización de la
+// búsqueda (normalizeSearchText, #337): Œrstedella va con la O. Un nombre que
+// no empieza por una letra de la «a» a la «z» va en «otros».
 
 export const OTHER_LETTER = 'otros'
 
 /** Letra del índice de un género: «a»…«z» u OTHER_LETTER. */
 export function genusLetter(name: string): string {
-  const first = name
-    .replace(/^\s*(?:×|x(?=\s))\s*/iu, '')
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .charAt(0)
-    .toLowerCase()
+  const first = normalizeSearchText(name).charAt(0)
   return /^[a-z]$/.test(first) ? first : OTHER_LETTER
 }
 

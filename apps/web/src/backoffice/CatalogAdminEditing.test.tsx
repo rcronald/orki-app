@@ -363,6 +363,40 @@ describe('Backoffice: escritura de especies', () => {
     ).toBeInTheDocument()
   })
 
+  it('alta: el aviso de «no empieza por el género» normaliza ø, æ, œ, ß, ł y đ como la colección (#337)', async () => {
+    const OERSTEDELLA = '55555555-5555-4555-8555-555555555555'
+    handlers['rpc/search_genera'] = () =>
+      jsonResponse([
+        {
+          id: OERSTEDELLA,
+          name: 'Œrstedella',
+          is_quick_access: false,
+          matched_abbreviation: null,
+        },
+      ])
+    const user = userEvent.setup()
+    renderAt()
+    await waitForTable()
+    await user.click(
+      screen.getByRole('button', { name: 'Añadir especie o híbrido' }),
+    )
+    const form = screen.getByRole('form', { name: 'Nueva especie o híbrido' })
+    await pickGenus(user, form, 'oer', /Œrstedella/)
+    const name = within(form).getByRole('textbox', {
+      name: 'Nombre científico',
+    })
+    // Escrito con «oe»: es el mismo género, sin aviso.
+    await user.clear(name)
+    await user.type(name, 'Oerstedella centradenia')
+    expect(name).not.toHaveAccessibleDescription(/Aviso/)
+    // Otro género sí lo tiene.
+    await user.clear(name)
+    await user.type(name, 'Epidendrum centradenia')
+    expect(name).toHaveAccessibleDescription(
+      /Aviso: el nombre no empieza por el género elegido \(Œrstedella\)\./,
+    )
+  })
+
   it('alta: un nombre que ya existe se explica junto al campo', async () => {
     handlers['rpc/create_catalog_species'] = () =>
       rejection(409, '23505', 'similar_name', {

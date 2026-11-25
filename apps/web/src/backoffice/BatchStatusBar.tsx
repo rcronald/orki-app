@@ -4,7 +4,8 @@ import { ScientificName } from '../components/ui/ScientificName.tsx'
 import type { CatalogSpeciesRow } from '../lib/catalogAdmin.ts'
 import { toCatalogWriteError } from '../lib/catalogWrites.ts'
 import type { SpeciesStatus } from '../lib/database.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { SelectField } from './parts.tsx'
 import type { CatalogAdminSource } from './source.ts'
 import {
@@ -102,43 +103,51 @@ export function BatchStatusBar({
 
       {confirming && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={`Cambiar el estado de ${speciesCountText(count)} a «${label}»`}
           confirmLabel={`Cambiar a «${label}»`}
           busy={busy}
           error={error}
           onConfirm={() => void apply()}
           onCancel={() => setConfirming(false)}
-        >
-          <ul className="flex flex-col gap-space-1">
-            {rows.slice(0, PREVIEW).map((row) => (
-              <li key={row.id} className="scientific-name">
-                <ScientificName name={row.scientificName} />
-              </li>
-            ))}
-            {count > PREVIEW && (
-              <li>
-                y{' '}
-                {count - PREVIEW === 1
-                  ? 'otra'
-                  : `otras ${formatCount(count - PREVIEW)}`}
-                .
-              </li>
-            )}
-          </ul>
-          {already > 0 && (
-            <p>
-              {already === 1 ? '1 ya está' : `${formatCount(already)} ya están`}{' '}
-              como «{label}» y no cambia{already === 1 ? '' : 'n'}.
-            </p>
-          )}
-          {status === 'imported' && (
-            <p>
-              Las especies del Catalogue of Life que vuelvan a «Importada» las
-              actualizará la próxima importación con lo que diga la fuente.
-            </p>
-          )}
-          <p>Se cambian todas o ninguna.</p>
-        </ConfirmDialog>
+          initialFocus="confirm"
+          description={
+            <>
+              <ul className="flex flex-col gap-space-1">
+                {rows.slice(0, PREVIEW).map((row) => (
+                  <li key={row.id} className="scientific-name">
+                    <ScientificName name={row.scientificName} />
+                  </li>
+                ))}
+                {count > PREVIEW && (
+                  <li>
+                    y{' '}
+                    {count - PREVIEW === 1
+                      ? 'otra'
+                      : `otras ${formatCount(count - PREVIEW)}`}
+                    .
+                  </li>
+                )}
+              </ul>
+              {already > 0 && (
+                <p>
+                  {already === 1
+                    ? '1 ya está'
+                    : `${formatCount(already)} ya están`}{' '}
+                  como «{label}» y no cambia{already === 1 ? '' : 'n'}.
+                </p>
+              )}
+              {status === 'imported' && (
+                <p>
+                  Las especies del Catalogue of Life que vuelvan a «Importada»
+                  las actualizará la próxima importación con lo que diga la
+                  fuente.
+                </p>
+              )}
+              <p>Se cambian todas o ninguna.</p>
+            </>
+          }
+        />
       )}
     </div>
   )
