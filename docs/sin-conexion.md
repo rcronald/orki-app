@@ -150,7 +150,11 @@ algún borrado, la app nunca lee la copia de un id distinto del activo.
   puede deducir: `photoCount` (#184) falta en las copias guardadas antes y
   `fromStoredCopy()` lo toma de la principal (1 si hay foto, 0 si no) hasta
   la siguiente lectura de la red, en lugar de descartar la copia de quien
-  abre la app actualizada sin conexión.
+  abre la app actualizada sin conexión. Desde el #186 la foto principal se
+  lee de `plant_photos` y no de las columnas de foto de `plants`, pero la
+  planta en memoria conserva los mismos campos (`photoPath`,
+  `thumbnailPath` y `photoInBloom`, los de la principal): el formato no
+  cambia y una copia de una versión anterior se lee igual.
 - **Fuente de la colección** (`collection/cached-source.ts`): entrega primero
   la copia (`provide`) y después lo de la red, y guarda cada resultado. Si la
   red falla por falta de conexión y hay copia, la colección queda lista con

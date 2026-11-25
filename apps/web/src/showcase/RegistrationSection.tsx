@@ -264,7 +264,9 @@ function samplePlant(insert: NewPlantInsert): CollectionPlant {
     location: insert.location ?? null,
     nickname: insert.nickname ?? null,
     flowerColor: insert.flower_color ?? null,
-    photoInBloom: insert.photo_in_bloom ?? false,
+    // Como la base (#186): recién insertada no tiene foto; «en floración»
+    // llega con la principal, en su fila de plant_photos.
+    photoInBloom: false,
     photoPath: null,
     thumbnailPath: null,
     photoCount: 0,

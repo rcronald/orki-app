@@ -2,6 +2,7 @@ import { offlineOr } from '../lib/connection.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
+  withMainPhotoOnly,
   type CollectionPlant,
 } from '../collection/model.ts'
 import {
@@ -203,20 +204,19 @@ export async function insertPlant(
     throw new PlantSaveError(offlineOr('failed'), { cause: error })
   }
 
-  const { data, error, status } = await supabase
-    .from('plants')
-    .insert(insert)
-    .select(COLLECTION_PLANT_SELECT)
-    .single()
+  const { data, error, status } = await withMainPhotoOnly(
+    supabase.from('plants').insert(insert).select(COLLECTION_PLANT_SELECT),
+  ).single()
   if (!error) return toCollectionPlant(data)
 
   if (isDuplicateId(error)) {
     // Un intento anterior con este id ya la guardó: se lee la que hay.
-    const existing = await supabase
-      .from('plants')
-      .select(COLLECTION_PLANT_SELECT)
-      .eq('id', insert.id)
-      .maybeSingle()
+    const existing = await withMainPhotoOnly(
+      supabase
+        .from('plants')
+        .select(COLLECTION_PLANT_SELECT)
+        .eq('id', insert.id),
+    ).maybeSingle()
     if (existing.error) {
       throw toPlantSaveError(existing.error, existing.status)
     }
@@ -251,13 +251,14 @@ export async function updatePlant(
       message: PLANT_UPDATE_ERROR_TEXT[reason],
     })
   }
-  const { data, error, status } = await supabase
-    .from('plants')
-    .update(patch)
-    .eq('id', plantId)
-    .eq('user_id', userId)
-    .select(COLLECTION_PLANT_SELECT)
-    .single()
+  const { data, error, status } = await withMainPhotoOnly(
+    supabase
+      .from('plants')
+      .update(patch)
+      .eq('id', plantId)
+      .eq('user_id', userId)
+      .select(COLLECTION_PLANT_SELECT),
+  ).single()
   if (error) throw toPlantSaveError(error, status, PLANT_UPDATE_ERROR_TEXT)
   return toCollectionPlant(data)
 }

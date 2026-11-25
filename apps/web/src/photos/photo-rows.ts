@@ -2,6 +2,7 @@ import { offlineOr } from '../lib/connection.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
+  withMainPhotoOnly,
   type CollectionPlant,
 } from '../collection/model.ts'
 import type { PlantPhoto, PlantPhotoUpdate } from '../lib/database.ts'
@@ -19,10 +20,12 @@ import { PhotoStorageError } from './storage.ts'
 //   posición ocupada se rechaza con 23505.
 // - Las rutas empiezan por "<user_id>/<plant_id>/" y llevan solo un nombre de
 //   archivo (23514 si no).
-// - La foto principal (la de position más baja) se copia a plants.photo_path,
-//   thumbnail_path y photo_in_bloom, así que la tarjeta del inventario no
-//   cambia. Tras escribir una foto, la planta de la colección puede quedar
-//   desfasada: readPlant() la vuelve a leer.
+// - La foto principal es la de position más baja. La planta de la colección
+//   la lleva embebida de esta tabla (COLLECTION_PLANT_SELECT, #186), así que
+//   tras escribir una foto puede quedar desfasada: readPlant() la vuelve a
+//   leer. La base aún la copia a plants.photo_path, thumbnail_path y
+//   photo_in_bloom para las versiones anteriores de la app, pero esta ya no
+//   lee ni escribe esas columnas.
 // - RLS: cada persona lee, crea, cambia y borra solo sus fotos.
 // - Reordenar (#183) va por la función reorder_plant_photos de la base
 //   (migración 20261124100000): ver reorder().
@@ -328,14 +331,13 @@ export function createSupabasePlantPhotoRows({
     },
 
     async readPlant(plantId, userId) {
-      const { data, error, status } = await (
-        await client()
-      )
-        .from('plants')
-        .select(COLLECTION_PLANT_SELECT)
-        .eq('id', plantId)
-        .eq('user_id', userId)
-        .single()
+      const { data, error, status } = await withMainPhotoOnly(
+        (await client())
+          .from('plants')
+          .select(COLLECTION_PLANT_SELECT)
+          .eq('id', plantId)
+          .eq('user_id', userId),
+      ).single()
       if (error) throw recordError(error, status)
       return toCollectionPlant(data)
     },

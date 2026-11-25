@@ -25,6 +25,11 @@ import type { OwnershipExtras, SpeciesExtraName } from './ownership.ts'
 //   cobertura de los extras (#274, extras-state.ts): de qué especies y
 //   géneros se leyeron. Una copia anterior no la trae y queda desconocida
 //   (null): sus extras no se dan por completos hasta la siguiente lectura.
+// - La foto principal (#186): desde que se lee de plant_photos y no de las
+//   columnas de foto de plants, la planta en memoria sigue teniendo los
+//   mismos campos (photoPath, thumbnailPath y photoInBloom, los de la
+//   principal), así que el formato no cambia y una copia guardada por una
+//   versión anterior se lee igual: lo que guardó era también la principal.
 // - Todo con try/catch: sin IndexedDB (algunos modos privados) o con un
 //   fallo (sin espacio), no se guarda nada y la app funciona como sin caché.
 
