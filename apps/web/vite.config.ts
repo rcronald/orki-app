@@ -127,8 +127,15 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'any',
           },
+          // El mismo archivo como enmascarable (#287): el símbolo queda dentro
+          // de la zona segura (radio 0,332 del lado; la comprobación de
+          // scripts/generate-icons.mjs pide 0,4 como mucho) sobre un fondo
+          // opaco hasta el borde. Antes era un maskable-icon-512x512.png
+          // idéntico byte a byte, que se precacheaba dos veces. Va en una
+          // entrada aparte, no como purpose 'any maskable', que la
+          // especificación desaconseja.
           {
-            src: 'maskable-icon-512x512.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
