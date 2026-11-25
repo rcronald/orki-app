@@ -11,16 +11,32 @@
 //   manifiesto de precaché), sin comprimir, igual que lo informa el plugin de
 //   PWA al terminar el build. Recoge cualquier crecimiento, también el de los
 //   chunks diferidos (Clerk, registro, backoffice).
+//
+// Y una métrica informativa, sin límite (#287):
+// - precacheBrotli: el mismo precaché comprimido archivo a archivo con Brotli
+//   (calidad 11), que es lo que se transfiere de verdad al instalar la app,
+//   porque Vercel sirve con Brotli. No tiene límite porque mide los mismos
+//   archivos que precacheBytes, que ya frena su crecimiento; un segundo
+//   límite sobre ellos solo obligaría a recalibrar dos números en cada
+//   cambio. Además Vercel no comprime siempre con la calidad máxima, así que
+//   la cifra es un suelo de lo transferido, no lo transferido exacto. Se
+//   informa con su referencia para ver cuánto transfiere de más o de menos
+//   un cambio.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { brotliCompressSync, constants, gzipSync } from 'node:zlib'
 
 /** Métricas del presupuesto, en el orden en que se informan. */
 export const METRICAS = Object.freeze({
   jsInicialGzip: 'JavaScript inicial (gzip)',
   cssGzip: 'CSS inicial (gzip)',
   precacheBytes: 'Precaché del service worker (sin comprimir)',
+})
+
+/** Métricas informativas: se miden y se informan, pero no tienen límite. */
+export const INFORMATIVAS = Object.freeze({
+  precacheBrotli: 'Precaché del service worker (Brotli, informativa)',
 })
 
 function atributo(etiqueta, nombre) {
@@ -100,6 +116,15 @@ export function tamanoGzip(contenido) {
   return gzipSync(contenido, { level: 9 }).length
 }
 
+export function tamanoBrotli(contenido) {
+  return brotliCompressSync(contenido, {
+    params: {
+      [constants.BROTLI_PARAM_QUALITY]: 11,
+      [constants.BROTLI_PARAM_SIZE_HINT]: contenido.length,
+    },
+  }).length
+}
+
 /**
  * Mide la carpeta de un build. `leer(ruta)` devuelve el contenido (Buffer) de
  * una ruta relativa a la carpeta; por defecto, del disco.
@@ -130,6 +155,7 @@ export function medirBuild(carpeta, leer = defaultLeer(carpeta)) {
       jsInicialGzip: suma(jsInicial, tamanoGzip),
       cssGzip: suma(css, tamanoGzip),
       precacheBytes: suma(precache, (contenido) => contenido.length),
+      precacheBrotli: suma(precache, tamanoBrotli),
     },
   }
 }
@@ -162,13 +188,38 @@ export function compararConPresupuesto(metricas, presupuesto) {
 }
 
 /**
+ * Filas de las métricas informativas: lo medido y la referencia del
+ * presupuesto, si la hay (undefined si no).
+ */
+export function filasInformativas(metricas, presupuesto) {
+  return Object.keys(INFORMATIVAS).map((clave) => ({
+    clave,
+    nombre: INFORMATIVAS[clave],
+    valor: metricas[clave],
+    referencia: presupuesto.informativas?.[clave]?.referencia,
+  }))
+}
+
+const DESCRIPCION =
+  'Presupuesto de tamaño del build de producción con valores ficticios (npm run build:medicion). Lo comprueba npm run presupuesto en el CI; ver docs/medicion-de-carga.md.'
+
+function informativasDesde(metricas) {
+  return Object.fromEntries(
+    Object.keys(INFORMATIVAS).map((clave) => [
+      clave,
+      { referencia: metricas[clave] },
+    ]),
+  )
+}
+
+/**
  * Presupuesto nuevo a partir de las métricas: la referencia es la medida y el
- * límite, la medida más el margen, redondeado hacia arriba al byte.
+ * límite, la medida más el margen, redondeado hacia arriba al byte. Las
+ * informativas, solo con su referencia.
  */
 export function presupuestoDesde(metricas, margen, fecha) {
   return {
-    descripcion:
-      'Presupuesto de tamaño del build de producción con valores ficticios (npm run build:medicion). Lo comprueba npm run presupuesto en el CI; ver docs/medicion-de-carga.md.',
+    descripcion: DESCRIPCION,
     fecha,
     margen,
     metricas: Object.fromEntries(
@@ -180,7 +231,79 @@ export function presupuestoDesde(metricas, margen, fecha) {
         },
       ]),
     ),
+    informativas: informativasDesde(metricas),
   }
+}
+
+/**
+ * Presupuesto que solo baja (#287): cada métrica cuyo límite nuevo (la medida
+ * más el margen del presupuesto) queda por debajo del actual toma la medida
+ * como referencia y ese límite; las demás se quedan como estaban, aunque su
+ * medida haya bajado un poco o subido. Las informativas toman la medida. Así
+ * un recorte se fija sin subir de paso ningún límite.
+ */
+export function presupuestoBajado(presupuesto, metricas, fecha) {
+  const margen = presupuesto.margen
+  if (typeof margen !== 'number') {
+    throw new Error('El presupuesto no tiene margen.')
+  }
+  let bajado = false
+  const nuevas = Object.fromEntries(
+    Object.keys(METRICAS).map((clave) => {
+      const regla = presupuesto.metricas?.[clave]
+      if (regla === undefined || typeof regla.limite !== 'number') {
+        throw new Error(`El presupuesto no tiene límite para ${clave}.`)
+      }
+      const limite = Math.ceil(metricas[clave] * (1 + margen))
+      if (limite >= regla.limite) return [clave, regla]
+      bajado = true
+      return [clave, { referencia: metricas[clave], limite }]
+    }),
+  )
+  return {
+    descripcion: presupuesto.descripcion ?? DESCRIPCION,
+    fecha: bajado ? fecha : presupuesto.fecha,
+    margen,
+    metricas: nuevas,
+    informativas: informativasDesde(metricas),
+  }
+}
+
+/**
+ * Tabla en Markdown del cambio de un presupuesto a otro, con lo medido, para
+ * pegarla en el PR (la regla de docs/medicion-de-carga.md: un PR que cambia el
+ * presupuesto dice qué creció o qué bajó).
+ */
+export function tablaDeCambios(anterior, nuevo, metricas) {
+  const numero = (valor) =>
+    typeof valor === 'number'
+      ? `${String(valor).replace(/\B(?=(\d{3})+$)/g, ' ')} B`
+      : '—'
+  const diferencia = (antes, despues) => {
+    if (typeof antes !== 'number' || typeof despues !== 'number') return '—'
+    const delta = despues - antes
+    return delta === 0
+      ? '0 B'
+      : `${delta > 0 ? '+' : '−'}${numero(Math.abs(delta))}`
+  }
+  const filas = [
+    '| Métrica | Referencia antes | Medido ahora | Diferencia | Límite antes | Límite ahora |',
+    '| --- | ---: | ---: | ---: | ---: | ---: |',
+  ]
+  for (const clave of Object.keys(METRICAS)) {
+    const antes = anterior.metricas?.[clave]
+    const ahora = nuevo.metricas[clave]
+    filas.push(
+      `| ${METRICAS[clave]} | ${numero(antes?.referencia)} | ${numero(metricas[clave])} | ${diferencia(antes?.referencia, metricas[clave])} | ${numero(antes?.limite)} | ${antes?.limite === ahora.limite ? 'sin cambio' : numero(ahora.limite)} |`,
+    )
+  }
+  for (const clave of Object.keys(INFORMATIVAS)) {
+    const antes = anterior.informativas?.[clave]?.referencia
+    filas.push(
+      `| ${INFORMATIVAS[clave]} | ${numero(antes)} | ${numero(metricas[clave])} | ${diferencia(antes, metricas[clave])} | — | — |`,
+    )
+  }
+  return filas.join('\n')
 }
 
 export function formatearKiB(bytes) {

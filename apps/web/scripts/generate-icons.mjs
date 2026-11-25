@@ -203,8 +203,11 @@ try {
     return { size, rgba, png: encodePng(size, rgba) }
   }
 
-  const maskable = await png(source, 512)
-  const radius = drawingRadius(512, maskable.rgba)
+  // El de 512 sirve a la vez de icono "any" y de enmascarable (#287): el
+  // símbolo ya deja el margen de la zona segura, así que un archivo aparte
+  // sería el mismo, byte a byte, y se precachearía dos veces.
+  const large = await png(source, 512)
+  const radius = drawingRadius(512, large.rgba)
   if (radius > 0.4) {
     throw new Error(
       `El símbolo sale de la zona segura del icono enmascarable (radio ${radius.toFixed(3)} > 0,4).`,
@@ -216,8 +219,7 @@ try {
   // el de Apple lo necesitan, y los "any" se ven igual en todas partes.
   const files = {
     'pwa-192x192.png': (await png(source, 192)).png,
-    'pwa-512x512.png': (await png(source, 512)).png,
-    'maskable-icon-512x512.png': maskable.png,
+    'pwa-512x512.png': large.png,
     'apple-touch-icon-180x180.png': (await png(source, 180)).png,
     'favicon.ico': encodeIco(
       await Promise.all([16, 32, 48].map((size) => png(faviconSvg, size))),

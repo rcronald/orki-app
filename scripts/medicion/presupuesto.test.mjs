@@ -3,10 +3,14 @@ import { describe, test } from 'node:test'
 import {
   compararConPresupuesto,
   entradasDePrecache,
+  filasInformativas,
   importsEstaticos,
   medirBuild,
+  presupuestoBajado,
   presupuestoDesde,
   referenciasIniciales,
+  tablaDeCambios,
+  tamanoBrotli,
   tamanoGzip,
 } from './presupuesto.mjs'
 
@@ -103,6 +107,52 @@ describe('medirBuild', () => {
         archivos['assets/App-E.js'].length,
     )
   })
+
+  test('suma el precaché con Brotli archivo a archivo', () => {
+    const { metricas } = medirBuild('dist', leer)
+    const rutas = ['index.html', 'assets/index-A.js', 'assets/App-E.js']
+    assert.equal(
+      metricas.precacheBrotli,
+      rutas.reduce((total, ruta) => total + tamanoBrotli(leer(ruta)), 0),
+    )
+    // Comprime: los archivos de prueba son muy repetitivos.
+    assert.ok(metricas.precacheBrotli < metricas.precacheBytes / 4)
+  })
+})
+
+describe('tamanoBrotli', () => {
+  test('comprime con Brotli y es determinista', () => {
+    const contenido = Buffer.from('const a = 1;\n'.repeat(200))
+    assert.equal(tamanoBrotli(contenido), tamanoBrotli(contenido))
+    assert.ok(tamanoBrotli(contenido) < tamanoGzip(contenido))
+  })
+})
+
+describe('filasInformativas', () => {
+  test('da lo medido con la referencia, sin límite ni veredicto', () => {
+    assert.deepEqual(
+      filasInformativas(
+        { precacheBrotli: 450 },
+        { informativas: { precacheBrotli: { referencia: 400 } } },
+      ),
+      [
+        {
+          clave: 'precacheBrotli',
+          nombre: 'Precaché del service worker (Brotli, informativa)',
+          valor: 450,
+          referencia: 400,
+        },
+      ],
+    )
+  })
+
+  test('sin referencia en el presupuesto la deja sin definir', () => {
+    assert.equal(
+      filasInformativas({ precacheBrotli: 450 }, { metricas: {} })[0]
+        .referencia,
+      undefined,
+    )
+  })
 })
 
 describe('compararConPresupuesto', () => {
@@ -151,10 +201,18 @@ describe('compararConPresupuesto', () => {
 describe('presupuestoDesde', () => {
   test('toma la medida como referencia y le suma el margen', () => {
     const nuevo = presupuestoDesde(
-      { jsInicialGzip: 1000, cssGzip: 201, precacheBytes: 10_000 },
+      {
+        jsInicialGzip: 1000,
+        cssGzip: 201,
+        precacheBytes: 10_000,
+        precacheBrotli: 3000,
+      },
       0.05,
       '2026-11-21',
     )
+    assert.deepEqual(nuevo.informativas, {
+      precacheBrotli: { referencia: 3000 },
+    })
     assert.equal(nuevo.fecha, '2026-11-21')
     assert.equal(nuevo.margen, 0.05)
     assert.deepEqual(nuevo.metricas, {
@@ -162,5 +220,110 @@ describe('presupuestoDesde', () => {
       cssGzip: { referencia: 201, limite: 212 },
       precacheBytes: { referencia: 10_000, limite: 10_500 },
     })
+  })
+})
+
+describe('presupuestoBajado', () => {
+  const actual = {
+    descripcion: 'Presupuesto',
+    fecha: '2026-11-20',
+    margen: 0.05,
+    metricas: {
+      jsInicialGzip: { referencia: 1000, limite: 1050 },
+      cssGzip: { referencia: 200, limite: 210 },
+      precacheBytes: { referencia: 10_000, limite: 10_500 },
+    },
+    informativas: { precacheBrotli: { referencia: 3000 } },
+  }
+
+  test('baja solo las métricas cuyo límite nuevo queda por debajo', () => {
+    const nuevo = presupuestoBajado(
+      actual,
+      {
+        jsInicialGzip: 1002,
+        cssGzip: 199,
+        precacheBytes: 9000,
+        precacheBrotli: 2700,
+      },
+      '2026-11-24',
+    )
+    assert.deepEqual(nuevo, {
+      descripcion: 'Presupuesto',
+      fecha: '2026-11-24',
+      margen: 0.05,
+      metricas: {
+        // Sube 2 B: se queda como estaba.
+        jsInicialGzip: { referencia: 1000, limite: 1050 },
+        // Baja 1 B, pero ⌈199 × 1,05⌉ = 209 < 210: baja.
+        cssGzip: { referencia: 199, limite: 209 },
+        precacheBytes: { referencia: 9000, limite: 9450 },
+      },
+      informativas: { precacheBrotli: { referencia: 2700 } },
+    })
+  })
+
+  test('nunca sube un límite y, si nada baja, conserva la fecha', () => {
+    const nuevo = presupuestoBajado(
+      actual,
+      {
+        jsInicialGzip: 2000,
+        cssGzip: 400,
+        precacheBytes: 20_000,
+        precacheBrotli: 6000,
+      },
+      '2026-11-24',
+    )
+    assert.deepEqual(nuevo.metricas, actual.metricas)
+    assert.equal(nuevo.fecha, '2026-11-20')
+  })
+
+  test('falla si al presupuesto le falta el margen o una métrica', () => {
+    assert.throws(
+      () => presupuestoBajado({ metricas: actual.metricas }, {}, 'x'),
+      /margen/,
+    )
+    assert.throws(
+      () =>
+        presupuestoBajado(
+          { margen: 0.05, metricas: { jsInicialGzip: { limite: 1 } } },
+          { jsInicialGzip: 1, cssGzip: 1, precacheBytes: 1 },
+          'x',
+        ),
+      /cssGzip/,
+    )
+  })
+})
+
+describe('tablaDeCambios', () => {
+  test('una fila por métrica con lo medido, la diferencia y los límites', () => {
+    const anterior = {
+      metricas: {
+        jsInicialGzip: { referencia: 86_987, limite: 91_337 },
+        cssGzip: { referencia: 13_246, limite: 13_909 },
+        precacheBytes: { referencia: 1_402_144, limite: 1_472_252 },
+      },
+    }
+    const metricas = {
+      jsInicialGzip: 87_252,
+      cssGzip: 13_246,
+      precacheBytes: 1_371_087,
+      precacheBrotli: 450_000,
+    }
+    const nuevo = presupuestoBajado(
+      { ...anterior, margen: 0.05 },
+      metricas,
+      '2026-11-24',
+    )
+    assert.equal(
+      tablaDeCambios(anterior, nuevo, metricas),
+      [
+        '| Métrica | Referencia antes | Medido ahora | Diferencia | Límite antes | Límite ahora |',
+        '| --- | ---: | ---: | ---: | ---: | ---: |',
+        '| JavaScript inicial (gzip) | 86 987 B | 87 252 B | +265 B | 91 337 B | sin cambio |',
+        '| CSS inicial (gzip) | 13 246 B | 13 246 B | 0 B | 13 909 B | sin cambio |',
+        '| Precaché del service worker (sin comprimir) | 1 402 144 B | 1 371 087 B | −31 057 B | 1 472 252 B | 1 439 642 B |',
+        '| Precaché del service worker (Brotli, informativa) | — | 450 000 B | — | — | — |',
+      ].join('\n'),
+    )
   })
 })

@@ -21,8 +21,8 @@
 //   JavaScript, así que no lleva nada más.
 // - medidas.json, el informe: peso, calidad y huella de cada archivo.
 //
-// Codificar lo hace sips, la herramienta de imágenes de macOS, como en
-// scripts/fondos-genero.mjs, para no añadir dependencias. En otro sistema se
+// Codificar lo hace sips, la herramienta de imágenes de macOS, para no añadir
+// dependencias. En otro sistema se
 // pueden preparar los mismos archivos con otra herramienta (Squoosh, avifenc)
 // con los mismos nombres y medidas, y escribir medidas.json a mano.
 import { execFileSync } from 'node:child_process'

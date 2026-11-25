@@ -28,6 +28,7 @@
     "medicion/sustitutos.ts",
     "medicion/version-b.ts",
     "prerender/portada-previa-plugin.ts",
+    "complementos/*.ts",
     "middleware.ts",
     "seguridad/*.ts"
   ]
