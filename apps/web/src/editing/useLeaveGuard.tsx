@@ -298,9 +298,7 @@ export function useLeaveGuard({
           text?.description ?? (
             <>
               <p>{EDIT_LEAVE_TEXT.description}</p>
-              {partial && (
-                <p className="mt-space-2">{EDIT_LEAVE_TEXT.partial}</p>
-              )}
+              {partial && <p>{EDIT_LEAVE_TEXT.partial}</p>}
             </>
           )
         }

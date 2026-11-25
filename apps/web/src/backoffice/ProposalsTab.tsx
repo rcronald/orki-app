@@ -17,7 +17,8 @@ import {
 } from '../lib/catalogWrites.ts'
 import type { SpeciesType } from '../lib/database.ts'
 import { PlantImagesContext, usePlantImage } from '../photos/usePlantImage.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { ModalDialog } from './ModalDialog.tsx'
 import { LoadError, Notice, Pagination, ResultNotice } from './parts.tsx'
 import { type PlacedNotice } from './side-panel.ts'
@@ -736,22 +737,27 @@ function UnidentifiableDialog({
   }
   return (
     <ConfirmDialog
+      {...BACKOFFICE_CONFIRM}
       title="Marcar como no identificable"
       confirmLabel={`Marcar ${proposalPlantCountText(group.plantCount)}`}
-      variant="danger"
+      confirmVariant="danger"
       busy={saving}
       error={error}
       onConfirm={() => void mark()}
       onCancel={onCancel}
       returnFocusTo={returnFocusTo}
-    >
-      <GroupSummary group={group} />
-      <p>
-        {group.plantCount === 1
-          ? 'La planta sale de la cola sin especie y sigue en la colección de su dueño, que la verá como «No identificable».'
-          : `Las ${formatCount(group.plantCount)} plantas salen de la cola sin especie y siguen en la colección de sus dueños, que las verán como «No identificables».`}{' '}
-        Desde aquí no se puede deshacer.
-      </p>
-    </ConfirmDialog>
+      initialFocus="cancel"
+      description={
+        <>
+          <GroupSummary group={group} />
+          <p>
+            {group.plantCount === 1
+              ? 'La planta sale de la cola sin especie y sigue en la colección de su dueño, que la verá como «No identificable».'
+              : `Las ${formatCount(group.plantCount)} plantas salen de la cola sin especie y siguen en la colección de sus dueños, que las verán como «No identificables».`}{' '}
+            Desde aquí no se puede deshacer.
+          </p>
+        </>
+      }
+    />
   )
 }

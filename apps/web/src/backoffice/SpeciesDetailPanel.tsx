@@ -7,7 +7,8 @@ import {
   type WrittenSpecies,
 } from '../lib/catalogWrites.ts'
 import { catalogueOfLifeTaxonUrl } from './attribution.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { LoadError, SpeciesStatusBadge } from './parts.tsx'
 import { revealPanel, SIDE_PANEL } from './side-panel.ts'
 import type { CatalogAdminSource } from './source.ts'
@@ -348,24 +349,29 @@ function DetailBody({
       )}
       {confirmDelete && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title={`Borrar «${species.scientificName}»`}
           confirmLabel="Borrar del catálogo"
-          variant="danger"
+          confirmVariant="danger"
           busy={deleting}
-          busyText="Borrando…"
+          busyLabel="Borrando…"
           error={deleteError}
           onConfirm={() => void remove()}
           onCancel={() => setConfirmDelete(false)}
-        >
-          <p>
-            Se borra del catálogo
-            {species.names.length > 0
-              ? ` junto con ${namesText(synonyms.length, commonNames.length)}`
-              : ''}
-            . No se puede deshacer.
-          </p>
-          <p>Ninguna planta de usuarios la tiene enlazada.</p>
-        </ConfirmDialog>
+          initialFocus="cancel"
+          description={
+            <>
+              <p>
+                Se borra del catálogo
+                {species.names.length > 0
+                  ? ` junto con ${namesText(synonyms.length, commonNames.length)}`
+                  : ''}
+                . No se puede deshacer.
+              </p>
+              <p>Ninguna planta de usuarios la tiene enlazada.</p>
+            </>
+          }
+        />
       )}
       <SpeciesReferencePhoto
         species={species}

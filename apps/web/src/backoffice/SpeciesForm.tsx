@@ -15,7 +15,8 @@ import {
   type WrittenSpecies,
 } from '../lib/catalogWrites.ts'
 import type { SpeciesStatus, SpeciesType } from '../lib/database.ts'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog.tsx'
+import { BACKOFFICE_CONFIRM } from './confirm.ts'
 import { SelectField } from './parts.tsx'
 import { GenusPicker, type PickedGenus } from './GenusPicker.tsx'
 import type { CatalogAdminSource } from './source.ts'
@@ -383,6 +384,7 @@ export function SpeciesForm({
 
       {confirmPlants !== null && editing && (
         <ConfirmDialog
+          {...BACKOFFICE_CONFIRM}
           title="Cambiar también las plantas de los usuarios"
           confirmLabel="Guardar y actualizar las plantas"
           busy={saving}
@@ -392,18 +394,22 @@ export function SpeciesForm({
             setConfirmPlants(null)
             setDialogError(null)
           }}
-        >
-          <p>
-            {confirmPlants === 1
-              ? '1 planta de usuarios tiene enlazada esta especie.'
-              : `${formatCount(confirmPlants)} plantas de usuarios tienen enlazada esta especie.`}{' '}
-            Al guardar, {confirmPlants === 1 ? 'pasará' : 'pasarán'} a
-            {genusChanged && genus ? ` ser del género ${genus.name}` : ''}
-            {genusChanged && typeChanged ? ' y' : ''}
-            {typeChanged ? ` ser de tipo «${TYPE_LABEL[type]}»` : ''}.
-          </p>
-          <p>Sus dueños lo verán en su colección.</p>
-        </ConfirmDialog>
+          initialFocus="confirm"
+          description={
+            <>
+              <p>
+                {confirmPlants === 1
+                  ? '1 planta de usuarios tiene enlazada esta especie.'
+                  : `${formatCount(confirmPlants)} plantas de usuarios tienen enlazada esta especie.`}{' '}
+                Al guardar, {confirmPlants === 1 ? 'pasará' : 'pasarán'} a
+                {genusChanged && genus ? ` ser del género ${genus.name}` : ''}
+                {genusChanged && typeChanged ? ' y' : ''}
+                {typeChanged ? ` ser de tipo «${TYPE_LABEL[type]}»` : ''}.
+              </p>
+              <p>Sus dueños lo verán en su colección.</p>
+            </>
+          }
+        />
       )}
     </form>
   )
