@@ -12,8 +12,13 @@
       "limite": 13909
     },
     "precacheBytes": {
-      "referencia": 1402144,
-      "limite": 1472252
+      "referencia": 1371087,
+      "limite": 1439642
+    }
+  },
+  "informativas": {
+    "precacheBrotli": {
+      "referencia": 443556
     }
   }
 }

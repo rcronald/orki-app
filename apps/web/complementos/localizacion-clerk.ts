@@ -4,8 +4,8 @@ import type { Plugin } from 'vite'
 // (#287). Solo en el build.
 //
 // @clerk/localizations/es-MX trae todas las claves de Clerk, y las que no
-// tienen traducción van como `undefined` (`clave: void 0`): son unas tres de
-// cada cinco. Clerk las trata igual que si faltaran: su interfaz (@clerk/ui,
+// tienen traducción van como `undefined` (`clave: void 0`): 965 de 1 716
+// en la 4.26.1. Clerk las trata igual que si faltaran: su interfaz (@clerk/ui,
 // localization/parseLocalization.ts) mezcla primero sus textos en inglés y
 // encima los de la localización con fastDeepMergeAndReplace (@clerk/shared),
 // que se salta los valores `undefined`. Quitarlas no cambia ningún texto

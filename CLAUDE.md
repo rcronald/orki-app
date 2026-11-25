@@ -44,7 +44,9 @@ Qué es la app y dónde está cada documento: [README.md](README.md#documentaci�
 - En las pruebas unitarias, ESLint prohíbe `source.last().resolve(...)`
   y `.reject(...)`: espera la petición con `await source.respond(...)`.
 - No subas el presupuesto de tamaño (`apps/web/presupuesto-tamano.json`)
-  por tu cuenta.
+  por tu cuenta. Un PR que lo sube incluye la tabla de qué creció; tras un
+  recorte, bájalo con `npm run presupuesto -- --bajar`
+  (ver [docs/medicion-de-carga.md](docs/medicion-de-carga.md#cambiar-el-presupuesto)).
 
 ## Issues y pull requests
 
