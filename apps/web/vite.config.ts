@@ -165,15 +165,18 @@ export default defineConfig({
         // JS, CSS, HTML y fuentes (woff2) del build; los iconos y el manifest los
         // añade el plugin (includeAssets e iconos del manifest), así no se
         // duplican en el precache. Las fuentes van precacheadas para que la app
-        // se vea con su tipografía sin conexión. Las fotos de fondo por género
-        // del registro (avif, #13) se precacheaban; desde el #221 el
-        // formulario no las usa, así que ya no van en el build.
-        globPatterns: ['**/*.{js,css,html,woff2,avif}'],
+        // se vea con su tipografía sin conexión. Ninguna imagen del build entra
+        // en globPatterns (#287): `avif` estaba por las fotos de fondo por
+        // género del registro (#13), que el formulario dejó de usar en el #221,
+        // y la única que quedaba en AVIF es la de la portada, que ya se excluía.
+        // Las fotos de referencia vienen de iNaturalist y no son del build.
+        globPatterns: ['**/*.{js,css,html,woff2}'],
         // La foto de la portada (#193) no: sus cinco variantes suman unos
         // 450 KB, más de lo que queda en el presupuesto del precaché, y quien
         // la necesita es una visita nueva, con conexión. Sin conexión, la
         // portada se ve igual con el fondo de la foto y su texto alternativo.
-        // El JPEG de respaldo no entra en globPatterns; se nombra por claridad.
+        // Ya no entra en globPatterns; se nombra por si algún día vuelve una
+        // extensión de imagen.
         globIgnores: ['**/portada-*.avif', '**/portada-*.jpg'],
         // Cualquier navegación sin coincidencia en caché responde con index.html,
         // así que todas las rutas de la app (src/routes/paths.ts, incluidas las
