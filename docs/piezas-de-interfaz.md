@@ -398,7 +398,10 @@ antes que la de `md` y, si se solaparan, ganaría `md`.
 
 `QueryAnswer` (`components/ui/QueryAnswer.tsx`), pieza `orki-answer`.
 `OwnershipAnswer` (el texto actual del inventario) está hecha sobre ella y
-admite las mismas `action` y `announce`.
+admite las mismas `action` y `announce`. Pinta el nombre como la pantalla
+«¿Ya la tengo?» (#336), según `nameKind`: `scientific` (por defecto), en
+cursiva con `ScientificName`; `entered`, un nombre por validar, en redonda;
+`typed`, lo escrito, entre comillas.
 
 ```ts
 type QueryAnswerTone = 'yes' | 'similar' | 'no' | 'notice'
