@@ -1526,7 +1526,8 @@ describe('NewPlantPage: el nombre exacto del catálogo enlaza la especie (#280)'
 const originInput = () => screen.getByRole('combobox', { name: 'Origen' })
 const detailsButton = () =>
   screen.getByRole('button', { name: 'Más detalles (opcional)' })
-const locationInput = () => screen.getByLabelText('Ubicación')
+// Con las ubicaciones que ya usaste, como en la edición (#334).
+const locationInput = () => screen.getByRole('combobox', { name: 'Ubicación' })
 const nicknameInput = () => screen.getByLabelText('Apodo')
 const draftKey = plantDraftKey('user_prueba')
 
@@ -1593,7 +1594,10 @@ describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
   it('origen, ubicación y apodo tienen el tope de la base, 120 caracteres', async () => {
     await renderPage()
     expect(originInput()).toHaveAttribute('maxlength', '120')
-    expect(locationInput()).toHaveAttribute('maxlength', '120')
+    // La ubicación, en «Más detalles» (cerrada), con las del lector ocultas.
+    expect(
+      screen.getByRole('combobox', { name: 'Ubicación', hidden: true }),
+    ).toHaveAttribute('maxlength', '120')
     expect(nicknameInput()).toHaveAttribute('maxlength', '120')
   })
 
@@ -1602,7 +1606,7 @@ describe('NewPlantPage: origen, "Más detalles" y borrador (#86)', () => {
     await renderPage()
 
     expect(detailsButton()).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByRole('textbox', { name: 'Ubicación' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'Ubicación' })).toBeNull()
 
     await user.click(detailsButton())
     expect(detailsButton()).toHaveAttribute('aria-expanded', 'true')

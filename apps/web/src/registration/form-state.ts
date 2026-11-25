@@ -83,23 +83,6 @@ export interface PlantFormValues {
 export type PlantFormField =
   'name' | 'genus' | 'type' | 'acquiredOn' | 'origin' | 'location' | 'nickname'
 
-/** Orden de los campos en pantalla: el primero con error recibe el foco. */
-export const PLANT_FORM_FIELDS: readonly PlantFormField[] = [
-  'name',
-  'genus',
-  'type',
-  'acquiredOn',
-  'origin',
-  'location',
-  'nickname',
-]
-
-/** Campos que van dentro de la sección plegable "Más detalles". */
-export const PLANT_DETAIL_FIELDS: readonly PlantFormField[] = [
-  'location',
-  'nickname',
-]
-
 /** Campos de texto opcionales con tope de PLANT_TEXT_MAX_LENGTH. */
 export type PlantOptionalTextField = 'origin' | 'location' | 'nickname'
 

@@ -1,5 +1,8 @@
-import type { Dispatch, Ref } from 'react'
+import type { Dispatch, ReactNode, Ref } from 'react'
+import type { CollectionPlant } from '../collection/model.ts'
 import { Chip } from '../components/ui/Chip.tsx'
+import { Collapsible } from '../components/ui/Collapsible.tsx'
+import { FormPair } from '../components/ui/FormLayout.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
 import {
@@ -12,11 +15,14 @@ import {
   FORM_CHIP_CLASSES,
   LOCKED_CHIP_CLASSES,
 } from './ChoiceField.tsx'
+import { PLACE_FIELDS, type PlaceField } from './field-order.ts'
 import {
   PLANT_TEXT_MAX_LENGTH,
   type PlantFormAction,
+  type PlantFormErrors,
   type PlantFormValues,
 } from './form-state.ts'
+import { OriginField } from './OriginField.tsx'
 import {
   FLOWER_COLOR_LABEL,
   PLANT_FORM_TEXT,
@@ -24,7 +30,7 @@ import {
 } from './texts.ts'
 
 // Campos de la planta que el registro (PlantForm) y la edición
-// (EditPlantForm) pintan igual. Cada formulario decide dónde va cada uno.
+// (EditPlantForm) pintan igual. Dónde va cada uno lo dice field-order.ts.
 
 const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
 
@@ -77,7 +83,7 @@ export function PlantTypeField({
 }
 
 /** La fecha de adquisición, como mucho `max` (hoy). */
-export function AcquiredOnField({
+function AcquiredOnField({
   value,
   max,
   error,
@@ -109,7 +115,7 @@ export function AcquiredOnField({
 }
 
 /** El apodo, texto libre. */
-export function NicknameField({
+function NicknameField({
   value,
   error,
   dispatch,
@@ -141,7 +147,7 @@ export function NicknameField({
 }
 
 /** El color de la flor: un chip por color, que se elige o se quita. */
-export function FlowerColorField({
+function FlowerColorField({
   value,
   dispatch,
 }: {
@@ -165,6 +171,118 @@ export function FlowerColorField({
         ))
       }
     </ChoiceField>
+  )
+}
+
+/** Referencias de los campos que pintan DateAndPlaceRow y PlantDetailsSection. */
+export interface PlaceFieldRefs {
+  dateRef: Ref<HTMLInputElement>
+  originRef: Ref<HTMLInputElement>
+  locationRef: Ref<HTMLInputElement>
+  nicknameRef: Ref<HTMLInputElement>
+}
+
+interface PlaceFieldsProps {
+  values: PlantFormValues
+  errors: PlantFormErrors
+  dispatch: Dispatch<PlantFormAction>
+  /** Plantas ya cargadas, para sugerir los orígenes y ubicaciones que ya usaste. */
+  knownPlants: readonly CollectionPlant[] | null
+  refs: PlaceFieldRefs
+}
+
+/** El origen o la ubicación, con las sugerencias de los que ya usaste. */
+function PlaceInput({
+  field,
+  values,
+  errors,
+  dispatch,
+  knownPlants,
+  refs,
+}: PlaceFieldsProps & { field: PlaceField }) {
+  return (
+    <OriginField
+      field={field}
+      value={values[field]}
+      dispatch={dispatch}
+      knownPlants={knownPlants}
+      error={errors[field]}
+      inputRef={field === 'origin' ? refs.originRef : refs.locationRef}
+    />
+  )
+}
+
+/**
+ * La fecha de adquisición y, a su lado, el campo de lugar que va a la vista
+ * (PLACE_FIELDS.beside). La fecha, como mucho `today`.
+ */
+export function DateAndPlaceRow({
+  today,
+  ...props
+}: PlaceFieldsProps & { today: string }) {
+  return (
+    <FormPair>
+      <AcquiredOnField
+        value={props.values.acquiredOn}
+        max={today}
+        error={props.errors.acquiredOn}
+        dispatch={props.dispatch}
+        inputRef={props.refs.dateRef}
+      />
+      <PlaceInput field={PLACE_FIELDS.beside} {...props} />
+    </FormPair>
+  )
+}
+
+/**
+ * «Más detalles (opcional)», plegable: el campo de lugar que no va a la vista
+ * (PLACE_FIELDS.inDetails), el apodo, el color de la flor y, al final,
+ * `children` (lo propio de cada formulario).
+ */
+export function PlantDetailsSection({
+  open,
+  onOpenChange,
+  disabled,
+  children,
+  ...props
+}: PlaceFieldsProps & {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  disabled: boolean
+  children?: ReactNode
+}) {
+  return (
+    <fieldset disabled={disabled} className="min-w-[0]">
+      <Collapsible
+        title={
+          <span>
+            {PLANT_FORM_TEXT.detailsTitle}{' '}
+            <span className="font-normal text-neutral-700">
+              {PLANT_FORM_TEXT.optional}
+            </span>
+          </span>
+        }
+        headingLevel={2}
+        open={open}
+        onOpenChange={onOpenChange}
+        className="rounded-md border border-secondary"
+      >
+        <div className="flex flex-col gap-space-5 pt-space-3">
+          <PlaceInput field={PLACE_FIELDS.inDetails} {...props} />
+          <NicknameField
+            value={props.values.nickname}
+            error={props.errors.nickname}
+            dispatch={props.dispatch}
+            inputRef={props.refs.nicknameRef}
+          />
+          <FlowerColorField
+            value={props.values.flowerColor}
+            dispatch={props.dispatch}
+          />
+          {children}
+        </div>
+      </Collapsible>
+    </fieldset>
   )
 }
 

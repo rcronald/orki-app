@@ -204,15 +204,18 @@ afterEach(() => {
 })
 
 describe('EditPlantForm', () => {
-  it('muestra los datos a la vista, la ubicación con su valor y las fotos guardadas', async () => {
+  it('muestra el origen a la vista, la ubicación en «Más detalles» (abierta, con su valor) y las fotos guardadas', async () => {
     setup(3)
     await loaded(3)
+    // El mismo orden que el registro (#334): la fecha con el origen; la
+    // ubicación, en «Más detalles», que se abre sola porque tiene valor.
+    expect(screen.getByRole('combobox', { name: 'Origen' })).toHaveValue('')
     expect(screen.getByRole('combobox', { name: 'Ubicación' })).toHaveValue(
       'Invernadero',
     )
     expect(
       screen.getByRole('button', { name: /Más detalles/ }),
-    ).toHaveAttribute('aria-expanded', 'false')
+    ).toHaveAttribute('aria-expanded', 'true')
     expect(
       within(gallery()).getByRole('button', { name: 'Añadir fotos' }),
     ).toBeVisible()
@@ -453,7 +456,7 @@ describe('EditPlantForm', () => {
     await loaded(2)
     updatePlant.mockRejectedValueOnce(new PlantSaveError('offline'))
     rows.failReorder = () => ({ error: new PhotoStorageError('offline') })
-    await user.click(screen.getByRole('button', { name: /Más detalles/ }))
+    // «Más detalles» ya está abierta: la planta tiene ubicación (#334).
     await user.type(screen.getByLabelText('Apodo'), 'La morada')
     await user.click(screen.getByRole('button', { name: 'Gestionar fotos' }))
     await user.click(
@@ -719,7 +722,7 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
     const { user, rows, updatePlant, onSaved } = context
     await loaded(1)
     await choosePhotos(user, 1)
-    await user.click(screen.getByRole('button', { name: /Más detalles/ }))
+    // «Más detalles» ya está abierta: la planta tiene ubicación (#334).
     await user.type(screen.getByLabelText('Apodo'), 'La morada')
     updatePlant.mockRejectedValueOnce(new PlantSaveError('offline'))
     await user.click(submit())
@@ -739,7 +742,7 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
   it('si la planta ya no existe, lo dice y lleva a «Mi colección» en vez de reintentar', async () => {
     const { user, rows, updatePlant } = setup(1)
     await loaded(1)
-    await user.click(screen.getByRole('button', { name: /Más detalles/ }))
+    // «Más detalles» ya está abierta: la planta tiene ubicación (#334).
     await user.type(screen.getByLabelText('Apodo'), 'La morada')
     rows.plants.delete(PLANT_ID)
     rows.rows.clear()

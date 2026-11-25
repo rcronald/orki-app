@@ -19,12 +19,7 @@ import {
   plantNotesLength,
 } from '../detail/notes.ts'
 import { Button } from '../components/ui/Button.tsx'
-import { Collapsible } from '../components/ui/Collapsible.tsx'
-import {
-  FormActions,
-  FormLayout,
-  FormPair,
-} from '../components/ui/FormLayout.tsx'
+import { FormActions, FormLayout } from '../components/ui/FormLayout.tsx'
 import { galleryPhotoLabel } from '../components/ui/gallery-label.ts'
 import { Icon } from '../components/ui/Icon.tsx'
 import {
@@ -56,6 +51,11 @@ import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { useStoredThumbnails } from '../photos/useStoredThumbnails.ts'
 import { DuplicateNotice } from '../registration/DuplicateNotice.tsx'
 import {
+  hasDetailValues,
+  PLANT_DETAIL_FIELDS,
+  PLANT_FORM_FIELDS,
+} from '../registration/field-order.ts'
+import {
   isPendingName,
   plantFormReducer,
   plantFormValuesFrom,
@@ -64,13 +64,11 @@ import {
   validatePlantForm,
   type FormGenus,
   type PlantFormErrors,
-  type PlantFormField,
   type PlantFormValues,
   type PlantPatch,
 } from '../registration/form-state.ts'
 import { GenusField } from '../registration/GenusField.tsx'
 import { NameField } from '../registration/NameField.tsx'
-import { OriginField } from '../registration/OriginField.tsx'
 import { PendingPhotoNotice } from '../registration/PendingPhotoNotice.tsx'
 import { PlantSaveError } from '../registration/save-plant.ts'
 import {
@@ -78,10 +76,9 @@ import {
   type LoadReferencePhoto,
 } from '../registration/SpeciesPreview.tsx'
 import {
-  AcquiredOnField,
-  FlowerColorField,
-  NicknameField,
+  DateAndPlaceRow,
   PhotoPrepareErrors,
+  PlantDetailsSection,
   PlantTypeField,
 } from '../registration/PlantFields.tsx'
 import { PLANT_EDIT_NOTICE_TEXT } from '../registration/texts.ts'
@@ -149,20 +146,6 @@ export interface EditPlantFormProps {
   now?: () => Date
 }
 
-/** Campos en el orden de la pantalla: el primero con error recibe el foco. */
-const FIELD_ORDER: readonly PlantFormField[] = [
-  'name',
-  'genus',
-  'type',
-  'acquiredOn',
-  'location',
-  'origin',
-  'nickname',
-]
-
-/** Los de «Más detalles». */
-const DETAIL_FIELDS: readonly PlantFormField[] = ['origin', 'nickname']
-
 const deviceNow = () => new Date()
 
 type SaveState =
@@ -218,9 +201,10 @@ function sessionEnded(error: PlantEditError): boolean {
  * Formulario de edición de una planta (#266, rediseño del #16). Los mismos
  * campos, autocompletado y validación que el registro (form-state.ts y sus
  * campos), en dos columnas en escritorio: a la vista el nombre, el género, el
- * tipo, la fecha de adquisición y la ubicación; en «Más detalles» el origen,
- * el apodo, el color de la flor y las notas; a la derecha, las fotos. El
- * identificador no se edita (lo muestra la cabecera).
+ * tipo, la fecha de adquisición y el origen; en «Más detalles» la ubicación,
+ * el apodo, el color de la flor y, al final, las notas (el orden y la
+ * agrupación, los del registro, salen de registration/field-order.ts); a la
+ * derecha, las fotos. El identificador no se edita (lo muestra la cabecera).
  *
  * Nada se guarda hasta «Guardar cambios»: quitar, añadir, ordenar, elegir la
  * principal y cambiar la fecha o la nota de una foto solo cambian el
@@ -283,11 +267,7 @@ export function EditPlantForm({
 
   // Más detalles: abierta si algún campo suyo tiene valor (o error).
   const [detailsOpen, setDetailsOpen] = useState(
-    () =>
-      initial.origin.trim() !== '' ||
-      initial.nickname.trim() !== '' ||
-      initial.flowerColor !== null ||
-      Boolean(originalNotes?.trim()),
+    () => hasDetailValues(initial) || Boolean(originalNotes?.trim()),
   )
   const detailsToggled = useRef(false)
   useEffect(() => {
@@ -494,16 +474,8 @@ export function EditPlantForm({
 
   // Foco de los campos -----------------------------------------------------------
   const offlineId = useId()
-  const {
-    nameRef,
-    genusRef,
-    typeRef,
-    dateRef,
-    originRef,
-    locationRef,
-    nicknameRef,
-    focusField,
-  } = usePlantFieldFocus(values.otherGenusOpen)
+  const fieldFocus = usePlantFieldFocus(values.otherGenusOpen)
+  const { nameRef, genusRef, typeRef, focusField } = fieldFocus
   const notesRef = useRef<HTMLTextAreaElement>(null)
 
   // Fotos: acciones ------------------------------------------------------------------
@@ -692,13 +664,14 @@ export function EditPlantForm({
     }
     setSubmitted(true)
     const found = validatePlantForm(values, today)
-    const firstInvalid = FIELD_ORDER.find((field) => found[field])
+    const firstInvalid = PLANT_FORM_FIELDS.find((field) => found[field])
     const notesTooLong = plantNotesLength(notes) > MAX_PLANT_NOTES_LENGTH
     if (firstInvalid || notesTooLong) {
       // Un error dentro de «Más detalles» la abre, para que se vea.
       const inDetails =
         notesTooLong ||
-        (firstInvalid !== undefined && DETAIL_FIELDS.includes(firstInvalid))
+        (firstInvalid !== undefined &&
+          PLANT_DETAIL_FIELDS.includes(firstInvalid))
       if (inDetails) flushSync(() => setDetailsOpen(true))
       if (firstInvalid) focusField(firstInvalid)
       else notesRef.current?.focus()
@@ -884,6 +857,8 @@ export function EditPlantForm({
   const fieldsDisabled = !online || saving
   const galleryDisabled = fieldsDisabled || storedLoad !== 'ready'
   const photoCount = entries.length
+  // Los campos de lugar, la fecha, el apodo y el color (PlantFields.tsx).
+  const placeProps = { values, errors, dispatch, knownPlants, refs: fieldFocus }
 
   const main = (
     <fieldset
@@ -950,23 +925,7 @@ export function EditPlantForm({
         containerRef={typeRef}
       />
 
-      <FormPair>
-        <AcquiredOnField
-          value={values.acquiredOn}
-          max={today}
-          error={errors.acquiredOn}
-          dispatch={dispatch}
-          inputRef={dateRef}
-        />
-        <OriginField
-          field="location"
-          value={values.location}
-          dispatch={dispatch}
-          knownPlants={knownPlants}
-          error={errors.location}
-          inputRef={locationRef}
-        />
-      </FormPair>
+      <DateAndPlaceRow {...placeProps} today={today} />
     </fieldset>
   )
 
@@ -975,75 +934,49 @@ export function EditPlantForm({
   const notesId = `${offlineId}-notas`
 
   const extra = (
-    <fieldset disabled={fieldsDisabled} className="min-w-[0]">
-      <Collapsible
-        title={
-          <span>
-            {EDIT_TEXT.detailsTitle}{' '}
-            <span className="font-normal text-neutral-700">
-              {EDIT_TEXT.optional}
-            </span>
+    <PlantDetailsSection
+      {...placeProps}
+      open={detailsOpen}
+      onOpenChange={(open) => {
+        detailsToggled.current = true
+        setDetailsOpen(open)
+      }}
+      disabled={fieldsDisabled}
+    >
+      <div className="orki-field">
+        <label className="orki-field__label" htmlFor={notesId}>
+          {EDIT_TEXT.notesLabel}
+        </label>
+        <textarea
+          ref={notesRef}
+          id={notesId}
+          className="orki-field__input"
+          rows={4}
+          value={notes}
+          autoCapitalize="sentences"
+          aria-invalid={notesError ? true : undefined}
+          aria-describedby={[notesError ? notesErrorId : '', notesHintId]
+            .filter(Boolean)
+            .join(' ')}
+          onChange={(event) => {
+            notesTouched.current = true
+            setNotes(event.target.value)
+          }}
+        />
+        {notesError && (
+          <span className="orki-field__error" id={notesErrorId}>
+            <Icon name="triangle-alert" />
+            {notesError}
           </span>
-        }
-        headingLevel={2}
-        open={detailsOpen}
-        onOpenChange={(open) => {
-          detailsToggled.current = true
-          setDetailsOpen(open)
-        }}
-        className="rounded-md border border-secondary"
-      >
-        <div className="flex flex-col gap-space-5 pt-space-3">
-          <OriginField
-            value={values.origin}
-            dispatch={dispatch}
-            knownPlants={knownPlants}
-            error={errors.origin}
-            inputRef={originRef}
-          />
-          <NicknameField
-            value={values.nickname}
-            error={errors.nickname}
-            dispatch={dispatch}
-            inputRef={nicknameRef}
-          />
-          <FlowerColorField value={values.flowerColor} dispatch={dispatch} />
-          <div className="orki-field">
-            <label className="orki-field__label" htmlFor={notesId}>
-              {EDIT_TEXT.notesLabel}
-            </label>
-            <textarea
-              ref={notesRef}
-              id={notesId}
-              className="orki-field__input"
-              rows={4}
-              value={notes}
-              autoCapitalize="sentences"
-              aria-invalid={notesError ? true : undefined}
-              aria-describedby={[notesError ? notesErrorId : '', notesHintId]
-                .filter(Boolean)
-                .join(' ')}
-              onChange={(event) => {
-                notesTouched.current = true
-                setNotes(event.target.value)
-              }}
-            />
-            {notesError && (
-              <span className="orki-field__error" id={notesErrorId}>
-                <Icon name="triangle-alert" />
-                {notesError}
-              </span>
-            )}
-            <span className="orki-field__hint" id={notesHintId}>
-              {`${EDIT_TEXT.notesHint} ${EDIT_TEXT.notesCount(
-                plantNotesLength(notes),
-                MAX_PLANT_NOTES_LENGTH,
-              )}`}
-            </span>
-          </div>
-        </div>
-      </Collapsible>
-    </fieldset>
+        )}
+        <span className="orki-field__hint" id={notesHintId}>
+          {`${EDIT_TEXT.notesHint} ${EDIT_TEXT.notesCount(
+            plantNotesLength(notes),
+            MAX_PLANT_NOTES_LENGTH,
+          )}`}
+        </span>
+      </div>
+    </PlantDetailsSection>
   )
 
   const galleryChildren = (
@@ -1188,7 +1121,7 @@ export function EditPlantForm({
       {/*
         «Más detalles» va con los datos, en la misma columna (no como `extra`
         de FormLayout): así, al abrir «Gestionar fotos», la columna de las
-        fotos crece sola sin abrir un hueco entre la ubicación y «Más
+        fotos crece sola sin abrir un hueco entre la fecha y «Más
         detalles»; y en el celular queda antes de las fotos, como en la
         maqueta.
       */}

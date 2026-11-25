@@ -26,8 +26,6 @@ export const EDIT_TEXT = {
   offline:
     'Sin conexión. Editar una planta necesita conexión: el formulario se activará solo cuando vuelva.',
   duplicateAfter: '. Puedes guardarla igualmente.',
-  detailsTitle: 'Más detalles',
-  optional: '(opcional)',
 
   notesLabel: 'Notas',
   notesHint: 'Lo que quieras recordar de esta planta.',

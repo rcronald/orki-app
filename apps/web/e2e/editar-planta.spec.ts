@@ -118,7 +118,7 @@ test(
     await revisarAccesibilidad('edición')
 
     await page.getByRole('combobox', { name: 'Ubicación' }).fill('Invernadero')
-    // «Más detalles» está abierta: la planta tiene origen, apodo y color.
+    // «Más detalles» está abierta: la planta tiene apodo y color.
     await page.getByRole('textbox', { name: 'Apodo' }).fill('La reina')
     await page
       .getByLabel('Notas', { exact: true })
