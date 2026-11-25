@@ -117,6 +117,23 @@ describe('letras del índice de géneros', () => {
   })
 })
 
+describe('letras del índice: la normalización de la colección (#337)', () => {
+  it('ø, æ, œ, ß, ł y đ van con su letra transcrita, no en «otros»', () => {
+    expect(genusLetter('Œrstedella')).toBe('o')
+    expect(genusLetter('× Œrstedara')).toBe('o')
+    expect(genusLetter('Ørstedia')).toBe('o')
+    expect(genusLetter('Æridella')).toBe('a')
+    expect(genusLetter('ßeta')).toBe('s')
+    expect(genusLetter('Łaelia')).toBe('l')
+    expect(genusLetter('Đendrobium')).toBe('d')
+    expect(lettersOf(['Vanda', 'Œrstedella', 'Łaelia'])).toEqual([
+      'l',
+      'o',
+      'v',
+    ])
+  })
+})
+
 describe('portada del catálogo', () => {
   it('lista los géneros de la primera letra con su número de especies', async () => {
     renderAt('/catalogo')

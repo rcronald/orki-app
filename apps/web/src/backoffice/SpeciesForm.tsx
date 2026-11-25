@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
+import { normalizeSearchText } from '../collection/normalize.ts'
 import { Button } from '../components/ui/Button.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { TextField } from '../components/ui/TextField.tsx'
@@ -69,16 +70,13 @@ export interface SpeciesFormProps {
 
 type FieldErrors = Partial<Record<CatalogWriteField, string>>
 
-/** El nombre empieza por el género (sin contar mayúsculas, tildes ni «×»). */
+/**
+ * El nombre empieza por el género, sin contar mayúsculas, tildes ni el signo
+ * de híbrido: con la normalización de la búsqueda (normalizeSearchText, que
+ * también transcribe ø, æ, œ, ß, ł y đ, #337).
+ */
 function startsWithGenus(name: string, genus: string): boolean {
-  const key = (text: string) =>
-    text
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .replace(/×/g, ' ')
-      .toLowerCase()
-      .trim()
-      .split(/\s+/)[0] ?? ''
+  const key = (text: string) => normalizeSearchText(text).split(' ')[0] ?? ''
   return key(name) === key(genus)
 }
 
