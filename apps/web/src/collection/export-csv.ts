@@ -74,7 +74,8 @@ export const CSV_COLUMNS: readonly Column[] = [
       plant.flowerColor === null ? '' : FLOWER_COLOR_LABEL[plant.flowerColor],
   },
   {
-    // Vacío si la planta no tiene foto.
+    // De la foto principal (plant_photos.in_bloom, #186); vacío si la planta
+    // no tiene foto.
     header: 'Foto en floración',
     value: (plant) =>
       plant.photoPath === null ? '' : plant.photoInBloom ? 'Sí' : 'No',

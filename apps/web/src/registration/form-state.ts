@@ -21,7 +21,8 @@ import { PLANT_FORM_ERROR_TEXT } from './texts.ts'
 //   inicial al montarse; "restored" sirve para descartarlo y empezar de cero.
 // - #87 (foto): la foto pendiente es un archivo, no un dato de la fila; vive
 //   junto a este estado y se sube después de guardar la planta. Con ella se
-//   muestra la casilla de `photoInBloom`, que ya viaja en la fila y el borrador.
+//   muestra la casilla de `photoInBloom`, que viaja en el borrador y se guarda
+//   en la fila de plant_photos de la principal, no en plants (#186).
 // - #88 (aviso de duplicado): depende solo de `species`.
 // - #12 (nombre por validar): isPendingName() dice cuándo se guardará sin
 //   especie.
@@ -74,8 +75,9 @@ export interface PlantFormValues {
   /** "Más detalles": color de la flor; null si no se indica. */
   flowerColor: FlowerColor | null
   /**
-   * Si la foto es en floración. Sin foto no tiene sentido: la casilla llega
-   * con la foto (#87); hasta entonces es siempre false.
+   * Si la foto principal es en floración. Sin foto no tiene sentido: la
+   * casilla llega con la foto (#87); hasta entonces es siempre false. No va
+   * en la fila de plants: se guarda con la foto (plant_photos.in_bloom, #186).
    */
   photoInBloom: boolean
 }
@@ -267,12 +269,7 @@ export type NewPlantInsert = Required<
 > &
   Pick<
     PlantInsert,
-    | 'species_id'
-    | 'origin'
-    | 'location'
-    | 'nickname'
-    | 'flower_color'
-    | 'photo_in_bloom'
+    'species_id' | 'origin' | 'location' | 'nickname' | 'flower_color'
   >
 
 /**
@@ -283,7 +280,12 @@ export type NewPlantInsert = Required<
  * con los de la especie; se envían igual porque las columnas son obligatorias.
  *
  * Los opcionales solo van si tienen valor (sin espacios sobrantes): vacíos,
- * la base los deja en null (o false), que es "sin dato".
+ * la base los deja en null, que es "sin dato".
+ *
+ * "En floración" no va (#186): es de la foto principal y se guarda en su
+ * fila de plant_photos al subirla (PlantForm, runPhotoPhase). La app no
+ * escribe plants.photo_in_bloom, que la base mantiene solo como copia de la
+ * principal para las versiones anteriores.
  */
 export function toPlantInsert(
   values: PlantFormValues,
@@ -307,7 +309,6 @@ export function toPlantInsert(
   const nickname = normalizePlantName(values.nickname)
   if (nickname !== '') insert.nickname = nickname
   if (values.flowerColor !== null) insert.flower_color = values.flowerColor
-  if (values.photoInBloom) insert.photo_in_bloom = true
   return insert
 }
 
@@ -347,6 +348,8 @@ export function plantFormValuesFrom(plant: CollectionPlant): PlantFormValues {
  * Columnas que la edición puede cambiar. Como en la inserción, nunca lleva
  * `validation` ni `user_id`: al quitar la especie, el disparador de la base
  * devuelve la planta a "por validar" (y con especie, pone su género y su tipo).
+ * Tampoco "en floración", que es de cada foto (plant_photos.in_bloom, #186):
+ * la edición lo cambia en Gestionar fotos.
  * `notes` (#266) no sale del formulario del registro: la edición la añade
  * aparte (editing/EditPlantForm.tsx).
  */
@@ -363,7 +366,6 @@ export type PlantPatch = Partial<
     | 'location'
     | 'nickname'
     | 'flower_color'
-    | 'photo_in_bloom'
   >
 >
 
@@ -388,7 +390,6 @@ function toPlantColumns(
     location: optional(values.location),
     nickname: optional(values.nickname),
     flower_color: values.flowerColor,
-    photo_in_bloom: values.photoInBloom,
   }
 }
 
@@ -402,7 +403,6 @@ const PATCH_COLUMNS: readonly PlantPatchColumn[] = [
   'location',
   'nickname',
   'flower_color',
-  'photo_in_bloom',
 ]
 
 /**

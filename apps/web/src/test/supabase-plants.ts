@@ -6,7 +6,9 @@ import type {
 
 // PostgREST y Storage en memoria para las pantallas que editan una planta
 // (#16): las filas de plants, la búsqueda de especies, los géneros de acceso
-// rápido y el bucket de fotos. Los disparadores de la base se imitan: con
+// rápido y el bucket de fotos. La foto principal va embebida de plant_photos
+// (#186), y escribir en plants photo_path, thumbnail_path o photo_in_bloom
+// se responde con un error: la app ya no lo hace. Los disparadores de la base se imitan: con
 // especie, el género, el tipo y "validated" son los suyos; sin ella, la
 // planta queda "pending" (o como estaba, si no se tocó la especie). La app
 // real llega hasta el cliente de Supabase; solo fetch es un doble.
@@ -76,9 +78,17 @@ export function rowOf(plant: CollectionPlant): CollectionPlantRow {
     location: plant.location,
     nickname: plant.nickname,
     flower_color: plant.flowerColor,
-    photo_in_bloom: plant.photoInBloom,
-    photo_path: plant.photoPath,
-    thumbnail_path: plant.thumbnailPath,
+    plant_photos:
+      plant.photoPath !== null && plant.thumbnailPath !== null
+        ? [
+            {
+              photo_path: plant.photoPath,
+              thumbnail_path: plant.thumbnailPath,
+              in_bloom: plant.photoInBloom,
+              position: 0,
+            },
+          ]
+        : [],
     photo_count: plant.photoCount,
     code: plant.code,
     notes: plant.notes,
@@ -153,8 +163,8 @@ export interface FakeSupabase {
   storageResponder: ((request: SentRequest) => Promise<Response>) | null
   /**
    * Filas de plant_photos (#221). Una planta con foto empieza con su
-   * principal en la posición 0, como tras la copia de la migración; la
-   * principal se copia a plants al insertar o borrar, como sync_plant.
+   * principal en la posición 0, como tras la copia de la migración; al
+   * insertar o borrar, la planta vuelve a llevar embebida la principal.
    */
   photos: FakePhotoRow[]
   /** Fotos de una planta en orden. */
@@ -177,6 +187,9 @@ export interface FakePhotoRow {
 }
 
 let clock = Date.parse('2026-11-21T15:00:00Z')
+
+/** Columnas de foto de plants que la app ya no escribe (#186). */
+const LEGACY_PHOTO_COLUMNS = ['photo_path', 'thumbnail_path', 'photo_in_bloom']
 
 /** Un PostgREST y un Storage en memoria con estas plantas. */
 export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
@@ -206,16 +219,23 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
       .filter((photo) => photo.plant_id === plantId)
       .sort((a, b) => a.position - b.position)
 
-  /** Como sync_plant: la principal pasa a las columnas de la planta. */
+  /** La principal embebida (plant_photos.limit=1) y el recuento, al día. */
   const syncMain = (plantId: string) => {
     const row = rows.get(plantId)
     if (!row) return
     const [main] = photosOf(plantId)
     rows.set(plantId, {
       ...row,
-      photo_path: main?.photo_path ?? null,
-      thumbnail_path: main?.thumbnail_path ?? null,
-      photo_in_bloom: main?.in_bloom ?? false,
+      plant_photos: main
+        ? [
+            {
+              photo_path: main.photo_path,
+              thumbnail_path: main.thumbnail_path,
+              in_bloom: main.in_bloom,
+              position: main.position,
+            },
+          ]
+        : [],
       photo_count: photosOf(plantId).length,
     })
   }
@@ -283,6 +303,12 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
     }
     if (pathname === '/rest/v1/plants' && request.method === 'PATCH') {
       const body = isRecord(request.body) ? request.body : {}
+      if (LEGACY_PHOTO_COLUMNS.some((column) => column in body)) {
+        return json(
+          { code: '42703', message: 'La app ya no escribe la foto en plants' },
+          400,
+        )
+      }
       if (fake.patchResponder) return fake.patchResponder(body)
       const row = id === undefined ? undefined : rows.get(id)
       if (!row) {
@@ -293,9 +319,6 @@ export function fakeSupabase(plants: readonly CollectionPlant[]): FakeSupabase {
       }
       const next = applyPatch(row, body)
       rows.set(row.id, next)
-      // Como sync_photos: "en floración" de la planta es el de la principal.
-      const [main] = photosOf(row.id)
-      if (main && 'photo_in_bloom' in body) main.in_bloom = next.photo_in_bloom
       return json(next)
     }
     if (pathname === '/rest/v1/plants' && request.method === 'DELETE') {
@@ -426,10 +449,6 @@ function applyPatch(
   if ('location' in body) next.location = text('location')
   if ('nickname' in body) next.nickname = text('nickname')
   if ('notes' in body) next.notes = text('notes')
-  if ('photo_path' in body) next.photo_path = text('photo_path')
-  if ('thumbnail_path' in body) next.thumbnail_path = text('thumbnail_path')
-  if ('photo_in_bloom' in body)
-    next.photo_in_bloom = body.photo_in_bloom === true
   if ('flower_color' in body) {
     const color = body.flower_color
     next.flower_color =

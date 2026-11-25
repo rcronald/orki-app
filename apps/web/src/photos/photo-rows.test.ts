@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { COLLECTION_PLANT_SELECT } from '../collection/model.ts'
 import type { OrkiSupabaseClient } from '../lib/supabase.ts'
 import { plantRow } from '../test/collection.ts'
 import { PLANT_ID, USER_ID } from '../test/photos.ts'
@@ -34,6 +35,7 @@ function fakeClient(
         'eq',
         'in',
         'order',
+        'limit',
         'single',
       ]) {
         builder[step] = (...args: unknown[]) => {
@@ -256,15 +258,38 @@ describe('filas de plant_photos con PostgREST', () => {
     expect(await rows.remove(ROW.id, USER_ID)).toBeNull()
   })
 
-  it('relee la planta con las columnas de la colección', async () => {
+  it('relee la planta con las columnas de la colección y su principal de plant_photos', async () => {
     const { calls, rows } = fakeClient(() => ({
-      data: plantRow({ id: PLANT_ID, photo_path: ROW.photo_path }),
+      data: plantRow({
+        id: PLANT_ID,
+        plant_photos: [
+          {
+            photo_path: ROW.photo_path,
+            thumbnail_path: ROW.thumbnail_path,
+            in_bloom: false,
+            position: 0,
+          },
+        ],
+      }),
       error: null,
       status: 200,
     }))
     const plant = await rows.readPlant(PLANT_ID, USER_ID)
     expect(plant.photoPath).toBe(ROW.photo_path)
+    expect(plant.thumbnailPath).toBe(ROW.thumbnail_path)
     expect(calls[0].table).toBe('plants')
+    expect(calls[0].steps).toEqual([
+      ['select', COLLECTION_PLANT_SELECT],
+      ['eq', 'id', PLANT_ID],
+      ['eq', 'user_id', USER_ID],
+      [
+        'order',
+        'position',
+        { ascending: true, referencedTable: 'plant_photos' },
+      ],
+      ['limit', 1, { referencedTable: 'plant_photos' }],
+      ['single'],
+    ])
   })
 
   it('cambia la fecha, la nota y "en floración" de una foto (solo lo pasado)', async () => {

@@ -2,6 +2,7 @@ import type {
   FlowerColor,
   Genus,
   Plant,
+  PlantPhoto,
   PlantStatus,
   PlantType,
   PlantValidation,
@@ -35,12 +36,52 @@ import type {
  * photo_count es un campo calculado (public.photo_count(plants), #184): el
  * número de filas de plant_photos de la planta, de 0 a 6.
  *
+ * La foto principal (#186) llega embebida de plant_photos por su clave
+ * foránea (plant_photos_plant_id_fkey): sus rutas, si es en floración y su
+ * posición. No se leen plants.photo_path, thumbnail_path ni photo_in_bloom,
+ * que la base mantiene solo como copia para las versiones anteriores de la
+ * app y se retirarán. Cada consulta pasa por withMainPhotoOnly(), que pide
+ * a PostgREST solo la de position más baja; toCollectionPlant() elige igual
+ * la de posición más baja de lo que llegue, así que el resultado no depende
+ * de ese límite (solo el tamaño de la respuesta). Hace falta: en la
+ * respuesta de un update (PATCH), PostgREST 12.2 no aplica el orden ni el
+ * límite de la tabla embebida y devuelve todas las fotos, sin orden (se
+ * comprobó con PostgREST v12.2.12 y el esquema de las migraciones). En la
+ * respuesta de un insert la lista llega vacía: la planta es nueva.
+ *
  * code y notes (#264, #265): el identificador que pone la base al dar de alta
  * la planta («CAT-012», no cambia) y sus notas libres (hasta 2000 caracteres,
  * null si no tiene). Van al final para que el cambio se lea solo.
  */
 export const COLLECTION_PLANT_SELECT =
-  'id, entered_name, type, validation, status, acquired_on, origin, location, nickname, flower_color, photo_in_bloom, photo_path, thumbnail_path, photo_count, created_at, updated_at, species:species_id (id, scientific_name, type, status), genus:genus_id (id, name), code, notes'
+  'id, entered_name, type, validation, status, acquired_on, origin, location, nickname, flower_color, plant_photos (photo_path, thumbnail_path, in_bloom, position), photo_count, created_at, updated_at, species:species_id (id, scientific_name, type, status), genus:genus_id (id, name), code, notes'
+
+/** Tabla embebida con la foto principal (ver COLLECTION_PLANT_SELECT). */
+export const MAIN_PHOTO_TABLE = 'plant_photos'
+
+/** Lo que hace falta de una consulta para limitar la foto embebida. */
+interface EmbeddedPhotoModifiers<Query> {
+  order(
+    column: string,
+    options: { ascending?: boolean; referencedTable: string },
+  ): Query
+  limit(count: number, options: { referencedTable: string }): Query
+}
+
+/**
+ * Pide de plant_photos solo la foto principal, la de position más baja:
+ * `plant_photos.order=position.asc&plant_photos.limit=1`. Va en toda
+ * consulta con COLLECTION_PLANT_SELECT, también en la respuesta de un insert
+ * o un update, antes de .single() o .maybeSingle(). Solo reduce lo que viaja:
+ * quien elige la principal es toCollectionPlant() (ver arriba).
+ */
+export function withMainPhotoOnly<Query extends EmbeddedPhotoModifiers<Query>>(
+  query: Query,
+): Query {
+  return query
+    .order('position', { ascending: true, referencedTable: MAIN_PHOTO_TABLE })
+    .limit(1, { referencedTable: MAIN_PHOTO_TABLE })
+}
 
 /** Fila tal como la devuelve la consulta de COLLECTION_PLANT_SELECT. */
 export type CollectionPlantRow = Pick<
@@ -55,9 +96,6 @@ export type CollectionPlantRow = Pick<
   | 'location'
   | 'nickname'
   | 'flower_color'
-  | 'photo_in_bloom'
-  | 'photo_path'
-  | 'thumbnail_path'
   | 'created_at'
   | 'updated_at'
   | 'notes'
@@ -72,9 +110,21 @@ export type CollectionPlantRow = Pick<
    * (una respuesta simulada antigua, por ejemplo) se trata con photoCountOf().
    */
   photo_count?: number | null
+  /**
+   * La foto principal, embebida de plant_photos: una lista con una foto o
+   * vacía si la planta no tiene. Opcional en el tipo por las respuestas
+   * simuladas; sin ella, la planta no tiene foto.
+   */
+  plant_photos?: readonly CollectionPlantPhotoRow[] | null
   species: Pick<Species, 'id' | 'scientific_name' | 'type' | 'status'> | null
   genus: Pick<Genus, 'id' | 'name'>
 }
+
+/** Una foto embebida de plant_photos (ver COLLECTION_PLANT_SELECT). */
+export type CollectionPlantPhotoRow = Pick<
+  PlantPhoto,
+  'photo_path' | 'thumbnail_path' | 'in_bloom' | 'position'
+>
 
 /** Especie del catálogo enlazada a la planta. */
 export interface CollectionSpecies {
@@ -117,10 +167,17 @@ export interface CollectionPlant {
   location: string | null
   nickname: string | null
   flowerColor: FlowerColor | null
+  /**
+   * Si la foto principal es en floración (plant_photos.in_bloom de la
+   * principal); false sin foto.
+   */
   photoInBloom: boolean
-  /** Ruta de la foto en el almacenamiento privado (#10), no una dirección. */
+  /**
+   * Ruta de la foto principal en el almacenamiento privado (#10), no una
+   * dirección; null sin foto. Sale de plant_photos (#186).
+   */
   photoPath: string | null
-  /** Ruta de la miniatura en el almacenamiento privado (#10), no una dirección. */
+  /** Ruta de la miniatura de la principal, como photoPath. */
   thumbnailPath: string | null
   /**
    * Número de fotos de la planta (#184), de 0 a 6; la principal es la de
@@ -145,9 +202,9 @@ export interface CollectionPlant {
 /**
  * Número de fotos de una planta a partir de lo leído: photo_count si llegó y,
  * como mínimo, 1 si tiene principal. El mínimo cubre las filas sin el dato
- * (copias y respuestas anteriores al #184) y la respuesta de un insert o
- * update que crea la principal en la misma sentencia (la base devuelve el
- * recuento de antes; ver la migración 20261124090000).
+ * (copias y respuestas anteriores al #184). La app ya no crea la principal
+ * desde plants (#186), pero una respuesta que la creara en la misma sentencia
+ * traería el recuento de antes (ver la migración 20261124090000).
  */
 export function photoCountOf(
   photoCount: unknown,
@@ -159,8 +216,20 @@ export function photoCountOf(
     : main
 }
 
+/** La foto principal de lo embebido: la de position más baja, o null. */
+export function mainPhotoOf(
+  photos: readonly CollectionPlantPhotoRow[] | null | undefined,
+): CollectionPlantPhotoRow | null {
+  let main: CollectionPlantPhotoRow | null = null
+  for (const photo of photos ?? []) {
+    if (main === null || photo.position < main.position) main = photo
+  }
+  return main
+}
+
 /** Pasa una fila de la consulta al modelo de la colección. */
 export function toCollectionPlant(row: CollectionPlantRow): CollectionPlant {
+  const main = mainPhotoOf(row.plant_photos)
   const species: CollectionSpecies | null = row.species
     ? {
         id: row.species.id,
@@ -186,10 +255,10 @@ export function toCollectionPlant(row: CollectionPlantRow): CollectionPlant {
     location: row.location,
     nickname: row.nickname,
     flowerColor: row.flower_color,
-    photoInBloom: row.photo_in_bloom,
-    photoPath: row.photo_path,
-    thumbnailPath: row.thumbnail_path,
-    photoCount: photoCountOf(row.photo_count, row.photo_path),
+    photoInBloom: main?.in_bloom ?? false,
+    photoPath: main?.photo_path ?? null,
+    thumbnailPath: main?.thumbnail_path ?? null,
+    photoCount: photoCountOf(row.photo_count, main?.photo_path ?? null),
     code: row.code,
     notes: row.notes,
   }

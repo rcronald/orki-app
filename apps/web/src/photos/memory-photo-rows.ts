@@ -13,8 +13,8 @@ import { PhotoStorageError } from './storage.ts'
 // plant_photos en memoria, con la misma interfaz que la de PostgREST y las
 // reglas de la base que importan a la app (#219): dueño, carpeta de las rutas,
 // posición de 0 a 5 y única por planta, nota (no en blanco, hasta 500) y fecha
-// (no futura, con un día de margen), copia de la principal a las columnas de
-// la planta y número de fotos (photoCount) al releerla. reorder() hace lo
+// (no futura, con un día de margen), la principal en la planta releída (como
+// la embebe COLLECTION_PLANT_SELECT, #186) y número de fotos (photoCount). reorder() hace lo
 // mismo que la función reorder_plant_photos de la base (#183). Lo usan las
 // pruebas (y lo puede usar la página de muestra).
 // Puede fallar a voluntad, también "después de aplicar" (la red cae con la
@@ -30,7 +30,7 @@ export interface SimulatedRowFailure {
 export interface MemoryPlantPhotoRows extends PlantPhotoRows {
   /** Filas guardadas, por id. */
   readonly rows: Map<string, StoredPlantPhoto & { userId: string }>
-  /** Plantas, por id: la principal se copia a photoPath, thumbnailPath y photoInBloom. */
+  /** Plantas, por id: photoPath, thumbnailPath y photoInBloom son los de la principal. */
   readonly plants: Map<string, CollectionPlant & { userId: string }>
   failList: (() => PhotoStorageError | null) | undefined
   failInsert:
@@ -90,7 +90,7 @@ export function createMemoryPlantPhotoRows(): MemoryPlantPhotoRows {
       .map(plain)
   }
 
-  /** Lo que hace el disparador sync_plant: la principal pasa a la planta. */
+  /** La planta releída lleva la principal (la de position más baja). */
   function copyMainPhoto(plantId: string) {
     const plant = plants.get(plantId)
     if (!plant) return

@@ -33,10 +33,17 @@ import {
 // se cambian las columnas permitidas, la cascada al borrar la planta y la
 // sincronización en los dos sentidos con photo_path, thumbnail_path y
 // photo_in_bloom de plants (la principal es la de position más baja; lo que
-// escribe la app de una foto en plants se refleja en la principal). Si una
-// prueba pone la foto de una planta directamente en `datos.plantas`, antes de
-// la siguiente petición se crea su fila en la posición 0, como la copia de la
-// migración. La galería del detalle (#183) cambia la nota y la fecha (con sus
+// escribiera una app antigua de una foto en plants se refleja en la
+// principal). Si una prueba pone la foto de una planta directamente en
+// `datos.plantas`, antes de la siguiente petición se crea su fila en la
+// posición 0, como la copia de la migración.
+//
+// Desde el #186 la app no lee ni escribe esas tres columnas de plants: la
+// principal le llega embebida de plant_photos (`plant_photos(...)` en el
+// select, con plant_photos.order y plant_photos.limit). Pedirlas en el select
+// de plants o enviarlas en un insert o un update queda en `sinSimular`, así
+// que la prueba falla si la app vuelve a usarlas. La sincronización sigue
+// porque la base desplegada la mantiene hasta retirarlas. La galería del detalle (#183) cambia la nota y la fecha (con sus
 // restricciones) y reordena con reorder_plant_photos, la función propuesta en
 // ese issue (aún sin migración).
 //
@@ -175,6 +182,16 @@ const COLUMNAS_EDITABLES_DE_FOTO = new Set([
 
 const MAXIMO_DE_FOTOS = 6
 
+/**
+ * Columnas de plants con la copia de la foto principal: la base las mantiene
+ * para las versiones anteriores de la app, pero esta ya no las usa (#186).
+ */
+const COLUMNAS_DE_FOTO_DE_PLANTS = [
+  'photo_path',
+  'thumbnail_path',
+  'photo_in_bloom',
+] as const
+
 /** ¿Está la ruta dentro de <usuario>/<planta>/ y con un solo nombre de archivo? */
 function rutaDeLaPlanta(ruta: unknown, usuario: string, planta: string) {
   const carpeta = `${usuario}/${planta}/`
@@ -292,6 +309,9 @@ function filtrosDe(parametros: URLSearchParams) {
     'offset',
     'on_conflict',
     'columns',
+    // Orden y límite de la tabla embebida (la foto principal, #186).
+    'plant_photos.order',
+    'plant_photos.limit',
   ])
   const filtros: ((fila: Record<string, unknown>) => boolean)[] = []
   for (const [columna, expresion] of parametros) {
@@ -481,10 +501,42 @@ export class SupabaseSimulado {
 
   // Tablas ----------------------------------------------------------------------
 
-  private filaDePlanta(planta: Planta) {
+  /**
+   * La fila de plants como la devuelve PostgREST con el select de la app.
+   * Las fotos van embebidas de plant_photos (#186), en el orden y con el
+   * límite que pida la dirección (plant_photos.order=position.asc y
+   * plant_photos.limit=1: la principal).
+   */
+  private filaDePlanta(planta: Planta, parametros: URLSearchParams) {
     const especie = this.datos.especies.find((e) => e.id === planta.species_id)
     const genero = this.datos.generos.find((g) => g.id === planta.genus_id)
     if (!genero) throw new Error(`planta sin género: ${planta.id}`)
+    const select = parametros.get('select') ?? ''
+    // Las columnas de primer nivel: lo que queda fuera de los paréntesis.
+    const columnasPedidas = select
+      .replace(/\([^)]*\)/g, '()')
+      .split(',')
+      .map((columna) => columna.trim())
+    for (const antigua of COLUMNAS_DE_FOTO_DE_PLANTS) {
+      if (columnasPedidas.includes(antigua)) {
+        throw new Error(`la app ya no lee plants.${antigua} (#186)`)
+      }
+    }
+    const orden = parametros.get('plant_photos.order')
+    if (orden !== null && orden !== 'position.asc') {
+      throw new Error(`orden de plant_photos sin simular: ${orden}`)
+    }
+    const limite = parametros.get('plant_photos.limit')
+    const fotos = this.fotos
+      .filter((foto) => foto.plant_id === planta.id)
+      .sort((a, b) => a.position - b.position)
+      .slice(0, limite === null ? undefined : Number(limite))
+      .map(({ photo_path, thumbnail_path, in_bloom, position }) => ({
+        photo_path,
+        thumbnail_path,
+        in_bloom,
+        position,
+      }))
     return {
       id: planta.id,
       entered_name: planta.entered_name,
@@ -496,9 +548,7 @@ export class SupabaseSimulado {
       location: planta.location,
       nickname: planta.nickname,
       flower_color: planta.flower_color,
-      photo_in_bloom: planta.photo_in_bloom,
-      photo_path: planta.photo_path,
-      thumbnail_path: planta.thumbnail_path,
+      ...(/\bplant_photos\s*\(/.test(select) && { plant_photos: fotos }),
       // Campo calculado photo_count (#184): las filas de plant_photos.
       photo_count: this.fotos.filter((foto) => foto.plant_id === planta.id)
         .length,
@@ -654,7 +704,14 @@ export class SupabaseSimulado {
       case 'PATCH plants':
       case 'DELETE plants':
       case 'POST plants':
-        return this.plantas(metodo, coincide, cabeceras, request, yo)
+        return this.plantas(
+          metodo,
+          coincide,
+          parametros,
+          cabeceras,
+          request,
+          yo,
+        )
       case 'GET plant_photos':
       case 'POST plant_photos':
       case 'PATCH plant_photos':
@@ -689,6 +746,7 @@ export class SupabaseSimulado {
   private plantas(
     metodo: string,
     coincide: (fila: Record<string, unknown>) => boolean,
+    parametros: URLSearchParams,
     cabeceras: Record<string, string>,
     request: Request,
     yo: Identidad,
@@ -704,15 +762,20 @@ export class SupabaseSimulado {
       return filas(
         mias
           .sort((a, b) => a.id.localeCompare(b.id))
-          .map((p) => this.filaDePlanta(p)),
+          .map((p) => this.filaDePlanta(p, parametros)),
         cabeceras,
       )
     }
     if (yo.usuario === null) {
       return errorPostgrest(401, 'PGRST301', 'JWT required (simulado)')
     }
+    const cuerpo = (request.postDataJSON() ?? {}) as Partial<Planta>
+    for (const antigua of COLUMNAS_DE_FOTO_DE_PLANTS) {
+      if (antigua in cuerpo) {
+        throw new Error(`la app ya no escribe plants.${antigua} (#186)`)
+      }
+    }
     if (metodo === 'POST') {
-      const cuerpo = request.postDataJSON() as Partial<Planta>
       if (this.datos.plantas.some((p) => p.id === cuerpo.id)) {
         return errorPostgrest(
           409,
@@ -735,7 +798,7 @@ export class SupabaseSimulado {
         location: cuerpo.location ?? null,
         nickname: cuerpo.nickname ?? null,
         flower_color: cuerpo.flower_color ?? null,
-        photo_in_bloom: cuerpo.photo_in_bloom ?? false,
+        photo_in_bloom: false,
         photo_path: null,
         thumbnail_path: null,
         created_at: momento,
@@ -745,10 +808,10 @@ export class SupabaseSimulado {
       this.aplicarEspecie(nueva, false)
       this.datos.plantas.push(nueva)
       this.asignarCodigos()
-      return filas([this.filaDePlanta(nueva)], cabeceras, 201)
+      return filas([this.filaDePlanta(nueva, parametros)], cabeceras, 201)
     }
     if (metodo === 'PATCH') {
-      const cambios = request.postDataJSON() as Partial<Planta>
+      const cambios = cuerpo
       // El identificador no se escribe por la API (#264).
       if ('code' in cambios) {
         return errorPostgrest(
@@ -788,7 +851,7 @@ export class SupabaseSimulado {
         this.reflejarFotoEnLaGaleria(planta, antes)
       }
       return filas(
-        mias.map((p) => this.filaDePlanta(p)),
+        mias.map((p) => this.filaDePlanta(p, parametros)),
         cabeceras,
       )
     }

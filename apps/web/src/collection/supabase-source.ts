@@ -4,6 +4,7 @@ import type { OrkiSupabaseClient } from '../lib/supabase.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
+  withMainPhotoOnly,
   type CollectionPlant,
 } from './model.ts'
 import {
@@ -16,7 +17,12 @@ import {
 //
 // Consulta, por página:
 //   GET /rest/v1/plants?select=<COLLECTION_PLANT_SELECT>&user_id=eq.<usuario>
+//       &plant_photos.order=position.asc&plant_photos.limit=1
 //       [&id=gt.<último id de la página anterior>]&order=id.asc&limit=1000
+//
+// - Foto principal (#186): embebida de plant_photos, solo la de position más
+//   baja (withMainPhotoOnly, en model.ts); no se leen las columnas de foto de
+//   plants. El límite de la tabla embebida no cuenta para el de la página.
 //
 // - Filtro por usuario: las políticas RLS ya limitan la lectura a las plantas
 //   del usuario del token, pero se pide además el del usuario activo. Si la
@@ -67,10 +73,12 @@ export function createSupabaseCollectionSource({
       const plants: CollectionPlant[] = []
       let lastId: string | null = null
       for (;;) {
-        let query = supabase
-          .from('plants')
-          .select(COLLECTION_PLANT_SELECT)
-          .eq('user_id', userId)
+        let query = withMainPhotoOnly(
+          supabase
+            .from('plants')
+            .select(COLLECTION_PLANT_SELECT)
+            .eq('user_id', userId),
+        )
         if (lastId !== null) query = query.gt('id', lastId)
         const { data, error, status } = await query
           .order('id', { ascending: true })

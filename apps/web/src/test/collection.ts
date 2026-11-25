@@ -28,9 +28,15 @@ export function plantRow(
     location: 'Ventana de la sala',
     nickname: 'La blanca',
     flower_color: 'white',
-    photo_in_bloom: true,
-    photo_path: 'user_prueba/planta-1.webp',
-    thumbnail_path: 'user_prueba/planta-1-mini.webp',
+    // La foto principal, embebida de plant_photos (#186).
+    plant_photos: [
+      {
+        photo_path: 'user_prueba/planta-1.webp',
+        thumbnail_path: 'user_prueba/planta-1-mini.webp',
+        in_bloom: true,
+        position: 0,
+      },
+    ],
     photo_count: 1,
     code: 'PHA-001',
     notes: null,

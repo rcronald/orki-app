@@ -372,11 +372,8 @@ export function EditPlantForm({
     base: PlantFormValues,
     notesBase: string | null | undefined,
   ) => {
-    // «En flor» es de cada foto (Gestionar fotos): la planta no lo cambia aquí.
-    const patch: PlantPatch = plantPatch(
-      { ...values, photoInBloom: base.photoInBloom },
-      base,
-    )
+    // «En flor» es de cada foto (Gestionar fotos): plantPatch no lo lleva.
+    const patch: PlantPatch = plantPatch(values, base)
     const nextNotes = normalizePlantNotes(notes)
     if (notesBase !== undefined && nextNotes !== notesBase) {
       patch.notes = nextNotes
