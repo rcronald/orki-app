@@ -70,7 +70,7 @@ Pruebas: `src/privacy/PrivacyPage.test.tsx` (sin sesión y con Clerk caído, enc
 `/creditos` (#203) es pública, con el mismo diseño que la privacidad (`TextPage`), en su propio chunk (`src/credits/CreditsPage.tsx`) y sin Clerk. Se enlaza desde el pie y desde la privacidad, y su enlace de volver sigue la misma regla. Cada dato está comprobado en el repositorio:
 
 - **Catálogo:** el Catalogue of Life con su versión, DOI y licencia (CC BY 4.0), leídos de `scripts/catalog-import/fuente.json` por `src/backoffice/attribution.ts`, y la indicación de que se filtró a las orquídeas y se normalizó; los híbridos de vivero, de la lista curada (`scripts/catalog-import/data/hibridos.csv`).
-- **Imágenes:** la foto de la portada y los fondos por género del registro, generadas con IA (OpenAI) a petición del autor del proyecto (`LEEME.md` de `src/assets/portada/` y `src/assets/fondos-genero/`). Solo su origen, nada sobre sus derechos.
+- **Imágenes:** la foto de la portada y la ilustración de las cabeceras, generadas con IA (OpenAI) a petición del autor del proyecto (`LEEME.md` de `src/assets/portada/` y `src/assets/ilustraciones/`). Solo su origen, nada sobre sus derechos.
 - **Tipografías:** Playfair Display e Inter, SIL Open Font License 1.1 (el `LICENSE` de cada paquete `@fontsource`).
 - **Iconos:** Lucide, licencia ISC; los derivados de Feather, MIT (el `LICENSE` de `lucide-react`).
 

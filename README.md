@@ -135,10 +135,10 @@ orki-app/
 │       ├── medicion/          Builds de medición y de las e2e (Clerk simulado)
 │       ├── prerender/         Prerenderizado de la portada
 │       ├── public/            Iconos y archivos estáticos
-│       ├── scripts/           Utilidades de la app (iconos, fondos, ilustraciones, portada)
+│       ├── scripts/           Utilidades de la app (iconos, ilustraciones, portada)
 │       ├── src/               Código fuente y pruebas
 │       │   ├── account/       Tu cuenta y eliminación de la cuenta
-│       │   ├── assets/        Marca, ilustraciones, portada, fondos por género y sin-foto.svg
+│       │   ├── assets/        Marca, ilustraciones, portada y sin-foto.svg
 │       │   ├── auth/          Proveedor de Clerk, apariencia, estados, controles de cuenta, rol, rutas protegidas y token para Supabase
 │       │   ├── backoffice/    Backoffice del catálogo (/administracion/catalogo, chunk propio)
 │       │   ├── catalog/       Catálogo público (/catalogo)
