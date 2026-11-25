@@ -40,14 +40,14 @@ export interface PhotoGalleryProps {
   onRetry?: (id: string) => void
   /** «Tomar foto»: abre la cámara. Sin él, no se muestra. */
   onTakePhoto?: () => void
-  /** «Elegir fotos»: abre el selector de archivos con selección múltiple. */
+  /** «Añadir fotos»: abre el selector de archivos con selección múltiple. */
   onChoosePhotos: () => void
-  /** Texto de «Elegir fotos» (la edición, #266: «Añadir fotos»). */
+  /** Otro texto para «Añadir fotos» (el de toda la app desde el #290). */
   chooseLabel?: string
-  /** Icono de «Elegir fotos»; por defecto, image. */
+  /** Icono de «Añadir fotos»; por defecto, image. */
   chooseIcon?: IconName
   /**
-   * Más botones tras «Elegir fotos», en la misma fila (la edición, #266:
+   * Más botones tras «Añadir fotos», en la misma fila (la edición, #266:
    * «Gestionar fotos»). No se desactivan con la galería llena.
    */
   extraActions?: ReactNode
@@ -91,7 +91,7 @@ function stateText(state: GalleryPhotoState): string | null {
 // primera, «Principal»; hasta 720 px, dos columnas y el estado en una franja
 // bajo la miniatura para que se lea entero, #247), un botón de quitar en la esquina de cada una (objetivo
 // de 44 × 44 px aunque el círculo mida 28) y las acciones «Tomar foto» y
-// «Elegir fotos» con su línea de ayuda. Solo pinta: quien la usa guarda las
+// «Añadir fotos» con su línea de ayuda. Solo pinta: quien la usa guarda las
 // fotos, las prepara y las sube.
 //
 // Accesibilidad: el recuadro es una región con nombre («Fotos»), la cuadrícula
@@ -99,7 +99,7 @@ function stateText(state: GalleryPhotoState): string | null {
 // de 3»), con su estado como texto visible. Llena, las dos acciones quedan con
 // aria-disabled y el motivo enlazado (aria-describedby). Al quitar una foto el
 // foco pasa al botón de quitar de la que ocupa su lugar, o a la anterior, o a
-// «Elegir fotos» si no queda ninguna. Los anuncios («Foto quitada») los hace
+// «Añadir fotos» si no queda ninguna. Los anuncios («Foto quitada») los hace
 // quien la usa en su región role="status".
 export function PhotoGallery({
   photos,
@@ -111,7 +111,7 @@ export function PhotoGallery({
   onRetry,
   onTakePhoto,
   onChoosePhotos,
-  chooseLabel = 'Elegir fotos',
+  chooseLabel = 'Añadir fotos',
   chooseIcon = 'image',
   extraActions,
   disabled = false,

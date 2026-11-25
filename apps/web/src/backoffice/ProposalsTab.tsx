@@ -157,7 +157,7 @@ export function ProposalsTab({
             Nombres que los usuarios registraron sin encontrarlos en el
             catálogo, agrupados por nombre (sin contar tildes ni mayúsculas) y
             género. Resolver un grupo cambia todas sus plantas a la vez; sus
-            dueños lo verán la próxima vez que se actualice su inventario. No se
+            dueños lo verán la próxima vez que se actualice su colección. No se
             muestra quién las registró.
           </p>
         </div>
@@ -277,7 +277,7 @@ export function ProposalsTab({
                 action.group,
                 result,
                 (plants) =>
-                  `«${action.group.proposedName}» quedó como no identificable: ${plants} salen de la cola y siguen en el inventario de sus dueños.`,
+                  `«${action.group.proposedName}» quedó como no identificable: ${plants} salen de la cola y siguen en la colección de sus dueños.`,
               )
             }
           />

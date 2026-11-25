@@ -63,7 +63,7 @@ describe('PhotoGallery', () => {
       within(region).getByRole('button', { name: 'Tomar foto' }),
     )
     await userEvent.click(
-      within(region).getByRole('button', { name: 'Elegir fotos' }),
+      within(region).getByRole('button', { name: 'Añadir fotos' }),
     )
     expect(take).toHaveBeenCalledTimes(1)
     expect(choose).toHaveBeenCalledTimes(1)
@@ -99,12 +99,12 @@ describe('PhotoGallery', () => {
     expect(
       screen.getByRole('button', { name: 'Quitar foto 3 de 3' }),
     ).toBeInTheDocument()
-    // Sin cámara: solo «Elegir fotos».
+    // Sin cámara: solo «Añadir fotos».
     expect(screen.queryByRole('button', { name: 'Tomar foto' })).toBeNull()
     await expectNoAxeViolations()
   })
 
-  it('al quitar, el foco pasa a la que ocupa su lugar; sin ninguna, a «Elegir fotos»', async () => {
+  it('al quitar, el foco pasa a la que ocupa su lugar; sin ninguna, a «Añadir fotos»', async () => {
     function Live() {
       const [photos, setPhotos] = useState([ready('a'), ready('b')])
       return (
@@ -129,7 +129,7 @@ describe('PhotoGallery', () => {
     ).toHaveFocus()
     expect(screen.getByText('1 de 6')).toBeInTheDocument()
     await user.keyboard('{Enter}')
-    expect(screen.getByRole('button', { name: 'Elegir fotos' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Añadir fotos' })).toHaveFocus()
     expect(screen.getByText('Aún no hay fotos.')).toBeInTheDocument()
   })
 
@@ -147,7 +147,7 @@ describe('PhotoGallery', () => {
         />
       </main>,
     )
-    for (const name of ['Tomar foto', 'Elegir fotos']) {
+    for (const name of ['Tomar foto', 'Añadir fotos']) {
       const button = screen.getByRole('button', { name })
       expect(button).toHaveAttribute('aria-disabled', 'true')
       expect(button).toHaveAccessibleDescription(
@@ -223,7 +223,7 @@ describe('PhotoGallery', () => {
     const quitar = screen.getByRole('button', { name: 'Quitar foto principal' })
     expect(quitar).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(quitar)
-    fireEvent.click(screen.getByRole('button', { name: 'Elegir fotos' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir fotos' }))
     expect(remove).not.toHaveBeenCalled()
     expect(choose).not.toHaveBeenCalled()
   })

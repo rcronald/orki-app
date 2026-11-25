@@ -33,10 +33,10 @@ export const PLANT_FORM_TEXT = {
   /** Insignia bajo el nombre con una especie del catálogo elegida (#221). */
   nameMatch: 'Coincidencia en el catálogo',
   /** Título de la foto de referencia de la especie elegida (#234). */
-  speciesPreview: 'Así es esta especie',
+  speciesPreview: 'Así es su especie',
   /** Qué pasará con un nombre que no está en el catálogo (#12). */
   namePendingHint:
-    'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
+    'No está en el catálogo: quedará en tu colección como «Nombre por validar» y el equipo del catálogo confirmará el nombre.',
   /**
    * Lo escrito coincide entero con un nombre del catálogo que no se enlaza
    * solo (#280): un sinónimo o un nombre común (va antes del nombre
@@ -206,7 +206,7 @@ export const PLANT_FORM_TEXT = {
 export const PENDING_UPLOAD_TEXT = {
   leaveTitle: '¿Salir con fotos sin subir?',
   leaveKept:
-    'Tu orquídea ya quedó registrada. Las fotos que faltan se quedan en este dispositivo y podrás subirlas desde su ficha.',
+    'Tu orquídea ya quedó registrada. Las fotos que faltan se quedan en este dispositivo y podrás subirlas al abrir la planta.',
   leaveLost:
     'Tu orquídea ya quedó registrada, pero no pudimos guardar en este dispositivo las fotos que faltan: si sales, se perderán.',
   leaveConfirm: 'Salir sin subirlas',
@@ -259,7 +259,7 @@ export const PENDING_UPLOAD_TEXT = {
       ? 'Quedó 1 foto sin subir de '
       : `Quedaron ${String(count)} fotos sin subir de `,
   noticeAfter: '.',
-  noticeAction: 'Subirlas desde su ficha',
+  noticeAction: 'Abrir la planta para subirlas',
 } as const
 
 /** Avisos propios de la edición. */

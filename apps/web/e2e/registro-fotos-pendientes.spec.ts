@@ -57,7 +57,7 @@ async function registrarConFotos(page: Page, supabase: SupabaseSimulado) {
   await page.getByRole('option', { name: /^Cattleya maxima/ }).click()
   await expect(page.getByText('Coincidencia en el catálogo')).toBeVisible()
   const selector = page.waitForEvent('filechooser')
-  await galeria(page).getByRole('button', { name: 'Elegir fotos' }).click()
+  await galeria(page).getByRole('button', { name: 'Añadir fotos' }).click()
   await (await selector).setFiles(FOTOS)
   await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(0)
   await expect(galeria(page).getByRole('img')).toHaveCount(2)
@@ -94,7 +94,7 @@ test('salir mientras suben las fotos pide confirmación; «Seguir aquí» termin
   await expect(dialogo).toContainText(
     browserName === 'webkit'
       ? 'si sales, se perderán'
-      : 'podrás subirlas desde su ficha',
+      : 'podrás subirlas al abrir la planta',
   )
   const quedarse = dialogo.getByRole('button', { name: 'Seguir aquí' })
   await expect(quedarse).toBeFocused()
@@ -150,7 +150,9 @@ test.describe('tras recargar a mitad de la subida', () => {
     if (browserName === 'chromium') expect(avisos).toEqual(['beforeunload'])
 
     // El registro vuelve vacío y avisa de las fotos de la planta guardada.
-    const enlace = page.getByRole('link', { name: 'Subirlas desde su ficha' })
+    const enlace = page.getByRole('link', {
+      name: 'Abrir la planta para subirlas',
+    })
     await expect(enlace).toBeVisible()
     await expect(enlace).toHaveAccessibleDescription(
       'Quedaron 2 fotos sin subir de Cattleya maxima.',
@@ -190,7 +192,7 @@ test.describe('tras recargar a mitad de la subida', () => {
     await page.goto('/coleccion/nueva')
     await expect(page.getByRole('combobox', { name: 'Nombre' })).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'Subirlas desde su ficha' }),
+      page.getByRole('link', { name: 'Abrir la planta para subirlas' }),
     ).toHaveCount(0)
   })
 

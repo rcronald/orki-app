@@ -136,7 +136,7 @@ test.describe('recorrido sin violaciones', () => {
       await page.getByRole('option', { name: /^Cattleya maxima/ }).click()
       const galeria = page.getByRole('region', { name: 'Fotos (opcional)' })
       const selector = page.waitForEvent('filechooser')
-      await galeria.getByRole('button', { name: 'Elegir fotos' }).click()
+      await galeria.getByRole('button', { name: 'Añadir fotos' }).click()
       await (await selector).setFiles([FOTO])
       await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(
         0,

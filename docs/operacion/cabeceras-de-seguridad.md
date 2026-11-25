@@ -154,7 +154,7 @@ En la vista previa del pull request, con las herramientas de desarrollo abiertas
 2. **Cabeceras firmes** en cualquier respuesta: `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options` y `Cross-Origin-Opener-Policy`.
 3. **Inicio de sesión con correo** (código de verificación) y **con Google**: entrar, volver a la página pedida y cerrar sesión, sin avisos de CSP en la consola.
 4. **Registro de una cuenta nueva con el CAPTCHA** (Turnstile) visible y resuelto, sin avisos.
-5. **Editor de perfil de Clerk** desde «Mi cuenta»: cambiar la foto de la cuenta y ver que el avatar (de `img.clerk.com`) se pinta.
+5. **Editor de perfil de Clerk** desde «Tu cuenta»: cambiar la foto de la cuenta y ver que el avatar (de `img.clerk.com`) se pinta.
 6. **Registro de una planta con fotos** (desde la galería y, en el celular, con la cámara), su ficha con la galería, editar las fotos y la bitácora con foto.
 7. **Catálogo público** con fotos de referencia de las especies, y «¿Ya la tengo?».
 8. **Backoffice** del catálogo con una cuenta `catalog_admin`.

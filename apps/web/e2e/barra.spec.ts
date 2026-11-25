@@ -39,7 +39,7 @@ for (const ancho of [1440, 360]) {
       await expect(barra.locator('.lucide-search')).toHaveCount(0)
       // «Tu cuenta» se ve en escritorio; en el celular queda la foto.
       // (Hasta 720 px el texto sigue para el lector, recortado a 1 px.)
-      const etiqueta = await barra.getByText('Tu cuenta').boundingBox()
+      const etiqueta = await cuenta.getByText('Tu cuenta').boundingBox()
       if (ancho > 720) expect(etiqueta?.width ?? 0).toBeGreaterThan(40)
       else expect(etiqueta?.width ?? 0).toBeLessThanOrEqual(1)
       await sinDesplazamientoHorizontal(page)
@@ -65,11 +65,11 @@ for (const ancho of [1440, 360]) {
       const menu = page.getByRole('menu', { name: 'Tu cuenta' })
       await expect(menu).toBeVisible()
       await expect(menu.getByRole('menuitem')).toHaveText([
-        'Mi cuenta',
+        'Tu cuenta',
         'Cerrar sesión',
       ])
       await expect(
-        menu.getByRole('menuitem', { name: 'Mi cuenta' }),
+        menu.getByRole('menuitem', { name: 'Tu cuenta' }),
       ).toBeFocused()
       await sinDesplazamientoHorizontal(page)
       const cajaMenu = await page.locator('.orki-menu__popup').boundingBox()
@@ -88,10 +88,10 @@ for (const ancho of [1440, 360]) {
       await expect(menu).toBeHidden()
       await expect(cuenta).toBeFocused()
 
-      // «Mi cuenta» lleva a la pantalla de cuenta; la pestaña deja de ser la
+      // «Tu cuenta» lleva a la pantalla de cuenta; la pestaña deja de ser la
       // actual.
       await cuenta.click()
-      await menu.getByRole('menuitem', { name: 'Mi cuenta' }).click()
+      await menu.getByRole('menuitem', { name: 'Tu cuenta' }).click()
       await expect(page).toHaveURL(/\/cuenta$/)
       await expect(
         page.getByRole('heading', { name: 'Tu cuenta', level: 1 }),
@@ -148,7 +148,7 @@ test.describe('administrador', () => {
       await page.goto('/coleccion')
       await page.getByRole('button', { name: 'Tu cuenta' }).click()
       await expect(page.getByRole('menuitem')).toHaveText([
-        'Mi cuenta',
+        'Tu cuenta',
         'Administración',
         'Cerrar sesión',
       ])

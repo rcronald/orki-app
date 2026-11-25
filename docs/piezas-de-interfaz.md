@@ -12,6 +12,9 @@ archivo (no hay índice).
 
 ## Reglas comunes
 
+- **Los textos siguen el [glosario](app/textos.md)** (#290): «orquídea» en las
+  acciones, «planta» en la ficha y la edición, «ejemplar» en los recuentos,
+  «Mi colección» y «Tu cuenta».
 - **El verde es la acción principal en toda la app.** `Button variant="primary"`
   (`orki-btn--primary`) es verde (`color-secondary-strong`, y
   `color-secondary` al pasar por encima). `strong` es un alias que conserva la
@@ -47,7 +50,7 @@ ruta dentro de `AppShell` la lleva.
   y `/ya-la-tengo` (`PATHS.ownershipCheck`, la ruta propuesta del #209; si
   usas otra, avisa: está en `COLLECTION_AREA` de `AppBar.tsx`), pestaña
   «Catálogo» (#232, icono `book-open`) en todo `/catalogo`, y el menú
-  «Tu cuenta» (foto o iniciales; «Mi cuenta», «Administración» solo con
+  «Tu cuenta» (foto o iniciales; «Tu cuenta», «Administración» solo con
   `catalog_admin`, «Cerrar sesión»).
 - Hasta 720 px, el logotipo es solo la flor (`Logo variant="compact"`, un
   `<picture>` con una sola imagen) y las pestañas van sin icono: las dos caben
@@ -536,7 +539,7 @@ const editor = useProfileEditor()
 <Panel title="Datos y privacidad">
   <ActionList>
     <li>
-      <ActionRow icon="file" title="Exportar inventario a CSV"
+      <ActionRow icon="file" title="Exportar tu colección a CSV"
         description="El archivo CSV no incluye las fotos." onClick={exportCsv} />
     </li>
     <li>
@@ -647,10 +650,10 @@ interface PhotoGalleryProps {
   onRemove?: (id: string) => void // sin él, no hay botón de quitar
   onRetry?: (id: string) => void // «Reintentar» en las que tienen error
   onTakePhoto?: () => void // «Tomar foto»; sin él, no se muestra
-  onChoosePhotos: () => void // «Elegir fotos»
+  onChoosePhotos: () => void // «Añadir fotos»
   chooseLabel?: string // la edición (#266): «Añadir fotos»
   chooseIcon?: IconName // por defecto image; la edición, plus
-  extraActions?: ReactNode // tras «Elegir fotos» (la edición: «Gestionar fotos»)
+  extraActions?: ReactNode // tras «Añadir fotos» (la edición: «Gestionar fotos»)
   disabled?: boolean // nada que añadir ni quitar (aria-disabled)
   help?: ReactNode // por defecto «Puedes añadir hasta 6 fotos.»
   notice?: ReactNode // aviso bajo el título; describe el recuadro
@@ -674,7 +677,7 @@ interface PhotoGalleryProps {
 - Quitar: `orki-gallery__remove`, de 44 × 44 px en la esquina con el círculo de
   28 px dentro; nombre «Quitar foto 2 de 3». Al quitar, el foco pasa al botón
   de quitar de la que ocupa su lugar, a la anterior o, si no queda ninguna, a
-  «Elegir fotos». Subiendo o guardada no se puede quitar.
+  «Añadir fotos». Subiendo o guardada no se puede quitar.
 - Estados de cada miniatura (`orki-gallery__item--{estado}` y
   `orki-gallery__state` abajo): preparando (hueco con el texto), subiendo
   (texto y `orki-gallery__bar`), guardada, y error (`color-danger` sobre
@@ -684,7 +687,8 @@ interface PhotoGalleryProps {
   ella, a todo el ancho, para que se lea entero y no se solape con quitar ni
   con «Principal». El hueco sin imagen también lleva `orki-gallery__photo`.
   En «Subiendo… 40 %» hay un espacio duro antes de «%».
-- Acciones: «Tomar foto» (`camera`) y «Elegir fotos» (`image`), botones
+- Acciones: «Tomar foto» (`camera`) y «Añadir fotos» (`image`; era «Elegir
+  fotos» hasta el #290, que lo igualó con la edición y la ficha), botones
   secundarios en `orki-gallery__actions` (columnas automáticas). Llena, las dos
   quedan con `aria-disabled` y su descripción es el motivo, que sustituye a la
   ayuda: «Ya tienes 6 fotos. Quita una para añadir otra.».
@@ -826,7 +830,7 @@ interface ReferencePhotoProps {
   picture: ReferencePicture // medium (o null), thumbnail, credit, sourcePhotoId
   scientificName: string // alt: «Foto de referencia de Cattleya maxima»
   variant?: 'figure' | 'viewer' | 'compact'
-  title?: ReactNode // solo compact: «Así es esta especie»
+  title?: ReactNode // solo compact: «Así es su especie»
   fallback?: ReactNode // si la imagen no carga; por defecto, nada
   className?: string
 }
@@ -857,7 +861,7 @@ interface ReferencePhotoProps {
 
 ```tsx
 <ReferencePhoto picture={species.reference} scientificName={species.scientificName} />
-<ReferencePhoto picture={picture} scientificName={name} variant="compact" title="Así es esta especie" />
+<ReferencePhoto picture={picture} scientificName={name} variant="compact" title="Así es su especie" />
 ```
 
 Para pedirla con sesión, `useReferencePhoto(speciesId)` (`lib/useReferencePhoto.ts`):

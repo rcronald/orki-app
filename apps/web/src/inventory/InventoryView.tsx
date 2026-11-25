@@ -121,7 +121,7 @@ const TOUCH_CHIP = 'py-space-3'
  * las dadas de baja se ven con el filtro de estado (#15).
  *
  * Al buscar o filtrar, bajo el buscador se dice cuántas coinciden ("3 de 12
- * orquídeas coinciden.", "2 orquídeas perdidas."), en una región de estado
+ * ejemplares coinciden.", "2 ejemplares perdidos."), en una región de estado
  * que el lector de pantalla lee sin mover el foco.
  */
 export function InventoryView({

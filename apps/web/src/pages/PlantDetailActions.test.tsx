@@ -152,6 +152,10 @@ describe('dar de baja y reactivar', () => {
       await screen.findByText(DETAIL_TEXT.retired('Regalada')),
     ).toBeVisible()
     expect(datum(DETAIL_TEXT.status)).toHaveTextContent('Regalada')
+    // Un aviso por acción (#290): el del estado sale al cerrar el de la baja.
+    expect(screen.queryByText(DETAIL_TEXT.inactive('Regalada'))).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Cerrar el aviso' }))
+    expect(screen.queryByText(DETAIL_TEXT.retired('Regalada'))).toBeNull()
     expect(screen.getByText(DETAIL_TEXT.inactive('Regalada'))).toBeVisible()
     expect(
       screen.getByRole('button', { name: DETAIL_TEXT.reactivate }),

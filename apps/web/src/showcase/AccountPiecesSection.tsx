@@ -58,7 +58,7 @@ export function AccountPiecesSection() {
             <li>
               <ActionRow
                 icon="file"
-                title="Exportar inventario a CSV"
+                title="Exportar tu colección a CSV"
                 description="El archivo CSV no incluye las fotos."
                 onClick={() => {}}
               />

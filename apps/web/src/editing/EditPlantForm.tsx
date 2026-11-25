@@ -230,7 +230,7 @@ function sessionEnded(error: PlantEditError): boolean {
  * nada que deshacer.
  *
  * Salir con cambios sin guardar pregunta antes (useLeaveGuard): por un
- * enlace de la app, con «atrás», con «Cancelar» o «Volver a la ficha», o al
+ * enlace de la app, con «atrás», con «Cancelar» o «Volver a la planta», o al
  * cerrar o recargar la pestaña. Mientras se guarda no se puede salir (#279):
  * esas vías solo avisan de que hay que esperar. Si el formulario se desmonta
  * de todos modos, no navega al terminar y lo que sobre se borra cuando el
@@ -485,7 +485,7 @@ export function EditPlantForm({
     guard.requestLeave(onCancel)
   }
   useEffect(() => {
-    // «Volver a la ficha»: durante un guardado avisa de que hay que esperar.
+    // «Volver a la planta»: durante un guardado avisa de que hay que esperar.
     cancelRef.current = () => guard.requestLeave(onCancel)
     return () => {
       cancelRef.current = null

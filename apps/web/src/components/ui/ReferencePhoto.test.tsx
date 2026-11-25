@@ -59,12 +59,12 @@ describe('ReferencePhoto', () => {
           picture={picture}
           scientificName="Cattleya maxima"
           variant="compact"
-          title="Así es esta especie"
+          title="Así es su especie"
         />
       </main>,
     )
     expect(screen.getByRole('img')).toHaveAttribute('src', '/miniatura.webp')
-    expect(screen.getByText('Así es esta especie')).toBeInTheDocument()
+    expect(screen.getByText('Así es su especie')).toBeInTheDocument()
     expect(screen.getByText('Foto de referencia')).toBeInTheDocument()
     await expectNoAxeViolations()
   })

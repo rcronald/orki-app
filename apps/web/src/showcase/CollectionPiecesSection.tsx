@@ -66,7 +66,7 @@ export function CollectionPiecesSection() {
                 </>
               }
               items={[
-                { kind: 'link', label: 'Mi cuenta', icon: 'user', to: '#' },
+                { kind: 'link', label: 'Tu cuenta', icon: 'user', to: '#' },
                 {
                   kind: 'link',
                   label: 'Administración',

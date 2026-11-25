@@ -404,7 +404,7 @@ export function SpeciesForm({
             {genusChanged && typeChanged ? ' y' : ''}
             {typeChanged ? ` ser de tipo «${TYPE_LABEL[type]}»` : ''}.
           </p>
-          <p>Sus dueños lo verán en su inventario.</p>
+          <p>Sus dueños lo verán en su colección.</p>
         </ConfirmDialog>
       )}
     </form>

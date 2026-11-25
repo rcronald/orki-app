@@ -226,7 +226,9 @@ export default function PlantDetailPage() {
                   {noticeText}
                 </ActionNotice>
               )}
-              {plant.status !== 'active' && (
+              {/* Un aviso por acción (#290): recién dada de baja, ya lo dice
+                  el de la acción; al cerrarlo (o al volver), sale este. */}
+              {plant.status !== 'active' && notice?.kind !== 'retired' && (
                 <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-md text-neutral-900">
                   {DETAIL_TEXT.inactive(PLANT_STATUS_LABEL[plant.status])}
                 </p>
@@ -275,7 +277,12 @@ export default function PlantDetailPage() {
     case 'error':
       return (
         <Page title={DETAIL_TEXT.errorTitle} width="wide" header={header()}>
-          <LoadErrorPanel error={lookup.error} onRetry={collection.reload} />
+          {/* El título ya es el de la pantalla (#290): uno solo. */}
+          <LoadErrorPanel
+            error={lookup.error}
+            onRetry={collection.reload}
+            showTitle={false}
+          />
         </Page>
       )
     case 'not-found':

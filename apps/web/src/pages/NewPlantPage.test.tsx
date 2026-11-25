@@ -658,7 +658,7 @@ describe('NewPlantPage', () => {
     expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('al elegir una especie con foto de referencia, «Así es esta especie» con su crédito (#234)', async () => {
+  it('al elegir una especie con foto de referencia, «Así es su especie» con su crédito (#234)', async () => {
     const user = userEvent.setup()
     await renderPage()
     await chooseAmabilis(user)
@@ -806,7 +806,7 @@ describe('NewPlantPage', () => {
     await fillFreeName(user)
     await waitFor(() =>
       expect(nameInput()).toHaveAccessibleDescription(
-        'No está en el catálogo: quedará en tu inventario como «Nombre por validar» y un administrador confirmará el nombre.',
+        'No está en el catálogo: quedará en tu colección como «Nombre por validar» y el equipo del catálogo confirmará el nombre.',
       ),
     )
     await user.click(submitButton())
@@ -1231,7 +1231,7 @@ describe('NewPlantPage', () => {
     await user.keyboard('{ArrowDown}{Enter}')
     expect(nameInput()).toHaveValue('Phalaenopsis amabilis')
 
-    // Los enlaces del crédito de «Así es esta especie» (#234) van detrás del
+    // Los enlaces del crédito de «Así es su especie» (#234) van detrás del
     // nombre.
     await screen.findByText(PLANT_FORM_TEXT.speciesPreview)
     await user.tab()
@@ -1256,9 +1256,9 @@ describe('NewPlantPage', () => {
     expect(originInput()).toHaveFocus()
     await user.keyboard('Feria de Miraflores')
     // La galería, opcional, se salta con un tabulador más (sin pantalla
-    // táctil, solo «Elegir fotos»).
+    // táctil, solo «Añadir fotos»).
     await user.tab()
-    expect(screen.getByRole('button', { name: 'Elegir fotos' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Añadir fotos' })).toHaveFocus()
     // "Más detalles" se abre con Enter y sus campos siguen en orden.
     await user.tab()
     expect(detailsButton()).toHaveFocus()
@@ -1975,7 +1975,7 @@ describe('NewPlantPage: aviso de duplicado (#88)', () => {
 // Galería de fotos en el registro (#221) ----------------------------------------
 
 const gallery = () => screen.getByRole('region', { name: 'Fotos (opcional)' })
-const chooseButton = () => screen.getByRole('button', { name: 'Elegir fotos' })
+const chooseButton = () => screen.getByRole('button', { name: 'Añadir fotos' })
 const bloomChip = () =>
   screen.queryByRole('button', { name: PLANT_FORM_TEXT.photoInBloom })
 const thumbnails = () =>
@@ -2097,7 +2097,7 @@ describe('NewPlantPage: galería de fotos (#221)', () => {
     const user = userEvent.setup()
     const { container } = await renderPage()
     await chooseAmabilis(user)
-    // «Elegir fotos» abre el selector (el <input> oculto, múltiple).
+    // «Añadir fotos» abre el selector (el <input> oculto, múltiple).
     const open = vi.spyOn(filesInput(container), 'click')
     await user.click(chooseButton())
     expect(open).toHaveBeenCalled()

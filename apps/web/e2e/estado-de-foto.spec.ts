@@ -139,7 +139,7 @@ test('a 360 px, cada estado de una foto se lee entero y sin solaparse', async ({
 
   // Preparando…
   const selector = page.waitForEvent('filechooser')
-  await galeria(page).getByRole('button', { name: 'Elegir fotos' }).click()
+  await galeria(page).getByRole('button', { name: 'Añadir fotos' }).click()
   await (await selector).setFiles(FOTOS)
   await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(2)
   await comprobarEstados(page, 'Preparando…')

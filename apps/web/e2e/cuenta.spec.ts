@@ -52,7 +52,7 @@ for (const ancho of [1440, 360]) {
         page.getByRole('heading', { name: 'Mi colección', level: 1 }),
       ).toBeVisible()
       await page.getByRole('button', { name: 'Tu cuenta' }).click()
-      await page.getByRole('menuitem', { name: 'Mi cuenta' }).click()
+      await page.getByRole('menuitem', { name: 'Tu cuenta' }).click()
       await expect(page).toHaveURL(/\/cuenta$/)
       await expect(
         page.getByRole('heading', { name: 'Tu cuenta', level: 1 }),
@@ -67,7 +67,7 @@ for (const ancho of [1440, 360]) {
       const perfil = main.getByRole('region', { name: 'Perfil' })
       const datos = main.getByRole('region', { name: 'Datos y privacidad' })
       const exportar = datos.getByRole('button', {
-        name: 'Exportar inventario a CSV',
+        name: 'Exportar tu colección a CSV',
       })
       const privacidad = datos.getByRole('link', {
         name: 'Aviso de privacidad',
@@ -127,7 +127,7 @@ for (const ancho of [1440, 360]) {
       const desdeCuenta = await descargar(page, () => exportar.click())
       await expect(datos.getByRole('status')).toContainText('Listo:')
       expect(desdeCuenta.nombre).toMatch(
-        /^orqui-app-inventario-\d{4}-\d{2}-\d{2}\.csv$/,
+        /^orqui-app-coleccion-\d{4}-\d{2}-\d{2}\.csv$/,
       )
 
       // Privacidad, con «Volver a Tu cuenta».

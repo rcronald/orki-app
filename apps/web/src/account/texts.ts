@@ -30,7 +30,7 @@ export const ACCOUNT_TEXT = {
       'No se pudo confirmar tu sesión: el servicio de acceso no responde. Tus datos de perfil se verán, y podrás editarlos, cuando se confirme.',
   },
   dataHeading: 'Datos y privacidad',
-  exportTitle: 'Exportar inventario a CSV',
+  exportTitle: 'Exportar tu colección a CSV',
   exportDescription: 'El archivo CSV no incluye las fotos.',
   exportLoading: 'Cargando tu colección para exportarla…',
   exportRetry: 'Volver a cargar la colección',

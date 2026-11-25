@@ -180,6 +180,7 @@ export default function OwnershipCheckPage() {
               id={offlineNoticeId}
               reason={offlineReason}
               savedAt={copy?.savedAt ?? null}
+              text={CHECK_TEXT.offlineNotice}
             />
           )}
         </div>
@@ -264,6 +265,9 @@ function AnswerArea({
   answer: ReactNode
 }) {
   const { plants, status, error } = collection
+  // Colección vacía y nada escrito (#290): una línea, en vez de nada.
+  if (plants?.length === 0 && query.trim() === '')
+    return <p className="text-md text-neutral-700">{CHECK_TEXT.empty}</p>
   if (plants !== null) return answer
   if (status === 'error') {
     if (error === null || error.reason === 'offline') {

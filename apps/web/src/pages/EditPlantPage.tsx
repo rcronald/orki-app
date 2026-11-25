@@ -29,7 +29,7 @@ import { plantDetailPath } from '../routes/paths.ts'
 // validación del registro; nada se guarda hasta «Guardar cambios» (ver
 // editing/edit-plan.ts).
 //
-// - La cabecera: «Volver a la ficha» (hace lo mismo que «Cancelar»: pregunta
+// - La cabecera: «Volver a la planta» (hace lo mismo que «Cancelar»: pregunta
 //   si hay cambios), «Editar planta» y el identificador (CAT-012), que no se
 //   edita (lo trae la planta de la colección, #265).
 // - Al terminar o cancelar se vuelve a la ficha: con «atrás» si se llegó

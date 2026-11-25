@@ -71,7 +71,7 @@ async function borradorDeCattleya(page: Page, conFoto: boolean) {
   await nombre(page).fill('Cattleya maxima')
   await expect(page.getByText('Coincidencia en el catálogo')).toBeVisible()
   const selector = page.waitForEvent('filechooser')
-  await galeria(page).getByRole('button', { name: 'Elegir fotos' }).click()
+  await galeria(page).getByRole('button', { name: 'Añadir fotos' }).click()
   await (await selector).setFiles([FOTO])
   await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(0)
   if (conFoto) await expect.poll(() => fotosDeBorradores(page)).toBe(1)

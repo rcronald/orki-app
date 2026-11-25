@@ -40,7 +40,7 @@ async function conConexion(context: BrowserContext) {
 
 async function elegirFoto(page: Page) {
   const selector = page.waitForEvent('filechooser')
-  await galeria(page).getByRole('button', { name: 'Elegir fotos' }).click()
+  await galeria(page).getByRole('button', { name: 'Añadir fotos' }).click()
   await (await selector).setFiles([FOTO])
   await expect(page.locator('.orki-gallery__item--preparing')).toHaveCount(0)
 }
