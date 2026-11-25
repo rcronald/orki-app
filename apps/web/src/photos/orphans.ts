@@ -233,6 +233,11 @@ export interface CleanupArguments {
   borrar: boolean
   confirmarProduccion: boolean
   antiguedadMinimaHoras: number
+  /**
+   * Solo los totales, sin rutas ni ids (#293): lo que imprime el informe
+   * semanal, cuyo registro en GitHub Actions es público. Nunca con `borrar`.
+   */
+  soloRecuentos: boolean
 }
 
 /**
@@ -246,6 +251,7 @@ export function parseCleanupArguments(
   let borrar = false
   let confirmarProduccion = false
   let antiguedadMinimaHoras = 24
+  let soloRecuentos = false
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     switch (argument) {
@@ -275,6 +281,9 @@ export function parseCleanupArguments(
         antiguedadMinimaHoras = value
         break
       }
+      case '--solo-recuentos':
+        soloRecuentos = true
+        break
       default:
         throw new Error(`argumento desconocido: ${String(argument)}`)
     }
@@ -289,7 +298,18 @@ export function parseCleanupArguments(
       'para borrar en producción hace falta además --confirmar-produccion.',
     )
   }
-  return { ambiente, borrar, confirmarProduccion, antiguedadMinimaHoras }
+  if (soloRecuentos && borrar) {
+    throw new Error(
+      '--solo-recuentos es para el informe periódico y no se usa con --borrar: antes de borrar, revisa la lista completa.',
+    )
+  }
+  return {
+    ambiente,
+    borrar,
+    confirmarProduccion,
+    antiguedadMinimaHoras,
+    soloRecuentos,
+  }
 }
 
 export interface OrphanCleanupIo {
@@ -315,13 +335,16 @@ const DELETE_BATCH = 100
 
 /**
  * Ejecuta la limpieza: lista, compara, informa y, solo con `borrar`, borra
- * los huérfanos con la antigüedad mínima en lotes de 100.
+ * los huérfanos con la antigüedad mínima en lotes de 100. Con
+ * `soloRecuentos`, informa solo de los totales, sin ninguna ruta ni id.
  */
 export async function runOrphanCleanup(
   {
     borrar,
     antiguedadMinimaHoras,
-  }: Pick<CleanupArguments, 'borrar' | 'antiguedadMinimaHoras'>,
+    soloRecuentos = false,
+  }: Pick<CleanupArguments, 'borrar' | 'antiguedadMinimaHoras'> &
+    Partial<Pick<CleanupArguments, 'soloRecuentos'>>,
   io: OrphanCleanupIo,
 ): Promise<OrphanCleanupResult> {
   const [objects, plants, photos, logPhotos] = await Promise.all([
@@ -345,7 +368,7 @@ export async function runOrphanCleanup(
   io.log(
     `Huérfanos con más de ${antiguedadMinimaHoras} h: ${report.orphans.length}.`,
   )
-  for (const orphan of report.orphans) {
+  for (const orphan of soloRecuentos ? [] : report.orphans) {
     io.log(
       `  ${orphan.name} (${orphan.reason}, ${orphan.createdAt ?? 'sin fecha'})`,
     )
@@ -353,13 +376,13 @@ export async function runOrphanCleanup(
   io.log(
     `Huérfanos recientes o sin fecha (no se tocan): ${report.recent.length}.`,
   )
-  for (const orphan of report.recent) {
+  for (const orphan of soloRecuentos ? [] : report.recent) {
     io.log(`  ${orphan.name} (${orphan.createdAt ?? 'sin fecha'})`)
   }
   io.log(
     `Plantas o fotos que apuntan a un archivo que no existe: ${report.missing.length}.`,
   )
-  for (const missing of report.missing) {
+  for (const missing of soloRecuentos ? [] : report.missing) {
     const photo = missing.photoId
       ? `, foto ${missing.photoId}`
       : missing.logEntryId
@@ -371,8 +394,16 @@ export async function runOrphanCleanup(
   }
 
   if (!borrar) {
-    io.log('Modo de prueba: no se ha borrado nada.')
+    io.log(
+      soloRecuentos
+        ? 'Solo lectura: no se ha borrado nada. Para ver la lista y borrar, ejecútalo a mano (supabase/README.md).'
+        : 'Modo de prueba: no se ha borrado nada.',
+    )
     return { report, deleted: 0 }
+  }
+  if (soloRecuentos) {
+    // parseCleanupArguments ya lo impide; aquí, por si se llama directamente.
+    throw new Error('--solo-recuentos no se usa con --borrar.')
   }
   let deleted = 0
   for (const batch of inBatches(

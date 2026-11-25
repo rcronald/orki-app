@@ -236,6 +236,10 @@ Pruebas, operación y medidas:
 - [Despliegue e integración continua](docs/operacion/despliegue-y-ci.md):
   Vercel, flujo de ramas y CI.
 - [Errores en Sentry](docs/operacion/errores-en-sentry.md).
+- [Retención y limpieza de datos](docs/operacion/retencion-y-limpieza.md):
+  plazos de conservación, tareas periódicas y lo que hay que configurar.
+- [Webhook `user.deleted` de Clerk](docs/operacion/webhook-de-clerk.md):
+  valoración, sin implementar.
 - [Cabeceras de seguridad y CSP](docs/operacion/cabeceras-de-seguridad.md):
   las cabeceras de Vercel, la CSP por ambiente y lo que hay que revisar.
 - [Medición de la carga y presupuesto de tamaño](docs/medicion-de-carga.md).

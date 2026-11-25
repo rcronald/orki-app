@@ -1,0 +1,108 @@
+name: Retención de eventos
+
+# Borra los eventos de producto de más de 13 meses (#293) llamando a
+# public.purge_expired_product_events(), la función de la base que fija el plazo
+# (migración 20261125120000_retencion_de_eventos.sql). El workflow no elige qué se borra, solo
+# cuándo.
+# - Automático: cada día, en producción.
+# - Manual: desde la pestaña Actions, eligiendo el ambiente (dev o prod). Producción solo
+#   desde main.
+# Usa el secreto SUPABASE_SECRET_KEY y la variable SUPABASE_PROJECT_REF del environment, los
+# mismos que «Fotos de referencia». Si falta el secreto, falla: el plazo está publicado en la
+# privacidad y tiene que cumplirse. Guía: docs/operacion/retencion-y-limpieza.md.
+run-name: Retención de eventos (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
+
+on:
+  schedule:
+    # Cada día a las 04:17 UTC (23:17 en Lima), fuera de la hora en punto, que GitHub retrasa.
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente donde borrar los eventos de más de 13 meses
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retencion-de-eventos-${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  retencion:
+    name: Borrar eventos de más de 13 meses (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      AMBIENTE: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+    steps:
+      - name: Comprobar la rama y las credenciales
+        env:
+          RAMA: ${{ github.ref_name }}
+          REF_GIT: ${{ github.ref }}
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          HAY_CLAVE: ${{ secrets.SUPABASE_SECRET_KEY != '' }}
+        run: |
+          if [[ "$AMBIENTE" == prod && "$REF_GIT" != refs/heads/main ]]; then
+            echo "::error::La retención en producción solo se lanza desde main (se lanzó desde ${RAMA})."
+            exit 1
+          fi
+          if [[ ! "$REF_PROYECTO" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error::Falta la variable SUPABASE_PROJECT_REF del environment ${AMBIENTE} o no es un identificador de proyecto."
+            exit 1
+          fi
+          if [[ "$HAY_CLAVE" != true ]]; then
+            echo "::error::Falta el secreto SUPABASE_SECRET_KEY del environment ${AMBIENTE} (la clave secreta del proyecto, sb_secret_...). Sin él no se borran los eventos de más de 13 meses. Ver docs/operacion/retencion-y-limpieza.md."
+            exit 1
+          fi
+
+      - name: Obtener el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node desde .nvmrc
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Borrar los eventos de más de 13 meses
+        id: retencion
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SALIDA: ${{ runner.temp }}/retencion.txt
+        run: |
+          if [[ "$AMBIENTE" == prod ]]; then ambiente=produccion; else ambiente=desarrollo; fi
+          npm run --silent eventos:retencion -- --ambiente "$ambiente" 2>&1 | tee "$SALIDA"
+
+      - name: Resumen de la ejecución
+        if: ${{ always() && steps.retencion.outcome != 'skipped' }}
+        env:
+          RESULTADO: ${{ steps.retencion.outcome }}
+          SALIDA: ${{ runner.temp }}/retencion.txt
+        run: |
+          {
+            echo "## Retención de eventos: ${AMBIENTE}"
+            echo
+            echo "Resultado: **${RESULTADO}**."
+            if [[ -s "$SALIDA" ]]; then
+              echo
+              echo '```'
+              cat "$SALIDA"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

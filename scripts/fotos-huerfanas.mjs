@@ -6,6 +6,7 @@
 //   npm run fotos:huerfanas -- --ambiente desarrollo --borrar
 //   npm run fotos:huerfanas -- --ambiente produccion [--antiguedad-minima-horas 48]
 //   npm run fotos:huerfanas -- --ambiente produccion --borrar --confirmar-produccion
+//   npm run fotos:huerfanas -- --ambiente produccion --solo-recuentos   # informe sin rutas (#293)
 //
 // Qué hace:
 //   1. Lista todos los objetos del bucket (recorriendo <usuario>/<planta>/).
@@ -25,7 +26,10 @@
 //        se informa: no se cambia ninguna fila).
 //   4. Solo con --borrar, borra los huérfanos con la antigüedad mínima
 //      (24 horas por defecto). Sin --borrar es un modo de prueba: no borra
-//      nada.
+//      nada. Con --solo-recuentos (nunca con --borrar) solo da los totales,
+//      sin rutas ni ids: es lo que ejecuta el informe semanal
+//      (.github/workflows/informe-datos-sin-dueno.yml), cuyo registro es
+//      público.
 //
 // Credencial: la clave secreta del proyecto (sb_secret_..., o la service_role
 // heredada) en SUPABASE_SECRET_KEY, y el proyecto en SUPABASE_PROJECT_REF. Se
@@ -37,8 +41,11 @@
 // Supabase no deja borrar objetos con SQL (hay que pasar por la API de
 // Storage, que borra también el archivo). Riesgo: la clave secreta se salta
 // RLS y puede leer y borrar todo el proyecto. Por eso:
-//   - no está en GitHub ni en ningún workflow, y solo debería estar en la
-//     máquina de quien ejecuta la limpieza el tiempo que dure;
+//   - para borrar se ejecuta a mano, y la clave solo debería estar en la
+//     máquina de quien hace la limpieza el tiempo que dure; en GitHub solo la
+//     usan, como secreto del environment, los workflows «Fotos de
+//     referencia», «Retención de eventos» y el informe semanal, que ejecuta
+//     este script sin --borrar;
 //   - el script exige --ambiente y comprueba que SUPABASE_PROJECT_REF es el
 //     de ese ambiente, y para borrar en producción pide además
 //     --confirmar-produccion;

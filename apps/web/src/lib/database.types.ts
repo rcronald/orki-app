@@ -993,6 +993,10 @@ export type Database = {
           type_differs: boolean
         }[]
       }
+      purge_expired_product_events: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       record_product_events: { Args: { events: Json }; Returns: undefined }
       reorder_plant_photos: {
         Args: { photo_ids: string[]; target_plant_id: string }

@@ -164,7 +164,16 @@ Las credenciales están registradas en GitHub (Settings > Secrets and variables 
 - `SUPABASE_DB_PASSWORD`: secreto de cada environment (`dev` y `prod`).
 - `SUPABASE_PROJECT_REF`: variable de cada environment (`dev` y `prod`).
 
-Los workflows manuales de carga usan además `SUPABASE_POOLER_HOST` (variable de cada environment, «Importar catálogo» y «Fotos de referencia») y `SUPABASE_SECRET_KEY` (secreto de cada environment, solo «Fotos de referencia»); ver sus secciones abajo.
+Los workflows manuales de carga usan además `SUPABASE_POOLER_HOST` (variable de cada environment, «Importar catálogo» y «Fotos de referencia») y `SUPABASE_SECRET_KEY` (secreto de cada environment, «Fotos de referencia» y los dos programados de abajo); ver sus secciones abajo. El informe semanal usa además `CLERK_SECRET_KEY` (secreto de cada environment, nuevo con el #293).
+
+### Tareas periódicas
+
+Dos workflows programados, en producción (detalles, configuración y qué hacer con un aviso en [Retención y limpieza](retencion-y-limpieza.md)):
+
+- **Retención de eventos** (`.github/workflows/retencion-de-eventos.yml`), **cada día** a las 04:17 UTC: borra los eventos de producto de más de 13 meses con `public.purge_expired_product_events()`.
+- **Informe de datos sin dueño** (`.github/workflows/informe-datos-sin-dueno.yml`), **cada lunes** a las 07:23 UTC: cuenta, sin borrar nada, las fotos huérfanas y los datos de usuarios que ya no existen en Clerk.
+
+Además, **el primer lunes de cada mes**, alguien revisa el resumen de la última ejecución del informe (o antes, si deja un aviso) y, si hay algo, lo lista y lo borra a mano con `npm run fotos:huerfanas` y `npm run datos:sin-dueno`.
 
 ### Importación del catálogo
 
