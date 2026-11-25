@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, type InitialEntry } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -40,7 +40,9 @@ describe('CreditsPage', () => {
     renderAt('/creditos')
 
     expect(await findTitle()).toBeInTheDocument()
-    expect(document.title).toBe('Créditos y fuentes · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Créditos y fuentes · orqui.app'),
+    )
     const toc = screen.getByRole('navigation', { name: 'En esta página' })
     expect(
       within(toc)

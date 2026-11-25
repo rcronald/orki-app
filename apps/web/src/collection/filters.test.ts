@@ -5,6 +5,8 @@ import {
   plant,
   RHYNCHOLAELIOCATTLEYA,
 } from '../test/collection.ts'
+import { countWork } from '../test/work.ts'
+import type { CollectionPlant } from './model.ts'
 import {
   applyFilters,
   countActiveFilters,
@@ -279,29 +281,43 @@ describe('applyFilters', () => {
     ).toEqual([lost])
   })
 
-  it('con 300 plantas responde enseguida', () => {
-    const many = Array.from({ length: 300 }, (_, index) =>
-      plant({
-        genus: index % 2 ? CATTLEYA : PHALAENOPSIS,
-        flowerColor: index % 3 ? 'white' : null,
-        origin: `Vivero ${index % 20}`,
-      }),
-    )
-    const start = performance.now()
-    const options = filterOptions(many)
-    const result = applyFilters(
-      many,
-      resolveFilters(
-        filters({
-          genera: [CATTLEYA.id],
-          colors: ['white'],
-          origins: ['vivero 1', 'vivero 3'],
+  it('el trabajo crece con la colección, no con su cuadrado', () => {
+    // Antes medía milisegundos con 300 plantas y fallaba con la máquina
+    // cargada (#311). Ahora cuenta el trabajo (countWork) con 500 y 2000
+    // plantas; los orígenes distintos crecen con la colección (uno cada 25).
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        plant({
+          genus: index % 2 ? CATTLEYA : PHALAENOPSIS,
+          flowerColor: index % 3 ? 'white' : null,
+          origin: `Vivero ${String(index % (count / 25))}`,
         }),
-        options,
-      ),
-    )
-    expect(performance.now() - start).toBeLessThan(50)
-    expect(options.origins).toHaveLength(20)
+      )
+    const chosen = filters({
+      genera: [CATTLEYA.id],
+      colors: ['white'],
+      origins: ['vivero 1', 'vivero 3'],
+    })
+    const operations: Record<
+      string,
+      (plants: readonly CollectionPlant[]) => unknown
+    > = {
+      'opciones de los filtros': (plants) => filterOptions(plants),
+      'resolver y aplicar los filtros': (plants) =>
+        applyFilters(plants, resolveFilters(chosen, filterOptions(plants))),
+    }
+    for (const [name, run] of Object.entries(operations)) {
+      const small = countWork(many(500), run)
+      const large = countWork(many(2000), run)
+      // Cuatro veces más plantas: lineal es ×4 y n·log n, ×4,9; cuadrático
+      // sería ×16.
+      expect(large.total / small.total, name).toBeLessThan(6)
+    }
+
+    const plants = many(2000)
+    const options = filterOptions(plants)
+    expect(options.origins).toHaveLength(80)
+    const result = applyFilters(plants, resolveFilters(chosen, options))
     expect(result.length).toBeGreaterThan(0)
   })
 })

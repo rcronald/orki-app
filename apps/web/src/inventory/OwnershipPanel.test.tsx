@@ -13,6 +13,7 @@ import {
 } from '../lib/catalogSearch.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
+import { finishWait, typeWithClockStopped } from '../test/stopped-clock.ts'
 import type { OwnershipMeasurement } from './ownership-measure.ts'
 import { OwnershipPanel, type OwnershipPanelProps } from './OwnershipPanel.tsx'
 
@@ -354,14 +355,17 @@ describe('OwnershipPanel con el catálogo (#124)', () => {
   })
 
   it('un sinónimo de una especie que tiene pasa de "Aún no" a "Sí" cuando llega el catálogo', async () => {
-    const user = userEvent.setup()
     const catalog = fakeCatalog()
     const onMeasure = vi.fn<(measurement: OwnershipMeasurement) => void>()
     renderPanel({ searchSpecies: catalog.search, online: true, onMeasure })
 
-    await user.type(field(), 'Phalaenopsis grandiflora')
+    // Con el reloj parado entre pulsaciones (#311): con el real, una pulsación
+    // lenta en un equipo cargado dejaba salir una consulta a medias.
+    await typeWithClockStopped(field(), 'Phalaenopsis grandiflora')
     // La respuesta local sale primero, sin esperar a la red.
     expect(region()).toHaveTextContent('Aún no la tienes')
+    expect(catalog.calls).toHaveLength(0)
+    await finishWait(SEARCH_DEBOUNCE_MS)
     await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
     expect(catalog.calls[0].query).toBe('Phalaenopsis grandiflora')
 
