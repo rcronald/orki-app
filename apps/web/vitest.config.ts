@@ -11,7 +11,8 @@ export default mergeConfig(
       // src/test/setup.ts): un waitFor que no llega falla con el mensaje de su
       // aserción, no con un «Test timed out» que no dice qué faltaba (#295).
       testTimeout: 10_000,
-      include: ['src/**/*.test.{ts,tsx}'],
+      // complementos/: los plugins propios del build (#287).
+      include: ['src/**/*.test.{ts,tsx}', 'complementos/**/*.test.ts'],
       // tokens.css pasa por el procesado de CSS para que la página de muestra
       // reciba su texto con ?raw; el resto del CSS sigue sin procesarse.
       css: { include: [/\/src\/styles\/tokens\.css/] },

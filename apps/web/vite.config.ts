@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { localizacionClerk } from './complementos/localizacion-clerk.ts'
 import { portadaPrevia } from './prerender/portada-previa-plugin.ts'
 
 // Versión desplegada: el commit que Vercel construye. Vercel la expone durante
@@ -81,6 +82,8 @@ export default defineConfig({
     releaseMeta(),
     react(),
     tailwindcss(),
+    // Localización es-MX de Clerk sin las cadenas sin traducir (#287).
+    localizacionClerk(),
     // Portada prerrenderada en index.html (#204), antes del plugin de PWA:
     // la revisión de index.html en el precaché tiene que ser la del HTML final.
     portadaPrevia(),
