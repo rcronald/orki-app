@@ -1370,6 +1370,10 @@ describe('NewPlantPage: el nombre exacto del catálogo enlaza la especie (#280)'
     expect(
       await screen.findByText(PLANT_FORM_TEXT.nameMatch),
     ).toBeInTheDocument()
+    // Con el foco en el campo no se toca lo escrito (#319); al salir, el
+    // nombre aceptado.
+    expect(nameInput()).toHaveValue('  PHALÁENOPSIS   x  Intermedia ')
+    await user.tab()
     expect(nameInput()).toHaveValue('Phalaenopsis × intermedia')
     expect(
       within(typeGroup()).getByRole('button', { name: 'Híbrido' }),
@@ -1380,6 +1384,92 @@ describe('NewPlantPage: el nombre exacto del catálogo enlaza la especie (#280)'
       species_id: INTERMEDIA.id,
       type: 'hybrid',
     })
+  })
+
+  // #319: el enlace automático no reescribe el campo mientras se escribe en
+  // él. Antes, una pausa tras el espacio enlazaba la especie y quitaba el
+  // espacio: la letra siguiente quedaba pegada al nombre.
+  it('una pausa tras el espacio no se come el espacio: la letra siguiente no queda pegada (#319)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await user.type(nameInput(), 'Masdevallia veitchiana')
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+
+    // Más que la espera de la búsqueda entre tecla y tecla: el nombre con
+    // espacio final se busca y se enlaza antes de la «x».
+    await userEvent.setup({ delay: 600 }).type(nameInput(), ' x')
+    expect(nameInput()).toHaveValue('Masdevallia veitchiana x')
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    expect(chip('Masdevallia')).not.toHaveAttribute('aria-disabled')
+  })
+
+  it('con el foco en el campo, enlaza la especie sin reescribir lo tecleado; al dejar de coincidir, la suelta (#319)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await user.type(nameInput(), 'masdevallia VEITCHIANA ')
+
+    // Enlazada, con su género y su tipo bloqueados, y el texto tal cual.
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('masdevallia VEITCHIANA ')
+    expect(nameInput()).toHaveFocus()
+    expect(chip('Masdevallia')).toHaveAttribute('aria-disabled', 'true')
+
+    // Seguir escribiendo la suelta: género y tipo vuelven a ser editables.
+    await user.type(nameInput(), 'alba')
+    expect(nameInput()).toHaveValue('masdevallia VEITCHIANA alba')
+    expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    expect(chip('Masdevallia')).toHaveAttribute('aria-pressed', 'true')
+    expect(chip('Masdevallia')).not.toHaveAttribute('aria-disabled')
+    expect(await screen.findByText(pendingText)).toBeInTheDocument()
+  })
+
+  it('el nombre aceptado se pone al salir del campo y es el que se guarda, también con Enter sin salir (#319)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await user.type(nameInput(), 'masdevallia veitchiana ')
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('masdevallia veitchiana ')
+
+    await user.tab()
+    expect(nameInput()).toHaveValue('Masdevallia veitchiana')
+    expect(screen.getByText(PLANT_FORM_TEXT.nameMatch)).toBeInTheDocument()
+
+    // Volver al campo y escribir otra vez el nombre: Enter guarda sin salir,
+    // con el nombre aceptado.
+    await user.clear(nameInput())
+    await user.type(nameInput(), 'masdevallia veitchiana ')
+    expect(
+      await screen.findByText(PLANT_FORM_TEXT.nameMatch),
+    ).toBeInTheDocument()
+    expect(nameInput()).toHaveValue('masdevallia veitchiana ')
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(location()).toBe('/coleccion'))
+    expect(lastInsert()).toMatchObject({
+      entered_name: 'Masdevallia veitchiana',
+      species_id: WAKANKI.id,
+    })
+  })
+
+  it('el signo de híbrido al final no cuenta como el nombre: ni enlaza ni cambia el texto (#319)', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    for (const typed of [
+      'Masdevallia veitchiana x',
+      'Masdevallia veitchiana × ',
+    ]) {
+      await user.clear(nameInput())
+      await user.type(nameInput(), typed)
+      // La búsqueda de lo escrito terminó sin coincidencia exacta.
+      expect(await screen.findByText(pendingText)).toBeInTheDocument()
+      expect(nameInput()).toHaveValue(typed)
+      expect(screen.queryByText(PLANT_FORM_TEXT.nameMatch)).toBeNull()
+    }
   })
 
   it('un sinónimo exacto (?nombre=) no se enlaza solo: se ofrece la especie aceptada y se elige con un toque', async () => {

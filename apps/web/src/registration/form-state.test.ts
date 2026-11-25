@@ -49,6 +49,47 @@ describe('plantFormReducer', () => {
     })
   })
 
+  it('el enlace automático con keepName (#319) conserva lo tecleado y marca género y tipo', () => {
+    const start = {
+      ...initialPlantFormValues(TODAY),
+      name: 'phalaenopsis amabilis ',
+    }
+    const matched = {
+      type: 'speciesMatched',
+      species: AMABILIS,
+      name: 'phalaenopsis amabilis ',
+    } as const
+    expect(
+      plantFormReducer(start, { ...matched, keepName: true }),
+    ).toMatchObject({
+      name: 'phalaenopsis amabilis ',
+      species: AMABILIS,
+      genus: PHAL,
+      type: 'species',
+    })
+    // Sin keepName (el foco fuera del campo), pone el nombre aceptado.
+    expect(
+      plantFormReducer(start, { ...matched, keepName: false }),
+    ).toMatchObject({ name: 'Phalaenopsis amabilis', species: AMABILIS })
+  })
+
+  it('el enlace automático de un texto que ya cambió no hace nada (#319)', () => {
+    const typed = plantFormReducer(
+      { ...initialPlantFormValues(TODAY), name: 'Phalaenopsis amabilis ' },
+      { type: 'nameChanged', name: 'Phalaenopsis amabilis x' },
+    )
+    for (const keepName of [true, false]) {
+      expect(
+        plantFormReducer(typed, {
+          type: 'speciesMatched',
+          species: AMABILIS,
+          name: 'Phalaenopsis amabilis ',
+          keepName,
+        }),
+      ).toBe(typed)
+    }
+  })
+
   it('con una especie elegida, el género y el tipo no cambian', () => {
     let state = plantFormReducer(initialPlantFormValues(TODAY), {
       type: 'speciesSelected',
@@ -212,6 +253,22 @@ describe('toPlantInsert', () => {
     })
   })
 
+  it('enlazada sin reescribir el campo (#319), guarda el nombre aceptado', () => {
+    const values = plantFormReducer(
+      { ...initialPlantFormValues(TODAY), name: '  PHALÁENOPSIS amabilis ' },
+      {
+        type: 'speciesMatched',
+        species: AMABILIS,
+        name: '  PHALÁENOPSIS amabilis ',
+        keepName: true,
+      },
+    )
+    expect(toPlantInsert(values, 'id-1')).toMatchObject({
+      entered_name: 'Phalaenopsis amabilis',
+      species_id: AMABILIS.id,
+    })
+  })
+
   it('sin especie, el nombre libre va limpio y sin species_id', () => {
     const insert = toPlantInsert(
       filled({ name: '  La   naranja del mercado ', type: 'unknown' }),
@@ -352,6 +409,21 @@ describe('edición (#16)', () => {
     const patch = plantPatch(values, initial)
     expect(patch).toEqual({ entered_name: 'Mariposa blanca', species_id: null })
     expect(patch).not.toHaveProperty('validation')
+  })
+
+  it('volver a enlazar la misma especie sin reescribir el campo (#319) no cambia nada', () => {
+    const initial = plantFormValuesFrom(linked)
+    let values = plantFormReducer(initial, {
+      type: 'nameChanged',
+      name: `${initial.name} `,
+    })
+    values = plantFormReducer(values, {
+      type: 'speciesMatched',
+      species: initial.species as FormSpecies,
+      name: `${initial.name} `,
+      keepName: true,
+    })
+    expect(plantPatch(values, initial)).toEqual({})
   })
 
   it('elegir otra especie envía la especie con su género y su tipo', () => {

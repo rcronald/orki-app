@@ -2,6 +2,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -94,7 +95,8 @@ function chooseDetail(result: SpeciesSearchResult): string | null {
  * validar", y la acción final de la lista lo confirma.
  *
  * Nombre exacto (#280, regla en name-match.ts): el nombre aceptado de una sola
- * especie la enlaza solo, como si se hubiera elegido; un sinónimo, un nombre
+ * especie la enlaza solo, como si se hubiera elegido, aunque sin reescribir el
+ * campo mientras la persona escribe en él (#319); un sinónimo, un nombre
  * común o varias especies se ofrecen bajo el campo para elegir con un toque
  * (y, en la lista, la única ofrecida queda destacada para Enter). El aviso de
  * «por validar» solo sale si la búsqueda terminó sin coincidencia exacta.
@@ -111,7 +113,8 @@ export function NameField({
 }: NameFieldProps) {
   const errorId = useId()
   const linked = values.species !== null
-  // Con una especie elegida no se busca: el texto es su nombre científico.
+  // Con una especie elegida no se busca: el texto es su nombre científico (o,
+  // enlazada sola mientras se escribe, lo tecleado que coincide con él).
   // Sin conexión, tampoco (#296).
   const search = useCatalogSearch(searchSpecies, values.name, {
     enabled: !linked && !offline,
@@ -166,11 +169,26 @@ export function NameField({
       : null
   const linkNow = match.kind === 'link' ? match.result : null
 
-  // La especie del nombre exacto se enlaza sola, como si se hubiera elegido.
+  // Si el campo tiene el foco (#319). Se lee al enlazar, no al pintar.
+  const focused = useRef(false)
+
+  // La especie del nombre exacto se enlaza sola, como si se hubiera elegido,
+  // pero sin cambiar lo que la persona está tecleando (#319): con el foco en
+  // el campo y algo escrito, el texto se queda como está (con su espacio
+  // final, sus minúsculas o su «x»); el nombre aceptado se pone al salir del
+  // campo y es el que se guarda. El nombre inicial sin tocar (?nombre=, un
+  // borrador) o un enlace que llega con el foco fuera sí lo reescriben. Si la
+  // persona tecleó algo entre la búsqueda y el enlace, el enlace ya no vale y
+  // el reductor lo descarta (speciesMatched).
   useEffect(() => {
     if (linkNow === null) return
-    dispatch({ type: 'speciesSelected', species: formSpeciesOf(linkNow) })
-  }, [linkNow, dispatch])
+    dispatch({
+      type: 'speciesMatched',
+      species: formSpeciesOf(linkNow),
+      name: values.name,
+      keepName: focused.current && typed,
+    })
+  }, [linkNow, dispatch, typed, values.name])
 
   const resolution: NameResolution =
     linked || freeChosen
@@ -257,6 +275,19 @@ export function NameField({
         labelStyle="scientific"
         renderLabel={renderScientificName}
         value={values.name}
+        onFocus={() => {
+          focused.current = true
+        }}
+        onBlur={() => {
+          focused.current = false
+          // Al salir, el nombre aceptado de la especie enlazada sola (#319).
+          if (
+            values.species !== null &&
+            values.name !== values.species.scientificName
+          ) {
+            dispatch({ type: 'speciesSelected', species: values.species })
+          }
+        }}
         onValueChange={(name) => {
           setTyped(true)
           setCheckedLater(offline)

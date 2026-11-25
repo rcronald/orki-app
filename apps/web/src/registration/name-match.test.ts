@@ -81,6 +81,22 @@ describe('exactNameMatch (#280)', () => {
     expect(exactNameMatch('', [AMABILIS])).toEqual({ kind: 'none' })
   })
 
+  it('con el signo de híbrido al final no es exacto: se está escribiendo un híbrido (#319)', () => {
+    for (const typed of [
+      'Phalaenopsis amabilis x',
+      'Phalaenopsis amabilis X ',
+      'Phalaenopsis amabilis ×',
+      'Phalaenopsis amabilis× ',
+    ]) {
+      expect(exactNameMatch(typed, [AMABILIS])).toEqual({ kind: 'none' })
+    }
+    // El espacio final solo sí: el nombre está completo.
+    expect(exactNameMatch('Phalaenopsis amabilis ', [AMABILIS])).toEqual({
+      kind: 'link',
+      result: AMABILIS,
+    })
+  })
+
   it('un sinónimo o un nombre común se ofrecen, no se enlazan', () => {
     expect(exactNameMatch('laelia purpurata', [PURPURATA])).toEqual({
       kind: 'offer',
