@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
@@ -210,10 +211,7 @@ export function createSupabasePlantPhotoRows({
     try {
       return await getClient()
     } catch (error) {
-      throw new PhotoStorageError(
-        navigator.onLine === false ? 'offline' : 'failed',
-        { cause: error },
-      )
+      throw new PhotoStorageError(offlineOr('failed'), { cause: error })
     }
   }
 

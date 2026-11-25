@@ -1,3 +1,4 @@
+import { isBrowserOffline } from '../lib/connection.ts'
 import { AccountDeletionError, type DeletionFailureReason } from './deletion.ts'
 
 // Eliminación de la cuenta en Clerk desde el navegador: user.delete().
@@ -50,7 +51,7 @@ export function clerkDeletionReason(error: unknown): DeletionFailureReason {
   ) {
     return 'reverification-cancelled'
   }
-  if (value.name === 'ClerkOfflineError' || navigator.onLine === false) {
+  if (value.name === 'ClerkOfflineError' || isBrowserOffline()) {
     return 'offline'
   }
   const message = typeof value.message === 'string' ? value.message : ''

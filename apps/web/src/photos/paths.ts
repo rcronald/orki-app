@@ -39,21 +39,9 @@ const EXTENSIONS: Record<PlantPhotoType, PlantPhotoExtension> = {
   'image/jpeg': 'jpg',
 }
 
-const TYPES: Record<PlantPhotoExtension, PlantPhotoType> = {
-  webp: 'image/webp',
-  jpg: 'image/jpeg',
-}
-
 /** Extensión del archivo según su tipo. */
 export function extensionFor(type: PlantPhotoType): PlantPhotoExtension {
   return EXTENSIONS[type]
-}
-
-/** Tipo de contenido según la extensión de la ruta. */
-export function typeForExtension(
-  extension: PlantPhotoExtension,
-): PlantPhotoType {
-  return TYPES[extension]
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/

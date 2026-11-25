@@ -1,3 +1,4 @@
+import { isBrowserOffline } from './connection.ts'
 import { speciesPhotoLicenses, type SpeciesPhotoLicense } from './database.ts'
 import { getSupabase, type OrkiSupabaseClient } from './supabase.ts'
 
@@ -186,7 +187,7 @@ export async function getSpeciesReferencePhoto(
   speciesId: string,
   { signal }: { signal?: AbortSignal } = {},
 ): Promise<ReferencePicture | null> {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     throw new ReferencePhotoError()
   }
   let client: OrkiSupabaseClient
