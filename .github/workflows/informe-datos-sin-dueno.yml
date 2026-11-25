@@ -1,0 +1,197 @@
+name: Informe de datos sin dueño
+
+# Informe periódico de solo lectura (#293): cuántas fotos huérfanas hay en el bucket
+# plant-photos (`npm run fotos:huerfanas`) y cuántos datos quedan de usuarios que ya no
+# existen en Clerk (`npm run datos:sin-dueno`, también la bitácora). Nunca borra: los dos
+# scripts van sin --borrar. Si hay algo, se revisa la lista y se borra a mano (ver
+# docs/operacion/retencion-y-limpieza.md).
+# - Automático: cada lunes, en producción.
+# - Manual: desde la pestaña Actions, eligiendo el ambiente (dev o prod). Producción solo
+#   desde main.
+#
+# El repositorio es público y también lo son el registro y el resumen de cada ejecución: los
+# scripts van con --solo-recuentos (solo totales, sin ids de Clerk ni rutas de fotos) y, por
+# si un mensaje de error llevara alguno, la salida se filtra antes de mostrarla. Por eso el
+# informe se queda en el resumen de la ejecución y no abre issues: un issue público tampoco
+# debe llevar esos datos, y uno con solo totales cada semana sería ruido. Cuando hay algo, el
+# job deja un aviso (warning) en la ejecución.
+#
+# Secretos y variables del environment (Settings > Environments):
+#   - SUPABASE_PROJECT_REF (variable) y SUPABASE_SECRET_KEY (secreto), los mismos que «Fotos
+#     de referencia». Sin la clave secreta no se puede leer nada: se avisa y termina bien.
+#   - CLERK_SECRET_KEY (secreto, nuevo): la clave secreta de la instancia de Clerk del
+#     ambiente. Sin ella se avisa, se hace solo el informe de fotos huérfanas y termina bien.
+run-name: Informe de datos sin dueño (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
+
+on:
+  schedule:
+    # Cada lunes a las 07:23 UTC (02:23 en Lima), fuera de la hora en punto.
+    - cron: '23 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente del que hacer el informe (solo lectura)
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: informe-datos-sin-dueno-${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  informe:
+    name: Informe de datos sin dueño (${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      AMBIENTE: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || 'prod' }}
+      SALIDA: ${{ runner.temp }}/informe
+    steps:
+      - name: Comprobar la rama y las credenciales
+        id: credenciales
+        env:
+          RAMA: ${{ github.ref_name }}
+          REF_GIT: ${{ github.ref }}
+          REF_PROYECTO: ${{ vars.SUPABASE_PROJECT_REF }}
+          HAY_CLAVE_SUPABASE: ${{ secrets.SUPABASE_SECRET_KEY != '' }}
+          HAY_CLAVE_CLERK: ${{ secrets.CLERK_SECRET_KEY != '' }}
+        run: |
+          if [[ "$AMBIENTE" == prod && "$REF_GIT" != refs/heads/main ]]; then
+            echo "::error::El informe de producción solo se lanza desde main (se lanzó desde ${RAMA})."
+            exit 1
+          fi
+          mkdir -p "$SALIDA"
+          supabase=true
+          clerk=true
+          if [[ ! "$REF_PROYECTO" =~ ^[a-z0-9]{20}$ || "$HAY_CLAVE_SUPABASE" != true ]]; then
+            echo "::warning::Falta la variable SUPABASE_PROJECT_REF o el secreto SUPABASE_SECRET_KEY del environment ${AMBIENTE}: no hay informe. Ver docs/operacion/retencion-y-limpieza.md."
+            supabase=false
+            clerk=false
+          elif [[ "$HAY_CLAVE_CLERK" != true ]]; then
+            echo "::warning::Falta el secreto CLERK_SECRET_KEY del environment ${AMBIENTE}: se hace solo el informe de fotos huérfanas, no el de datos sin dueño. Ver docs/operacion/retencion-y-limpieza.md."
+            clerk=false
+          fi
+          {
+            echo "supabase=${supabase}"
+            echo "clerk=${clerk}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Obtener el código
+        if: steps.credenciales.outputs.supabase == 'true'
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configurar Node desde .nvmrc
+        if: steps.credenciales.outputs.supabase == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        if: steps.credenciales.outputs.supabase == 'true'
+        run: npm ci
+
+      # Cada script escribe en un archivo y no en el registro; lo que se muestra pasa antes por
+      # el filtro de ids de Clerk (user_...), que también tapa las rutas de fotos, que empiezan
+      # por el id. Un fallo (Supabase o Clerk que no responden, una clave rechazada) hace fallar
+      # el job, después de mostrar el mensaje filtrado.
+      - name: Fotos huérfanas
+        id: fotos
+        if: steps.credenciales.outputs.supabase == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          if [[ "$AMBIENTE" == prod ]]; then ambiente=produccion; else ambiente=desarrollo; fi
+          codigo=0
+          npm run --silent fotos:huerfanas -- --ambiente "$ambiente" --solo-recuentos \
+            > "$SALIDA/fotos-bruto.txt" 2>&1 || codigo=$?
+          sed -E 's/user_[A-Za-z0-9]+/user_[oculto]/g' "$SALIDA/fotos-bruto.txt" > "$SALIDA/fotos.txt"
+          rm -f "$SALIDA/fotos-bruto.txt"
+          cat "$SALIDA/fotos.txt"
+          exit "$codigo"
+
+      - name: Datos sin dueño
+        id: datos
+        if: ${{ !cancelled() && steps.credenciales.outputs.clerk == 'true' }}
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+        run: |
+          if [[ "$AMBIENTE" == prod ]]; then ambiente=produccion; else ambiente=desarrollo; fi
+          codigo=0
+          npm run --silent datos:sin-dueno -- --ambiente "$ambiente" --solo-recuentos \
+            > "$SALIDA/datos-bruto.txt" 2>&1 || codigo=$?
+          sed -E 's/user_[A-Za-z0-9]+/user_[oculto]/g' "$SALIDA/datos-bruto.txt" > "$SALIDA/datos.txt"
+          rm -f "$SALIDA/datos-bruto.txt"
+          cat "$SALIDA/datos.txt"
+          exit "$codigo"
+
+      - name: Resumen del informe
+        if: ${{ always() && steps.credenciales.outcome == 'success' }}
+        env:
+          HAY_SUPABASE: ${{ steps.credenciales.outputs.supabase }}
+          HAY_CLERK: ${{ steps.credenciales.outputs.clerk }}
+          RESULTADO_FOTOS: ${{ steps.fotos.outcome }}
+          RESULTADO_DATOS: ${{ steps.datos.outcome }}
+        run: |
+          # El número que sigue a «<texto>: » en la salida de un script, o vacío. El texto es
+          # el final de la etiqueta: «más de 24 h: 3.» da 3, no 24.
+          numero() {
+            [[ -f "$1" ]] || return 0
+            sed -nE "s/.*$2: ([0-9]+)\..*/\1/p" "$1" | head -n1
+          }
+          hallazgos=()
+          {
+            echo "## Informe de datos sin dueño: ${AMBIENTE}"
+            echo
+            echo "Solo lectura: no se ha borrado nada. Para ver las listas y borrar, ejecuta los scripts a mano (docs/operacion/retencion-y-limpieza.md)."
+            echo
+            echo "### Fotos huérfanas"
+            echo
+            if [[ "$HAY_SUPABASE" != true ]]; then
+              echo "No se hizo: falta SUPABASE_PROJECT_REF o SUPABASE_SECRET_KEY en el environment."
+            else
+              echo "Resultado: **${RESULTADO_FOTOS}**."
+              if [[ -s "$SALIDA/fotos.txt" ]]; then
+                echo; echo '```'; cat "$SALIDA/fotos.txt"; echo '```'
+              fi
+            fi
+            echo
+            echo "### Datos sin dueño"
+            echo
+            if [[ "$HAY_CLERK" != true ]]; then
+              echo "No se hizo: falta CLERK_SECRET_KEY (o la clave de Supabase) en el environment."
+            else
+              echo "Resultado: **${RESULTADO_DATOS}**."
+              if [[ -s "$SALIDA/datos.txt" ]]; then
+                echo; echo '```'; cat "$SALIDA/datos.txt"; echo '```'
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          huerfanas="$(numero "$SALIDA/fotos.txt" 'Huérfanos con más de [0-9]+ h')"
+          faltan="$(numero "$SALIDA/fotos.txt" 'que apuntan a un archivo que no existe')"
+          sin_dueno="$(numero "$SALIDA/datos.txt" 'Sin dueño')"
+          if [[ "${huerfanas:-0}" != 0 ]]; then hallazgos+=("${huerfanas} fotos huérfanas"); fi
+          if [[ "${faltan:-0}" != 0 ]]; then hallazgos+=("${faltan} filas que apuntan a un archivo que no existe"); fi
+          if [[ "${sin_dueno:-0}" != 0 ]]; then hallazgos+=("${sin_dueno} usuarios sin dueño"); fi
+          if (( ${#hallazgos[@]} > 0 )); then
+            lista="${hallazgos[0]}"
+            for hallazgo in "${hallazgos[@]:1}"; do lista+=", ${hallazgo}"; done
+            echo "::warning::Hay algo que revisar en ${AMBIENTE}: ${lista}. Ver el resumen de la ejecución y docs/operacion/retencion-y-limpieza.md."
+          else
+            echo "Nada que revisar en ${AMBIENTE}."
+          fi

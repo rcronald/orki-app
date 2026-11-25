@@ -115,12 +115,16 @@ function crearSupabaseFalso({ tablas, objetos }) {
         }
         estado.tablas[tabla] = filas.filter((fila) => !coinciden.includes(fila))
         estado.borrados.push({ tabla, ids: coinciden.map((fila) => fila.id) })
-        // Lo que hace la base: plant_photos.plant_id con on delete cascade.
-        if (tabla === 'plants' && estado.tablas.plant_photos) {
+        // Lo que hace la base: plant_photos.plant_id y plant_log_entries.plant_id
+        // con on delete cascade.
+        if (tabla === 'plants') {
           const plantas = new Set(coinciden.map((fila) => fila.id))
-          estado.tablas.plant_photos = estado.tablas.plant_photos.filter(
-            (foto) => !plantas.has(foto.plant_id),
-          )
+          for (const hija of ['plant_photos', 'plant_log_entries']) {
+            if (!estado.tablas[hija]) continue
+            estado.tablas[hija] = estado.tablas[hija].filter(
+              (fila) => !plantas.has(fila.plant_id),
+            )
+          }
         }
         return Promise.resolve({
           data: null,
@@ -216,9 +220,9 @@ function crearClerkFalso({ existentes, especiales = {}, conteo }) {
 //
 // Existen en Clerk: user_ana, user_beto, user_carla, user_dani, user_eva,
 // user_fede, user_gabi y user_hugo. No existen: user_viejo (perfil, plantas
-// con varias fotos en plant_photos, eventos y archivos) y user_solofotos (solo
-// una carpeta en el bucket). Hay además un id con formato desconocido que
-// nunca se consulta ni se borra.
+// con varias fotos en plant_photos y registros de bitácora, uno con foto,
+// eventos y archivos) y user_solofotos (solo una carpeta en el bucket). Hay
+// además un id con formato desconocido que nunca se consulta ni se borra.
 
 const EXISTENTES = [
   'user_ana',
@@ -255,11 +259,20 @@ function datosDePartida() {
     { id: 'f-viejo-2', user_id: 'user_viejo', plant_id: 'p-viejo-1' },
     { id: 'f-viejo-3', user_id: 'user_viejo', plant_id: 'p-viejo-2' },
   ]
+  // La bitácora (#264), con las fotos en <usuario>/<planta>/log/.
+  const entradasDeBitacora = [
+    { id: 'l-ana-1', user_id: 'user_ana', plant_id: 'p-ana-1' },
+    { id: 'l-viejo-1', user_id: 'user_viejo', plant_id: 'p-viejo-1' },
+    { id: 'l-viejo-2', user_id: 'user_viejo', plant_id: 'p-viejo-2' },
+  ]
   const objetos = [
     'user_ana/p-ana-1/photo-1.webp',
     'user_ana/p-ana-1/thumb-1.webp',
+    'user_ana/p-ana-1/log/riego.webp',
     'user_viejo/p-viejo-1/photo-1.webp',
     'user_viejo/p-viejo-1/thumb-1.webp',
+    'user_viejo/p-viejo-1/log/riego.webp',
+    'user_viejo/p-viejo-1/log/riego-thumb.webp',
     'user_viejo/p-viejo-2/photo-2.jpg',
     'user_solofotos/p-x/photo-1.webp',
   ]
@@ -268,6 +281,7 @@ function datosDePartida() {
       profiles: perfiles,
       plants: plantas,
       plant_photos: fotosDePlantas,
+      plant_log_entries: entradasDeBitacora,
       product_events: eventos,
     },
     objetos,
@@ -338,8 +352,15 @@ describe('modo de prueba', () => {
       'f-viejo-2',
       'f-viejo-3',
     ])
+    assert.deepEqual(viejo.entradasDeBitacora, ['l-viejo-1', 'l-viejo-2'])
     assert.deepEqual(viejo.eventos, ['e-viejo-1'])
-    assert.equal(viejo.fotos.length, 3)
+    // Las de la galería y las de la bitácora, en la carpeta del usuario.
+    assert.equal(viejo.fotos.length, 5)
+    assert.ok(
+      ejecucion.lineas.includes(
+        '  user_viejo: perfil, 2 plantas, 1 eventos, 3 filas de plant_photos, 2 registros de bitácora, 5 fotos',
+      ),
+    )
     assert.deepEqual(
       informe.formatoDesconocido.map((usuario) => usuario.id),
       ['raro con espacios'],
@@ -349,6 +370,24 @@ describe('modo de prueba', () => {
         linea.startsWith('Modo de prueba: no se ha borrado nada'),
       ),
     )
+  })
+
+  test('un usuario que solo tiene registros de bitácora también se detecta', async () => {
+    const supabase = datosDePartida()
+    supabase.estado.tablas.plant_log_entries.push({
+      id: 'l-solo-1',
+      user_id: 'user_solobitacora',
+      plant_id: 'p-inexistente',
+    })
+    const ejecucion = ejecutarCon({
+      argv: ['--ambiente', 'desarrollo'],
+      supabase,
+    })
+    const { informe } = await ejecucion.promesa
+    const solo = informe.huerfanos.find(
+      (usuario) => usuario.id === 'user_solobitacora',
+    )
+    assert.deepEqual(solo.entradasDeBitacora, ['l-solo-1'])
   })
 
   test('el id con formato desconocido no se consulta en Clerk', async () => {
@@ -569,8 +608,9 @@ describe('borrado', () => {
 
     assert.deepEqual(borrados, {
       usuarios: 2,
-      fotos: 4,
+      fotos: 6,
       filasDeFotos: 3,
+      entradasDeBitacora: 2,
       plantas: 2,
       eventos: 1,
       perfiles: 1,
@@ -592,7 +632,12 @@ describe('borrado', () => {
       tablas.plant_photos.map((fila) => fila.id),
       ['f-ana-1'],
     )
+    assert.deepEqual(
+      tablas.plant_log_entries.map((fila) => fila.id),
+      ['l-ana-1'],
+    )
     assert.deepEqual([...objetos].sort(), [
+      'user_ana/p-ana-1/log/riego.webp',
       'user_ana/p-ana-1/photo-1.webp',
       'user_ana/p-ana-1/thumb-1.webp',
     ])
@@ -603,17 +648,21 @@ describe('borrado', () => {
       'f-viejo-1',
       'f-viejo-2',
       'f-viejo-3',
+      'l-viejo-1',
+      'l-viejo-2',
       'p-viejo-1',
       'p-viejo-2',
       'user_solofotos/p-x/photo-1.webp',
       'user_viejo',
+      'user_viejo/p-viejo-1/log/riego-thumb.webp',
+      'user_viejo/p-viejo-1/log/riego.webp',
       'user_viejo/p-viejo-1/photo-1.webp',
       'user_viejo/p-viejo-1/thumb-1.webp',
       'user_viejo/p-viejo-2/photo-2.jpg',
     ])
   })
 
-  test('sigue el orden de la app: fotos, filas de fotos, plantas, eventos y perfil', async () => {
+  test('sigue el orden de la app: fotos, filas de fotos, bitácora, plantas, eventos y perfil', async () => {
     const ejecucion = ejecutarCon({
       argv: ['--ambiente', 'desarrollo', '--borrar'],
     })
@@ -624,6 +673,7 @@ describe('borrado', () => {
     assert.deepEqual(orden, [
       'storage',
       'plant_photos',
+      'plant_log_entries',
       'plants',
       'product_events',
       'profiles',
@@ -658,6 +708,40 @@ describe('borrado', () => {
       supabase.estado.tablas.plant_photos.map((fila) => fila.id),
       ['f-ana-1'],
     )
+    assert.deepEqual(
+      supabase.estado.tablas.plant_log_entries.map((fila) => fila.id),
+      ['l-ana-1'],
+    )
+  })
+
+  test('el borrado de la bitácora filtra también por usuario', async () => {
+    const supabase = datosDePartida()
+    const datos = crearAccesoSupabase(supabase.cliente, BUCKET)
+    assert.equal(
+      await datos.borrarEntradasDeBitacora('user_viejo', [
+        'l-ana-1',
+        'l-viejo-1',
+      ]),
+      1,
+    )
+    assert.ok(
+      supabase.estado.tablas.plant_log_entries.some(
+        (fila) => fila.id === 'l-ana-1',
+      ),
+    )
+  })
+
+  test('sin la tabla plant_log_entries (migración sin aplicar) sigue con lo demás', async () => {
+    const supabase = datosDePartida()
+    delete supabase.estado.tablas.plant_log_entries
+    const ejecucion = ejecutarCon({
+      argv: ['--ambiente', 'desarrollo', '--borrar'],
+      supabase,
+    })
+    const { borrados } = await ejecucion.promesa
+    assert.equal(borrados.entradasDeBitacora, 0)
+    assert.equal(borrados.filasDeFotos, 3)
+    assert.equal(borrados.plantas, 2)
   })
 
   test('sin la tabla plant_photos (migración sin aplicar) sigue con lo demás', async () => {
@@ -686,6 +770,73 @@ describe('borrado', () => {
     // El perfil de user_viejo sigue: se borra al final.
     assert.ok(
       supabase.estado.tablas.profiles.some((fila) => fila.id === 'user_viejo'),
+    )
+  })
+})
+
+describe('solo recuentos (informe periódico)', () => {
+  test('no imprime ningún id ni ninguna ruta, solo totales, y no borra nada', async () => {
+    const ejecucion = ejecutarCon({
+      argv: ['--ambiente', 'desarrollo', '--solo-recuentos'],
+    })
+    const antes = instantanea(ejecucion.supabase)
+    const { borrados } = await ejecucion.promesa
+
+    assert.equal(borrados, null)
+    assert.equal(instantanea(ejecucion.supabase), antes)
+    assert.deepEqual(ejecucion.supabase.estado.borrados, [])
+    const salida = ejecucion.lineas.join('\n')
+    for (const id of [
+      'user_viejo',
+      'user_solofotos',
+      'user_ana',
+      'raro con espacios',
+      'p-viejo-1',
+      '.webp',
+    ]) {
+      assert.ok(!salida.includes(id), `la salida no debe incluir ${id}`)
+    }
+    assert.deepEqual(ejecucion.lineas.slice(1), [
+      'Usuarios en Supabase: 11. Consultados en Clerk: 10 (la instancia tiene 8). Existen: 8. Sin dueño: 2.',
+      '  Entre todos: 1 perfiles, 2 plantas, 3 filas de plant_photos, 2 registros de bitácora, 1 eventos y 2 carpetas en el bucket con 6 fotos.',
+      'Ids con formato desconocido (no se consultan ni se borran): 1.',
+      '  Entre todos: 1 perfiles, 1 plantas, 0 filas de plant_photos, 0 registros de bitácora, 0 eventos y 0 carpetas en el bucket.',
+      'Solo lectura: no se ha borrado nada. Para ver la lista y borrar, ejecútalo a mano (scripts/datos-sin-dueno/README.md).',
+    ])
+  })
+
+  test('sin datos sin dueño solo da la línea de totales', async () => {
+    const supabase = datosDePartida()
+    supabase.estado.tablas.profiles = supabase.estado.tablas.profiles.filter(
+      (fila) => fila.id !== 'raro con espacios',
+    )
+    supabase.estado.tablas.plants = supabase.estado.tablas.plants.filter(
+      (fila) => fila.user_id !== 'raro con espacios',
+    )
+    const ejecucion = ejecutarCon({
+      argv: ['--ambiente', 'desarrollo', '--solo-recuentos'],
+      supabase,
+      clerk: crearClerkFalso({
+        existentes: [...EXISTENTES, 'user_viejo', 'user_solofotos'],
+      }),
+    })
+    await ejecucion.promesa
+    assert.deepEqual(ejecucion.lineas.slice(1), [
+      'Usuarios en Supabase: 10. Consultados en Clerk: 10 (la instancia tiene 10). Existen: 10. Sin dueño: 0.',
+      'Solo lectura: no se ha borrado nada. Para ver la lista y borrar, ejecútalo a mano (scripts/datos-sin-dueno/README.md).',
+    ])
+  })
+
+  test('no se puede combinar con --borrar', () => {
+    assert.throws(
+      () =>
+        leerArgumentos([
+          '--ambiente',
+          'desarrollo',
+          '--borrar',
+          '--solo-recuentos',
+        ]),
+      /--solo-recuentos .* no se usa con --borrar/,
     )
   })
 })

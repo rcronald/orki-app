@@ -41,6 +41,10 @@ import {
 // Con el #291 se añadieron el identificador de cada planta (CAT-012) y lo que
 // se guarda de cada foto (orden, fecha, nota y floración), y el diálogo de
 // eliminar la cuenta pasó a enumerar lo mismo, bitácora incluida.
+// Con el #293 se añadió el plazo de los eventos de uso (13 meses), que cumple
+// cada día el workflow «Retención de eventos» con
+// public.purge_expired_product_events(); pendiente de aprobar por el
+// responsable.
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
 // aprobado, y user-data-columns.test.tsx, que este texto y el diálogo citan
 // cada columna que rellena el usuario en plants, plant_photos y
@@ -127,6 +131,7 @@ function sections(state: unknown): TextPageSection[] {
             una orquídea tome menos de un minuto y que saber si ya la tienes
             tome menos de cinco segundos.
           </p>
+          <p>Los eventos de uso se borran a los 13 meses.</p>
           <p>
             Si la app falla, envía el error a Sentry para que podamos
             corregirlo. El informe lleva el mensaje del error, en qué parte del

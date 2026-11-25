@@ -42,6 +42,9 @@ const APPROVED_TEXT = [
   'Cuando buscas si ya tienes una planta («¿Ya la tengo?»): cuánto tardó la respuesta y cuál fue (la tienes, no la tienes o tienes parecidas).',
   'Cada evento lleva también tu identificador de usuario, la hora y si se generó sin conexión. No lleva el texto que buscaste, los nombres de tus plantas, tu correo ni tu nombre.',
   'Los usamos para saber si la app cumple su objetivo: que registrar una orquídea tome menos de un minuto y que saber si ya la tienes tome menos de cinco segundos.',
+  // Plazo de los eventos de uso (#293): lo cumple el workflow «Retención de
+  // eventos» con public.purge_expired_product_events().
+  'Los eventos de uso se borran a los 13 meses.',
   'Si la app falla, envía el error a Sentry para que podamos corregirlo. El informe lleva el mensaje del error, en qué parte del código ocurrió, la dirección de la pantalla, tu navegador y tu sistema, la versión de la app, tu identificador de usuario y los últimos pasos que hiciste en la app (pantallas abiertas, botones pulsados y peticiones al servidor). Antes de enviarlo, la app quita tu correo, tu nombre, tu dirección IP, las cookies, el contenido de las peticiones, lo que escribiste en la búsqueda y en otros parámetros de las direcciones, tu zona horaria y tu idioma, los mensajes de la consola y los textos de los botones pulsados. No graba la pantalla ni mide el rendimiento.',
   'Sentry también recibe un aviso cada vez que abres la app, con la versión, tu navegador y tu identificador de usuario, para saber cuántas veces termina con un fallo.',
   'En orqui.app no hay publicidad ni otros servicios de analítica o de publicidad.',

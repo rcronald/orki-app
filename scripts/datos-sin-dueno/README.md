@@ -18,6 +18,9 @@ npm run datos:sin-dueno -- --ambiente desarrollo --borrar
 # Producción: lista
 npm run datos:sin-dueno -- --ambiente produccion
 
+# Solo los totales, sin ids ni rutas (lo que ejecuta el informe semanal)
+npm run datos:sin-dueno -- --ambiente produccion --solo-recuentos
+
 # Producción: borra (exige escribir el identificador del proyecto de producción)
 npm run datos:sin-dueno -- --ambiente produccion --borrar --confirmar-produccion fzundhfxnbyjbxyhkgtg
 ```
@@ -28,6 +31,7 @@ npm run datos:sin-dueno -- --ambiente produccion --borrar --confirmar-produccion
 | `--borrar`                   | Borra lo detectado. Sin ella no se borra nada.                                                                                                     |
 | `--confirmar-produccion <r>` | Obligatoria para borrar en producción: el ref del proyecto de producción, como en la importación del catálogo. Solo vale con `produccion`.         |
 | `--permitir-proporcion-alta` | Permite borrar aunque más del 25 % de los usuarios consultados estén sin dueño (ver [Tope de seguridad](#tope-de-seguridad)). Solo con `--borrar`. |
+| `--solo-recuentos`           | No imprime ningún id ni ninguna ruta, solo los totales (ver [Informe semanal](#informe-semanal)). No se combina con `--borrar`.                    |
 
 Ejemplo de salida en modo de prueba:
 
@@ -35,7 +39,7 @@ Ejemplo de salida en modo de prueba:
 Proyecto de desarrollo (xaitolsnmjlpyptntfwi) e instancia de desarrollo de Clerk. Modo de prueba: no se borra nada.
 Usuarios en Supabase: 11. Consultados en Clerk: 10 (la instancia tiene 8). Existen: 8. Sin dueño: 2.
   user_solofotos: sin perfil, 0 plantas, 0 eventos, 1 fotos
-  user_viejo: perfil, 2 plantas, 1 eventos, 3 filas de plant_photos, 3 fotos
+  user_viejo: perfil, 2 plantas, 1 eventos, 3 filas de plant_photos, 2 registros de bitácora, 5 fotos
 Ids con formato desconocido (no se consultan ni se borran): 1.
   "raro con espacios": perfil, 1 plantas, 0 eventos
 Modo de prueba: no se ha borrado nada (usa --borrar para borrar).
@@ -44,11 +48,11 @@ Modo de prueba: no se ha borrado nada (usa --borrar para borrar).
 ## Qué hace
 
 1. **Protección de ambiente**, antes de conectarse a nada: `SUPABASE_PROJECT_REF` tiene que ser el ref del ambiente indicado (los de `scripts/supabase-db.mjs`) y `CLERK_SECRET_KEY` una clave de la instancia de Clerk de ese ambiente (`sk_test_` en desarrollo, `sk_live_` en producción). Si no coincide, no se ejecuta nada.
-2. **Reúne los usuarios** que aparecen en `profiles.id`, `plants.user_id`, `plant_photos.user_id`, `product_events.user_id` y en las carpetas del primer nivel del bucket `plant-photos` (`<usuario>/<planta>/...`). Las tablas se leen de 1 000 en 1 000. Si el proyecto aún no tiene `plant_photos` (la migración de varias fotos sin aplicar; PostgREST responde `PGRST205`), sigue sin ella.
+2. **Reúne los usuarios** que aparecen en `profiles.id`, `plants.user_id`, `plant_photos.user_id`, `plant_log_entries.user_id`, `product_events.user_id` y en las carpetas del primer nivel del bucket `plant-photos` (`<usuario>/<planta>/...`). Las tablas se leen de 1 000 en 1 000. Si el proyecto aún no tiene `plant_photos` o `plant_log_entries` (la migración de varias fotos o la de la bitácora sin aplicar; PostgREST responde `PGRST205`), sigue sin ella.
 3. **Comprueba la clave de Clerk** pidiendo el total de usuarios (`GET /v1/users/count`).
 4. **Pregunta a Clerk por cada usuario**, de uno en uno y con una pausa de 120 ms (unas 8 peticiones por segundo, bajo el límite de las instancias de desarrollo): `GET /v1/users/<id>`. Los ids que no tienen el formato de Clerk (`user_` y letras o números) no se consultan ni se borran: solo se informa de ellos.
-5. **Lista** los usuarios sin dueño con lo que tienen (perfil, plantas, eventos, filas de `plant_photos` y archivos de fotos, recorriendo su carpeta del bucket).
-6. **Solo con `--borrar`**, y si pasa el tope de seguridad, borra usuario por usuario en el orden de la app: archivos de fotos (en lotes de 100), filas de `plant_photos`, plantas, eventos de producto y, al final, el perfil. Borra solo las filas y los archivos detectados: cada borrado de filas filtra por los ids listados y además por el usuario, y las fotos tienen que estar dentro de la carpeta del usuario. Si algo falla se detiene y lo dice; lo ya borrado no se vuelve a detectar, así que basta con volver a ejecutarlo.
+5. **Lista** los usuarios sin dueño con lo que tienen (perfil, plantas, eventos, filas de `plant_photos`, registros de la bitácora y archivos de fotos, recorriendo su carpeta del bucket). Con `--solo-recuentos`, solo los totales.
+6. **Solo con `--borrar`**, y si pasa el tope de seguridad, borra usuario por usuario en el orden de la app: archivos de fotos (en lotes de 100, también los de la bitácora), filas de `plant_photos`, registros de la bitácora, plantas, eventos de producto y, al final, el perfil. Borra solo las filas y los archivos detectados: cada borrado de filas filtra por los ids listados y además por el usuario, y las fotos tienen que estar dentro de la carpeta del usuario. Si algo falla se detiene y lo dice; lo ya borrado no se vuelve a detectar, así que basta con volver a ejecutarlo.
 
 ### Cuándo un usuario no existe
 
@@ -64,6 +68,10 @@ Si más del 25 % de los usuarios consultados estarían sin dueño, `--borrar` se
 
 Desde el #182 una planta tiene de 0 a 6 fotos en `plant_photos`. Todos sus archivos están en la carpeta `<usuario>/<planta>/`, así que el recorrido de la carpeta del usuario ya los incluye. Cada fila tiene el `user_id` del dueño de su planta (lo exige la base) y se borra con la planta (`on delete cascade`), así que solo puede haber filas sin dueño si hay plantas sin dueño. El script las detecta igualmente y las borra antes que las plantas; si ese paso fallara, la cascada se las llevaría al borrar las plantas (lo comprueba una prueba con el doble, y en la base `supabase/tests/fotos_de_plantas.sql`).
 
+### Bitácora
+
+Desde el #264 cada planta tiene registros de bitácora en `plant_log_entries`, con una foto opcional en `<usuario>/<planta>/log/`, dentro de la carpeta del usuario: el recorrido de la carpeta ya incluye esas fotos. Como las de `plant_photos`, las filas tienen el `user_id` del dueño de su planta (lo exige la base) y se borran con ella (`on delete cascade`). El script las detecta y las borra antes que las plantas; si ese paso fallara, la cascada se las llevaría igualmente (lo comprueba una prueba con el doble).
+
 ### Eventos de producto
 
 Además de perfiles, plantas y fotos, el script detecta y borra `product_events` del usuario. Al borrar un perfil la base ya borra sus eventos (disparador `delete_product_events`), pero puede haber eventos sin perfil, y son datos del usuario. `service_role` puede leerlos y borrarlos.
@@ -78,9 +86,13 @@ Además de perfiles, plantas y fotos, el script detecta y borra `product_events`
 
 - Se leen del entorno. En desarrollo, si no están en el entorno, también de `supabase/.env` (ignorado por git; la plantilla es `supabase/.env.example`). Con `--ambiente produccion` **solo** del entorno: `supabase/.env` es del proyecto de desarrollo y las credenciales de producción no se guardan en ninguna máquina.
 - Nunca se imprimen ni se registran: la clave de Clerk va solo en la cabecera `Authorization` y los mensajes de error nombran las variables, no sus valores. Una prueba lo comprueba.
-- No están en GitHub ni en ningún workflow: el script se ejecuta a mano.
+- Para borrar, el script se ejecuta a mano. En GitHub solo lo ejecuta, sin `--borrar` y con `--solo-recuentos`, el informe semanal (ver abajo).
 
 Para producción, defínelas solo en la terminal en la que vas a ejecutarlo, sin guardarlas en archivos ni en el historial (por ejemplo, con `read -s` o desde un gestor de contraseñas), y ciérrala al terminar.
+
+## Informe semanal
+
+El workflow «Informe de datos sin dueño» (`.github/workflows/informe-datos-sin-dueno.yml`, #293) ejecuta cada lunes este script con `--ambiente produccion --solo-recuentos` y `npm run fotos:huerfanas -- --ambiente produccion --solo-recuentos`, y deja los totales en el resumen de la ejecución. Nunca borra: si hay algo, se revisa la lista y se borra a mano con este README. Va con `--solo-recuentos` porque el repositorio es público y también lo son los registros y los resúmenes de sus workflows: no deben llevar ids de Clerk ni rutas de fotos. Usa los secretos `SUPABASE_SECRET_KEY` y `CLERK_SECRET_KEY` del environment `prod`; sin `CLERK_SECRET_KEY`, se salta esta parte con un aviso y hace solo la de fotos huérfanas. Detalles y configuración en [Retención y limpieza](../../docs/operacion/retencion-y-limpieza.md).
 
 ## Riesgos
 
@@ -92,7 +104,7 @@ Para producción, defínelas solo en la terminal en la que vas a ejecutarlo, sin
 
 ## Pruebas
 
-`datos-sin-dueno.test.mjs`, con `node:test` y sin red: Clerk es un `fetch` simulado y Supabase un doble en memoria de la parte de `supabase-js` que usa el script. Cubren que el modo de prueba no borra nada; que se niega con el proyecto o la instancia de Clerk de otro ambiente y sin `--confirmar-produccion` correcto (sin crear el cliente ni hacer peticiones); que cada tipo de error de Clerk detiene el script sin borrar; que el borrado afecta solo a lo detectado y sigue el orden de la app (también con las filas de `plant_photos`, la cascada desde `plants` y un proyecto sin esa tabla); el tope de seguridad; y que las credenciales no aparecen en la salida.
+`datos-sin-dueno.test.mjs`, con `node:test` y sin red: Clerk es un `fetch` simulado y Supabase un doble en memoria de la parte de `supabase-js` que usa el script. Cubren que el modo de prueba no borra nada; que se niega con el proyecto o la instancia de Clerk de otro ambiente y sin `--confirmar-produccion` correcto (sin crear el cliente ni hacer peticiones); que cada tipo de error de Clerk detiene el script sin borrar; que el borrado afecta solo a lo detectado y sigue el orden de la app (también con las filas de `plant_photos` y de `plant_log_entries`, la cascada desde `plants` y un proyecto sin esas tablas); el tope de seguridad; que `--solo-recuentos` no imprime ids ni rutas y no se combina con `--borrar`; y que las credenciales no aparecen en la salida.
 
 ```sh
 npm run test:scripts
