@@ -2,6 +2,7 @@ import { Navigate } from 'react-router'
 import { AuthLoading } from '../auth/AuthStatus.tsx'
 import { useOfflineIdentity } from '../auth/offline-identity.ts'
 import { useAppIdentity } from '../auth/useAppIdentity.ts'
+import { useVoluntarySignOutArrival } from '../auth/voluntary-sign-out.ts'
 import { PublicShell } from '../components/PublicShell.tsx'
 import { PATHS } from '../routes/paths.ts'
 import { PublicHome } from './PublicHome.tsx'
@@ -29,6 +30,8 @@ import { PublicHome } from './PublicHome.tsx'
  */
 export function HomeRoute() {
   const identity = useAppIdentity()
+  // Tras «Cerrar sesión», aquí termina la salida (ver voluntary-sign-out.ts).
+  useVoluntarySignOutArrival()
   const { lastUserId } = useOfflineIdentity()
 
   switch (identity.kind) {

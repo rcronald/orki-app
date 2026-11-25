@@ -150,7 +150,7 @@ describe('HomePage', () => {
       'Elige un nombre sugerido por el catálogo y añade la fecha de adquisición. La foto es opcional.',
     )
     expect(list).toHaveTextContent(
-      'Ve tus plantas en lista o cuadrícula, agrúpalas por género y exporta tu inventario a CSV.',
+      'Ve tus orquídeas en lista o cuadrícula, agrúpalas por género y expórtalas a CSV.',
     )
   })
 

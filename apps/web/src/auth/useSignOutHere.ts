@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { PATHS } from '../routes/paths.ts'
 import { markSignedOut } from './offline-identity.ts'
 import { identityUserId, useAppIdentity } from './useAppIdentity.ts'
+import { startVoluntarySignOut } from './voluntary-sign-out.ts'
 
 /**
  * Cerrar sesión con el cierre propio de la app, también sin conexión (#18,
@@ -11,12 +12,17 @@ import { identityUserId, useAppIdentity } from './useAppIdentity.ts'
  * copia local y sus miniaturas al momento. A Clerk se lo pide
  * PendingSignOut: enseguida si está disponible y hay conexión, o en cuanto
  * lo esté. Lo usan el menú «Tu cuenta» (#207) y la pantalla de cuenta (#214).
+ *
+ * Marca además la salida voluntaria (voluntary-sign-out.ts) hasta que el
+ * inicio esté pintado: así la pantalla protegida de la que se sale no manda a
+ * iniciar sesión si Clerk confirma el cierre antes de que llegue el inicio.
  */
 export function useSignOutHere(): () => void {
   const navigate = useNavigate()
   const userId = identityUserId(useAppIdentity())
 
   return useCallback(() => {
+    startVoluntarySignOut()
     void navigate(PATHS.home)
     markSignedOut(userId)
   }, [navigate, userId])

@@ -159,18 +159,18 @@ describe('barra de AppShell', () => {
 })
 
 describe('menú «Tu cuenta»', () => {
-  it('opciones con sesión: «Mi cuenta» y «Cerrar sesión», con nombre y correo arriba', async () => {
+  it('opciones con sesión: «Tu cuenta» y «Cerrar sesión», con nombre y correo arriba', async () => {
     const user = userEvent.setup()
     setFakeClerk({ signedIn: true, fullName: 'Ana López' })
     renderShell()
 
     await user.click(accountButton())
-    expect(menuItems()).toEqual(['Mi cuenta', 'Cerrar sesión'])
+    expect(menuItems()).toEqual(['Tu cuenta', 'Cerrar sesión'])
     expect(screen.getByText('Ana López').tagName).toBe('STRONG')
     expect(screen.getByText(FAKE_USER_EMAIL)).toBeVisible()
     await expectNoAxeViolations()
 
-    await user.click(screen.getByRole('menuitem', { name: 'Mi cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Tu cuenta' }))
     expect(
       screen.getByRole('heading', { name: 'Tu cuenta' }),
     ).toBeInTheDocument()
@@ -186,7 +186,7 @@ describe('menú «Tu cuenta»', () => {
 
     await user.click(accountButton())
     expect(menuItems()).toEqual([
-      'Mi cuenta',
+      'Tu cuenta',
       'Administración',
       'Cerrar sesión',
     ])
@@ -203,7 +203,7 @@ describe('menú «Tu cuenta»', () => {
 
     accountButton().focus()
     await user.keyboard('{ArrowDown}')
-    expect(screen.getByRole('menuitem', { name: 'Mi cuenta' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'Tu cuenta' })).toHaveFocus()
     await user.keyboard('{End}')
     expect(
       screen.getByRole('menuitem', { name: 'Cerrar sesión' }),
@@ -239,7 +239,7 @@ describe('menú «Tu cuenta»', () => {
       'lucide-user',
     )
     await user.click(accountButton())
-    expect(menuItems()).toEqual(['Mi cuenta', 'Cerrar sesión'])
+    expect(menuItems()).toEqual(['Tu cuenta', 'Cerrar sesión'])
     expect(
       screen.getByText('Sin conexión: tu sesión se confirmará al recuperarla.'),
     ).toBeVisible()

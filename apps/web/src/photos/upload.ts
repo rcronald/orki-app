@@ -50,6 +50,16 @@ export function photoVersionFor(files: PhotoFiles): string {
   return version
 }
 
+/**
+ * Da a `files` la versión que tuvo en otro momento (#284): las fotos del
+ * registro que se guardan en el dispositivo vuelven tras una recarga como
+ * otros Blob, y con su versión de antes suben a las mismas rutas (sin
+ * duplicar una foto que llegó a guardarse). No cambia una versión ya fijada.
+ */
+export function adoptPhotoVersion(files: PhotoFiles, version: string): void {
+  if (!versions.has(files)) versions.set(files, version)
+}
+
 function abortedError(signal: AbortSignal): PhotoStorageError {
   return new PhotoStorageError('aborted', { cause: signal.reason })
 }
@@ -105,7 +115,7 @@ export interface UploadPhotoFilesOptions {
   plantId: string
   storage?: PhotoStorage
   /**
-   * Cancela. supabase-js no deja abortar una subida en curso: se deja de
+   * Cancela. storage-js no deja abortar una subida en curso: se deja de
    * esperar enseguida y lo que llegue a subirse se borra al terminar.
    */
   signal?: AbortSignal

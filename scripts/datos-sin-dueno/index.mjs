@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Detección de datos sin dueño (#112, parte de #26): perfiles, plantas, eventos
-// de producto y fotos de usuarios que ya no existen en Clerk.
+// Detección de datos sin dueño (#112, parte de #26): perfiles, plantas, fotos,
+// bitácora y eventos de producto de usuarios que ya no existen en Clerk.
 //
 // Uso (detalles, credenciales y riesgos en el README de esta carpeta):
 //   npm run datos:sin-dueno -- --ambiente desarrollo                 # solo lista
+//   npm run datos:sin-dueno -- --ambiente produccion --solo-recuentos # informe sin ids (#293)
 //   npm run datos:sin-dueno -- --ambiente desarrollo --borrar        # borra
 //   npm run datos:sin-dueno -- --ambiente produccion --borrar --confirmar-produccion <ref>
 //

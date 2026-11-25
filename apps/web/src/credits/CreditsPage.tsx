@@ -12,7 +12,7 @@ import { REFERENCE_LICENSES } from '../lib/referencePhotos.ts'
 //   (por backoffice/attribution.ts, un módulo sin React), con la indicación de
 //   que se filtró y normalizó que pide CC BY 4.0 (FUENTE.md, sección 2). La
 //   lista curada de híbridos: scripts/catalog-import/README.md.
-// - Imágenes: src/assets/portada/LEEME.md y src/assets/fondos-genero/LEEME.md
+// - Imágenes: src/assets/portada/LEEME.md y src/assets/ilustraciones/LEEME.md
 //   (generadas con IA, OpenAI). Solo su origen: nada sobre sus derechos.
 // - Tipografías: LICENSE de @fontsource/playfair-display y @fontsource/inter
 //   (SIL Open Font License 1.1, con sus titulares).

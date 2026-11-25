@@ -192,8 +192,14 @@ describe('InventoryView: filtros', () => {
     expect(toggle()).toHaveFocus()
 
     await openPanel(user)
-    // Con el teclado: del botón, por la vista (en la misma barra), al panel,
-    // que va justo después de la barra.
+    // Con el teclado: del botón, por «Ordenar» y la vista (en la misma
+    // barra), al panel, que va justo después de la barra.
+    await user.tab()
+    expect(
+      within(screen.getByRole('search')).getByRole('combobox', {
+        name: 'Ordenar',
+      }),
+    ).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveFocus()
     await user.tab()
@@ -251,13 +257,13 @@ describe('InventoryView: filtros', () => {
       'Phalaenopsis amabilis',
       'Phalaenopsis schilleriana',
     ])
-    expect(status()).toHaveTextContent('2 de 4 orquídeas coinciden.')
+    expect(status()).toHaveTextContent('2 de 4 ejemplares coinciden.')
     // El género no cuenta en «Filtros»: se ve en su fila.
     expect(toggle()).toHaveAccessibleName('Filtros')
 
     // Selección múltiple: O dentro del grupo.
     await user.click(genusChip('Cattleya'))
-    expect(status()).toHaveTextContent('3 de 4 orquídeas coinciden.')
+    expect(status()).toHaveTextContent('3 de 4 ejemplares coinciden.')
 
     // Y entre grupos.
     await openPanel(user)
@@ -268,7 +274,7 @@ describe('InventoryView: filtros', () => {
     ])
     await user.click(chip('Origen', 'Vivero Moyobamba'))
     expect(cardNames()).toEqual(['Cattleya maxima'])
-    expect(status()).toHaveTextContent('1 de 4 orquídeas coincide.')
+    expect(status()).toHaveTextContent('1 de 4 ejemplares coincide.')
     expect(toggle()).toHaveAccessibleName('Filtros, 2 activos')
     expect(lastFilters()).toEqual({
       status: 'active',
@@ -340,7 +346,7 @@ describe('InventoryView: filtros', () => {
     expect(chip('Estado', 'Perdidas')).toHaveAttribute('aria-pressed', 'true')
     expect(chip('Estado', 'Activas')).toHaveAttribute('aria-pressed', 'false')
     expect(cardNames()).toEqual(['Phalaenopsis aphrodite'])
-    expect(status()).toHaveTextContent('1 orquídea perdida.')
+    expect(status()).toHaveTextContent('1 ejemplar perdido.')
 
     await user.click(chip('Estado', 'Regaladas'))
     expect(cardNames()).toEqual([])
@@ -354,12 +360,12 @@ describe('InventoryView: filtros', () => {
   it('los filtros se combinan con la búsqueda', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION, { initialQuery: 'phal' })
-    expect(status()).toHaveTextContent('2 de 4 orquídeas coinciden.')
+    expect(status()).toHaveTextContent('2 de 4 ejemplares coinciden.')
 
     await openPanel(user)
     await user.click(chip('Color de la flor', 'Rosado'))
     expect(cardNames()).toEqual(['Phalaenopsis schilleriana'])
-    expect(status()).toHaveTextContent('1 de 4 orquídeas coincide.')
+    expect(status()).toHaveTextContent('1 de 4 ejemplares coincide.')
   })
 
   it('con el panel cerrado, los filtros activos se ven en chips que se quitan uno a uno', async () => {
@@ -444,7 +450,7 @@ describe('InventoryView: filtros', () => {
     expect(
       screen.getByText(/Ninguna orquídea de tu colección coincide con/),
     ).toHaveTextContent('«maxima» con los filtros elegidos.')
-    expect(status()).toHaveTextContent('Ninguna de tus 4 orquídeas coincide.')
+    expect(status()).toHaveTextContent('Ninguno de tus 4 ejemplares coincide.')
     await expectNoAxeViolations()
 
     const results = screen.getByText(/Ninguna orquídea/).parentElement
@@ -547,7 +553,7 @@ describe('InventoryView: filtros', () => {
     await user.click(genusChip('Cattleya'))
     await openPanel(user)
     await user.click(chip('Color de la flor', 'Blanco'))
-    expect(status()).toHaveTextContent('50 de 300 orquídeas coinciden.')
+    expect(status()).toHaveTextContent('50 de 300 ejemplares coinciden.')
     await user.click(
       within(panel()).getByRole('button', { name: 'Quitar filtros' }),
     )

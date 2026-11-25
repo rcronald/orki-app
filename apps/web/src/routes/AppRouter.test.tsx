@@ -1,7 +1,7 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppEnv } from '../config/env.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import {
@@ -21,6 +21,27 @@ import {
 import { AppRouter } from './AppRouter.tsx'
 
 vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
+
+// Los chunks diferidos (la app, sus páginas y la muestra) se cargan una vez
+// antes de las pruebas (#311). Con el equipo cargado, transformar e importar
+// por primera vez uno grande (la muestra, el catálogo) pasaba de los 5 s de
+// findBy… y la prueba que lo abría fallaba sin nada roto. La carga diferida se
+// sigue recorriendo igual: import() devuelve el módulo ya cargado.
+beforeAll(async () => {
+  await Promise.all([
+    import('../App.tsx'),
+    import('../showcase/ShowcasePage.tsx'),
+    import('../diagnostics/IdentityDiagnosticsPage.tsx'),
+    import('../pages/NewPlantPage.tsx'),
+    import('../pages/PlantDetailPage.tsx'),
+    import('../pages/EditPlantPage.tsx'),
+    import('../pages/OwnershipCheckPage.tsx'),
+    import('../backoffice/CatalogAdminPage.tsx'),
+    import('../catalog/CatalogRoutes.tsx'),
+    import('../privacy/PrivacyPage.tsx'),
+    import('../credits/CreditsPage.tsx'),
+  ])
+}, 120_000)
 
 beforeEach(() => {
   resetFakeClerk()
@@ -81,7 +102,7 @@ describe('rutas públicas', () => {
     renderAt('/')
 
     expect(await findHeading(/./)).toBeInTheDocument()
-    expect(document.title).toBe('orqui.app')
+    await waitFor(() => expect(document.title).toBe('orqui.app'))
     expect(currentLocation()).toBe('/')
     expect(
       screen.queryByRole('navigation', { name: 'Principal' }),
@@ -107,7 +128,7 @@ describe('rutas públicas', () => {
     renderAt('/catalogo')
 
     expect(await findHeading('Catálogo')).toBeInTheDocument()
-    expect(document.title).toBe('Catálogo · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Catálogo · orqui.app'))
     expect(currentLocation()).toBe('/catalogo')
     await expectNoAxeViolations()
   })
@@ -149,7 +170,9 @@ describe('rutas públicas', () => {
     renderAt('/no-existe')
 
     expect(await findHeading('Página no encontrada')).toBeInTheDocument()
-    expect(document.title).toBe('Página no encontrada · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Página no encontrada · orqui.app'),
+    )
     expect(screen.getByRole('link', { name: 'Ir al inicio' })).toHaveAttribute(
       'href',
       '/',
@@ -253,7 +276,9 @@ describe('rutas con sesión', () => {
     await user.click(screen.getByRole('link', { name: 'Registrar orquídea' }))
     expect(await findHeading('Registrar una orquídea')).toBeInTheDocument()
     expect(currentLocation()).toBe('/coleccion/nueva')
-    expect(document.title).toBe('Registrar una orquídea · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Registrar una orquídea · orqui.app'),
+    )
     await expectNoAxeViolations()
   })
 
@@ -287,7 +312,7 @@ describe('rutas con sesión', () => {
     setFakeClerk({ signedIn: true })
     renderAt('/coleccion')
     await user.click(await screen.findByRole('button', { name: 'Tu cuenta' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Mi cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Tu cuenta' }))
     expect(await findHeading('Tu cuenta')).toBeInTheDocument()
     expect(currentLocation()).toBe('/cuenta')
     await expectNoAxeViolations()
@@ -353,7 +378,7 @@ describe('administración del catálogo', () => {
       await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
       expect(
         screen.getAllByRole('menuitem').map((item) => item.textContent),
-      ).toEqual(['Mi cuenta', 'Cerrar sesión'])
+      ).toEqual(['Tu cuenta', 'Cerrar sesión'])
       await expectNoAxeViolations()
     },
   )
@@ -367,7 +392,7 @@ describe('administración del catálogo', () => {
     await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
     expect(
       screen.getAllByRole('menuitem').map((item) => item.textContent),
-    ).toEqual(['Mi cuenta', 'Administración', 'Cerrar sesión'])
+    ).toEqual(['Tu cuenta', 'Administración', 'Cerrar sesión'])
     await user.click(screen.getByRole('menuitem', { name: 'Administración' }))
 
     expect(await findHeading('Administración del catálogo')).toBeInTheDocument()
@@ -478,7 +503,7 @@ describe('navegación', () => {
     // El foco pasa al título de la página nueva y la pestaña cambia.
     const heading = await findHeading('Mi colección')
     expect(heading).toHaveFocus()
-    expect(document.title).toBe('Mi colección · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Mi colección · orqui.app'))
     expect(collection).toHaveAttribute('aria-current', 'page')
     await expectNoAxeViolations()
   })

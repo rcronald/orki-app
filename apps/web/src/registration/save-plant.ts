@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
@@ -32,7 +33,7 @@ export interface PlantStatusPatch {
 //   reintentar el mismo registro. Si el primer intento sí llegó a la base pero
 //   la respuesta se perdió, el segundo choca con la clave primaria (23505) y
 //   se lee la planta ya guardada en lugar de crear otra.
-// - supabase-js no reintenta las escrituras: un fallo llega enseguida.
+// - postgrest-js no reintenta las escrituras: un fallo llega enseguida.
 
 /**
  * Por qué no se pudo guardar:
@@ -66,7 +67,7 @@ export const PLANT_UPDATE_ERROR_TEXT: Record<PlantSaveFailure, string> = {
   invalid:
     'La base de datos no aceptó los cambios. Revisa los datos y vuelve a intentarlo.',
   'not-found':
-    'Esta orquídea ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
+    'Esta planta ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
   failed:
     'No se pudieron guardar los cambios por un error del servidor. Vuelve a intentarlo en unos momentos.',
 }
@@ -125,7 +126,7 @@ function postgrestError(error: unknown): PostgrestLikeError {
 }
 
 /**
- * Traduce el `error` de supabase-js con el estado HTTP de la respuesta.
+ * Traduce el `error` de postgrest-js con el estado HTTP de la respuesta.
  * Estado 0: la petición no obtuvo respuesta (sin red, DNS, portal cautivo).
  */
 export function toPlantSaveError(
@@ -199,10 +200,7 @@ export async function insertPlant(
   try {
     supabase = await getClient()
   } catch (error) {
-    throw new PlantSaveError(
-      navigator.onLine === false ? 'offline' : 'failed',
-      { cause: error },
-    )
+    throw new PlantSaveError(offlineOr('failed'), { cause: error })
   }
 
   const { data, error, status } = await supabase
@@ -247,7 +245,7 @@ export async function updatePlant(
   try {
     supabase = await getClient()
   } catch (error) {
-    const reason = navigator.onLine === false ? 'offline' : 'failed'
+    const reason = offlineOr('failed')
     throw new PlantSaveError(reason, {
       cause: error,
       message: PLANT_UPDATE_ERROR_TEXT[reason],

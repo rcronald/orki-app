@@ -13,7 +13,7 @@ import {
 // Supabase simulado en la capa de red de Playwright (#148).
 //
 // La app de las pruebas es la de producción con su cliente de Supabase real
-// (supabase-js): sus peticiones salen hacia https://supabase.orki.invalid y
+// (postgrest-js y storage-js): sus peticiones salen hacia https://supabase.orki.invalid y
 // este módulo las responde desde la memoria del proceso de la prueba, con la
 // forma de PostgREST y de Storage. Así se ejercita todo el código de la app que
 // arma las consultas, interpreta las respuestas y traduce los errores; lo único
@@ -1942,7 +1942,7 @@ export class SupabaseSimulado {
       return json({ Id: archivo, Key: `plant-photos/${archivo}` })
     }
 
-    // supabase-js descarga con object/<bucket>/<ruta> (con la sesión) o, en
+    // storage-js descarga con object/<bucket>/<ruta> (con la sesión) o, en
     // otras versiones, con object/authenticated/<bucket>/<ruta>.
     const descarga = /^object\/(?:authenticated\/)?plant-photos\/(.+)$/.exec(
       ruta,
@@ -1994,7 +1994,7 @@ export class SupabaseSimulado {
   }
 
   /**
-   * El archivo de una subida (multipart/form-data de supabase-js). Si el
+   * El archivo de una subida (multipart/form-data de storage-js). Si el
    * navegador no deja leer el cuerpo, se guarda una imagen de muestra del
    * mismo tipo para que la app pueda descargarla después.
    */

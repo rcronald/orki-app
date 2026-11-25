@@ -20,7 +20,7 @@ vi.mock('@clerk/react', () => import('../test/clerk-mock.tsx'))
 
 // Baja, reactivación y eliminación definitiva desde el detalle (#16), dentro
 // de «Gestionar planta» desde el #265, y las notas de la ficha (#265), con la
-// app real hasta supabase-js y PostgREST y Storage en memoria.
+// app real hasta el cliente de Supabase y PostgREST y Storage en memoria.
 
 const USER = 'user_prueba'
 const AMABILIS_ID = '6f1c2a4e-8b3d-4e5f-9a7b-0c1d2e3f4a5b'
@@ -152,6 +152,10 @@ describe('dar de baja y reactivar', () => {
       await screen.findByText(DETAIL_TEXT.retired('Regalada')),
     ).toBeVisible()
     expect(datum(DETAIL_TEXT.status)).toHaveTextContent('Regalada')
+    // Un aviso por acción (#290): el del estado sale al cerrar el de la baja.
+    expect(screen.queryByText(DETAIL_TEXT.inactive('Regalada'))).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Cerrar el aviso' }))
+    expect(screen.queryByText(DETAIL_TEXT.retired('Regalada'))).toBeNull()
     expect(screen.getByText(DETAIL_TEXT.inactive('Regalada'))).toBeVisible()
     expect(
       screen.getByRole('button', { name: DETAIL_TEXT.reactivate }),

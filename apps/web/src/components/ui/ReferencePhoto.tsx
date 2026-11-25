@@ -76,7 +76,7 @@ export interface ReferencePhotoProps {
    * compact: la miniatura a la izquierda y el texto a la derecha (registro).
    */
   variant?: 'figure' | 'viewer' | 'compact'
-  /** Título del bloque compacto («Así es esta especie»). */
+  /** Título del bloque compacto («Así es su especie»). */
   title?: ReactNode
   /** Lo que se pinta si la imagen no carga; por defecto, nada. */
   fallback?: ReactNode

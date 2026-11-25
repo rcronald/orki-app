@@ -12,6 +12,9 @@ archivo (no hay índice).
 
 ## Reglas comunes
 
+- **Los textos siguen el [glosario](app/textos.md)** (#290): «orquídea» en las
+  acciones, «planta» en la ficha y la edición, «ejemplar» en los recuentos,
+  «Mi colección» y «Tu cuenta».
 - **El verde es la acción principal en toda la app.** `Button variant="primary"`
   (`orki-btn--primary`) es verde (`color-secondary-strong`, y
   `color-secondary` al pasar por encima). `strong` es un alias que conserva la
@@ -47,7 +50,7 @@ ruta dentro de `AppShell` la lleva.
   y `/ya-la-tengo` (`PATHS.ownershipCheck`, la ruta propuesta del #209; si
   usas otra, avisa: está en `COLLECTION_AREA` de `AppBar.tsx`), pestaña
   «Catálogo» (#232, icono `book-open`) en todo `/catalogo`, y el menú
-  «Tu cuenta» (foto o iniciales; «Mi cuenta», «Administración» solo con
+  «Tu cuenta» (foto o iniciales; «Tu cuenta», «Administración» solo con
   `catalog_admin`, «Cerrar sesión»).
 - Hasta 720 px, el logotipo es solo la flor (`Logo variant="compact"`, un
   `<picture>` con una sola imagen) y las pestañas van sin icono: las dos caben
@@ -176,7 +179,8 @@ posición), usa la misma técnica que el detalle (`detail/navigation.ts`,
 ## Barra de búsqueda del inventario
 
 Tres piezas dentro de `<div className="orki-toolbar">` (fila que se parte; el
-primer hijo, el campo, ocupa lo que sobra):
+primer hijo, el campo, ocupa lo que sobra), y en escritorio «Ordenar» entre
+«Filtros» y la vista (ver más abajo):
 
 ### `SearchField` (`components/ui/SearchField.tsx`)
 
@@ -264,6 +268,25 @@ verde. 44 × 44 px. Marcado: `div.orki-segmented[role=group]` >
 </div>
 ```
 
+### «Ordenar» (`inventory/SortSelect.tsx`, #292)
+
+Un `select` nativo con la etiqueta visible «Ordenar» (`orki-field__label`) y
+las opciones «Más recientes», «Nombre (A–Z)» y «Fecha de adquisición». Sin CSS
+nuevo: el mismo patrón que el filtro de la bitácora (`orki-field__input`,
+`appearance-none`, 48 px de alto como mínimo y `chevron-down` encima, porque
+Safari ignora el alto de un `select` nativo). Dos disposiciones:
+
+- `layout="inline"`: la etiqueta a la izquierda, en la barra del buscador
+  entre `FiltersButton` y `SegmentedControl`, solo desde 721 px
+  (`publico-estrecho:hidden`).
+- `layout="stacked"`: la etiqueta encima, dentro del panel de filtros, en
+  «Organizar», solo hasta 720 px (`min-[721px]:hidden`). A 360 px, junto a
+  «Filtros» (126 px) y la vista (96 px) le quedarían unos 80 px y pasaría a
+  otra fila antes de la primera tarjeta.
+
+Los dos cambian la misma preferencia; en cada ancho solo uno está en el
+documento accesible (el otro va con `display: none`).
+
 ## Fila de chips desplazable
 
 `ChipGroup` (`components/ui/ChipGroup.tsx`) con `scroll`: una sola fila con
@@ -301,6 +324,7 @@ type CollectionCardProps = ArticleProps & {
   nickname?: ReactNode // segunda línea (apodo)
   badge?: ReactNode // insignia, solo si aplica: <StatusBadge status="pending" />
   location?: ReactNode // fila con map-pin («Ubicación:» para el lector)
+  code?: string // identificador bajo el nombre: «PHA-001» (#292)
   photo?: { src: string; alt: string } // sin foto, el marcador sin-foto.svg
   photoCount?: number // con más de 1, el número de fotos sobre la foto
   headingLevel?: 2 | 3 | 4 // h3 por defecto
@@ -314,7 +338,16 @@ Borde `color-neutral-200` sobre `color-neutral-0`, `radius-lg`, sin sombra; foto
 toda la tarjeta (también la foto) y pinta el anillo de foco por dentro.
 Marcado: `article.orki-card.orki-card--outline[.orki-card--row]` >
 `img.orki-card__photo` + `div.orki-card__body` > `hN.orki-card__name` +
-`p.orki-card__common` + insignia + `p.orki-card__place`.
+`p.orki-card__meta` (identificador) + `p.orki-card__common` + insignia +
+`p.orki-card__place`.
+
+Identificador (`code`, #292): justo bajo el nombre, en `orki-card__meta` (12 px,
+`color-neutral-700`; la clase que antes llevaba el género) con `mt-[0]`, sin
+CSS nuevo. Distingue las tarjetas de varias plantas de la misma especie. El
+lector lo lee en la descripción de la tarjeta («Identificador PHA-001.», con
+el rótulo `sr-only`), antes de «3 fotos» si las hay; el nombre accesible sigue
+siendo el del encabezado. Sin `code` (una copia sin conexión anterior al
+#265), ni línea ni descripción.
 
 Número de fotos (`photoCount > 1`, #181): la píldora `orki-count` (la de
 `FiltersButton`, `color-secondary-strong` con el número en `color-neutral-0`)
@@ -335,6 +368,7 @@ accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
   nameStyle={plant.displayNameIsScientific ? 'scientific' : 'plain'}
   nickname={plant.nickname ?? undefined}
   location={plant.location ?? undefined}
+  code={plant.code ?? undefined}
   badge={
     status !== 'validated' ? <StatusBadge status={status} /> : undefined
   }
@@ -354,8 +388,11 @@ accesible no cambia. Con 0 o 1 foto no hay indicador ni descripción.
 />
 ```
 
-La rejilla (tres por fila en escritorio, dos en móvil) se compone con Tailwind:
-`grid grid-cols-2 gap-space-3 md:grid-cols-3`.
+La rejilla (dos por fila en móvil, tres desde 768 px y cuatro desde 1200 px,
+#292) se compone con Tailwind: `grid grid-cols-2 gap-space-3
+md:max-[1199px]:grid-cols-3 min-[1200px]:grid-cols-4`. Las tres columnas van
+acotadas hasta 1199 px porque Tailwind escribe la regla de `min-[1200px]`
+antes que la de `md` y, si se solaparan, ganaría `md`.
 
 ## Resultado de consulta
 
@@ -502,7 +539,7 @@ const editor = useProfileEditor()
 <Panel title="Datos y privacidad">
   <ActionList>
     <li>
-      <ActionRow icon="file" title="Exportar inventario a CSV"
+      <ActionRow icon="file" title="Exportar tu colección a CSV"
         description="El archivo CSV no incluye las fotos." onClick={exportCsv} />
     </li>
     <li>
@@ -613,10 +650,10 @@ interface PhotoGalleryProps {
   onRemove?: (id: string) => void // sin él, no hay botón de quitar
   onRetry?: (id: string) => void // «Reintentar» en las que tienen error
   onTakePhoto?: () => void // «Tomar foto»; sin él, no se muestra
-  onChoosePhotos: () => void // «Elegir fotos»
+  onChoosePhotos: () => void // «Añadir fotos»
   chooseLabel?: string // la edición (#266): «Añadir fotos»
   chooseIcon?: IconName // por defecto image; la edición, plus
-  extraActions?: ReactNode // tras «Elegir fotos» (la edición: «Gestionar fotos»)
+  extraActions?: ReactNode // tras «Añadir fotos» (la edición: «Gestionar fotos»)
   disabled?: boolean // nada que añadir ni quitar (aria-disabled)
   help?: ReactNode // por defecto «Puedes añadir hasta 6 fotos.»
   notice?: ReactNode // aviso bajo el título; describe el recuadro
@@ -640,7 +677,7 @@ interface PhotoGalleryProps {
 - Quitar: `orki-gallery__remove`, de 44 × 44 px en la esquina con el círculo de
   28 px dentro; nombre «Quitar foto 2 de 3». Al quitar, el foco pasa al botón
   de quitar de la que ocupa su lugar, a la anterior o, si no queda ninguna, a
-  «Elegir fotos». Subiendo o guardada no se puede quitar.
+  «Añadir fotos». Subiendo o guardada no se puede quitar.
 - Estados de cada miniatura (`orki-gallery__item--{estado}` y
   `orki-gallery__state` abajo): preparando (hueco con el texto), subiendo
   (texto y `orki-gallery__bar`), guardada, y error (`color-danger` sobre
@@ -650,7 +687,8 @@ interface PhotoGalleryProps {
   ella, a todo el ancho, para que se lea entero y no se solape con quitar ni
   con «Principal». El hueco sin imagen también lleva `orki-gallery__photo`.
   En «Subiendo… 40 %» hay un espacio duro antes de «%».
-- Acciones: «Tomar foto» (`camera`) y «Elegir fotos» (`image`), botones
+- Acciones: «Tomar foto» (`camera`) y «Añadir fotos» (`image`; era «Elegir
+  fotos» hasta el #290, que lo igualó con la edición y la ficha), botones
   secundarios en `orki-gallery__actions` (columnas automáticas). Llena, las dos
   quedan con `aria-disabled` y su descripción es el motivo, que sustituye a la
   ayuda: «Ya tienes 6 fotos. Quita una para añadir otra.».
@@ -792,7 +830,7 @@ interface ReferencePhotoProps {
   picture: ReferencePicture // medium (o null), thumbnail, credit, sourcePhotoId
   scientificName: string // alt: «Foto de referencia de Cattleya maxima»
   variant?: 'figure' | 'viewer' | 'compact'
-  title?: ReactNode // solo compact: «Así es esta especie»
+  title?: ReactNode // solo compact: «Así es su especie»
   fallback?: ReactNode // si la imagen no carga; por defecto, nada
   className?: string
 }
@@ -823,7 +861,7 @@ interface ReferencePhotoProps {
 
 ```tsx
 <ReferencePhoto picture={species.reference} scientificName={species.scientificName} />
-<ReferencePhoto picture={picture} scientificName={name} variant="compact" title="Así es esta especie" />
+<ReferencePhoto picture={picture} scientificName={name} variant="compact" title="Así es su especie" />
 ```
 
 Para pedirla con sesión, `useReferencePhoto(speciesId)` (`lib/useReferencePhoto.ts`):

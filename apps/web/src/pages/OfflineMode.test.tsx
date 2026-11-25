@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -126,13 +126,6 @@ function renderApp(path = '/coleccion') {
   return render(appTree())
 }
 
-/** Deja correr la lectura de la copia y los efectos. */
-async function settle() {
-  await act(async () => {
-    for (let index = 0; index < 6; index += 1) await Promise.resolve()
-  })
-}
-
 describe('sin conexión, abriendo la app desde cero', () => {
   beforeEach(async () => {
     // Clerk no cargó (sin red) y el navegador lo sabe.
@@ -144,10 +137,10 @@ describe('sin conexión, abriendo la app desde cero', () => {
 
   it('muestra el inventario del último usuario en solo lectura, con la fecha', async () => {
     renderApp()
-    await settle()
-    // Sin Clerk no hay token: no se pide nada a la red, queda la copia.
+    expect(await screen.findAllByRole('article')).toHaveLength(2)
+    // Sin Clerk no hay token: no se pide nada a la red, queda la copia (lo
+    // decide antes de entregarla).
     expect(network.loads).toHaveLength(0)
-    expect(screen.getAllByRole('article')).toHaveLength(2)
     const notice = screen.getByText('Sin conexión', { selector: 'p' })
     expect(notice.parentElement).toHaveTextContent(
       'Ves la copia guardada en este dispositivo.',
@@ -169,7 +162,7 @@ describe('sin conexión, abriendo la app desde cero', () => {
   it('el buscador funciona y «¿Ya la tengo?» sigue disponible', async () => {
     const user = userEvent.setup()
     renderApp()
-    await settle()
+    await screen.findAllByRole('article')
 
     const search = screen.getByRole('searchbox', {
       name: 'Buscar en mi colección',
@@ -185,9 +178,10 @@ describe('sin conexión, abriendo la app desde cero', () => {
   it('el detalle se ve, con editar, las notas, dar de baja y eliminar desactivados', async () => {
     const user = userEvent.setup()
     renderApp(`/coleccion/${AMABILIS.id}`)
-    await settle()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Phalaenopsis amabilis',
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Phalaenopsis amabilis',
+      ),
     )
     // Un solo motivo, arriba, al que remiten todas (#265).
     expect(
@@ -227,17 +221,17 @@ describe('sin conexión, abriendo la app desde cero', () => {
     })
     const user = userEvent.setup()
     renderApp()
-    await settle()
-    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(await screen.findAllByRole('article')).toHaveLength(2)
 
     await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
     await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
-    await settle()
 
-    expect(screen.getByText('Inicio')).toBeInTheDocument()
-    expect(storage.copies.size).toBe(0)
+    expect(await screen.findByText('Inicio')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(storage.copies.size).toBe(0)
+      expect(deleted).toEqual([`${THUMBNAIL_CACHE_PREFIX}user_a`])
+    })
     expect(localStorage.getItem(LAST_USER_KEY)).toBeNull()
-    expect(deleted).toEqual([`${THUMBNAIL_CACHE_PREFIX}user_a`])
     // Clerk no estaba: el cierre queda pendiente para cuando vuelva.
     expect(signOut).not.toHaveBeenCalled()
     expect(localStorage.getItem(PENDING_SIGN_OUT_KEY)).toBe('user_a')
@@ -251,12 +245,11 @@ describe('con Clerk de vuelta', () => {
     await saveCopy('user_a')
     setFakeClerk({ status: 'ready', signedIn: false })
     renderApp()
-    await settle()
-    expect(storage.copies.size).toBe(0)
-    expect(getOfflineIdentity().lastUserId).toBeNull()
     expect(
-      screen.getByText('Iniciar sesión', { selector: 'p' }),
+      await screen.findByText('Iniciar sesión', { selector: 'p' }),
     ).toBeInTheDocument()
+    await waitFor(() => expect(storage.copies.size).toBe(0))
+    expect(getOfflineIdentity().lastUserId).toBeNull()
   })
 
   it('otra cuenta en el mismo dispositivo nunca ve la copia de la anterior', async () => {
@@ -264,16 +257,12 @@ describe('con Clerk de vuelta', () => {
     await saveCopy('user_a')
     setFakeClerk({ status: 'ready', signedIn: true, userId: 'user_b' })
     renderApp()
-    await settle()
-    expect(network.last().request.userId).toBe('user_b')
+    expect((await network.pending()).request.userId).toBe('user_b')
     expect(screen.queryByRole('article')).toBeNull()
-    expect(storage.copies.has('user_a')).toBe(false)
+    await waitFor(() => expect(storage.copies.has('user_a')).toBe(false))
     expect(getOfflineIdentity().lastUserId).toBe('user_b')
 
-    await act(async () => {
-      network.last().resolve([MAXIMA])
-      await Promise.resolve()
-    })
+    await network.respond([MAXIMA])
     expect(screen.getAllByRole('article')).toHaveLength(1)
   })
 
@@ -282,21 +271,16 @@ describe('con Clerk de vuelta', () => {
     resetOfflineIdentity()
     setFakeClerk({ status: 'ready', signedIn: true, userId: 'user_a' })
     renderApp()
-    await settle()
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
     // Mientras tanto, la app lo trata como sin sesión.
     expect(screen.getByText('Inicio')).toBeInTheDocument()
     expect(screen.queryByRole('article')).toBeNull()
-    expect(signOut).toHaveBeenCalledTimes(1)
   })
 
   it('con sesión y sin conexión: solo lectura con el motivo', async () => {
     setFakeClerk({ status: 'ready', signedIn: true, userId: 'user_a' })
     renderApp()
-    await settle()
-    await act(async () => {
-      network.last().resolve([AMABILIS])
-      await Promise.resolve()
-    })
+    await network.respond([AMABILIS])
     expect(
       screen.getByRole('link', { name: 'Registrar orquídea' }),
     ).toBeInTheDocument()
@@ -313,27 +297,26 @@ describe('con Clerk de vuelta', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
     await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
-    await settle()
-    expect(storage.copies.size).toBe(0)
+    await waitFor(() => expect(storage.copies.size).toBe(0))
     expect(signOut).not.toHaveBeenCalled()
 
     // Al volver la red, PendingSignOut se lo pide a Clerk.
     setOnline(true)
-    await settle()
-    expect(signOut).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
   })
 
   it('con sesión y conexión, cerrar sesión se lo pide a Clerk enseguida', async () => {
     setFakeClerk({ status: 'ready', signedIn: true, userId: 'user_a' })
     await saveCopy('user_a')
     renderApp()
-    await settle()
+    await network.pending()
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
     await user.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }))
-    await settle()
-    expect(signOut).toHaveBeenCalledTimes(1)
-    expect(storage.copies.size).toBe(0)
+    await waitFor(() => {
+      expect(signOut).toHaveBeenCalledTimes(1)
+      expect(storage.copies.size).toBe(0)
+    })
   })
 })
 
@@ -343,10 +326,9 @@ describe('Clerk no cargó aunque hay conexión', () => {
     rememberUser('user_a')
     await saveCopy('user_a')
     const { rerender } = renderApp()
-    await settle()
+    expect(await screen.findAllByRole('article')).toHaveLength(2)
     // Sin token, la red devolvería una colección vacía y pisaría la copia.
     expect(network.loads).toHaveLength(0)
-    expect(screen.getAllByRole('article')).toHaveLength(2)
     expect(screen.getByText('Sesión sin confirmar')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Registrar orquídea' }),
@@ -356,12 +338,9 @@ describe('Clerk no cargó aunque hay conexión', () => {
     // Clerk carga y confirma al mismo usuario: se lee de la red.
     setFakeClerk({ status: 'ready', signedIn: true, userId: 'user_a' })
     rerender(appTree())
-    await settle()
+    await network.pending()
     expect(network.loads).toHaveLength(1)
-    await act(async () => {
-      network.last().resolve([AMABILIS])
-      await Promise.resolve()
-    })
+    await network.respond([AMABILIS])
     expect(screen.getAllByRole('article')).toHaveLength(1)
     expect(screen.queryByText('Sesión sin confirmar')).toBeNull()
     expect(
@@ -376,8 +355,7 @@ describe('sin conexión y sin usuario recordado', () => {
     online = false
     await saveCopy('user_a')
     renderApp()
-    await settle()
-    expect(screen.getByRole('alert')).toHaveTextContent('Sin conexión')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión')
     expect(network.loads).toHaveLength(0)
   })
 })

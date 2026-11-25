@@ -32,7 +32,7 @@ export function CrashScreen({ onReload }: CrashScreenProps) {
         </div>
         <p>
           La app tuvo un problema inesperado. Recarga la página para seguir; las
-          plantas que ya guardaste no se pierden.
+          orquídeas que ya guardaste no se pierden.
         </p>
         <button
           type="button"

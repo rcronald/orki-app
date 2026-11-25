@@ -4,7 +4,7 @@ import { Icon, type IconName } from './Icon.tsx'
 
 interface ActionRowBase {
   icon: IconName
-  /** Título de la fila: «Exportar inventario a CSV». */
+  /** Título de la fila: «Exportar tu colección a CSV». */
   title: string
   /** Texto secundario: «El archivo CSV no incluye las fotos». */
   description?: ReactNode

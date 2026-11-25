@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CollectionLoadError } from '../collection/source.ts'
 import { DETAIL_TEXT, GALLERY_TEXT, NOTES_TEXT } from '../detail/texts.ts'
+import { LOAD_ERROR_TEXT } from '../inventory/texts.ts'
 import { LOG_TEXT } from '../log/texts.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -247,10 +248,7 @@ describe('PlantDetailPage', () => {
     const loadingHeading = heading()
     await expectNoAxeViolations()
 
-    await act(async () => {
-      source.last().resolve([AMABILIS])
-      await Promise.resolve()
-    })
+    await source.respond([AMABILIS])
     expect(heading()).toHaveTextContent('Phalaenopsis amabilis')
     // El mismo h1: si tenía el foco, lo conserva.
     expect(heading()).toBe(loadingHeading)
@@ -297,19 +295,19 @@ describe('PlantDetailPage', () => {
       plants: null,
       source,
     })
-    await act(async () => {
-      source.last().reject(new CollectionLoadError('offline'))
-      await Promise.resolve()
-    })
+    await source.fail(new CollectionLoadError('offline'))
     expect(heading()).toHaveTextContent(DETAIL_TEXT.errorTitle)
-    expect(screen.getByRole('alert')).toHaveTextContent('Sin conexión')
+    // Un solo título (#290): el de la pantalla; el aviso trae solo el motivo.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      LOAD_ERROR_TEXT.offline.text,
+    )
+    expect(screen.getByRole('alert')).not.toHaveTextContent(
+      LOAD_ERROR_TEXT.offline.title,
+    )
     await expectNoAxeViolations()
 
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
-    await act(async () => {
-      source.last().resolve([AMABILIS])
-      await Promise.resolve()
-    })
+    await source.respond([AMABILIS])
     expect(heading()).toHaveTextContent('Phalaenopsis amabilis')
   })
 

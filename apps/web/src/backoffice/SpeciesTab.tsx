@@ -28,6 +28,13 @@ import {
   WITH_SIDE_PANEL,
   type PlacedNotice,
 } from './side-panel.ts'
+import {
+  INITIAL_CATALOG_REVISIONS,
+  revisionOf,
+  type CatalogArea,
+  type CatalogChanged,
+  type CatalogRevisions,
+} from './revisions.ts'
 import type { CatalogAdminSource } from './source.ts'
 import {
   SpeciesDetailPanel,
@@ -85,10 +92,13 @@ export interface SpeciesTabProps {
    * la página de muestra, es un botón.
    */
   hrefFor?: (state: CatalogAdminState) => string
-  /** Cambia tras cada escritura: la tabla y el detalle se vuelven a leer. */
-  revision?: number
+  /**
+   * Cambian tras cada escritura (revisions.ts, #285): se vuelve a leer solo
+   * lo que cambió.
+   */
+  revisions?: CatalogRevisions
   /** Se guardó un cambio en el catálogo: la pantalla lo anuncia y relee. */
-  onCatalogChanged?: (message: string) => void
+  onCatalogChanged?: CatalogChanged
 }
 
 const CHIP = 'py-space-3'
@@ -107,7 +117,7 @@ export function SpeciesTab({
   source,
   fullState,
   hrefFor,
-  revision = 0,
+  revisions = INITIAL_CATALOG_REVISIONS,
   onCatalogChanged = () => {},
 }: SpeciesTabProps) {
   const statusId = useId()
@@ -164,7 +174,7 @@ export function SpeciesTab({
         searching: false,
       }
     },
-    { revision },
+    { revision: revisions.speciesTable },
   )
   const loading = typing || table.status === 'loading'
   const data = !typing && table.status === 'success' ? table.data : null
@@ -174,22 +184,39 @@ export function SpeciesTab({
   const genus = useRemoteData(
     genusId,
     (signal) => source.genus(genusId ?? '', { signal }),
-    { revision },
+    { revision: revisions.genusFilter },
   )
 
   // Detalle.
   const detailId = state.detailId
+  // El número de plantas enlazadas solo se vuelve a pedir si lo cambia la
+  // escritura (no al añadir un nombre, por ejemplo).
+  const plantCountRef = useRef<{
+    id: string
+    revision: number
+    count: number
+  } | null>(null)
   const detail = useRemoteData<SpeciesDetailData>(
     detailId,
     async (signal) => {
       const id = detailId ?? ''
+      const known = plantCountRef.current
+      const reuse =
+        known?.id === id && known.revision === revisions.plantCount
+          ? known.count
+          : null
       const [species, plantCount] = await Promise.all([
         source.speciesDetail(id, { signal }),
-        source.plantCount(id, { signal }),
+        reuse ?? source.plantCount(id, { signal }),
       ])
+      plantCountRef.current = {
+        id,
+        revision: revisions.plantCount,
+        count: plantCount,
+      }
       return { species, plantCount }
     },
-    { revision },
+    { revision: revisionOf(revisions, ['speciesDetail', 'plantCount']) },
   )
   const [creating, setCreating] = useState(false)
   const createPanelRef = useRef<HTMLElement>(null)
@@ -229,9 +256,10 @@ export function SpeciesTab({
   const changed = (
     message: string,
     place: { kind: 'tabla' } | { kind: 'detalle'; speciesId: string },
+    areas?: readonly CatalogArea[],
   ) => {
     setNotice((current) => ({ id: (current?.id ?? 0) + 1, message, place }))
-    onCatalogChanged(message)
+    onCatalogChanged(message, areas)
   }
   const tableNotice =
     notice?.place.kind === 'tabla' ? (
@@ -540,10 +568,14 @@ export function SpeciesTab({
               detail={detail}
               focusRequest={focusRequest}
               source={source}
-              revision={revision}
+              revision={revisions.history}
               notice={detailNotice}
-              onChanged={(message) =>
-                changed(message, { kind: 'detalle', speciesId: detailId })
+              onChanged={(message, areas) =>
+                changed(
+                  message,
+                  { kind: 'detalle', speciesId: detailId },
+                  areas,
+                )
               }
               onDeleted={(message) => {
                 setReturnFocusTo(detailId)

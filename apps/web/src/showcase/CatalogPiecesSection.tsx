@@ -93,7 +93,7 @@ export function CatalogPiecesSection() {
             picture={REFERENCE}
             scientificName="Phalaenopsis amabilis"
             variant="compact"
-            title="Así es esta especie"
+            title="Así es su especie"
           />
           <ActionList>
             <li>

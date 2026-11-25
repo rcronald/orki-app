@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Database } from '../lib/database.ts'
+import { createOrkiSupabaseClient } from '../lib/supabase-client.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
 import { createExtrasFetcher } from './extras-source.ts'
 
@@ -48,11 +47,11 @@ function respond(input: string | URL | Request): Promise<Response> {
   )
 }
 
-// Con accessToken, como el de la app: sin Supabase Auth.
-const sharedClient = createClient<Database>(
+// El cliente de la app, sin sesión.
+const sharedClient = createOrkiSupabaseClient(
   'https://ejemplo.supabase.co',
   'sb_publishable_x',
-  { accessToken: () => Promise.resolve(null) },
+  () => Promise.resolve(null),
 )
 const client = () => Promise.resolve(sharedClient)
 
@@ -66,6 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 const signal = () => new AbortController().signal
@@ -160,6 +160,10 @@ describe('extras de la colección para "¿Ya la tengo?"', () => {
   })
 
   it('pide todos los grupos a la vez, no uno tras otro (#169)', async () => {
+    // Con temporizadores falsos, las consultas siguen en curso hasta que la
+    // prueba adelanta el reloj: todas las que vayan a empezar a la vez lo han
+    // hecho antes, por cargado que esté el equipo (#295).
+    vi.useFakeTimers()
     let enCurso = 0
     let maximo = 0
     fetchMock.mockImplementation(async (input) => {
@@ -181,7 +185,9 @@ describe('extras de la colección para "¿Ya la tengo?"', () => {
       }),
     )
 
-    await createExtrasFetcher(client)(plants, signal())
+    const pending = createExtrasFetcher(client)(plants, signal())
+    await vi.runAllTimersAsync()
+    await pending
 
     // 120 especies son 3 grupos de sinónimos, más el de las abreviaturas.
     expect(fetchMock).toHaveBeenCalledTimes(4)

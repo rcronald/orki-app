@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode, useEffect, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
@@ -67,10 +67,7 @@ function Tree({
 const text = (name: string) => screen.getByTestId(name).textContent
 
 async function resolveLast(plants = [plant()]) {
-  await act(async () => {
-    source.last().resolve(plants)
-    await Promise.resolve()
-  })
+  await source.respond(plants)
 }
 
 describe('CollectionProvider y useCollection', () => {
@@ -217,10 +214,7 @@ describe('CollectionProvider y useCollection', () => {
         <ApiProbe />
       </Tree>,
     )
-    await act(async () => {
-      source.last().reject(new CollectionLoadError('offline'))
-      await Promise.resolve()
-    })
+    await source.fail(new CollectionLoadError('offline'))
     expect(text('lista')).toBe('error:-:offline')
 
     act(() => api?.reload())
@@ -450,12 +444,6 @@ describe('CollectionProvider con copia local (#18)', () => {
       return <p data-testid="extras">{useExtrasState(plants)}</p>
     }
 
-    async function settle() {
-      await act(async () => {
-        for (let index = 0; index < 6; index += 1) await Promise.resolve()
-      })
-    }
-
     it('una planta registrada de un género nuevo: pide solo sus extras, sin otra lectura', async () => {
       const fetchExtras = vi.fn<ExtrasFetcher>(() => Promise.resolve({}))
       const cachedSource = createCachedCollectionSource({
@@ -470,11 +458,9 @@ describe('CollectionProvider con copia local (#18)', () => {
           <ExtrasScreen />
         </CollectionProvider>,
       )
-      await settle()
       const amabilis = plant()
       await resolveLast([amabilis])
-      await settle()
-      expect(text('extras')).toBe('complete')
+      await waitFor(() => expect(text('extras')).toBe('complete'))
       expect(fetchExtras).toHaveBeenCalledTimes(1)
 
       await act(async () => {
@@ -483,8 +469,7 @@ describe('CollectionProvider con copia local (#18)', () => {
       })
       expect(fetchExtras).toHaveBeenCalledTimes(2)
       expect(fetchExtras.mock.calls[1]).toEqual([[RLC], expect.anything()])
-      await settle()
-      expect(text('extras')).toBe('complete')
+      await waitFor(() => expect(text('extras')).toBe('complete'))
       expect(source.loads).toHaveLength(1)
     })
 
@@ -505,10 +490,8 @@ describe('CollectionProvider con copia local (#18)', () => {
           <ExtrasScreen />
         </CollectionProvider>,
       )
-      await settle()
       await resolveLast([plant()])
-      await settle()
-      expect(text('extras')).toBe('failed')
+      await waitFor(() => expect(text('extras')).toBe('failed'))
       expect(fetchExtras).toHaveBeenCalledTimes(1)
 
       // Otro cambio de la colección no vuelve a pedirlos.
@@ -523,9 +506,8 @@ describe('CollectionProvider con copia local (#18)', () => {
         retry?.()
       })
       expect(text('extras')).toBe('pending')
-      await settle()
+      await waitFor(() => expect(text('extras')).toBe('complete'))
       expect(fetchExtras).toHaveBeenCalledTimes(2)
-      expect(text('extras')).toBe('complete')
     })
   })
 

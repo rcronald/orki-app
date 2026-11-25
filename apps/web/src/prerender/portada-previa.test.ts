@@ -36,16 +36,21 @@ describe('esperarFotoDePortadaPrevia', () => {
   })
 
   it('espera a que la foto termine (aquí, sin conexión: falla) y a un fotograma', async () => {
+    // Con temporizadores falsos, «aún no» no depende de lo rápido que vaya el
+    // equipo (#295).
+    vi.useFakeTimers()
     const foto = portadaPrevia()
     let resuelta = false
-    const espera = esperarFotoDePortadaPrevia().then(() => {
+    void esperarFotoDePortadaPrevia().then(() => {
       resuelta = true
     })
-    await new Promise((r) => setTimeout(r, 30))
+    // Sin noticias de la foto sigue esperando, aún lejos del tope de 2 s.
+    await vi.advanceTimersByTimeAsync(1000)
     expect(resuelta).toBe(false)
 
     foto.dispatchEvent(new Event('error'))
-    await espera
+    // Un fotograma y lo que se programa después de él.
+    await vi.advanceTimersByTimeAsync(50)
     expect(resuelta).toBe(true)
   })
 

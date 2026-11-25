@@ -149,7 +149,7 @@ describe('token de sesión en las peticiones', () => {
         .from('genera')
         .select('id')
         .then((response) => response)
-      // Reintentos de supabase-js: 1, 2 y 4 s.
+      // Reintentos de postgrest-js: 1, 2 y 4 s.
       await vi.advanceTimersByTimeAsync(7_000)
       const { error } = await pending
 
@@ -159,6 +159,57 @@ describe('token de sesión en las peticiones', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('pide el token en cada petición, sin guardarlo', async () => {
+    const tokens = ['primero', 'segundo']
+    const source = vi.fn(() => Promise.resolve(tokens.shift() ?? null))
+    setSessionTokenSource(source)
+    const supabase = await getSupabase()
+    await supabase.rpc('requesting_user_id')
+    await supabase.from('genera').select('id')
+
+    const [first, second] = requestHeaders()
+    expect(source).toHaveBeenCalledTimes(2)
+    expect(first?.get('Authorization')).toBe('Bearer primero')
+    expect(second?.get('Authorization')).toBe('Bearer segundo')
+  })
+
+  it('Storage lleva las mismas credenciales y las mismas URL', async () => {
+    setSessionTokenSource(() => Promise.resolve(TOKEN))
+    const supabase = await getSupabase()
+    const files = supabase.storage.from('plant-photos')
+    await files.remove(['user_1/planta/foto.webp'])
+
+    const [call] = fetchMock.mock.calls
+    expect(call?.[0]).toBe(
+      'https://ejemplo.supabase.co/storage/v1/object/plant-photos',
+    )
+    const [headers] = requestHeaders()
+    expect(headers?.get('Authorization')).toBe(`Bearer ${TOKEN}`)
+    expect(headers?.get('apikey')).toBe(CONFIG.supabasePublishableKey)
+    // La forma de la URL pública la usan la caché de miniaturas y el
+    // service worker.
+    expect(
+      supabase.storage.from('species-photos').getPublicUrl('g/s/media.webp')
+        .data.publicUrl,
+    ).toBe(
+      'https://ejemplo.supabase.co/storage/v1/object/public/species-photos/g/s/media.webp',
+    )
+  })
+
+  it('Storage sin el token: la petición no se envía y el error lo lleva dentro', async () => {
+    setSessionTokenSource(() => Promise.resolve(null))
+    const supabase = await getSupabase()
+    const { error } = await supabase.storage
+      .from('plant-photos')
+      .remove(['user_1/planta/foto.webp'])
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    const original = (error as { originalError?: unknown } | null)
+      ?.originalError
+    expect(original).toBeInstanceOf(SessionTokenError)
+    expect(sessionTokenFailure(original)).toBe('session-ended')
   })
 
   it('con throwOnError, lanza el SessionTokenError', async () => {

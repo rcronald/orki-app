@@ -132,7 +132,7 @@ test.describe('catálogo público, sin sesión', () => {
   })
 })
 
-test('registro: «Así es esta especie» al elegirla, con una sola consulta', async ({
+test('registro: «Así es su especie» al elegirla, con una sola consulta', async ({
   page,
   revisarAccesibilidad,
 }) => {
@@ -147,7 +147,7 @@ test('registro: «Así es esta especie» al elegirla, con una sola consulta', as
   await page.getByRole('option', { name: 'Phalaenopsis amabilis' }).click()
 
   const vista = page.getByRole('figure').filter({
-    hasText: 'Así es esta especie',
+    hasText: 'Así es su especie',
   })
   await cargada(
     vista.getByRole('img', {
@@ -166,7 +166,7 @@ test('registro: «Así es esta especie» al elegirla, con una sola consulta', as
   await page.getByRole('combobox', { name: 'Nombre' }).fill('Dendrobium nob')
   await page.getByRole('option', { name: 'Dendrobium nobile' }).click()
   await expect.poll(() => consultas.length).toBe(2)
-  await expect(page.getByText('Así es esta especie')).toHaveCount(0)
+  await expect(page.getByText('Así es su especie')).toHaveCount(0)
 })
 
 test('detalle de una planta sin foto propia: la de su especie, sin contar como suya', async ({
@@ -182,7 +182,7 @@ test('detalle de una planta sin foto propia: la de su especie, sin contar como s
   )
   await expect(galeria).toContainText('Foto de referencia')
   await expect(galeria).toContainText(
-    'Aún no tienes fotos de esta planta. Esta es una foto de referencia de su especie, no de tu ejemplar.',
+    'Aún no tienes fotos de esta planta. Esta es una foto de referencia de su especie, no de tu planta.',
   )
   await expect(galeria).not.toContainText('de 6')
   await expect(galeria.getByText('Principal')).toHaveCount(0)

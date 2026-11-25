@@ -14,7 +14,7 @@ const count = (value: number, max: number) =>
 
 export const EDIT_TEXT = {
   title: 'Editar planta',
-  back: 'Volver a la ficha',
+  back: 'Volver a la planta',
   /** Antes del identificador, solo para el lector de pantalla. */
   codePrefix: 'Identificador:',
   submit: 'Guardar cambios',
@@ -100,7 +100,7 @@ export const EDIT_TEXT = {
     'Parte de los cambios ya quedó guardada. Lo que editaste sigue aquí; al reintentar se completa el resto, sin repetir nada.',
   /** La planta se eliminó (desde otro dispositivo): no hay nada que reintentar. */
   plantGone:
-    'Esta orquídea ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
+    'Esta planta ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
   goToCollection: 'Ir a Mi colección',
 } as const
 
@@ -115,6 +115,6 @@ export const EDIT_LEAVE_TEXT = {
   /** Se intenta salir durante el guardado (#279). */
   busyTitle: 'Se están guardando los cambios',
   busyDescription:
-    'Espera a que termine: si sales a mitad, el guardado puede quedar incompleto. Al terminar volverás a la ficha.',
+    'Espera a que termine: si sales a mitad, el guardado puede quedar incompleto. Al terminar volverás a la planta.',
   busyOk: 'Entendido',
 } as const

@@ -14,7 +14,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icons": "node scripts/generate-icons.mjs",
-    "fondos": "node scripts/fondos-genero.mjs",
     "portada": "node scripts/foto-portada.mjs",
     "ilustracion": "node scripts/ilustracion-cabecera.mjs",
     "test:e2e": "playwright test"
@@ -25,7 +24,9 @@
     "@fontsource/inter": "^5.3.0",
     "@fontsource/playfair-display": "^5.3.0",
     "@sentry/react": "^11.16.0",
-    "@supabase/supabase-js": "^2.119.2",
+    "@supabase/postgrest-js": "^2.119.2",
+    "@supabase/storage-js": "^2.119.2",
+    "@vercel/functions": "^3.11.3",
     "lucide-react": "^1.76.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

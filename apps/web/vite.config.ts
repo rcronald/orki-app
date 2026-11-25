@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin, type PluginOption } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { localizacionClerk } from './complementos/localizacion-clerk.ts'
 import { portadaPrevia } from './prerender/portada-previa-plugin.ts'
 
 // Versión desplegada: el commit que Vercel construye. Vercel la expone durante
@@ -81,6 +82,8 @@ export default defineConfig({
     releaseMeta(),
     react(),
     tailwindcss(),
+    // Localización es-MX de Clerk sin las cadenas sin traducir (#287).
+    localizacionClerk(),
     // Portada prerrenderada en index.html (#204), antes del plugin de PWA:
     // la revisión de index.html en el precaché tiene que ser la del HTML final.
     portadaPrevia(),
@@ -127,11 +130,44 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'any',
           },
+          // El mismo archivo como enmascarable (#287): el símbolo queda dentro
+          // de la zona segura (radio 0,332 del lado; la comprobación de
+          // scripts/generate-icons.mjs pide 0,4 como mucho) sobre un fondo
+          // opaco hasta el borde. Antes era un maskable-icon-512x512.png
+          // idéntico byte a byte, que se precacheaba dos veces. Va en una
+          // entrada aparte, no como purpose 'any maskable', que la
+          // especificación desaconseja.
           {
-            src: 'maskable-icon-512x512.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
+          },
+        ],
+        // Atajos de la app instalada (#292): mantener pulsado el icono (Android)
+        // o el menú contextual (escritorio) abre directamente «¿Ya la tengo?»,
+        // la consulta rápida delante de una planta en un vivero, o el registro.
+        // Iconos: el de la app, que ya está; el formato pide al menos 96 px.
+        // Rutas con sesión: sin ella, la app lleva a iniciar sesión y vuelve.
+        // iOS no muestra atajos de una PWA.
+        shortcuts: [
+          {
+            name: '¿Ya la tengo?',
+            short_name: '¿Ya la tengo?',
+            description: 'Comprueba si una orquídea ya está en tu colección.',
+            url: '/ya-la-tengo',
+            icons: [
+              { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            ],
+          },
+          {
+            name: 'Registrar orquídea',
+            short_name: 'Registrar',
+            description: 'Registra una orquídea nueva en tu colección.',
+            url: '/coleccion/nueva',
+            icons: [
+              { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            ],
           },
         ],
       },
@@ -139,15 +175,18 @@ export default defineConfig({
         // JS, CSS, HTML y fuentes (woff2) del build; los iconos y el manifest los
         // añade el plugin (includeAssets e iconos del manifest), así no se
         // duplican en el precache. Las fuentes van precacheadas para que la app
-        // se vea con su tipografía sin conexión. Las fotos de fondo por género
-        // del registro (avif, #13) se precacheaban; desde el #221 el
-        // formulario no las usa, así que ya no van en el build.
-        globPatterns: ['**/*.{js,css,html,woff2,avif}'],
+        // se vea con su tipografía sin conexión. Ninguna imagen del build entra
+        // en globPatterns (#287): `avif` estaba por las fotos de fondo por
+        // género del registro (#13), que el formulario dejó de usar en el #221,
+        // y la única que quedaba en AVIF es la de la portada, que ya se excluía.
+        // Las fotos de referencia vienen de iNaturalist y no son del build.
+        globPatterns: ['**/*.{js,css,html,woff2}'],
         // La foto de la portada (#193) no: sus cinco variantes suman unos
         // 450 KB, más de lo que queda en el presupuesto del precaché, y quien
         // la necesita es una visita nueva, con conexión. Sin conexión, la
         // portada se ve igual con el fondo de la foto y su texto alternativo.
-        // El JPEG de respaldo no entra en globPatterns; se nombra por claridad.
+        // Ya no entra en globPatterns; se nombra por si algún día vuelve una
+        // extensión de imagen.
         globIgnores: ['**/portada-*.avif', '**/portada-*.jpg'],
         // Cualquier navegación sin coincidencia en caché responde con index.html,
         // así que todas las rutas de la app (src/routes/paths.ts, incluidas las

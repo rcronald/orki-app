@@ -8,7 +8,7 @@ import { MenuButton, type MenuItem } from './MenuButton.tsx'
 const onSignOut = vi.fn()
 
 const ITEMS: MenuItem[] = [
-  { kind: 'link', label: 'Mi cuenta', icon: 'user', to: '/cuenta' },
+  { kind: 'link', label: 'Tu cuenta', icon: 'user', to: '/cuenta' },
   { kind: 'link', label: 'Administración', to: '/administracion/catalogo' },
   { kind: 'separator' },
   { kind: 'action', label: 'Cerrar sesión', onSelect: onSignOut },
@@ -59,12 +59,12 @@ describe('MenuButton', () => {
     const menu = screen.getByRole('menu', { name: 'Tu cuenta' })
     expect(button()).toHaveAttribute('aria-controls', menu.id)
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual(
-      ['Mi cuenta', 'Administración', 'Cerrar sesión'],
+      ['Tu cuenta', 'Administración', 'Cerrar sesión'],
     )
     expect(screen.getByRole('separator')).toHaveClass('orki-menu__separator')
     expect(screen.getByText('Ana López')).toBeVisible()
-    expect(item('Mi cuenta')).toHaveFocus()
-    expect(item('Mi cuenta')).toHaveAttribute('tabindex', '-1')
+    expect(item('Tu cuenta')).toHaveFocus()
+    expect(item('Tu cuenta')).toHaveAttribute('tabindex', '-1')
     await expectNoAxeViolations()
   })
 
@@ -74,17 +74,17 @@ describe('MenuButton', () => {
     button().focus()
 
     await user.keyboard('{ArrowDown}')
-    expect(item('Mi cuenta')).toHaveFocus()
+    expect(item('Tu cuenta')).toHaveFocus()
     await user.keyboard('{ArrowDown}')
     expect(item('Administración')).toHaveFocus()
     await user.keyboard('{ArrowDown}')
     expect(item('Cerrar sesión')).toHaveFocus()
     await user.keyboard('{ArrowDown}')
-    expect(item('Mi cuenta')).toHaveFocus()
+    expect(item('Tu cuenta')).toHaveFocus()
     await user.keyboard('{ArrowUp}')
     expect(item('Cerrar sesión')).toHaveFocus()
     await user.keyboard('{Home}')
-    expect(item('Mi cuenta')).toHaveFocus()
+    expect(item('Tu cuenta')).toHaveFocus()
     await user.keyboard('{End}')
     expect(item('Cerrar sesión')).toHaveFocus()
   })
@@ -104,7 +104,7 @@ describe('MenuButton', () => {
     button().focus()
 
     await user.keyboard('{Enter}')
-    expect(item('Mi cuenta')).toHaveFocus()
+    expect(item('Tu cuenta')).toHaveFocus()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(button()).toHaveFocus()
@@ -135,7 +135,7 @@ describe('MenuButton', () => {
     renderMenu()
 
     await user.click(button())
-    await user.click(item('Mi cuenta'))
+    await user.click(item('Tu cuenta'))
     expect(screen.getByText('En la cuenta')).toBeInTheDocument()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 

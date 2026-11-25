@@ -1,0 +1,43 @@
+# Actualizaciones de dependencias (#294): una vez por semana y agrupadas, para
+# que lleguen pocos pull requests y cada uno pase por el CI.
+# - github-actions: las acciones van fijadas a un SHA con la versión en un
+#   comentario (lo comprueba scripts/acciones-fijadas.test.mjs); Dependabot
+#   actualiza el SHA y el comentario a la vez.
+# - npm: el monorepo entero, desde el package-lock.json de la raíz.
+# - uv: el importador del catálogo (scripts/catalog-import).
+# Los avisos de seguridad llegan aparte, sin esperar a la semana.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: 'Dependencias (acciones):'
+    groups:
+      acciones:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: 'Dependencias (npm):'
+    open-pull-requests-limit: 5
+    groups:
+      menores-y-parches:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /scripts/catalog-import
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: 'Dependencias (uv):'
+    groups:
+      importador:
+        patterns: ['*']

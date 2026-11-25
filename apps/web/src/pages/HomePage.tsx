@@ -97,8 +97,8 @@ export function HomePage() {
           adquisición. La foto es opcional.
         </Feature>
         <Feature icon="layers" title="Organiza tu colección">
-          Ve tus plantas en lista o cuadrícula, agrúpalas por género y exporta
-          tu inventario a CSV.
+          Ve tus orquídeas en lista o cuadrícula, agrúpalas por género y
+          expórtalas a CSV.
         </Feature>
       </FeatureList>
       <p className="flex justify-center px-space-4 pb-space-6">

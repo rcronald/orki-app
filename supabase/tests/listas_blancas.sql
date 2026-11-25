@@ -138,8 +138,9 @@ select pruebas.iguales(
 -- prueba: lista de las funciones de public que no ejecutan ni anon ni authenticated
 -- Las dos listas anteriores más esta cubren todas las funciones de public: una función nueva
 -- que se queda sin ningún grant (nace cerrada desde el #283) también hace fallar las pruebas,
--- para que quien la escribe decida quién la ejecuta y la apunte en su lista. Hoy solo
--- rls_auto_enable(), que crea Supabase y que nadie llama por la API.
+-- para que quien la escribe decida quién la ejecuta y la apunte en su lista. Hoy
+-- purge_expired_product_events(), solo para service_role (el workflow «Retención de eventos»,
+-- #293), y rls_auto_enable(), que crea Supabase y que nadie llama por la API.
 select pruebas.iguales(
   'funciones de public que no ejecutan ni anon ni authenticated',
   (select coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text collate "C"), 'ninguna')
@@ -147,7 +148,7 @@ select pruebas.iguales(
      where p.pronamespace = 'public'::regnamespace
        and not has_function_privilege('anon', p.oid, 'execute')
        and not has_function_privilege('authenticated', p.oid, 'execute')),
-  'rls_auto_enable()'
+  'purge_expired_product_events(), rls_auto_enable()'
 );
 
 -- prueba: lista blanca de los privilegios de tabla de anon, authenticated y PUBLIC en public

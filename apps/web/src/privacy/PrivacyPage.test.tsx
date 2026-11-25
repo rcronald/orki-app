@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, type InitialEntry } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -26,14 +26,15 @@ beforeEach(() => {
 // tal como estaban antes del rediseño (#202), salvo la atribución del
 // catálogo, que pasó a «Créditos y fuentes» (CreditsPage.test.tsx), y con la
 // frase de la cola de propuestas puesta al día para varias fotos (#184) y con
-// las notas y la bitácora (#267, aprobado el 23 de noviembre de 2026). Si
+// las notas y la bitácora (#267, aprobado el 23 de noviembre de 2026), y con
+// el identificador y los datos de cada foto (#291, 24 de noviembre de 2026). Si
 // falta una, la prueba falla: recortar el texto es una decisión del
 // responsable.
 const APPROVED_TEXT = [
   'Tu cuenta: tu correo y, si entras con Google, los datos de tu perfil de Google que recibe el servicio de acceso (como tu nombre y tu foto). Además, orqui.app guarda un perfil con tu identificador de usuario y el idioma de la app.',
-  'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada). También las notas que escribas sobre ella.',
+  'Tus plantas: lo que registras de cada una: el nombre, el género, el tipo, la fecha de adquisición, el origen y, si los añades, la ubicación, el apodo, el color de la flor y su estado (activa, perdida o regalada). También las notas que escribas sobre ella y su identificador (como CAT-012), que orqui.app le asigna al registrarla y no cambia.',
   'La bitácora de tus plantas: los registros que añades a cada una: el tipo de actividad (riego, nutrición, mantenimiento preventivo o sanidad preventiva), el título, la fecha y la hora en que lo guardaste y, si los añades, una descripción, una foto y si observaste floración.',
-  'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura. Las fotos de la bitácora se preparan igual.',
+  'Las fotos de tus plantas: antes de subirlas, la app las reduce en tu dispositivo y les quita los metadatos que guarda la cámara, incluida la ubicación. Se guardan la foto y una miniatura, el orden en que las colocas y, si los añades, la fecha de la foto, una nota sobre ella y si la planta estaba en floración. Las fotos de la bitácora se preparan igual.',
   'Mediciones de uso y errores: lo explicamos en la sección siguiente.',
   'Los usamos para que la app funcione: que entres en tu cuenta y veas y gestiones tu colección. Las mediciones y los errores, además, para mejorarla.',
   'La app registra dos tipos de evento de uso:',
@@ -41,6 +42,9 @@ const APPROVED_TEXT = [
   'Cuando buscas si ya tienes una planta («¿Ya la tengo?»): cuánto tardó la respuesta y cuál fue (la tienes, no la tienes o tienes parecidas).',
   'Cada evento lleva también tu identificador de usuario, la hora y si se generó sin conexión. No lleva el texto que buscaste, los nombres de tus plantas, tu correo ni tu nombre.',
   'Los usamos para saber si la app cumple su objetivo: que registrar una orquídea tome menos de un minuto y que saber si ya la tienes tome menos de cinco segundos.',
+  // Plazo de los eventos de uso (#293): lo cumple el workflow «Retención de
+  // eventos» con public.purge_expired_product_events().
+  'Los eventos de uso se borran a los 13 meses.',
   'Si la app falla, envía el error a Sentry para que podamos corregirlo. El informe lleva el mensaje del error, en qué parte del código ocurrió, la dirección de la pantalla, tu navegador y tu sistema, la versión de la app, tu identificador de usuario y los últimos pasos que hiciste en la app (pantallas abiertas, botones pulsados y peticiones al servidor). Antes de enviarlo, la app quita tu correo, tu nombre, tu dirección IP, las cookies, el contenido de las peticiones, lo que escribiste en la búsqueda y en otros parámetros de las direcciones, tu zona horaria y tu idioma, los mensajes de la consola y los textos de los botones pulsados. No graba la pantalla ni mide el rendimiento.',
   'Sentry también recibe un aviso cada vez que abres la app, con la versión, tu navegador y tu identificador de usuario, para saber cuántas veces termina con un fallo.',
   'En orqui.app no hay publicidad ni otros servicios de analítica o de publicidad.',
@@ -59,16 +63,19 @@ const APPROVED_TEXT = [
   'Las miniaturas de tus fotos, para que la colección cargue rápido y se vea sin conexión. Se borran al cerrar sesión.',
   'Los eventos de uso que aún no se enviaron, por ejemplo porque no había conexión. Se borran al enviarse, a los 29 días o al cerrar sesión.',
   'Tu identificador de usuario (no tu correo ni tu nombre), para mostrarte tu copia sin conexión. Se borra al cerrar sesión. Si cierras sesión sin conexión, se guarda hasta que la app pueda avisar al servicio de acceso.',
-  'El borrador de la planta que estás registrando, con su foto si la elegiste, para no perderlo si se recarga la página. Se borra al guardarla o al descartarla, y caduca a las 24 horas.',
+  'Los borradores de las plantas que estás registrando (hasta dos), con sus fotos si las elegiste, para no perderlos si se recarga la página o te quedas sin conexión. Cada uno se borra al registrarla o al descartarlo, y caduca a las 24 horas de su último cambio.',
   'Cómo prefieres ver el inventario (lista o cuadrícula).',
   'La bitácora no se guarda en tu dispositivo: para verla, añadir o eliminar registros hace falta conexión. Mientras la ves, sus fotos solo están en la memoria de la pestaña abierta.',
   'Los archivos de la propia app, para que abra sin conexión, y lo que el servicio de acceso necesita para mantener tu sesión.',
   'Cerrar sesión borra la copia, las miniaturas, los eventos pendientes y tu identificador, también sin conexión. Mientras no la cierres, quien tenga tu dispositivo desbloqueado puede ver la copia de tu inventario.',
-  'Desde la app, con la sesión iniciada: Tu cuenta, Eliminar mi cuenta. Necesitas conexión. Se borran tus plantas con sus notas y su bitácora, sus fotos (también las de la bitácora), tu perfil, tus eventos de uso y tu cuenta de acceso. También lo que orqui.app guarda en ese dispositivo: la copia de tu inventario, las miniaturas, los eventos pendientes de enviar, tu identificador, el borrador y tus preferencias. No se puede deshacer.',
+  'Desde la app, con la sesión iniciada: Tu cuenta, Eliminar mi cuenta. Necesitas conexión. Se borran tus plantas con sus notas y su bitácora, sus fotos (también las de la bitácora), tu perfil, tus eventos de uso y tu cuenta de acceso. También lo que orqui.app guarda en ese dispositivo: la copia de tu inventario, las miniaturas, los eventos pendientes de enviar, tu identificador, los borradores y tus preferencias. No se puede deshacer.',
   'No se borran los informes de errores que ya se enviaron a Sentry (llevan tu identificador, no tu correo). Tampoco el registro de cambios del catálogo: si ya se resolvió un nombre que escribiste, ese nombre sigue ahí, sin decir de quién era.',
   'Puedes eliminar un registro de la bitácora desde la ficha de su planta: se borra con su foto. Al eliminar una planta se borran también sus notas, toda su bitácora y todas sus fotos. Las dos cosas necesitan conexión y no se pueden deshacer.',
   'Antes, o cuando quieras, puedes descargar tu inventario en un archivo CSV con «Exportar a CSV», al final de Mi colección. Incluye todas tus plantas, también las perdidas y regaladas, con todos sus datos, sus notas y la fecha en que las registraste. No incluye las fotos ni la bitácora.',
   `Para cualquier consulta sobre tus datos, escribe a ${PRIVACY_CONTACT}.`,
+  // Fotos por subir de una planta ya registrada (#284, publicado el 24 de
+  // noviembre de 2026).
+  'Las fotos de una planta ya registrada que no llegaron a subirse (por ejemplo, si saliste de la pantalla, recargaste la página o te quedaste sin conexión mientras subían), para que puedas subirlas desde su ficha. Se borran al subirlas o al descartarlas, si se entra con otra cuenta en este dispositivo y al eliminar tu cuenta, y caducan a los siete días.',
 ]
 
 const TOC = [
@@ -112,15 +119,15 @@ describe('PrivacyPage', () => {
     renderAt('/privacidad')
 
     expect(await findTitle()).toBeInTheDocument()
-    expect(document.title).toBe('Privacidad · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Privacidad · orqui.app'))
     expect(
       screen
         .getAllByRole('heading', { level: 2 })
         .map((heading) => heading.textContent),
     ).toEqual(['En esta página', ...TOC.map(([title]) => title), 'Contacto'])
-    expect(screen.getByText('23 de noviembre de 2026')).toHaveAttribute(
+    expect(screen.getByText('24 de noviembre de 2026')).toHaveAttribute(
       'datetime',
-      '2026-11-23',
+      '2026-11-24',
     )
     const toc = screen.getByRole('navigation', { name: 'En esta página' })
     expect(

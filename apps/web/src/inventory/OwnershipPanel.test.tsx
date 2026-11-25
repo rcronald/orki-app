@@ -2,8 +2,9 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectionPlant } from '../collection/model.ts'
+import { SEARCH_DEBOUNCE_MS } from '../lib/useCatalogSearch.ts'
 import {
   CatalogSearchError,
   type CatalogSearchFunction,
@@ -12,6 +13,7 @@ import {
 } from '../lib/catalogSearch.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
+import { finishWait, typeWithClockStopped } from '../test/stopped-clock.ts'
 import type { OwnershipMeasurement } from './ownership-measure.ts'
 import { OwnershipPanel, type OwnershipPanelProps } from './OwnershipPanel.tsx'
 
@@ -331,6 +333,15 @@ function catalogSpecies(
 // La espera entre pulsaciones es de 250 ms; en un equipo cargado, más.
 const LONG = { timeout: 3000 }
 
+/**
+ * Con temporizadores falsos (vi.useFakeTimers), deja pasar de sobra la espera
+ * entre pulsaciones: si el panel fuera a consultar el catálogo, ya lo habría
+ * hecho. Una pausa real podría no bastar con el equipo cargado (#295).
+ */
+async function pastTheDebounce() {
+  await act(() => vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS * 4))
+}
+
 async function settle(call: PendingSearch, results: SpeciesSearchResult[]) {
   await act(async () => {
     call.resolve(results)
@@ -339,15 +350,22 @@ async function settle(call: PendingSearch, results: SpeciesSearchResult[]) {
 }
 
 describe('OwnershipPanel con el catálogo (#124)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('un sinónimo de una especie que tiene pasa de "Aún no" a "Sí" cuando llega el catálogo', async () => {
-    const user = userEvent.setup()
     const catalog = fakeCatalog()
     const onMeasure = vi.fn<(measurement: OwnershipMeasurement) => void>()
     renderPanel({ searchSpecies: catalog.search, online: true, onMeasure })
 
-    await user.type(field(), 'Phalaenopsis grandiflora')
+    // Con el reloj parado entre pulsaciones (#311): con el real, una pulsación
+    // lenta en un equipo cargado dejaba salir una consulta a medias.
+    await typeWithClockStopped(field(), 'Phalaenopsis grandiflora')
     // La respuesta local sale primero, sin esperar a la red.
     expect(region()).toHaveTextContent('Aún no la tienes')
+    expect(catalog.calls).toHaveLength(0)
+    await finishWait(SEARCH_DEBOUNCE_MS)
     await waitFor(() => expect(catalog.calls).toHaveLength(1), LONG)
     expect(catalog.calls[0].query).toBe('Phalaenopsis grandiflora')
 
@@ -405,7 +423,10 @@ describe('OwnershipPanel con el catálogo (#124)', () => {
   })
 
   it('sin conexión no consulta el catálogo y la respuesta local funciona igual', async () => {
-    const user = userEvent.setup()
+    // El reloj avanza también solo, para lo que la pantalla espera sin
+    // pulsaciones; pastTheDebounce() lo adelanta de golpe.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const catalog = fakeCatalog()
     renderPanel({ searchSpecies: catalog.search, online: false })
 
@@ -414,7 +435,7 @@ describe('OwnershipPanel con el catálogo (#124)', () => {
     await user.clear(field())
     await user.type(field(), 'phal amab')
     expect(region()).toHaveTextContent('Sí, la tienes')
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    await pastTheDebounce()
     expect(catalog.calls).toHaveLength(0)
   })
 
@@ -437,13 +458,16 @@ describe('OwnershipPanel con el catálogo (#124)', () => {
   })
 
   it('con un "Sí" local no consulta el catálogo', async () => {
-    const user = userEvent.setup()
+    // El reloj avanza también solo, para lo que la pantalla espera sin
+    // pulsaciones; pastTheDebounce() lo adelanta de golpe.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const catalog = fakeCatalog()
     renderPanel({ searchSpecies: catalog.search, online: true })
 
     await user.type(field(), 'Phalaenopsis amabilis')
     expect(region()).toHaveTextContent('Sí, la tienes')
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    await pastTheDebounce()
     expect(catalog.calls).toHaveLength(0)
   })
 

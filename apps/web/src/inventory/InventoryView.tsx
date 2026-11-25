@@ -27,7 +27,7 @@ import {
 import {
   filterByText,
   groupByGenus,
-  sortByNewest,
+  sortPlants,
   type GenusGroup,
 } from '../collection/selectors.ts'
 import type { CollectionLoadError } from '../collection/source.ts'
@@ -51,6 +51,7 @@ import {
   ReloadErrorBanner,
 } from './InventoryStates.tsx'
 import { PlantCard } from './PlantCard.tsx'
+import { SortSelect } from './SortSelect.tsx'
 import {
   useInventoryPreferences,
   type InventoryView as View,
@@ -120,7 +121,7 @@ const TOUCH_CHIP = 'py-space-3'
  * las dadas de baja se ven con el filtro de estado (#15).
  *
  * Al buscar o filtrar, bajo el buscador se dice cuántas coinciden ("3 de 12
- * orquídeas coinciden.", "2 orquídeas perdidas."), en una región de estado
+ * ejemplares coinciden.", "2 ejemplares perdidos."), en una región de estado
  * que el lector de pantalla lee sin mover el foco.
  */
 export function InventoryView({
@@ -136,7 +137,7 @@ export function InventoryView({
   writeDisabledBy,
 }: InventoryViewProps) {
   const [preferences, setPreferences] = useInventoryPreferences()
-  const { view, grouped } = preferences
+  const { view, grouped, sort } = preferences
   const [filtersOpen, setFiltersOpen] = useState(false)
   const panelId = useId()
   const statusId = useId()
@@ -199,14 +200,20 @@ export function InventoryView({
       }),
     [filtered, deferredQuery, nameMatches],
   )
-  // Agrupada, los géneros sin coincidencias desaparecen solos.
+  // Agrupada, los géneros sin coincidencias desaparecen solos y cada uno va
+  // en el orden elegido.
   const groups = useMemo(
-    () => (grouped ? groupByGenus(matches, { includeInactive: true }) : null),
-    [grouped, matches],
+    () =>
+      grouped ? groupByGenus(matches, { includeInactive: true, sort }) : null,
+    [grouped, matches, sort],
   )
-  const newest = useMemo(
-    () => (grouped ? null : sortByNewest(matches)),
-    [grouped, matches],
+  const sorted = useMemo(
+    () => (grouped ? null : sortPlants(matches, sort)),
+    [grouped, matches, sort],
+  )
+  const changeSort = useCallback(
+    (next: typeof sort) => setPreferences({ sort: next }),
+    [setPreferences],
   )
 
   const focusToggle = useCallback(() => toggleRef.current?.focus(), [])
@@ -242,8 +249,11 @@ export function InventoryView({
   const onlyInactive =
     withStatus.length === 0 && shownStatus === 'active' && !narrowed
 
-  // Barra del buscador (#208): el campo, «Filtros» y la vista, en una fila
-  // que se parte en el celular (el campo arriba, a todo el ancho). Ya no queda
+  // Barra del buscador (#208): el campo, «Filtros», «Ordenar» (#292) y la
+  // vista, en una fila que se parte en el celular (el campo arriba, a todo el
+  // ancho). Hasta 720 px «Ordenar» no cabe junto a «Filtros» y la vista (le
+  // quedan unos 80 px) y añadiría otra fila de controles antes de la primera
+  // tarjeta: ahí va dentro del panel de filtros, en «Organizar». Ya no queda
   // fija arriba: sin barras fijas, el foco no puede quedar tapado. Debajo, el
   // contador de coincidencias (role="status", siempre montado: el lector lo
   // anuncia sin mover el foco; vacío, sin el hueco de la columna).
@@ -270,6 +280,14 @@ export function InventoryView({
               aria-expanded={filtersOpen}
               aria-controls={panelId}
               onClick={() => setFiltersOpen(!filtersOpen)}
+            />
+          )}
+          {options !== null && (
+            <SortSelect
+              layout="inline"
+              className="publico-estrecho:hidden"
+              value={sort}
+              onChange={changeSort}
             />
           )}
           <SegmentedControl
@@ -305,6 +323,8 @@ export function InventoryView({
             onChange={onFiltersChange}
             grouped={grouped}
             onGroupedChange={(next) => setPreferences({ grouped: next })}
+            sort={sort}
+            onSortChange={changeSort}
             onClose={closeFilters}
           />
           {!filtersOpen && (
@@ -362,7 +382,7 @@ export function InventoryView({
             ))}
           </div>
         ) : (
-          <PlantList plants={newest ?? []} view={view} headingLevel={2} />
+          <PlantList plants={sorted ?? []} view={view} headingLevel={2} />
         )}
       </div>
       {plants !== null && <ExportAction plants={plants} />}

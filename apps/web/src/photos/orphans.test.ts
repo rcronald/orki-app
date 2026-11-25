@@ -324,7 +324,22 @@ describe('parseCleanupArguments', () => {
       borrar: false,
       confirmarProduccion: false,
       antiguedadMinimaHoras: 24,
+      soloRecuentos: false,
     })
+  })
+
+  it('--solo-recuentos es solo de lectura: no se combina con --borrar', () => {
+    expect(
+      parseCleanupArguments(['--ambiente', 'produccion', '--solo-recuentos']),
+    ).toMatchObject({ borrar: false, soloRecuentos: true })
+    expect(() =>
+      parseCleanupArguments([
+        '--ambiente',
+        'desarrollo',
+        '--borrar',
+        '--solo-recuentos',
+      ]),
+    ).toThrow(/no se usa con --borrar/)
   })
 
   it('exige el ambiente y la confirmación para borrar en producción', () => {
@@ -397,6 +412,35 @@ describe('runOrphanCleanup', () => {
       `${USER}/${P1}/photo-v1.webp`,
     ])
     expect(result.deleted).toBe(2)
+  })
+
+  it('con soloRecuentos informa de los totales sin ninguna ruta ni id', async () => {
+    const fake = io()
+    const result = await runOrphanCleanup(
+      { borrar: false, antiguedadMinimaHoras: 24, soloRecuentos: true },
+      fake,
+    )
+    expect(fake.removeObjects).not.toHaveBeenCalled()
+    expect(result.report.orphans.length).toBeGreaterThan(0)
+    expect(result.report.recent.length).toBeGreaterThan(0)
+    const lines = fake.log.mock.calls.map(([line]) => String(line))
+    for (const line of lines) {
+      expect(line).not.toContain(USER)
+      expect(line).not.toContain('suelto.png')
+      expect(line).not.toMatch(/^ {2}/)
+    }
+    expect(lines.at(-1)).toMatch(/^Solo lectura: no se ha borrado nada\./)
+  })
+
+  it('soloRecuentos nunca borra, aunque se llame con borrar', async () => {
+    const fake = io()
+    await expect(
+      runOrphanCleanup(
+        { borrar: true, antiguedadMinimaHoras: 24, soloRecuentos: true },
+        fake,
+      ),
+    ).rejects.toThrow(/no se usa con --borrar/)
+    expect(fake.removeObjects).not.toHaveBeenCalled()
   })
 
   it('borra en lotes de 100', () => {

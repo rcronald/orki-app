@@ -50,26 +50,20 @@ export function LoadingList({ view }: { view: InventoryView }) {
   )
 }
 
-/** Marcador de los contadores mientras cargan, con su misma altura. */
-export function LoadingSummary() {
-  return (
-    <div
-      aria-hidden="true"
-      className="h-space-5 w-1/2 max-w-xs rounded-sm bg-neutral-50 motion-safe:animate-pulse"
-    />
-  )
-}
-
 /**
  * No se pudo leer la colección y no hay datos que mostrar: el motivo, en
  * español, y "Reintentar". Con la sesión terminada, además, volver a entrar.
+ * Sin título (showTitle false) donde la pantalla ya lo pone, como la ficha
+ * (#290): así no salen dos.
  */
 export function LoadErrorPanel({
   error,
   onRetry,
+  showTitle = true,
 }: {
   error: CollectionLoadError
   onRetry: () => void
+  showTitle?: boolean
 }) {
   const text = LOAD_ERROR_TEXT[error.reason]
   return (
@@ -77,11 +71,23 @@ export function LoadErrorPanel({
       role="alert"
       className="flex flex-col items-start gap-space-3 rounded-lg bg-neutral-50 p-space-5"
     >
-      <p className="flex items-center gap-space-2 font-display text-xl text-neutral-900">
-        <Icon name="triangle-alert" className="size-[24px] flex-none" />
-        {text.title}
-      </p>
-      <p className="text-md text-neutral-900">{text.text}</p>
+      {showTitle ? (
+        <>
+          <p className="flex items-center gap-space-2 font-display text-xl text-neutral-900">
+            <Icon name="triangle-alert" className="size-[24px] flex-none" />
+            {text.title}
+          </p>
+          <p className="text-md text-neutral-900">{text.text}</p>
+        </>
+      ) : (
+        <p className="flex items-start gap-space-2 text-md text-neutral-900">
+          <Icon
+            name="triangle-alert"
+            className="mt-[2px] size-[20px] flex-none"
+          />
+          {text.text}
+        </p>
+      )}
       <div className="flex flex-wrap gap-space-3">
         <Button onClick={onRetry}>Reintentar</Button>
         {error.reason === 'session-ended' && (
@@ -149,7 +155,7 @@ export function EmptyCollection({
       <p className="text-md text-neutral-900">
         {hasInactive
           ? 'Las que perdiste o regalaste no se cuentan aquí: para verlas, elige su estado en «Filtros».'
-          : 'Registra tu primera orquídea para empezar tu inventario.'}
+          : 'Registra tu primera orquídea para empezar tu colección.'}
       </p>
       {!hasInactive &&
         (registerDisabledBy === undefined ? (

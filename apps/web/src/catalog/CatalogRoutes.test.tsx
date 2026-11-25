@@ -6,8 +6,14 @@ import { CollectionProvider } from '../collection/CollectionProvider.tsx'
 import type { CollectionPlant } from '../collection/model.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
+import { SEARCH_DEBOUNCE_MS } from '../lib/useCatalogSearch.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { resetFakeClerk, setFakeClerk } from '../test/clerk-mock.tsx'
+import {
+  advanceClock,
+  finishWait,
+  typeWithClockStopped,
+} from '../test/stopped-clock.ts'
 import { CATTLEYA, plant } from '../test/collection.ts'
 import {
   fakeCollectionSource,
@@ -52,6 +58,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   expect(catalog.unexpected).toEqual([])
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -135,7 +142,7 @@ describe('portada del catálogo', () => {
       `/catalogo/genero/${GENUS.cattleya}`,
     )
     expect(screen.getByText('2 especies')).toBeInTheDocument()
-    expect(document.title).toBe('Catálogo · orqui.app')
+    await waitFor(() => expect(document.title).toBe('Catálogo · orqui.app'))
     // Sin sesión y sin token: solo la clave publicable.
     expect(catalog.calls.map((call) => call.fn)).toEqual(['list_public_genera'])
     expect(catalog.calls[0]?.authorization).toBe(
@@ -212,9 +219,15 @@ describe('portada del catálogo', () => {
 
 describe('buscador', () => {
   it('busca desde 2 letras, sin token, y dice por qué nombre coincidió', async () => {
-    const user = userEvent.setup()
     renderAt('/catalogo')
-    await user.type(field(), 'laelia')
+    // Con el reloj parado entre pulsaciones (#311): con el real, una pulsación
+    // lenta en un equipo cargado dejaba salir una búsqueda a medias («lae»).
+    await typeWithClockStopped(field(), 'laelia')
+    const searchCalls = () =>
+      catalog.calls.filter((call) => call.fn === 'search_public_species')
+    await advanceClock(SEARCH_DEBOUNCE_MS - 1)
+    expect(searchCalls()).toHaveLength(0)
+    await finishWait(1)
 
     const result = await screen.findByRole('link', {
       name: /Cattleya purpurata/,
@@ -230,9 +243,7 @@ describe('buscador', () => {
     expect(
       screen.queryByRole('navigation', { name: 'Géneros por letra' }),
     ).toBeNull()
-    const searches = catalog.calls.filter(
-      (call) => call.fn === 'search_public_species',
-    )
+    const searches = searchCalls()
     // Una sola petición por lo escrito (la espera entre pulsaciones).
     expect(searches).toHaveLength(1)
     expect(searches[0]?.args).toEqual({ query: 'laelia', max_results: 15 })
@@ -507,7 +518,9 @@ describe('ficha de la especie', () => {
     )
     expect(screen.queryByText('La tienes')).toBeNull()
     expect(screen.queryByText('Registrar esta especie')).toBeNull()
-    expect(document.title).toBe('Phalaenopsis amabilis · orqui.app')
+    await waitFor(() =>
+      expect(document.title).toBe('Phalaenopsis amabilis · orqui.app'),
+    )
     await expectNoAxeViolations()
   })
 
@@ -541,13 +554,10 @@ describe('ficha de la especie', () => {
 
     async function resolveCollection(plants: readonly CollectionPlant[]) {
       // La colección se pide después de leer la copia local, que es
-      // asíncrona: la ficha puede pintarse antes. Sin esta espera la prueba
-      // fallaba de vez en cuando con «No se ha pedido la colección».
-      await waitFor(() => source.last())
-      await act(async () => {
-        source.last().resolve(plants)
-        await Promise.resolve()
-      })
+      // asíncrona: la ficha puede pintarse antes. respond() espera a la
+      // petición (antes fallaba de vez en cuando con «No se ha pedido la
+      // colección»).
+      await source.respond(plants)
     }
 
     it('«La tienes» con el número de ejemplares y el enlace a la colección', async () => {

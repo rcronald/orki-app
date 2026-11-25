@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
@@ -95,6 +96,19 @@ export function toStoredPlantPhoto(row: PlantPhotoRow): StoredPlantPhoto {
   }
 }
 
+function toRowInsert(photo: PlantPhotoRowInsert) {
+  return {
+    plant_id: photo.plantId,
+    user_id: photo.userId,
+    photo_path: photo.photoPath,
+    thumbnail_path: photo.thumbnailPath,
+    in_bloom: photo.inBloom,
+    taken_at: photo.takenAt,
+    note: photo.note,
+    position: photo.position,
+  }
+}
+
 /** Ordena por posición (la principal primero). */
 export function byPosition(a: StoredPlantPhoto, b: StoredPlantPhoto): number {
   return a.position - b.position
@@ -112,8 +126,24 @@ export interface PlantPhotoRows {
    * planta que no existe o no es del usuario, con `not-found`.
    */
   insert(photo: PlantPhotoRowInsert): Promise<StoredPlantPhoto>
+  /**
+   * Crea varias filas en una sola petición (#285) y las devuelve en orden de
+   * posición. Es una sola sentencia: o se crean todas o ninguna (con los
+   * mismos errores que insert).
+   */
+  insertMany(
+    photos: readonly PlantPhotoRowInsert[],
+  ): Promise<StoredPlantPhoto[]>
   /** Borra una fila y la devuelve; null si no existía (o no es del usuario). */
   remove(photoId: string, userId: string): Promise<StoredPlantPhoto | null>
+  /**
+   * Borra varias filas en una sola petición (#285) y devuelve las que había;
+   * las que no existían (o no son del usuario) no están.
+   */
+  removeMany(
+    photoIds: readonly string[],
+    userId: string,
+  ): Promise<StoredPlantPhoto[]>
   /**
    * Cambia la fecha, la nota o "en floración" de una foto y la devuelve. Si
    * la fila no existe (o no es del usuario), rechaza con `not-found`.
@@ -181,10 +211,7 @@ export function createSupabasePlantPhotoRows({
     try {
       return await getClient()
     } catch (error) {
-      throw new PhotoStorageError(
-        navigator.onLine === false ? 'offline' : 'failed',
-        { cause: error },
-      )
+      throw new PhotoStorageError(offlineOr('failed'), { cause: error })
     }
   }
 
@@ -207,20 +234,25 @@ export function createSupabasePlantPhotoRows({
         await client()
       )
         .from('plant_photos')
-        .insert({
-          plant_id: photo.plantId,
-          user_id: photo.userId,
-          photo_path: photo.photoPath,
-          thumbnail_path: photo.thumbnailPath,
-          in_bloom: photo.inBloom,
-          taken_at: photo.takenAt,
-          note: photo.note,
-          position: photo.position,
-        })
+        .insert(toRowInsert(photo))
         .select(PLANT_PHOTO_SELECT)
         .single()
       if (error) throw photoRowError(error, status)
       return toStoredPlantPhoto(data)
+    },
+
+    // POST con un array: PostgREST lo inserta en una sola sentencia (todas o
+    // ninguna), con las mismas columnas que insert.
+    async insertMany(photos) {
+      if (photos.length === 0) return []
+      const { data, error, status } = await (
+        await client()
+      )
+        .from('plant_photos')
+        .insert(photos.map(toRowInsert))
+        .select(PLANT_PHOTO_SELECT)
+      if (error) throw photoRowError(error, status)
+      return data.map(toStoredPlantPhoto).sort(byPosition)
     },
 
     async remove(photoId, userId) {
@@ -236,6 +268,21 @@ export function createSupabasePlantPhotoRows({
       if (error) throw photoRowError(error, status)
       const [deleted] = data
       return deleted ? toStoredPlantPhoto(deleted) : null
+    },
+
+    // DELETE ...?id=in.(a,b)&user_id=eq.<usuario>: una sola sentencia.
+    async removeMany(photoIds, userId) {
+      if (photoIds.length === 0) return []
+      const { data, error, status } = await (
+        await client()
+      )
+        .from('plant_photos')
+        .delete()
+        .in('id', [...photoIds])
+        .eq('user_id', userId)
+        .select(PLANT_PHOTO_SELECT)
+      if (error) throw photoRowError(error, status)
+      return data.map(toStoredPlantPhoto)
     },
 
     async update(photoId, userId, changes) {

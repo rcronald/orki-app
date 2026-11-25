@@ -24,6 +24,7 @@ import {
   STATUS_LABEL,
   TYPE_LABEL,
 } from './texts.ts'
+import type { CatalogChanged } from './revisions.ts'
 import type { RemoteData } from './useRemoteData.ts'
 
 export interface SpeciesDetailData {
@@ -38,8 +39,8 @@ export interface SpeciesDetailPanelProps {
   /** Cambia cada vez que la persona abre un detalle: el foco va al título. */
   focusRequest: number
   source: CatalogAdminSource
-  /** Se guardó un cambio: la pantalla vuelve a leer y lo anuncia. */
-  onChanged: (message: string) => void
+  /** Se guardó un cambio: la pantalla vuelve a leer (lo que cambió) y lo anuncia. */
+  onChanged: CatalogChanged
   /** Se borró la especie: la pantalla cierra el detalle. */
   onDeleted: (message: string) => void
   /**
@@ -224,7 +225,7 @@ function DetailBody({
   source: CatalogAdminSource
   onEdit: () => void
   onDeleted: (message: string) => void
-  onChanged: (message: string) => void
+  onChanged: CatalogChanged
   onMerged: (keptId: string, message: string) => void
   /** El título del panel, adonde va el foco tras fusionar. */
   heading: () => HTMLElement | null

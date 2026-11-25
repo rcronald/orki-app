@@ -2,8 +2,13 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import { ICON_NAMES } from '../components/ui/icons.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
+import { AccountPiecesSection } from './AccountPiecesSection.tsx'
+import { CollectionPiecesSection } from './CollectionPiecesSection.tsx'
+import { InventorySection } from './InventorySection.tsx'
+import { RegistrationSection } from './RegistrationSection.tsx'
 import ShowcasePage from './ShowcasePage.tsx'
 
 beforeEach(() => {
@@ -20,6 +25,26 @@ function renderShowcase() {
   return render(
     <MemoryRouter>
       <ShowcasePage />
+    </MemoryRouter>,
+  )
+}
+
+/**
+ * Solo una sección, con su título de página como en la muestra (#311). La
+ * muestra entera tiene miles de nodos: pintarla en cada prueba, recorrerla en
+ * cada consulta y pasarle axe hacía que, con el equipo cargado, las pruebas que
+ * escriben o cambian de estado no cupieran en su tiempo. Cada sección se sigue
+ * revisando con axe dentro de la página entera, al cargar («no tiene fallos
+ * de accesibilidad A ni AA al cargar»), y aquí en los estados que recorre la
+ * prueba.
+ */
+function renderSection(section: ReactNode) {
+  return render(
+    <MemoryRouter>
+      <main>
+        <h1>Muestra del design system</h1>
+        {section}
+      </main>
     </MemoryRouter>,
   )
 }
@@ -105,7 +130,7 @@ describe('ShowcasePage', () => {
 
   it('muestra las piezas de «Mi colección» (#206) sin fallos A ni AA', async () => {
     const user = userEvent.setup()
-    renderShowcase()
+    renderSection(<CollectionPiecesSection />)
 
     const section = screen.getByRole('region', {
       name: 'Mi colección y ¿Ya la tengo?: piezas',
@@ -138,7 +163,7 @@ describe('ShowcasePage', () => {
   })
 
   it('muestra las piezas de «Tu cuenta» (#213) sin fallos A ni AA', async () => {
-    renderShowcase()
+    renderSection(<AccountPiecesSection />)
 
     const section = screen.getByRole('region', { name: 'Tu cuenta: piezas' })
     expect(section.querySelectorAll('.orki-avatar')).toHaveLength(8)
@@ -215,7 +240,7 @@ describe('ShowcasePage', () => {
   it('muestra la pantalla de inventario con datos fijos y con 300 plantas', async () => {
     const user = userEvent.setup()
     window.localStorage.clear()
-    renderShowcase()
+    renderSection(<InventorySection />)
 
     const inventory = screen.getByRole('region', {
       name: 'Pantalla de inventario',
@@ -256,7 +281,7 @@ describe('ShowcasePage', () => {
 
   it('muestra el formulario de registro con datos fijos', async () => {
     const user = userEvent.setup()
-    renderShowcase()
+    renderSection(<RegistrationSection />)
 
     const section = screen.getByRole('region', {
       name: 'Formulario de registro',
@@ -291,7 +316,8 @@ describe('ShowcasePage', () => {
     )
     expect(within(section).getByText(/"species_id"/)).toBeInTheDocument()
 
-    // Sin conexión: el formulario se ve desactivado con el motivo.
+    // Sin conexión (#296): con su usuario de muestra, el formulario sigue
+    // activo y «Registrar orquídea» espera, con el motivo.
     await user.click(
       within(section).getByRole('button', { name: 'Registrar otra' }),
     )
@@ -300,7 +326,10 @@ describe('ShowcasePage', () => {
     )
     expect(
       within(section).getByRole('combobox', { name: 'Nombre' }),
-    ).toBeDisabled()
+    ).toBeEnabled()
+    expect(
+      within(section).getByRole('button', { name: 'Registrar orquídea' }),
+    ).toHaveAttribute('aria-disabled', 'true')
     await expectNoAxeViolations()
   })
 

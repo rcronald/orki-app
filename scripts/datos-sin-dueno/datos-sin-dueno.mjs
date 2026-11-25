@@ -55,8 +55,9 @@ const LOTE = 100
 
 /**
  * Códigos de PostgREST y de Postgres para una tabla que no existe. plant_photos
- * llega con la migración de varias fotos (#182), que puede no estar aplicada en
- * un ambiente: sin la tabla no hay filas de fotos que revisar.
+ * llega con la migración de varias fotos (#182) y plant_log_entries con la de la
+ * bitácora (#264), que pueden no estar aplicadas en un ambiente: sin la tabla no
+ * hay filas de ese tipo que revisar.
  */
 const CODIGOS_TABLA_INEXISTENTE = ['PGRST205', '42P01']
 
@@ -79,6 +80,7 @@ export function leerArgumentos(argv) {
   let borrar = false
   let confirmarProduccion = null
   let permitirProporcionAlta = false
+  let soloRecuentos = false
   for (let indice = 0; indice < argv.length; indice += 1) {
     const argumento = argv[indice]
     switch (argumento) {
@@ -108,6 +110,9 @@ export function leerArgumentos(argv) {
       case '--permitir-proporcion-alta':
         permitirProporcionAlta = true
         break
+      case '--solo-recuentos':
+        soloRecuentos = true
+        break
       default:
         throw new Error(`argumento desconocido: ${String(argumento)}`)
     }
@@ -125,6 +130,11 @@ export function leerArgumentos(argv) {
   if (permitirProporcionAlta && !borrar) {
     throw new Error('--permitir-proporcion-alta solo se usa con --borrar.')
   }
+  if (soloRecuentos && borrar) {
+    throw new Error(
+      '--solo-recuentos es para el informe periódico y no se usa con --borrar: antes de borrar, revisa la lista completa.',
+    )
+  }
   if (
     ambiente === 'produccion' &&
     borrar &&
@@ -134,7 +144,7 @@ export function leerArgumentos(argv) {
       'para borrar en producción hace falta además --confirmar-produccion con el identificador del proyecto de producción.',
     )
   }
-  return { ambiente, borrar, permitirProporcionAlta }
+  return { ambiente, borrar, permitirProporcionAlta, soloRecuentos }
 }
 
 // Credenciales y ambiente ----------------------------------------------------
@@ -376,6 +386,13 @@ export function crearAccesoSupabase(supabase, nombreBucket) {
      */
     leerFotosDePlantas: () =>
       leerTabla('plant_photos', 'id, user_id', { opcional: true }),
+    /**
+     * Registros de la bitácora (plant_log_entries, #264); null si el proyecto
+     * aún no tiene la tabla. Sus fotos están en <usuario>/<planta>/log/, dentro
+     * de la carpeta del usuario.
+     */
+    leerEntradasDeBitacora: () =>
+      leerTabla('plant_log_entries', 'id, user_id', { opcional: true }),
     /** Carpetas del primer nivel del bucket: una por usuario. */
     listarCarpetasDeUsuario: async () =>
       (await listar(''))
@@ -396,6 +413,8 @@ export function crearAccesoSupabase(supabase, nombreBucket) {
     },
     borrarFilasDeFotos: (usuario, ids) =>
       borrarFilas('plant_photos', usuario, ids),
+    borrarEntradasDeBitacora: (usuario, ids) =>
+      borrarFilas('plant_log_entries', usuario, ids),
     borrarPlantas: (usuario, ids) => borrarFilas('plants', usuario, ids),
     borrarEventos: (usuario, ids) =>
       borrarFilas('product_events', usuario, ids),
@@ -424,25 +443,26 @@ function agrupar(filas, columna) {
 
 /**
  * Reúne los usuarios que aparecen en perfiles, plantas, filas de fotos
- * (plant_photos), eventos de producto y carpetas del bucket, y pregunta a Clerk
- * por cada uno. Si Clerk falla, lanza y no devuelve ningún huérfano.
+ * (plant_photos), registros de la bitácora (plant_log_entries), eventos de
+ * producto y carpetas del bucket, y pregunta a Clerk por cada uno. Si Clerk
+ * falla, lanza y no devuelve ningún huérfano.
  *
- * Las filas de plant_photos tienen siempre el dueño de su planta y se borran
- * con ella (on delete cascade), así que solo puede haber filas sin dueño si
- * hay plantas sin dueño; se detectan igualmente, por si acaso, y se borran
- * antes que las plantas.
+ * Las filas de plant_photos y de plant_log_entries tienen siempre el dueño de
+ * su planta (lo exige la base) y se borran con ella (on delete cascade), así
+ * que solo puede haber filas sin dueño si hay plantas sin dueño; se detectan
+ * igualmente, por si acaso, y se borran antes que las plantas.
  */
 export async function detectar(datos, clerk) {
-  const [perfiles, plantas, fotosDePlantas, eventos, carpetas] = [
-    await datos.leerPerfiles(),
-    await datos.leerPlantas(),
-    (await datos.leerFotosDePlantas()) ?? [],
-    await datos.leerEventos(),
-    await datos.listarCarpetasDeUsuario(),
-  ]
+  const perfiles = await datos.leerPerfiles()
+  const plantas = await datos.leerPlantas()
+  const fotosDePlantas = (await datos.leerFotosDePlantas()) ?? []
+  const entradasDeBitacora = (await datos.leerEntradasDeBitacora()) ?? []
+  const eventos = await datos.leerEventos()
+  const carpetas = await datos.listarCarpetasDeUsuario()
   const conPerfil = new Set(perfiles.map((perfil) => perfil.id))
   const plantasPorUsuario = agrupar(plantas, 'user_id')
   const filasDeFotosPorUsuario = agrupar(fotosDePlantas, 'user_id')
+  const entradasPorUsuario = agrupar(entradasDeBitacora, 'user_id')
   const eventosPorUsuario = agrupar(eventos, 'user_id')
   const conCarpeta = new Set(carpetas)
   const usuarios = [
@@ -450,6 +470,7 @@ export async function detectar(datos, clerk) {
       ...conPerfil,
       ...plantasPorUsuario.keys(),
       ...filasDeFotosPorUsuario.keys(),
+      ...entradasPorUsuario.keys(),
       ...eventosPorUsuario.keys(),
       ...conCarpeta,
     ]),
@@ -460,6 +481,7 @@ export async function detectar(datos, clerk) {
     perfil: conPerfil.has(id),
     plantas: plantasPorUsuario.get(id) ?? [],
     filasDeFotos: filasDeFotosPorUsuario.get(id) ?? [],
+    entradasDeBitacora: entradasPorUsuario.get(id) ?? [],
     eventos: eventosPorUsuario.get(id) ?? [],
     carpeta: conCarpeta.has(id),
   })
@@ -504,6 +526,9 @@ function describir(usuario) {
   if (usuario.filasDeFotos.length > 0) {
     partes.push(`${usuario.filasDeFotos.length} filas de plant_photos`)
   }
+  if (usuario.entradasDeBitacora.length > 0) {
+    partes.push(`${usuario.entradasDeBitacora.length} registros de bitácora`)
+  }
   if (usuario.fotos) partes.push(`${usuario.fotos.length} fotos`)
   else if (usuario.carpeta) partes.push('carpeta en el bucket')
   return partes.join(', ')
@@ -512,14 +537,49 @@ function describir(usuario) {
 // Ejecución ------------------------------------------------------------------
 
 /**
+ * Suma de lo que tienen unos usuarios, sin decir quiénes son: es lo que
+ * imprime el informe periódico (--solo-recuentos), porque su salida queda en
+ * el registro de GitHub Actions, que en este repositorio es público.
+ */
+export function totales(usuarios) {
+  const suma = (campo) =>
+    usuarios.reduce((total, usuario) => total + usuario[campo].length, 0)
+  return {
+    usuarios: usuarios.length,
+    perfiles: usuarios.filter((usuario) => usuario.perfil).length,
+    plantas: suma('plantas'),
+    filasDeFotos: suma('filasDeFotos'),
+    entradasDeBitacora: suma('entradasDeBitacora'),
+    eventos: suma('eventos'),
+    carpetas: usuarios.filter((usuario) => usuario.carpeta).length,
+    fotos: usuarios.reduce(
+      (total, usuario) => total + (usuario.fotos?.length ?? 0),
+      0,
+    ),
+  }
+}
+
+function describirTotales(suma) {
+  return (
+    `${suma.perfiles} perfiles, ${suma.plantas} plantas, ` +
+    `${suma.filasDeFotos} filas de plant_photos, ${suma.entradasDeBitacora} registros de bitácora, ` +
+    `${suma.eventos} eventos y ${suma.carpetas} carpetas en el bucket` +
+    (suma.fotos > 0 ? ` con ${suma.fotos} fotos` : '')
+  )
+}
+
+/**
  * Detecta, informa y, solo con `borrar`, borra los datos de los usuarios que
  * Clerk confirma inexistentes: archivos de fotos, filas de plant_photos,
- * plantas, eventos y perfil, en ese orden (el de la app al eliminar una
- * cuenta, con las filas de fotos explícitas antes que la cascada de las
- * plantas) y usuario por usuario.
+ * registros de la bitácora, plantas, eventos y perfil, en ese orden (el de la
+ * app al eliminar una cuenta, con las filas de fotos y de la bitácora
+ * explícitas antes que la cascada de las plantas) y usuario por usuario.
+ *
+ * Con `soloRecuentos` (nunca con `borrar`) no imprime ningún id ni ninguna
+ * ruta, solo los totales.
  */
 export async function ejecutar(
-  { borrar, permitirProporcionAlta },
+  { borrar, permitirProporcionAlta, soloRecuentos = false },
   { datos, clerk, log },
 ) {
   const informe = await detectar(datos, clerk)
@@ -529,21 +589,37 @@ export async function ejecutar(
       `Consultados en Clerk: ${informe.consultados} (la instancia tiene ${informe.totalClerk}). ` +
       `Existen: ${informe.existentes}. Sin dueño: ${huerfanos.length}.`,
   )
-  for (const usuario of huerfanos) {
-    log(`  ${usuario.id}: ${describir(usuario)}`)
+  if (soloRecuentos) {
+    if (huerfanos.length > 0) {
+      log(`  Entre todos: ${describirTotales(totales(huerfanos))}.`)
+    }
+  } else {
+    for (const usuario of huerfanos) {
+      log(`  ${usuario.id}: ${describir(usuario)}`)
+    }
   }
   if (informe.formatoDesconocido.length > 0) {
     log(
       `Ids con formato desconocido (no se consultan ni se borran): ${informe.formatoDesconocido.length}.`,
     )
-    for (const usuario of informe.formatoDesconocido) {
-      log(`  ${JSON.stringify(usuario.id)}: ${describir(usuario)}`)
+    if (soloRecuentos) {
+      log(
+        `  Entre todos: ${describirTotales(totales(informe.formatoDesconocido))}.`,
+      )
+    } else {
+      for (const usuario of informe.formatoDesconocido) {
+        log(`  ${JSON.stringify(usuario.id)}: ${describir(usuario)}`)
+      }
     }
   }
 
   const sinBorrar = { informe, borrados: null }
   if (!borrar) {
-    log('Modo de prueba: no se ha borrado nada (usa --borrar para borrar).')
+    log(
+      soloRecuentos
+        ? 'Solo lectura: no se ha borrado nada. Para ver la lista y borrar, ejecútalo a mano (scripts/datos-sin-dueno/README.md).'
+        : 'Modo de prueba: no se ha borrado nada (usa --borrar para borrar).',
+    )
     return sinBorrar
   }
   if (huerfanos.length === 0) {
@@ -564,6 +640,7 @@ export async function ejecutar(
     usuarios: 0,
     fotos: 0,
     filasDeFotos: 0,
+    entradasDeBitacora: 0,
     plantas: 0,
     eventos: 0,
     perfiles: 0,
@@ -577,6 +654,12 @@ export async function ejecutar(
         borrados.filasDeFotos += await datos.borrarFilasDeFotos(
           usuario.id,
           usuario.filasDeFotos,
+        )
+      }
+      if (usuario.entradasDeBitacora.length > 0) {
+        borrados.entradasDeBitacora += await datos.borrarEntradasDeBitacora(
+          usuario.id,
+          usuario.entradasDeBitacora,
         )
       }
       if (usuario.plantas.length > 0) {
@@ -607,7 +690,8 @@ export async function ejecutar(
   }
   log(
     `Borrados: ${borrados.usuarios} usuarios, ${borrados.fotos} fotos, ` +
-      `${borrados.filasDeFotos} filas de plant_photos, ${borrados.plantas} plantas, ` +
+      `${borrados.filasDeFotos} filas de plant_photos, ` +
+      `${borrados.entradasDeBitacora} registros de bitácora, ${borrados.plantas} plantas, ` +
       `${borrados.eventos} eventos y ${borrados.perfiles} perfiles.`,
   )
   return { informe, borrados }
@@ -642,7 +726,9 @@ export async function principal({
     `Proyecto de ${argumentos.ambiente} (${ref}) e instancia de ${argumentos.ambiente} de Clerk. ` +
       (argumentos.borrar
         ? 'Modo BORRAR.'
-        : 'Modo de prueba: no se borra nada.'),
+        : argumentos.soloRecuentos
+          ? 'Solo lectura y solo recuentos: no se borra nada.'
+          : 'Modo de prueba: no se borra nada.'),
   )
   const supabase = crearSupabase(
     `https://${ref}.supabase.co`,

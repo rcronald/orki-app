@@ -19,12 +19,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Obtener el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Configurar Node desde .nvmrc
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -37,6 +37,12 @@ jobs:
 
       - name: Verificar formato
         run: npm run format:check
+
+      # Enlaces relativos de los .md (#288): cada archivo y cada #sección a la que
+      # apunta la documentación existe. Al mover o renombrar un encabezado, corrige
+      # los enlaces que lo citan.
+      - name: Enlaces de la documentación
+        run: npm run enlaces
 
       - name: Typecheck
         run: npm run typecheck
@@ -61,11 +67,19 @@ jobs:
           npm run build:medicion
           npm run presupuesto
 
+      # Cabeceras de seguridad (#282), sobre el build del paso anterior (la app de
+      # producción con las variables ficticias): las firmes siguen en vercel.json, los
+      # scripts en línea de index.html tienen su hash en la CSP y la CSP que genera
+      # apps/web/seguridad/politica.ts cubre los orígenes que usa el build. Ver
+      # docs/operacion/cabeceras-de-seguridad.md.
+      - name: Cabeceras de seguridad
+        run: npm run cabeceras
+
   # Pruebas de extremo a extremo (#148): los flujos principales en Chromium,
   # Firefox, WebKit y un perfil de iPhone, contra la app construida como
   # producción con Clerk simulado y Supabase simulado en la red de Playwright.
   # No usa secretos ni sale a ningún servicio (las pruebas fallan si la app lo
-  # intenta). Por ahora no es obligatorio para fusionar; ver el README.
+  # intenta). Por ahora no es obligatorio para fusionar; ver docs/pruebas.md.
   #
   # Un job por perfil, en paralelo: cada uno instala solo su navegador y corre
   # solo sus pruebas, así el CI no espera a los cuatro en fila y un fallo dice
@@ -89,12 +103,12 @@ jobs:
             navegador: webkit
     steps:
       - name: Obtener el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Configurar Node desde .nvmrc
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -111,7 +125,7 @@ jobs:
 
       - name: Caché del navegador
         id: cache-navegadores
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ matrix.navegador }}
@@ -171,7 +185,7 @@ jobs:
 
       - name: Guardar el informe y las trazas
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: informe-playwright-${{ matrix.perfil }}
           path: |
@@ -208,14 +222,14 @@ jobs:
       ORKI_TEST_DB_URL: postgresql://supabase_admin:desechable@127.0.0.1:5432/postgres
     steps:
       - name: Obtener el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # uv toma su versión de required-version en pyproject.toml e instala el Python de
       # .python-version. La caché depende de uv.lock.
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           working-directory: scripts/catalog-import
           cache-dependency-glob: uv.lock
@@ -267,12 +281,12 @@ jobs:
       ORKI_TEST_DB_URL: postgresql://supabase_admin:desechable@127.0.0.1:5432/postgres
     steps:
       - name: Obtener el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Configurar Node desde .nvmrc
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -292,6 +306,13 @@ jobs:
 
       - name: Pruebas de base de datos
         run: npm run db:test
+
+      # Dos sesiones a la vez sobre otra base desechable del mismo servidor (#295): fusiones
+      # simultáneas, contador de identificadores, bitácora sin duplicados y la séptima foto.
+      # Corre aunque fallen las anteriores, para ver los dos resultados.
+      - name: Pruebas de concurrencia de la base de datos
+        if: ${{ !cancelled() }}
+        run: npm run db:concurrencia
 
       # Genera los tipos desde las migraciones sobre el mismo Postgres y falla si no coinciden
       # con apps/web/src/lib/database.types.ts. Corre aunque fallen las pruebas, para ver

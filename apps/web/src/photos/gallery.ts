@@ -1,5 +1,10 @@
 import type { CollectionPlant } from '../collection/model.ts'
 import { isCalendarDate, localDateString } from '../lib/localDate.ts'
+import {
+  eachLimited,
+  MAX_PARALLEL_PHOTO_UPLOADS,
+  serialQueue,
+} from './limited.ts'
 import { MAX_PLANT_PHOTOS, plantPhotoPaths } from './paths.ts'
 import {
   appPlantPhotoRows,
@@ -109,12 +114,19 @@ export interface PlantGalleryOptions {
 
 export interface UploadPlantPhotosOptions extends PlantGalleryOptions {
   /**
-   * Cancela: la foto en curso deja de esperarse (lo que llegue a subirse se
-   * borra) y las siguientes no se intentan. Una fila que ya salió hacia la
-   * base se espera.
+   * Cancela: las fotos en curso (hasta tres) dejan de esperarse (lo que
+   * llegue a subirse se borra) y las siguientes no se intentan. Una fila que
+   * ya salió hacia la base se espera.
    */
   signal?: AbortSignal
   onProgress?: (progress: PlantPhotosProgress) => void
+  /**
+   * Las fotos que ya tiene la planta, solo si quien llama las sabe por la
+   * base (#285): la planta recién insertada, sin fotos, es []. Así no se leen
+   * otra vez. Al reintentar no se pasa: lo que llegó del intento anterior
+   * solo se sabe leyendo.
+   */
+  knownPhotos?: readonly StoredPlantPhoto[]
 }
 
 export interface UploadPlantPhotosResult {
@@ -173,7 +185,10 @@ async function refreshPlant(
 
 /**
  * Sube varias fotos a una planta que ya existe y crea sus filas en
- * plant_photos, una detrás de otra y en el orden dado. Sirve al registrar
+ * plant_photos en el orden dado: los archivos, de tres fotos en tres (#285),
+ * y las filas, de una en una (cada foto con la posición que se decidió antes
+ * de subir ninguna, así que el orden en que terminen no cambia el de la
+ * galería). Sirve al registrar
  * (planta sin fotos: posiciones 0, 1, 2...) y al editar (las nuevas van
  * detrás de las que ya tiene). Para reintentar, se vuelve a llamar con las
  * mismas fotos preparadas (todas o solo las que faltan): las ya guardadas no
@@ -195,13 +210,16 @@ export async function uploadPlantPhotos(
     signal,
     onProgress,
     onPlantUpdated,
+    knownPhotos,
   }: UploadPlantPhotosOptions,
 ): Promise<UploadPlantPhotosResult> {
   const plantId = rawPlantId.toLowerCase()
   if (signal?.aborted) {
     throw new PhotoStorageError('aborted', { cause: signal.reason })
   }
-  const before = await rows.list(plantId, userId)
+  const before = knownPhotos
+    ? [...knownPhotos].sort(byPosition)
+    : await rows.list(plantId, userId)
   const saved = [...before]
   const mainBefore = before[0]?.id ?? null
 
@@ -251,6 +269,7 @@ export async function uploadPlantPhotos(
     plannedPositions.set(files, position)
   }
 
+  const writeRow = serialQueue()
   const uploadOne = async (
     photo: NewPlantPhoto,
     index: number,
@@ -284,7 +303,27 @@ export async function uploadPlantPhotos(
       }
     }
     onProgress?.({ index, completed, total: photos.length, step: 'saving' })
+    // Las filas, de una en una: dos inserciones a la vez en la misma planta
+    // pueden dejar en plants una principal que no es la de posición más baja
+    // (cada disparador sync_plant ve solo su fila).
+    return writeRow(() => saveRow(photo, index, paths))
+  }
 
+  const saveRow = async (
+    photo: NewPlantPhoto,
+    index: number,
+    paths: { photoPath: string; thumbnailPath: string },
+  ): Promise<PlantPhotoUploadResult> => {
+    const { files } = photo
+    const fresh = [paths.photoPath, paths.thumbnailPath]
+    if (signal?.aborted) {
+      // Cancelada mientras esperaba su turno: la fila no llegó a salir.
+      await removeQuietly(storage, fresh)
+      return {
+        status: 'failed',
+        error: new PhotoStorageError('aborted', { cause: signal.reason }),
+      }
+    }
     const insert = (position: number) =>
       rows.insert({
         plantId,
@@ -314,9 +353,17 @@ export async function uploadPlantPhotos(
             return { status: 'failed', error: photoStorageErrorFrom(listError) }
           }
           const taken = new Set(current.map((row) => row.position))
+          // Y las de las demás fotos que aún no terminaron (las que van a la
+          // vez o detrás de esta).
           for (const other of pending) {
             const planned = plannedPositions.get(photos[other].files)
-            if (other > index && planned !== undefined) taken.add(planned)
+            if (
+              other !== index &&
+              results[other] === undefined &&
+              planned !== undefined
+            ) {
+              taken.add(planned)
+            }
           }
           const next = choosePosition(taken, undefined)
           if (next !== null) {
@@ -344,12 +391,14 @@ export async function uploadPlantPhotos(
     }
   }
 
+  // De tres en tres (#285): las posiciones ya están decididas, así que el
+  // orden en que terminen no cambia el de la galería.
   let cancelled = false
-  for (const index of pending) {
+  await eachLimited(pending, MAX_PARALLEL_PHOTO_UPLOADS, async (index) => {
     if (cancelled || signal?.aborted) {
       cancelled = true
       finish(index, { status: 'skipped', reason: 'aborted' })
-      continue
+      return
     }
     const result = await uploadOne(photos[index], index)
     if (result.status === 'uploaded') {
@@ -360,7 +409,7 @@ export async function uploadPlantPhotos(
       cancelled = true
     }
     finish(index, result)
-  }
+  })
 
   const finalResults = results as PlantPhotoUploadResult[]
   const mainAfter = saved[0]?.id ?? null

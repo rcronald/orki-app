@@ -36,9 +36,15 @@ import { usePlantGallery } from '../detail/usePlantGallery.ts'
 import { usePlantLookup } from '../detail/usePlantLookup.ts'
 import { LoadErrorPanel } from '../inventory/InventoryStates.tsx'
 import { deletePlantWithPhotos } from '../photos/delete.ts'
-import { reorderPlantPhotos, updatePlantPhoto } from '../photos/gallery.ts'
+import {
+  listPlantPhotos,
+  reorderPlantPhotos,
+  updatePlantPhoto,
+  uploadPlantPhotos,
+} from '../photos/gallery.ts'
 import { useReferencePhoto } from '../lib/useReferencePhoto.ts'
 import { usePlantPhotoRows } from '../photos/usePlantPhotoRows.ts'
+import { PendingPlantPhotos } from '../registration/PendingPlantPhotos.tsx'
 import { updatePlant } from '../registration/save-plant.ts'
 import { PATHS, plantEditPath } from '../routes/paths.ts'
 
@@ -220,7 +226,9 @@ export default function PlantDetailPage() {
                   {noticeText}
                 </ActionNotice>
               )}
-              {plant.status !== 'active' && (
+              {/* Un aviso por acción (#290): recién dada de baja, ya lo dice
+                  el de la acción; al cerrarlo (o al volver), sale este. */}
+              {plant.status !== 'active' && notice?.kind !== 'retired' && (
                 <p className="flex items-start gap-space-2 rounded-lg bg-neutral-50 p-space-4 text-md text-neutral-900">
                   {DETAIL_TEXT.inactive(PLANT_STATUS_LABEL[plant.status])}
                 </p>
@@ -269,7 +277,12 @@ export default function PlantDetailPage() {
     case 'error':
       return (
         <Page title={DETAIL_TEXT.errorTitle} width="wide" header={header()}>
-          <LoadErrorPanel error={lookup.error} onRetry={collection.reload} />
+          {/* El título ya es el de la pantalla (#290): uno solo. */}
+          <LoadErrorPanel
+            error={lookup.error}
+            onRetry={collection.reload}
+            showTitle={false}
+          />
         </Page>
       )
     case 'not-found':
@@ -351,7 +364,31 @@ function PlantDetailContent({
     <PlantDetailView
       plant={plant}
       canEdit={readOnly === null}
-      notice={notice}
+      notice={
+        <>
+          {notice}
+          {/* Las fotos del registro que no llegaron a subirse (#284). */}
+          <PendingPlantPhotos
+            plant={plant}
+            userId={userId}
+            canUpload={readOnly === null}
+            reasonId={reasonId}
+            services={{
+              listPhotos: () =>
+                listPlantPhotos({ userId: owner, plantId: plant.id, rows }),
+              upload: (photos, options) =>
+                uploadPlantPhotos(photos, {
+                  ...options,
+                  userId: owner,
+                  plantId: plant.id,
+                  rows,
+                  onPlantUpdated,
+                }),
+            }}
+            onUploaded={(result) => gallery.replace(result.photos)}
+          />
+        </>
+      }
       notes={
         <PlantNotes
           plant={plant}

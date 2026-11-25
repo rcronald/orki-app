@@ -32,9 +32,12 @@ import { discardProductEvents } from '../telemetry/product-events.ts'
 //   (registration/draft.ts).
 // - IndexedDB orki-registro: la foto del borrador (registration/
 //   draft-photo.ts).
-// - localStorage orki:inventario:preferencias:v1: vista y agrupación del
+// - localStorage orki:inventario:preferencias:v1: vista, agrupación y orden del
 //   inventario (inventory/preferences.ts). Es del dispositivo, no de una
 //   cuenta, pero se borra igual: la persona eligió irse.
+// - localStorage orki:perfil:creado:<usuario>: la marca de que el perfil ya
+//   existe (lib/profile.ts, #285), solo «1». La quita también ensureProfile
+//   al ver la eliminación en curso.
 // - localStorage orki:cuenta:eliminacion:<usuario>: la marca de eliminación
 //   en curso (lib/account-deletion-marker.ts). Se borra solo al final, con la
 //   cuenta ya eliminada (keepMarker).

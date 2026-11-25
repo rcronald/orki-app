@@ -59,6 +59,45 @@ export default defineConfig([
       'react-hooks/rules-of-hooks': 'off',
     },
   },
+  // Pruebas unitarias (#295): responder a un doble de la colección sin esperar
+  // antes a la petición (`source.last().resolve(...)` tras contar microtareas)
+  // se rompe con añadir un solo await en la app. Se espera con
+  // `await source.respond(...)` (src/test/collection-source.ts).
+  {
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(resolve|reject)$/][callee.object.type='CallExpression'][callee.object.callee.property.name='last']",
+          message:
+            'Espera a la petición antes de responderla: await source.respond(...) o source.fail(...), o (await source.pending()).resolve(...), en vez de source.last().resolve(...) (src/test/collection-source.ts).',
+        },
+      ],
+    },
+  },
+  // Cliente ligero de Supabase (#286): la app usa postgrest-js y storage-js a
+  // través de src/lib/supabase-client.ts. supabase-js sigue instalado en la
+  // raíz para los scripts de Node, así que una importación desde la app
+  // resolvería y volvería a meter Auth y Realtime en el bundle.
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@supabase/supabase-js', '@supabase/supabase-js/*'],
+              message:
+                'La app no usa supabase-js: pide el cliente con getSupabase() o getPublicSupabase() (src/lib/supabase.ts).',
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Va al final para desactivar las reglas de estilo que chocan con Prettier.
   prettier,
 ])

@@ -118,7 +118,7 @@ test('búsqueda en la colección', { tag: '@logica' }, async ({ page }) => {
 
   await buscador(page).fill('vivero los andes')
   await expect(page.getByRole('search').getByRole('status')).toHaveText(
-    '2 de 5 orquídeas coinciden.',
+    '2 de 5 ejemplares coinciden.',
   )
   await expect(tarjetas(page)).toHaveCount(2)
   await expect(
@@ -260,7 +260,7 @@ test('filtros', { tag: '@logica' }, async ({ page, revisarAccesibilidad }) => {
     .click()
   await panel.getByRole('button', { name: 'Agrupar por género' }).click()
   await expect(
-    page.getByRole('heading', { name: /^Cattleya ?, 1 orquídea$/, level: 2 }),
+    page.getByRole('heading', { name: /^Cattleya ?, 1 ejemplar$/, level: 2 }),
   ).toBeVisible()
 })
 
@@ -351,12 +351,13 @@ for (const ancho of [360, 1440]) {
         }
       }
 
-      // Tarjetas por fila: dos en el celular, tres en escritorio.
+      // Tarjetas por fila: dos en el celular, cuatro a 1440 px (#292; tres
+      // entre 768 y 1199 px, ver coleccion-grande.spec.ts).
       const filas = await tarjetas(page).evaluateAll((cards) =>
         cards.map((card) => Math.round(card.getBoundingClientRect().top)),
       )
       const primeraFila = filas.filter((top) => top === filas[0]).length
-      expect(primeraFila).toBe(ancho === 360 ? 2 : 3)
+      expect(primeraFila).toBe(ancho === 360 ? 2 : 4)
 
       await revisarAccesibilidad(`colección a ${ancho} px`)
       await page
@@ -430,9 +431,12 @@ for (const ancho of [360, 1440]) {
             .getByRole('button', { name: vista }),
         ).toHaveAttribute('aria-pressed', 'true')
 
-        // Con tres fotos: el número sobre la foto y «3 fotos» para el lector;
-        // el nombre de la tarjeta sigue siendo el de la planta.
-        await expect(maxima).toHaveAccessibleDescription('3 fotos')
+        // Con tres fotos: el número sobre la foto y «3 fotos» para el lector,
+        // tras el identificador (#292); el nombre de la tarjeta sigue siendo
+        // el de la planta.
+        await expect(maxima).toHaveAccessibleDescription(
+          'Identificador CAT-002. 3 fotos',
+        )
         const numero = maxima.locator('.orki-count')
         await expect(numero).toBeVisible()
         await expect(numero.locator('span[aria-hidden="true"]')).toHaveText('3')
@@ -453,9 +457,11 @@ for (const ancho of [360, 1440]) {
           )
         }
 
-        // Con una foto (o ninguna), nada.
+        // Con una foto (o ninguna), nada: solo el identificador.
         await expect(amabilis.locator('.orki-count')).toHaveCount(0)
-        await expect(amabilis).toHaveAccessibleDescription('')
+        await expect(amabilis).toHaveAccessibleDescription(
+          'Identificador PHA-001.',
+        )
 
         await sinDesplazamientoHorizontal(page)
         await revisarAccesibilidad(`número de fotos en ${vista.toLowerCase()}`)

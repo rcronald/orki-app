@@ -6,6 +6,7 @@ import { Page } from '../components/Page.tsx'
 import { Icon } from '../components/ui/Icon.tsx'
 import { registeredPlantState } from '../inventory/registered-plant.ts'
 import { searchGenera, searchSpecies } from '../lib/catalogSearch.ts'
+import { useOnlineStatus } from '../lib/useOnlineStatus.ts'
 import { uploadPlantPhotos } from '../photos/gallery.ts'
 import {
   PlantForm,
@@ -31,15 +32,34 @@ import { useRegistrationEvent } from '../telemetry/useRegistrationEvent.ts'
 // (?foto=1) ya no existe: la dirección sigue abriendo el registro y el
 // parámetro se ignora.
 
+// Plantas que la base acaba de devolver sin ninguna foto (#285): la primera
+// subida a una de ellas no vuelve a leer sus fotos (no tiene). Solo la
+// primera: un reintento lee, porque el intento anterior pudo dejar filas.
+const insertedWithoutPhotos = new Set<string>()
+
 const SUPABASE_SERVICES: PlantFormServices = {
   searchSpecies,
   searchGenera,
   loadQuickGenera: () => loadQuickAccessGenera(),
   loadReferencePhoto: (speciesId, options) =>
     getSpeciesReferencePhoto(speciesId, options),
-  savePlant: (insert) => insertPlant(insert),
+  async savePlant(insert) {
+    const plant = await insertPlant(insert)
+    // Lo dice la respuesta de la base (también la de una planta ya guardada
+    // por un intento anterior): sin principal y con photo_count 0.
+    if (plant.photoPath === null && plant.photoCount === 0) {
+      insertedWithoutPhotos.add(plant.id.toLowerCase())
+    }
+    return plant
+  },
   // Con la planta ya guardada: sube las fotos y crea sus filas en orden.
-  uploadPhotos: (photos, options) => uploadPlantPhotos(photos, options),
+  uploadPhotos: (photos, options) => {
+    const fresh = insertedWithoutPhotos.delete(options.plantId.toLowerCase())
+    return uploadPlantPhotos(
+      photos,
+      fresh ? { ...options, knownPhotos: [] } : options,
+    )
+  },
 }
 
 export default function NewPlantPage() {
@@ -57,13 +77,15 @@ export default function NewPlantPage() {
   // formulario se vuelve a montar con él antes de que se vea (key).
   const { upsertPlant, plants, status, userId } = useCollection()
   const knownPlants = status === 'loading' ? null : plants
-  // Solo con conexión y la sesión confirmada (#18): si no, el formulario se
-  // desactiva con su aviso de sin conexión.
-  const online = useReadOnly() === null
+  // Registrar necesita conexión y la sesión confirmada (#18). Sin ellas, con
+  // el usuario identificado en el dispositivo (el de Clerk o el recordado,
+  // userId), se sigue completando el borrador y el envío espera (#296).
+  const readOnly = useReadOnly()
+  const online = useOnlineStatus()
   const [search] = useSearchParams()
   const location = useLocation()
   const initialName = prefilledName(search)
-  const registration = useRegistrationEvent({ offline: !online })
+  const registration = useRegistrationEvent({ offline: readOnly !== null })
 
   return (
     <Page
@@ -86,6 +108,7 @@ export default function NewPlantPage() {
         key={userId ?? ''}
         services={SUPABASE_SERVICES}
         online={online}
+        sessionUnverified={readOnly === 'unverified'}
         knownPlants={knownPlants}
         draftUserId={userId}
         initialName={initialName}

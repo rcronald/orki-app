@@ -180,6 +180,12 @@ function requestsTo(path: string): SentRequest[] {
 type Handler = (request: SentRequest) => Promise<Response>
 let handlers: Record<string, Handler>
 
+/** Páginas llenas de 50 especies, de 120 en total. */
+const fullPages: Handler = ({ body }) =>
+  body.after_id === speciesId(50)
+    ? jsonResponse(listPage(51, 100, 120))
+    : jsonResponse(listPage(1, 50, 120))
+
 // Cada prueba encadena varias peticiones (guardar y volver a leer): con toda la
 // suite en marcha, el segundo de espera por defecto se queda corto.
 const defaultTimeout = getConfig().asyncUtilTimeout
@@ -190,10 +196,12 @@ beforeEach(() => {
   document.documentElement.lang = 'es'
   handlers = {
     'rpc/catalog_summary': () => jsonResponse([SUMMARY]),
-    'rpc/list_catalog_species': ({ body }) =>
-      body.after_id === speciesId(50)
-        ? jsonResponse(listPage(51, 100, 120))
-        : jsonResponse(listPage(1, 50, 120)),
+    // Una página corta: con 50 filas, la página tenía casi mil nodos que
+    // recorrían cada consulta, cada pintado y cada pasada de axe; con el
+    // equipo cargado, las pruebas largas agotaban el tiempo (#311). La tabla
+    // llena la prueban CatalogAdminPage.test.tsx y, aquí, la selección de la
+    // página entera.
+    'rpc/list_catalog_species': () => jsonResponse(listPage(1, 5, 5)),
     'rpc/count_species_plants': () => jsonResponse(3),
     'rpc/species_history': () => jsonResponse([]),
     'rpc/search_genera': () =>
@@ -298,11 +306,14 @@ describe('Backoffice: escritura de especies', () => {
     )
     const heading = screen.getByRole('heading', { name: 'Alta en el catálogo' })
     await waitFor(() => expect(heading).toHaveFocus())
+    const panel = screen.getByRole('region', { name: 'Alta en el catálogo' })
     const form = screen.getByRole('form', { name: 'Nueva especie o híbrido' })
     expect(
       within(form).queryByRole('option', { name: 'Importada' }),
     ).not.toBeInTheDocument()
-    await expectNoAxeViolations()
+    // axe, solo en el alta (#311): la página entera con el alta abierta la
+    // revisa «alta: un nombre que ya existe…».
+    await expectNoAxeViolations(panel)
 
     // Sin nombre: el error va junto al campo y se lleva el foco.
     await user.click(within(form).getByRole('button', { name: 'Dar de alta' }))
@@ -313,7 +324,7 @@ describe('Backoffice: escritura de especies', () => {
     expect(name).toHaveAttribute('aria-invalid', 'true')
     expect(name).toHaveAccessibleDescription(/Escribe el nombre científico\./)
     expect(requestsTo('rpc/create_catalog_species')).toHaveLength(0)
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(panel)
 
     // Al elegir el género con el nombre vacío, el nombre empieza por él.
     await pickGenus(user, form, 'van', /Vanda/)
@@ -621,6 +632,7 @@ describe('Backoffice: escritura de especies', () => {
   })
 
   it('lote: seleccionar la página entera, y cambiar de página la vacía', async () => {
+    handlers['rpc/list_catalog_species'] = fullPages
     const user = userEvent.setup()
     renderAt()
     await waitForTable()

@@ -51,7 +51,7 @@ describe('SpeciesPreview', () => {
       load,
     }
     const { rerender } = render(<SpeciesPreview {...props} />)
-    expect(await screen.findByText('Así es esta especie')).toBeInTheDocument()
+    expect(await screen.findByText('Así es su especie')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /dominio público/ })).toBeVisible()
     rerender(<SpeciesPreview {...props} />)
     expect(load).toHaveBeenCalledTimes(1)
@@ -72,7 +72,7 @@ describe('SpeciesPreview', () => {
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1))
     unmount()
     render(<SpeciesPreview {...props} />)
-    expect(await screen.findByText('Así es esta especie')).toBeInTheDocument()
+    expect(await screen.findByText('Así es su especie')).toBeInTheDocument()
     expect(load).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -235,14 +235,11 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
   const profile = () => screen.getByRole('region', { name: 'Perfil' })
   const data = () => screen.getByRole('region', { name: 'Datos y privacidad' })
   const exportRow = () =>
-    within(data()).getByRole('button', { name: /^Exportar inventario a CSV/ })
+    within(data()).getByRole('button', { name: /^Exportar tu colección a CSV/ })
 
   async function withPlants(plants = PLANTS) {
     const source = renderAt('/cuenta')
-    await act(async () => {
-      source.last().resolve(plants)
-      await Promise.resolve()
-    })
+    await source.respond(plants)
     return source
   }
 
@@ -323,13 +320,13 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
     const user = userEvent.setup()
     await withPlants()
     expect(exportRow()).toHaveAccessibleName(
-      'Exportar inventario a CSV El archivo CSV no incluye las fotos.',
+      'Exportar tu colección a CSV El archivo CSV no incluye las fotos.',
     )
     await user.click(exportRow())
     expect(created).toHaveLength(1)
     expect(await csvOf(created[0])).toBe(inventoryCsv(PLANTS))
     expect(within(data()).getByRole('status')).toHaveTextContent(
-      /^Listo: orqui-app-inventario-\d{4}-\d{2}-\d{2}\.csv, con 3 plantas\.$/,
+      /^Listo: orqui-app-coleccion-\d{4}-\d{2}-\d{2}\.csv, con 3 ejemplares\.$/,
     )
   })
 
@@ -339,7 +336,7 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
     await user.click(exportRow())
     expect(await csvOf(created[0])).toBe(inventoryCsv([]))
     expect(within(data()).getByRole('status')).toHaveTextContent(
-      'con 0 plantas.',
+      'con 0 ejemplares.',
     )
   })
 
@@ -361,7 +358,7 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
     const row = exportRow()
     expect(row).toHaveAttribute('aria-disabled', 'true')
     expect(row).toHaveAccessibleName(
-      'Exportar inventario a CSV Cargando tu colección para exportarla…',
+      'Exportar tu colección a CSV Cargando tu colección para exportarla…',
     )
     await user.click(row)
     expect(created).toEqual([])
@@ -371,21 +368,15 @@ describe('AccountPage: rediseño de «Tu cuenta» (#214)', () => {
   it('si la colección no carga, lo dice y deja volver a cargarla', async () => {
     const user = userEvent.setup()
     const source = renderAt('/cuenta')
-    await act(async () => {
-      source.last().reject(new Error('fallo'))
-      await Promise.resolve()
-    })
+    await source.fail(new Error('fallo'))
     expect(exportRow()).toHaveAccessibleName(
-      'Exportar inventario a CSV No se pudo cargar tu colección. Vuelve a intentarlo.',
+      'Exportar tu colección a CSV No se pudo cargar tu colección. Vuelve a intentarlo.',
     )
     await user.click(
       screen.getByRole('button', { name: 'Volver a cargar la colección' }),
     )
     expect(source.loads).toHaveLength(2)
-    await act(async () => {
-      source.last().resolve(PLANTS)
-      await Promise.resolve()
-    })
+    await source.respond(PLANTS)
     expect(exportRow()).not.toHaveAttribute('aria-disabled')
   })
 

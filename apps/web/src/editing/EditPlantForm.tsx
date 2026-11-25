@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useReducer,
   useRef,
   useState,
@@ -12,8 +13,12 @@ import {
 import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router'
 import type { CollectionPlant } from '../collection/model.ts'
+import {
+  MAX_PLANT_NOTES_LENGTH,
+  normalizePlantNotes,
+  plantNotesLength,
+} from '../detail/notes.ts'
 import { Button } from '../components/ui/Button.tsx'
-import { Chip } from '../components/ui/Chip.tsx'
 import { Collapsible } from '../components/ui/Collapsible.tsx'
 import {
   FormActions,
@@ -27,13 +32,11 @@ import {
   type GalleryPhoto,
 } from '../components/ui/PhotoGallery.tsx'
 import { ScientificName } from '../components/ui/ScientificName.tsx'
-import { TextField } from '../components/ui/TextField.tsx'
 import type {
   CatalogSearchFunction,
   GenusSearchResult,
   SpeciesSearchResult,
 } from '../lib/catalogSearch.ts'
-import { enumValues, type PlantType } from '../lib/database.ts'
 import { localDateString } from '../lib/localDate.ts'
 import {
   checkPlantPhotoDetails,
@@ -42,18 +45,18 @@ import {
 } from '../photos/gallery.ts'
 import { MAX_PLANT_PHOTOS } from '../photos/paths.ts'
 import type { PlantPhotoRows, StoredPlantPhoto } from '../photos/photo-rows.ts'
+import {
+  EDIT_REUSE_MS,
+  forgetPlantPhotosOf,
+  recentPlantPhotos,
+  rememberPlantPhotos,
+} from '../photos/plant-photos-memory.ts'
 import { PhotoStorageError, type PhotoStorage } from '../photos/storage.ts'
 import { useObjectUrls } from '../photos/useObjectUrls.ts'
 import { useStoredThumbnails } from '../photos/useStoredThumbnails.ts'
-import {
-  ChoiceField,
-  FORM_CHIP_CLASSES,
-  LOCKED_CHIP_CLASSES,
-} from '../registration/ChoiceField.tsx'
 import { DuplicateNotice } from '../registration/DuplicateNotice.tsx'
 import {
   isPendingName,
-  PLANT_TEXT_MAX_LENGTH,
   plantFormReducer,
   plantFormValuesFrom,
   plantPatch,
@@ -75,17 +78,22 @@ import {
   type LoadReferencePhoto,
 } from '../registration/SpeciesPreview.tsx'
 import {
-  FLOWER_COLOR_LABEL,
-  PLANT_EDIT_NOTICE_TEXT,
-  PLANT_FORM_TEXT,
-  PLANT_TYPE_LABEL,
-} from '../registration/texts.ts'
+  AcquiredOnField,
+  FlowerColorField,
+  NicknameField,
+  PhotoPrepareErrors,
+  PlantTypeField,
+} from '../registration/PlantFields.tsx'
+import { PLANT_EDIT_NOTICE_TEXT } from '../registration/texts.ts'
 import {
+  isNewEntry,
   storedPhotoEntry,
-  usePhotoEntries,
+  toGalleryPhoto,
+  usePhotoSelection,
   type NewPhotoEntry,
   type PhotoEntry,
 } from '../registration/usePhotoEntries.ts'
+import { usePlantFieldFocus } from '../registration/usePlantFieldFocus.ts'
 import { useQuickGenera } from '../registration/useQuickGenera.ts'
 import { PATHS, plantEditPath, signInPathFor } from '../routes/paths.ts'
 import {
@@ -141,8 +149,6 @@ export interface EditPlantFormProps {
   now?: () => Date
 }
 
-const PLANT_TYPES: readonly PlantType[] = ['species', 'hybrid', 'unknown']
-
 /** Campos en el orden de la pantalla: el primero con error recibe el foco. */
 const FIELD_ORDER: readonly PlantFormField[] = [
   'name',
@@ -164,20 +170,6 @@ type SaveState =
   | { status: 'saving' }
   | { status: 'error'; error: PlantEditError }
 
-/** Tope de las notas (restricción plants_notes_valid). */
-const PLANT_NOTES_MAX_LENGTH = 2000
-
-/** Notas como se guardan: sin espacios a los lados; vacías, null. */
-function normalizeNotes(text: string): string | null {
-  const trimmed = text.trim()
-  return trimmed === '' ? null : trimmed
-}
-
-/** Largo como lo cuenta Postgres (char_length). */
-function characters(text: string): number {
-  return [...text].length
-}
-
 function storedDetails(photo: StoredPlantPhoto): PhotoDetailsText {
   return {
     takenAt: photo.takenAt ?? '',
@@ -194,10 +186,6 @@ const EMPTY_DETAILS: PhotoDetailsText = {
 
 function sameDetails(a: PlantPhotoDetails, b: PlantPhotoDetails): boolean {
   return a.takenAt === b.takenAt && a.note === b.note && a.inBloom === b.inBloom
-}
-
-function isNew(entry: PhotoEntry): entry is NewPhotoEntry {
-  return entry.kind === 'new'
 }
 
 /** Textos del error de un guardado: qué falló y, aparte, el motivo. */
@@ -242,7 +230,7 @@ function sessionEnded(error: PlantEditError): boolean {
  * nada que deshacer.
  *
  * Salir con cambios sin guardar pregunta antes (useLeaveGuard): por un
- * enlace de la app, con «atrás», con «Cancelar» o «Volver a la ficha», o al
+ * enlace de la app, con «atrás», con «Cancelar» o «Volver a la planta», o al
  * cerrar o recargar la pestaña. Mientras se guarda no se puede salir (#279):
  * esas vías solo avisan de que hay que esperar. Si el formulario se desmonta
  * de todos modos, no navega al terminar y lo que sobre se borra cuando el
@@ -307,26 +295,15 @@ export function EditPlantForm({
   }, [originalNotes])
 
   // Fotos ----------------------------------------------------------------------
-  const [photoStatus, setPhotoStatus] = useState('')
-  const [leftOutNotice, setLeftOutNotice] = useState<string | null>(null)
-  const [prepareErrors, setPrepareErrors] = useState<string[]>([])
-  const photos = usePhotoEntries({
-    onSelected: (accepted, leftOut) => {
-      const notice =
-        leftOut > 0
-          ? EDIT_TEXT.photosLeftOut(accepted, leftOut, MAX_PLANT_PHOTOS)
-          : null
-      setLeftOutNotice(notice)
-      setPhotoStatus(notice ?? EDIT_TEXT.photosAdding(accepted))
-    },
-    onPrepared: (count) =>
-      setPhotoStatus(EDIT_TEXT.photoAdded(count, MAX_PLANT_PHOTOS)),
-    onPrepareFailed: (fileName, message) =>
-      setPrepareErrors((list) => [
-        ...list,
-        EDIT_TEXT.photoPrepareFailed(fileName, message),
-      ]),
-  })
+  const {
+    photos,
+    photoStatus,
+    setPhotoStatus,
+    leftOutNotice,
+    setLeftOutNotice,
+    prepareErrors,
+    setPrepareErrors,
+  } = usePhotoSelection(EDIT_TEXT)
   const { entries } = photos
   const [details, setDetails] = useState<Record<string, PhotoDetailsText>>({})
   // Las fotos tal como estaban (orden y datos), para saber si cambiaron.
@@ -358,14 +335,31 @@ export function EditPlantForm({
   const filesInput = useRef<HTMLInputElement>(null)
   const alertRef = useRef<HTMLDivElement>(null)
 
-  // Las fotos guardadas: se piden siempre (la planta en memoria puede venir
-  // de la copia sin conexión).
+  // Las fotos guardadas: de plant_photos, no de la planta en memoria (puede
+  // venir de la copia sin conexión). Si la ficha las acaba de leer, se usan
+  // esas (#285, photos/plant-photos-memory.ts): el plan de guardado vuelve a
+  // leerlas al empezar y concilia con ellas lo que haya cambiado entre tanto.
   useEffect(() => {
     if (userId === null) return
     let active = true
-    services.rows.list(plant.id.toLowerCase(), userId).then(
+    const plantId = plant.id.toLowerCase()
+    const remembered =
+      storedAttempt === 0
+        ? recentPlantPhotos(services.rows, userId, plantId, EDIT_REUSE_MS)
+        : null
+    // Solo si su principal es la de la planta: si no, algo cambió después.
+    const recent =
+      remembered &&
+      (remembered[0]?.photoPath ?? null) === (plant.photoPath ?? null)
+        ? remembered
+        : null
+    const read = recent
+      ? Promise.resolve(recent)
+      : services.rows.list(plantId, userId)
+    read.then(
       (stored) => {
         if (!active) return
+        if (!recent) rememberPlantPhotos(services.rows, userId, plantId, stored)
         photos.replace(stored.map(storedPhotoEntry))
         setStoredBefore(stored)
         setDetails(
@@ -403,7 +397,7 @@ export function EditPlantForm({
       { ...values, photoInBloom: base.photoInBloom },
       base,
     )
-    const nextNotes = normalizeNotes(notes)
+    const nextNotes = normalizePlantNotes(notes)
     if (notesBase !== undefined && nextNotes !== notesBase) {
       patch.notes = nextNotes
     }
@@ -435,8 +429,8 @@ export function EditPlantForm({
     ? validatePlantForm(values, today)
     : {}
   const notesError =
-    submitted && characters(notes.trim()) > PLANT_NOTES_MAX_LENGTH
-      ? EDIT_TEXT.notesTooLong(PLANT_NOTES_MAX_LENGTH)
+    submitted && plantNotesLength(notes) > MAX_PLANT_NOTES_LENGTH
+      ? EDIT_TEXT.notesTooLong(MAX_PLANT_NOTES_LENGTH)
       : undefined
   const photoErrors = (entry: PhotoEntry): PhotoDetailsErrors => {
     if (!submitted || entry.kind === 'preparing') return {}
@@ -485,14 +479,13 @@ export function EditPlantForm({
   }, [])
 
   const preparing = entries.some((entry) => entry.kind === 'preparing')
-  const locked = values.species !== null
 
   const cancel = () => {
     if (saving) return
     guard.requestLeave(onCancel)
   }
   useEffect(() => {
-    // «Volver a la ficha»: durante un guardado avisa de que hay que esperar.
+    // «Volver a la planta»: durante un guardado avisa de que hay que esperar.
     cancelRef.current = () => guard.requestLeave(onCancel)
     return () => {
       cancelRef.current = null
@@ -501,50 +494,23 @@ export function EditPlantForm({
 
   // Foco de los campos -----------------------------------------------------------
   const offlineId = useId()
-  const nameRef = useRef<HTMLInputElement>(null)
-  const genusRef = useRef<HTMLDivElement>(null)
-  const typeRef = useRef<HTMLDivElement>(null)
-  const dateRef = useRef<HTMLInputElement>(null)
-  const originRef = useRef<HTMLInputElement>(null)
-  const locationRef = useRef<HTMLInputElement>(null)
-  const nicknameRef = useRef<HTMLInputElement>(null)
+  const {
+    nameRef,
+    genusRef,
+    typeRef,
+    dateRef,
+    originRef,
+    locationRef,
+    nicknameRef,
+    focusField,
+  } = usePlantFieldFocus(values.otherGenusOpen)
   const notesRef = useRef<HTMLTextAreaElement>(null)
-
-  const focusField = (field: PlantFormField) => {
-    switch (field) {
-      case 'name':
-        nameRef.current?.focus()
-        return
-      case 'genus':
-        genusRef.current
-          ?.querySelector<HTMLElement>(
-            values.otherGenusOpen ? 'input' : 'button',
-          )
-          ?.focus()
-        return
-      case 'type':
-        typeRef.current?.querySelector<HTMLElement>('button')?.focus()
-        return
-      case 'acquiredOn':
-        dateRef.current?.focus()
-        return
-      case 'origin':
-        originRef.current?.focus()
-        return
-      case 'location':
-        locationRef.current?.focus()
-        return
-      case 'nickname':
-        nicknameRef.current?.focus()
-        return
-    }
-  }
 
   // Fotos: acciones ------------------------------------------------------------------
   const setUpload = (key: string, upload: NewPhotoEntry['upload']) =>
     photos.update((list) =>
       list.map((entry) =>
-        entry.key === key && isNew(entry) ? { ...entry, upload } : entry,
+        entry.key === key && isNewEntry(entry) ? { ...entry, upload } : entry,
       ),
     )
 
@@ -727,7 +693,7 @@ export function EditPlantForm({
     setSubmitted(true)
     const found = validatePlantForm(values, today)
     const firstInvalid = FIELD_ORDER.find((field) => found[field])
-    const notesTooLong = characters(notes.trim()) > PLANT_NOTES_MAX_LENGTH
+    const notesTooLong = plantNotesLength(notes) > MAX_PLANT_NOTES_LENGTH
     if (firstInvalid || notesTooLong) {
       // Un error dentro de «Más detalles» la abre, para que se vea.
       const inDetails =
@@ -773,7 +739,7 @@ export function EditPlantForm({
     setSave({ status: 'saving' })
     setManaging(false)
     for (const entry of photos.current()) {
-      if (isNew(entry) && entry.upload.status === 'error') {
+      if (isNewEntry(entry) && entry.upload.status === 'error') {
         setUpload(entry.key, { status: 'idle' })
       }
     }
@@ -790,7 +756,7 @@ export function EditPlantForm({
           return
         case 'data-saved':
           savedValues.current = values
-          savedNotes.current = normalizeNotes(notes)
+          savedNotes.current = normalizePlantNotes(notes)
           setPartial(true)
           onPlantStored(edit.plant)
           return
@@ -813,6 +779,14 @@ export function EditPlantForm({
         onEvent,
       )
       if (result.plant) onPlantStored(result.plant)
+      // Las filas como quedaron: la ficha no las vuelve a leer al volver.
+      rememberPlantPhotos(
+        services.rows,
+        plan.userId,
+        plan.plantId,
+        result.photos,
+        'saved',
+      )
       savingRef.current = false
       // Si la persona ya no está en la edición, no se la lleva a la ficha.
       if (!mounted.current) return
@@ -821,11 +795,13 @@ export function EditPlantForm({
       })
     } catch (error) {
       savingRef.current = false
+      // Pudo quedar a medias: lo recordado de la planta ya no vale.
+      forgetPlantPhotosOf(services.rows, plan.userId, plan.plantId)
       // Las que sí se subieron vuelven a verse como pendientes: aún no son
       // de la planta (solo las que fallaron dicen «No se subió»).
       photos.update((list) =>
         list.map((entry) =>
-          isNew(entry) && entry.upload.status === 'uploading'
+          isNewEntry(entry) && entry.upload.status === 'uploading'
             ? { ...entry, upload: { status: 'idle' } }
             : entry,
         ),
@@ -841,18 +817,21 @@ export function EditPlantForm({
   }
 
   // Tras un fallo, el mensaje se ve y el foco va a «Reintentar» (o a «Ir a
-  // Mi colección», si la planta ya no existe).
+  // Mi colección», si la planta ya no existe). En el mismo pintado que el
+  // aviso (useLayoutEffect), después de que el diálogo de esperar, si estaba
+  // abierto, devuelva el foco a donde estaba: el aviso nunca se ve con el
+  // foco en otra parte, por tarde que llegue el fallo.
   const failure = save.status === 'error' ? save.error : null
   const retryRef = useRef<HTMLButtonElement>(null)
   const collectionRef = useRef<HTMLAnchorElement>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (failure === null) return
     alertRef.current?.scrollIntoView?.({ block: 'center' })
     ;(collectionRef.current ?? retryRef.current)?.focus()
   }, [failure])
 
   // Miniaturas: las nuevas, de su Blob; las guardadas, de Storage.
-  const newEntries = entries.filter(isNew)
+  const newEntries = entries.filter(isNewEntry)
   const thumbnailUrls = useObjectUrls(
     newEntries.map((entry) => entry.photo.thumbnail.blob),
   )
@@ -868,34 +847,9 @@ export function EditPlantForm({
         ? thumbnailUrls.get(entry.photo.thumbnail.blob)
         : undefined
 
-  const galleryPhotos: GalleryPhoto[] = entries.map((entry) => {
-    const src = srcOf(entry)
-    if (entry.kind === 'preparing') {
-      return { id: entry.key, state: { status: 'preparing' } }
-    }
-    if (entry.kind === 'stored') {
-      return { id: entry.key, src, state: { status: 'ready' } }
-    }
-    const { upload } = entry
-    switch (upload.status) {
-      case 'idle':
-        return { id: entry.key, src, state: { status: 'ready' } }
-      case 'uploading':
-        return {
-          id: entry.key,
-          src,
-          state: { status: 'uploading', progress: upload.progress },
-        }
-      case 'saved':
-        return { id: entry.key, src, state: { status: 'saved' } }
-      case 'error':
-        return {
-          id: entry.key,
-          src,
-          state: { status: 'error', message: EDIT_TEXT.photoNotUploaded },
-        }
-    }
-  })
+  const galleryPhotos: GalleryPhoto[] = entries.map((entry) =>
+    toGalleryPhoto(entry, srcOf(entry), () => EDIT_TEXT.photoNotUploaded),
+  )
 
   const managed: ManagedPhoto[] = entries.map((entry) => ({
     key: entry.key,
@@ -989,49 +943,20 @@ export function EditPlantForm({
         containerRef={genusRef}
       />
 
-      <ChoiceField
-        label={PLANT_FORM_TEXT.typeLabel}
-        lockedHint={locked ? PLANT_FORM_TEXT.lockedHint : undefined}
+      <PlantTypeField
+        values={values}
+        dispatch={dispatch}
         error={errors.type}
         containerRef={typeRef}
-        segmented
-      >
-        {(describedBy) =>
-          PLANT_TYPES.map((plantType) => {
-            const selected = values.type === plantType
-            return (
-              <Chip
-                key={plantType}
-                className={[
-                  FORM_CHIP_CLASSES,
-                  locked && !selected ? LOCKED_CHIP_CLASSES : '',
-                ].join(' ')}
-                selected={selected}
-                aria-disabled={locked || undefined}
-                aria-describedby={describedBy}
-                onClick={() => dispatch({ type: 'typeSelected', plantType })}
-              >
-                {PLANT_TYPE_LABEL[plantType]}
-              </Chip>
-            )
-          })
-        }
-      </ChoiceField>
+      />
 
       <FormPair>
-        <TextField
-          ref={dateRef}
-          label={PLANT_FORM_TEXT.dateLabel}
-          type="date"
-          max={today}
+        <AcquiredOnField
           value={values.acquiredOn}
+          max={today}
           error={errors.acquiredOn}
-          onChange={(event) =>
-            dispatch({
-              type: 'acquiredOnChanged',
-              acquiredOn: event.target.value,
-            })
-          }
+          dispatch={dispatch}
+          inputRef={dateRef}
         />
         <OriginField
           field="location"
@@ -1076,38 +1001,13 @@ export function EditPlantForm({
             error={errors.origin}
             inputRef={originRef}
           />
-          <TextField
-            ref={nicknameRef}
-            label={PLANT_FORM_TEXT.nicknameLabel}
-            hint={PLANT_FORM_TEXT.nicknameHint}
+          <NicknameField
             value={values.nickname}
-            maxLength={PLANT_TEXT_MAX_LENGTH}
-            autoCapitalize="sentences"
             error={errors.nickname}
-            onChange={(event) =>
-              dispatch({
-                type: 'textChanged',
-                field: 'nickname',
-                value: event.target.value,
-              })
-            }
+            dispatch={dispatch}
+            inputRef={nicknameRef}
           />
-          <ChoiceField label={PLANT_FORM_TEXT.flowerColorLabel}>
-            {() =>
-              enumValues.flower_color.map((flowerColor) => (
-                <Chip
-                  key={flowerColor}
-                  className={FORM_CHIP_CLASSES}
-                  selected={values.flowerColor === flowerColor}
-                  onClick={() =>
-                    dispatch({ type: 'flowerColorToggled', flowerColor })
-                  }
-                >
-                  {FLOWER_COLOR_LABEL[flowerColor]}
-                </Chip>
-              ))
-            }
-          </ChoiceField>
+          <FlowerColorField value={values.flowerColor} dispatch={dispatch} />
           <div className="orki-field">
             <label className="orki-field__label" htmlFor={notesId}>
               {EDIT_TEXT.notesLabel}
@@ -1136,8 +1036,8 @@ export function EditPlantForm({
             )}
             <span className="orki-field__hint" id={notesHintId}>
               {`${EDIT_TEXT.notesHint} ${EDIT_TEXT.notesCount(
-                characters(notes.trim()),
-                PLANT_NOTES_MAX_LENGTH,
+                plantNotesLength(notes),
+                MAX_PLANT_NOTES_LENGTH,
               )}`}
             </span>
           </div>
@@ -1183,22 +1083,7 @@ export function EditPlantForm({
           </Button>
         </div>
       )}
-      {prepareErrors.length > 0 && (
-        <div role="alert" className="flex flex-col gap-space-1">
-          {prepareErrors.map((message) => (
-            <p
-              key={message}
-              className="flex items-start gap-space-2 text-sm text-danger"
-            >
-              <Icon
-                name="triangle-alert"
-                className="mt-[2px] size-[16px] flex-none"
-              />
-              {message}
-            </p>
-          ))}
-        </div>
-      )}
+      <PhotoPrepareErrors messages={prepareErrors} />
     </>
   )
 

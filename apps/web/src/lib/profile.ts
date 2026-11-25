@@ -8,7 +8,7 @@ import { getSupabase } from './supabase.ts'
 // iniciada (auth/ProfileBootstrap.tsx), con la política "Cada usuario crea su
 // perfil" (with check: id = requesting_user_id()).
 //
-// La inserción es idempotente: upsert con ignoreDuplicates, que supabase-js
+// La inserción es idempotente: upsert con ignoreDuplicates, que postgrest-js
 // envía como POST /profiles?on_conflict=id con
 // "Prefer: resolution=ignore-duplicates" y que PostgREST traduce a
 // "insert ... on conflict (id) do nothing". Si el perfil ya existe no da error,
@@ -32,6 +32,18 @@ import { getSupabase } from './supabase.ts'
 // duplica la inserción). Si falla, se olvida, y la siguiente llamada (otro
 // ingreso, una recarga o la vuelta de la conexión) lo intenta de nuevo.
 //
+// Entre cargas de la página (#285): cuando sale bien se deja en localStorage
+// una marca por usuario (PROFILE_MARK_PREFIX + id de Clerk, con el valor "1":
+// ningún dato del perfil), y con ella los arranques siguientes no envían
+// nada. La marca se quita:
+// - al empezar a eliminar la cuenta (en cuanto ensureProfile ve la marca de
+//   eliminación en curso) y con la limpieza del dispositivo al terminarla
+//   (account/device-cleanup.ts borra las claves "orki:" con el id);
+// - con forgetEnsuredProfile, cuando la persona abandona una eliminación a
+//   medias (el perfil pudo borrarse).
+// Si localStorage no existe o falla, se comporta como antes: una petición
+// por carga de la página.
+//
 // Eliminación de la cuenta (#110): mientras hay una eliminación en curso
 // (lib/account-deletion-marker.ts), no se crea el perfil ni se envía nada. Si
 // no, entre el borrado del perfil y el de la cuenta de Clerk, una recarga o la
@@ -39,17 +51,61 @@ import { getSupabase } from './supabase.ts'
 
 const attempts = new Map<string, Promise<boolean>>()
 
+/** Prefijo de la marca de «perfil ya creado»; va seguido del id de Clerk. */
+export const PROFILE_MARK_PREFIX = 'orki:perfil:creado:'
+
+function storage(): Storage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function hasMark(userId: string): boolean {
+  try {
+    return storage()?.getItem(`${PROFILE_MARK_PREFIX}${userId}`) === '1'
+  } catch {
+    return false
+  }
+}
+
+function setMark(userId: string): void {
+  try {
+    storage()?.setItem(`${PROFILE_MARK_PREFIX}${userId}`, '1')
+  } catch {
+    // Sin almacenamiento: el próximo arranque lo vuelve a pedir.
+  }
+}
+
+function clearMark(userId: string): void {
+  try {
+    storage()?.removeItem(`${PROFILE_MARK_PREFIX}${userId}`)
+  } catch {
+    // Sin almacenamiento no hay marca que quitar.
+  }
+}
+
 /**
  * Se asegura de que existe el perfil del usuario con sesión iniciada. Nunca
  * lanza: devuelve true si el perfil existe (creado ahora o antes) y false si
  * no se pudo comprobar (sin conexión, sin token, error de red o del servidor).
  */
 export function ensureProfile(userId: string): Promise<boolean> {
-  if (isAccountDeletionPending(userId)) return Promise.resolve(false)
+  if (isAccountDeletionPending(userId)) {
+    clearMark(userId)
+    return Promise.resolve(false)
+  }
   const previous = attempts.get(userId)
   if (previous !== undefined) return previous
+  if (hasMark(userId)) {
+    const done = Promise.resolve(true)
+    attempts.set(userId, done)
+    return done
+  }
   const attempt = insertProfile(userId).then((ok) => {
-    if (!ok && attempts.get(userId) === attempt) attempts.delete(userId)
+    if (ok) setMark(userId)
+    else if (attempts.get(userId) === attempt) attempts.delete(userId)
     return ok
   })
   attempts.set(userId, attempt)
@@ -86,9 +142,14 @@ function warn(detail: string) {
  */
 export function forgetEnsuredProfile(userId: string): void {
   attempts.delete(userId)
+  clearMark(userId)
 }
 
-/** Solo para pruebas: olvida los intentos hechos en esta carga de la página. */
+/**
+ * Solo para pruebas: olvida los intentos hechos en esta carga de la página y
+ * las marcas del dispositivo.
+ */
 export function resetEnsuredProfiles(): void {
+  for (const userId of attempts.keys()) clearMark(userId)
   attempts.clear()
 }

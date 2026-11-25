@@ -164,7 +164,7 @@ describe('ActionRow', () => {
             <li>
               <ActionRow
                 icon="file"
-                title="Exportar inventario a CSV"
+                title="Exportar tu colección a CSV"
                 description="El archivo CSV no incluye las fotos."
                 onClick={onExport}
               />
@@ -194,7 +194,7 @@ describe('ActionRow', () => {
     expect(screen.getByRole('list')).toHaveClass('orki-actions')
     // El nombre lleva todo el texto visible, el título primero (WCAG 2.5.3).
     const exportRow = screen.getByRole('button', {
-      name: 'Exportar inventario a CSV El archivo CSV no incluye las fotos.',
+      name: 'Exportar tu colección a CSV El archivo CSV no incluye las fotos.',
     })
     expect(exportRow).toHaveClass('orki-action')
     expect(exportRow.querySelector('svg:last-child')).toHaveClass(

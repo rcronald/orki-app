@@ -24,12 +24,20 @@ const decoder = new TextDecoder()
 let sent: string[] = []
 let online = true
 let reloading = false
+// Lo que dirá la página al esperar a ver si se va (#308), y cuántas veces se
+// esperó.
+let leaves = false
+let leaveWaits = 0
 
 function start() {
   init(
     buildSentryOptions(SETTINGS, {
       isOnline: () => online,
       isReloadingForUpdate: () => reloading,
+      waitForPageLeave: () => {
+        leaveWaits += 1
+        return Promise.resolve(leaves)
+      },
       transport: (options) =>
         createTransport(options, (request) => {
           sent.push(
@@ -52,6 +60,8 @@ beforeEach(() => {
   sent = []
   online = true
   reloading = false
+  leaves = false
+  leaveWaits = 0
   window.history.replaceState(null, '', '/coleccion?q=masdevallia#arriba')
   start()
 })
@@ -149,5 +159,26 @@ describe('evento saliente', () => {
     await flush(2000)
 
     expect(sentEvents()).toHaveLength(1)
+  })
+
+  it('un chunk que no llegó porque la página se iba (Safari al volver atrás) no se envía (#308)', async () => {
+    // WebKit rechaza el import() antes de beforeunload: solo después de
+    // esperar se sabe que la página se iba.
+    leaves = true
+
+    captureException(new TypeError('Importing a module script failed.'))
+    await flush(2000)
+
+    expect(leaveWaits).toBe(1)
+    expect(sentEvents()).toEqual([])
+  })
+
+  it('si la página se queda, el chunk que no llegó sí se envía, y otros errores no esperan', async () => {
+    captureException(new TypeError('Importing a module script failed.'))
+    captureException(new Error('Componente roto'))
+    await flush(2000)
+
+    expect(leaveWaits).toBe(1)
+    expect(sentEvents()).toHaveLength(2)
   })
 })

@@ -6,7 +6,13 @@ import { CATALOG_ADMIN_ERROR_TEXT } from '../lib/catalogAdmin.ts'
 import { initSupabase, setSessionTokenSource } from '../lib/supabase.ts'
 import { PATHS } from '../routes/paths.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
+import {
+  advanceClock,
+  finishWait,
+  typeWithClockStopped,
+} from '../test/stopped-clock.ts'
 import CatalogAdminPage from './CatalogAdminPage.tsx'
+import { SEARCH_DEBOUNCE_MS } from './useRemoteData.ts'
 
 // La pantalla del backoffice del catálogo con la API de Supabase simulada
 // (fetch), como las demás pantallas. Comprueba qué se pide, qué se muestra en
@@ -191,6 +197,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -404,14 +411,19 @@ describe('CatalogAdminPage', () => {
   })
 
   it('busca al dejar de escribir, por relevancia, y muestra el nombre por el que coincidió', async () => {
-    const user = userEvent.setup()
     renderAt()
     await findTableRows()
-    await user.type(
+    // Con el reloj parado entre pulsaciones (#311): con el real, una pulsación
+    // lenta en un equipo cargado dejaba salir búsquedas a medias.
+    await typeWithClockStopped(
       screen.getByRole('searchbox', { name: 'Buscar especies' }),
       'doritis pulch',
     )
     expect(screen.getByText('Cargando especies…')).toBeInTheDocument()
+    // No se busca hasta que pasa la espera sin escribir.
+    await advanceClock(SEARCH_DEBOUNCE_MS - 1)
+    expect(requestsTo('rpc/search_catalog_species')).toHaveLength(0)
+    await finishWait(1)
     expect(
       await screen.findByText('Sinónimo: Doritis pulcherrima'),
     ).toBeInTheDocument()
@@ -433,6 +445,65 @@ describe('CatalogAdminPage', () => {
       screen.getByRole('table', { name: /coinciden con «doritis pulch»/ }),
     ).toBeInTheDocument()
     await expectNoAxeViolations()
+  })
+
+  it('al escribir despacio, la respuesta tardía de lo escrito antes no pisa la de ahora', async () => {
+    const pending: { query: unknown; resolve: (body: unknown) => void }[] = []
+    handlers['rpc/search_catalog_species'] = ({ body }) =>
+      new Promise((resolve) => {
+        pending.push({
+          query: body.query,
+          resolve: (rows) => {
+            void jsonResponse(rows).then(resolve)
+          },
+        })
+      })
+    const found = (index: number, matchedName: string) => [
+      {
+        ...speciesRow(index),
+        matched_name: matchedName,
+        matched_name_type: 'synonym',
+        total_count: 1,
+        current_page: 1,
+      },
+    ]
+    renderAt()
+    await findTableRows()
+    const box = screen.getByRole('searchbox', { name: 'Buscar especies' })
+    // Una pausa más larga que la espera a mitad de palabra: salen dos
+    // búsquedas, y la primera se cancela al seguir escribiendo.
+    await typeWithClockStopped(box, 'doritis')
+    await advanceClock(SEARCH_DEBOUNCE_MS)
+    await typeWithClockStopped(box, ' pulch')
+    await finishWait(SEARCH_DEBOUNCE_MS)
+    await waitFor(() =>
+      expect(pending.map((call) => call.query)).toEqual([
+        'doritis',
+        'doritis pulch',
+      ]),
+    )
+
+    // Llega antes la de ahora y después la de antes.
+    await act(async () => {
+      pending[1]?.resolve(found(7, 'Doritis pulcherrima'))
+      await Promise.resolve()
+    })
+    expect(
+      await screen.findByText('Sinónimo: Doritis pulcherrima'),
+    ).toBeInTheDocument()
+    await act(async () => {
+      pending[0]?.resolve(found(9, 'Doritis tardía'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(screen.queryByText('Sinónimo: Doritis tardía')).toBeNull()
+    expect(
+      screen.getByText(
+        '1 especie coincide con «doritis pulch». Página 1 de 1.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(table()).getByRole('link', { name: 'Phalaenopsis especie007' }),
+    ).toBeInTheDocument()
   })
 
   it('sin resultados: lo dice y ofrece limpiar la búsqueda y los filtros', async () => {

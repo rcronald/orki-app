@@ -20,7 +20,9 @@ interface AuthProviderProps {
 // Proveedor de Clerk de la app: clave del ambiente, textos en español y
 // apariencia del design system. Se usa la localización es-MX porque es la de
 // vocabulario latinoamericano ("Agregar", "Ingresa"); las cadenas que Clerk aún
-// no ha traducido salen en inglés.
+// no ha traducido salen en inglés. En el build, esas cadenas sin traducir se
+// quitan del módulo sin cambiar ningún texto (complementos/localizacion-clerk.ts,
+// #287).
 //
 // ClerkProvider no bloquea el renderizado: sus hijos se pintan enseguida y
 // Clerk carga en segundo plano su script desde su CDN. Mientras tanto, y si no

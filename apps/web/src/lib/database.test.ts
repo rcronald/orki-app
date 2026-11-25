@@ -36,7 +36,7 @@ import { getSupabase, type OrkiSupabaseClient } from './supabase.ts'
 // Pruebas de los tipos del esquema. Lo importante pasa al compilar (npm run typecheck): cada
 // `@ts-expect-error` marca un uso incorrecto que TypeScript debe rechazar; si dejara de ser un
 // error (por ejemplo, porque el cliente perdiera el tipo Database), el typecheck fallaría.
-// Ninguna prueba hace consultas: los constructores de consultas de supabase-js no envían nada
+// Ninguna prueba hace consultas: los constructores de consultas de postgrest-js no envían nada
 // hasta que se esperan con await, y aquí nunca se esperan.
 
 // Solo se compila: describe usos válidos e inválidos del cliente tipado.

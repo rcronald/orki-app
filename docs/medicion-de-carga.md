@@ -13,9 +13,9 @@ Todas las cifras de este documento salen de ejecuciones hechas con las órdenes 
 
 - El inicio carga muy por debajo de 3 segundos.
 - El inventario con 100 plantas queda en 2,80 s **sin** el script de Clerk (71,6 KiB con Brotli, ver abajo), sin las idas y vueltas a su API y sin la consulta a Supabase. Con ellos lo más probable es que pase de 3 s en la primera visita; no está medido. Queda propuesto un issue para medirlo contra el ambiente de desarrollo y el plan para bajarlo («Issues por abrir»).
-- El CI falla si el JavaScript inicial, el CSS o el total precacheado superan el presupuesto (`apps/web/presupuesto-tamano.json`, margen del 5 %).
+- El CI falla si el JavaScript inicial, el CSS o el total precacheado superan el presupuesto (`apps/web/presupuesto-tamano.json`, margen del 5 %). Informa además, sin límite, el precaché con Brotli (#287).
 
-> **Actualización (22 nov 2026):** con la portada del #179, el inicio da 3,95 s de LCP (antes de ella, 3,20 s con el mismo método); el detalle, en «Portada». El presupuesto del CSS inicial y del precaché queda superado por las piezas nuevas del design system y está pendiente de decidir.
+> **Actualización (22 nov 2026):** con la portada del #179, el inicio da 3,95 s de LCP (antes de ella, 3,20 s con el mismo método); el detalle, en «Portada». El presupuesto del CSS inicial y del precaché quedó superado por las piezas nuevas del design system; se decidió subirlo, y la referencia vigente es la del 23 nov 2026 (ver «Presupuesto de tamaño (CI)»).
 >
 > **Actualización (#204):** el 0,90 s de la tabla no medía cuándo se veía el texto: Lighthouse 13, con un LCP de texto que coincide con el FCP, lo calcula solo con el HTML y el CSS, aunque el texto lo pintara el JavaScript. Con la portada prerrenderada en `index.html` el inicio baja a 2,40 s de LCP (3,95 s en `main`); la causa, las cifras y lo pendiente, en «Carga de la portada (#204)».
 
@@ -195,6 +195,7 @@ El JavaScript inicial apenas cambia (el código de la espera y de retirar la por
 ### Pendiente
 
 - **WebKit descarga también el JPEG de respaldo** (134 KiB) cuando la app pinta su portada: React pone `src` al `<img>` antes de meterlo en el `<picture>`, y WebKit lo empieza a descargar en ese momento. Pasaba ya en `main`, donde WebKit descargaba el JPEG y la variante AVIF dos veces; con la portada prerrenderada son el AVIF una vez y el JPEG. Visto con WebKit de Playwright, no en un iPhone. Para arreglarlo, `HeroPhoto` podría reutilizar el `<picture>` ya pintado o no llevar `src` hasta estar dentro del `<picture>`.
+  **No se reprodujo después** (revisión del #287): con el WebKit de Playwright en macOS, a 360 y a 1440 px, sin service worker y con 5 s de espera tras `networkidle`, solo se descargan `portada-648.avif` (31 301 B) o `portada-960.avif` (56 728 B) y el chunk `App`; el JPEG no aparece. Puede depender de la plataforma (se vio en otra configuración) o pasar solo en un iPhone real, que no se ha probado. No es prioritario: sería solo Safari, una vez por visita, y no bloquea el pintado.
 - **Las fuentes (72 KiB) están en el camino del LCP** ahora que el texto se pinta al principio. Subconjuntos más pequeños de Inter y Playfair Display, o solo dos pesos, bajarían el LCP de la simulación; no está medido.
 - **El 300 ms de `Suspense` en las páginas diferidas** (registro, detalle, edición, privacidad, créditos, backoffice) sigue: al abrirlas por primera vez, su contenido aparece como pronto 300 ms después del fallback. No afecta al inicio ni al inventario.
 - **No medido:** un celular real con 4G, la red de producción con Clerk real (su script y su API), y la segunda visita con el service worker instalado.
@@ -212,32 +213,59 @@ npm run presupuesto      # scripts/presupuesto-tamano.mjs
 
 | Métrica | Qué cuenta | Referencia | Límite (+5 %) |
 | --- | --- | --- | --- |
-| `jsInicialGzip` | JavaScript que pide `index.html` (script y `modulepreload`) más sus imports estáticos, con gzip: hoy `index-*.js`, `react-*.js` y `registerSW.js` | 86 025 B (84,0 KiB) | 90 327 B |
-| `cssGzip` | Hojas de estilo que enlaza `index.html`, con gzip | 7 258 B (7,1 KiB) | 7 621 B |
-| `precacheBytes` | Todos los archivos del manifiesto de precaché del service worker, sin comprimir (29 entradas) | 1 194 535 B (1166,5 KiB) | 1 254 262 B |
+| `jsInicialGzip` | JavaScript que pide `index.html` (script y `modulepreload`) más sus imports estáticos, con gzip: hoy solo `index-*.js` (desde el #278 no hay `registerSW.js`: el service worker lo registra la app) | 86 987 B (84,9 KiB) | 91 337 B |
+| `cssGzip` | Hojas de estilo que enlaza `index.html`, con gzip | 13 246 B (12,9 KiB) | 13 909 B |
+| `precacheBytes` | Todos los archivos del manifiesto de precaché del service worker, sin comprimir (58 entradas el 24 nov 2026) | 1 371 087 B (1339,0 KiB) | 1 439 642 B |
+| `precacheBrotli` (informativa) | Los mismos archivos, comprimidos uno a uno con Brotli (calidad 11): lo que se transfiere al instalar la app | 443 556 B (433,2 KiB) | sin límite |
+
+Referencia y límite de `apps/web/presupuesto-tamano.json` (fecha: 24 nov 2026). Medido el 24 nov 2026 sobre la rama del #287: 87 252 B de JavaScript inicial (95,5 % del límite), 13 317 B de CSS (95,7 %), 1 371 087 B de precaché (95,2 %) y 443 556 B de precaché con Brotli. La referencia del JavaScript y del CSS es anterior y algo menor que lo medido hoy: `--bajar` no las toca porque su límite no baja (ver abajo).
 
 - El JavaScript inicial es lo que se descarga antes de pintar nada. El chunk `App` (Clerk, rutas y pantallas) se pide justo después y no entra en esa cifra; cualquier crecimiento suyo, o de los chunks diferidos, lo recoge el total precacheado.
-- El plugin de PWA informa al terminar el build un precaché algo menor (1150,33 KiB) que la suma de los tamaños de los archivos de su manifiesto (1166,5 KiB); el presupuesto usa la suma.
+- El plugin de PWA informa al terminar el build un precaché algo menor (1323,87 KiB el 24 nov 2026) que la suma de los tamaños de los archivos de su manifiesto (1339,0 KiB); el presupuesto usa la suma.
+- **El precaché con Brotli no tiene límite** (#287): son los mismos archivos que `precacheBytes`, que ya frena su crecimiento, y un segundo límite sobre ellos solo obligaría a recalibrar dos números en cada cambio. Además Vercel no siempre comprime con la calidad máxima, así que la cifra es un suelo de lo transferido, no lo transferido exacto. Sirve para ver cuánto pesa de verdad un cambio: `npm run presupuesto` da la diferencia con su referencia. El backoffice (`CatalogAdminPage`, 28 965 B con Brotli) entra en esa cifra: lo descargan también quienes no son administradores.
 - Medido dos veces seguidas con `npm run build:medicion && npm run presupuesto`: mismas cifras al byte. No está comprobado todavía que el build de Linux del CI dé exactamente los mismos bytes que el de macOS; si difiriera, el margen del 5 % lo absorbe.
-- **Subir el presupuesto** a propósito: `npm run build:medicion && npm run presupuesto -- --actualizar` reescribe el archivo con lo medido como referencia y el 5 % de margen. El PR tiene que explicar por qué crece.
+
+### Cambiar el presupuesto
+
+- **Bajarlo** tras un recorte: `npm run build:medicion && npm run presupuesto -- --bajar`. Solo cambia las métricas cuyo límite nuevo (lo medido + 5 %) queda por debajo del actual; las demás se quedan como estaban, aunque hayan subido unos bytes. Nunca sube nada.
+- **Subirlo** a propósito: `npm run build:medicion && npm run presupuesto -- --actualizar` reescribe el archivo con lo medido como referencia y el 5 % de margen.
+- **Regla** (#287): un PR que sube el presupuesto incluye la tabla de qué creció. Las dos opciones imprimen la tabla de las métricas en Markdown (referencia antes, medido, diferencia y límites); se pega en el PR y se completa con los chunks o archivos que crecieron y por qué (sus tamaños, como en «Qué pesa en el bundle»). Sin esa tabla, el PR no sube el presupuesto. Un PR que solo lo baja la incluye también, para que quede el antes y el después.
+- Hasta el #287 el presupuesto solo había subido (siete veces, ninguna bajada: el CSS con gzip, de 7 258 a 12 591 B; el precaché, de 1 194 535 a 1 478 676 B). Como `--actualizar` fija el límite en lo medido + 5 %, justo después de subirlo el uso siempre es 1/1,05 = 95,2 %: esa cifra no dice que falte margen, sino que no queda freno.
+
+### Recortes del #287
+
+`npm run build:medicion && npm run presupuesto`, antes y después de cada recorte, en orden:
+
+| Recorte | Precaché sin comprimir | Precaché con Brotli | Otros cambios |
+| --- | ---: | ---: | --- |
+| Antes (`origin/main`, `1256453`) | 1 402 144 B (59 archivos) | 453 826 B | — |
+| Sin `avif` en `globPatterns` | 1 402 144 B (0 B) | 453 826 B | `sw.js` idéntico al byte: el único AVIF del build, el de la portada, ya se excluía |
+| Sin `src/assets/fondos-genero/` | 1 402 144 B (0 B) | 453 826 B | Nada lo importaba; el repositorio pierde 71 127 B de AVIF |
+| El icono de 512 sirve también de enmascarable | 1 396 021 B (−6 123 B, 58 archivos) | 447 857 B (−5 969 B) | Era un duplicado byte a byte: ver abajo |
+| Localización de Clerk sin las cadenas sin traducir | 1 371 087 B (−24 934 B) | 443 556 B (−4 301 B) | `App`: de 95 022 a 89 985 B con gzip; JavaScript inicial +2 B (el hash nuevo de `App`) |
+| **Total** | **−31 057 B (−2,2 %)** | **−10 270 B (−2,3 %)** | |
+
+- **Icono enmascarable**: `maskable-icon-512x512.png` era el mismo archivo que `pwa-512x512.png`, pero sí tenía zona segura: el símbolo deja margen de sobra y la comprobación de `apps/web/scripts/generate-icons.mjs` da un radio de 0,332 del lado (el límite de la especificación es 0,4). El manifiesto lleva ahora `pwa-512x512.png` en dos entradas, `any` y `maskable` (no `any maskable`, que la especificación desaconseja), y el script comprueba la zona segura sobre ese archivo. No se ha visto en un Android real.
+- **Localización de Clerk** (`apps/web/complementos/localizacion-clerk.ts`): `@clerk/localizations/es-MX` deja como `undefined` cada cadena sin traducir (965 de 1 716 en la 4.26.1). La interfaz de Clerk mezcla sus textos en inglés y encima la localización con `fastDeepMergeAndReplace`, que se salta los `undefined` (`@clerk/ui` 1.45.0, `localization/parseLocalization.ts`), así que quitarlas no cambia ningún texto. Un plugin del build sustituye el módulo por el mismo objeto sin ellas; no hay lista de claves que mantener.
+- **Descartado: quedarse solo con las claves de las pantallas que se usan.** Medido sobre el módulo suelto: el original pesa 84 953 B (18 168 B con gzip); sin las cadenas sin traducir, 52 635 B (13 247 B); quitando también las pantallas que la app no usa (organizaciones, SSO, facturación, claves de API, lista de espera, Solana, OAuth, `UserButton`…), 36 603 B (9 247 B), unos 4 KB más con gzip. No se hace: que esas pantallas aparezcan depende de la configuración de Clerk (la facturación y las claves de API salen como pestañas del perfil si se activan en su panel), que el repositorio no ve, y habría que mantener la lista a mano.
+- **Fuera de alcance:** separar los 14,6 KB sin comprimir de `bundle.css` que solo usan pantallas diferidas, porque `bundle.css` es copia literal del design system.
 
 ## Qué pesa en el bundle
 
-Tamaños del build de `npm run build:medicion`. Las columnas gzip y Brotli están calculadas con Node (gzip nivel 9, Brotli calidad 11) sobre los archivos de `apps/web/dist/assets`.
+Tamaños del build de `npm run build:medicion`, medidos de nuevo el 24 nov 2026 sobre `a3f88a0`. Las columnas gzip y Brotli están calculadas con Node (gzip nivel 9, Brotli calidad 11) sobre los archivos de `apps/web/dist/assets`.
 
 | Chunk | Cuándo se descarga | Sin comprimir | gzip | Brotli |
 | --- | --- | --- | --- | --- |
-| `index` | al abrir (inicial) | 261 509 B | 82 618 B | 71 718 B |
-| `react` | al abrir (inicial) | 8 539 B | 3 282 B | 2 949 B |
-| `index.css` | al abrir (inicial) | 33 081 B | 7 258 B | 6 320 B |
-| `App` | justo después, en cualquier ruta | 276 610 B | 74 601 B | 64 886 B |
-| `ScientificName` (con los iconos) | con `App` | 11 170 B | 4 947 B | 4 346 B |
-| `sentry` | tras el primer pintado | 94 158 B | 32 267 B | 28 885 B |
-| `dist` (supabase-js) | en la primera consulta (con sesión, al entrar) | 217 567 B | 55 671 B | 47 136 B |
-| `CatalogAdminPage` | solo en el backoffice | 105 806 B | 28 589 B | 24 512 B |
+| `index` (con React) | al abrir (inicial) | 275 399 B | 87 233 B | 75 550 B |
+| `index.css` | al abrir (inicial) | 74 359 B | 13 317 B | 11 601 B |
+| `App` | justo después, en cualquier ruta | 339 201 B | 95 039 B | 81 069 B |
+| `sentry` | tras el primer pintado | 94 404 B | 32 321 B | 28 952 B |
+| `supabase-client` (postgrest-js y storage-js; antes `dist`, supabase-js, 217 567 B y 55 671 B con gzip) | en la primera consulta (con sesión, al entrar) | 45 805 B | 11 701 B | sin medir |
+| `CatalogAdminPage` | solo en el backoffice | 127 547 B | 34 062 B | 29 039 B |
+| `PlantDetailPage` | al abrir la ficha de una planta | 53 896 B | 15 921 B | 14 364 B |
 | Fuentes (4 woff2) | al pintar texto | 93 228 B | — | — |
 
-Reparto por paquete del código de cada chunk, según el tamaño de cada módulo **antes de minificar** que informa el empaquetador (sirve para comparar, no son bytes descargados):
+Reparto por paquete del código de cada chunk, según el tamaño de cada módulo **antes de minificar** que informa el empaquetador (sirve para comparar, no son bytes descargados). Es del 21 nov 2026 y no se ha vuelto a calcular:
 
 - `index`: react-dom 538 KB, react-router 87 KB, scheduler 9 KB; el código propio (configuración, observabilidad, rutas) suma unos 20 KB.
 - `App`: @clerk/react 108 KB, @clerk/localizations (es-MX) 84 KB, @clerk/shared 69 KB, @tanstack/query-core 63 KB (dependencia de @clerk/shared, no la usa la app), `src/inventory` 50 KB, `src/collection` 29 KB, `src/photos` 13 KB, `src/auth` 10 KB.
@@ -253,20 +281,20 @@ Ordenadas por ahorro esperado en la carga. Solo la primera tiene el ahorro medid
 > **Actualización (21 nov 2026):** la propuesta 1 ya está aplicada (entró con el modo sin conexión, #163). Las cifras de este documento son anteriores a ese cambio y a las funciones que entraron después; el presupuesto de `apps/web/presupuesto-tamano.json` sí está al día.
 
 1. **Registrar el service worker sin bloquear el pintado** (`apps/web/vite.config.ts`, `injectRegister: 'script'` → `'script-defer'`). `registerSW.js` va hoy en el `<head>` sin `defer` y Lighthouse lo marca como bloqueante. Medido con el cambio aplicado de forma temporal (`npm run build:medicion` y `npm run medir:carga -- --sin-build --solo inicio`, 5 ejecuciones): FCP y LCP del inicio de 0,90 s a 0,75 s (mín.–máx. 0,75–0,75); Speed Index de 0,91 s a 0,84 s. No cambia ningún byte. No se aplica en este cambio porque la configuración de PWA la está tocando otra tarea en paralelo.
-2. **Cliente de Supabase sin Auth, Realtime ni Functions** (`apps/web/src/lib/supabase.ts`): usar `@supabase/postgrest-js` (y `@supabase/storage-js` para las fotos) en lugar de `@supabase/supabase-js`. Los módulos que sobran suman unas tres cuartas partes del chunk de 47,1 KiB (Brotli) según su tamaño antes de minificar; el ahorro exacto está por medir. Ese chunk se descarga en cada entrada con sesión (perfil y colección) y compite por la red con la lista del inventario.
+2. **Hecho en el #286** (chunk de 55 671 B a 11 701 B con gzip; precaché de 1 574 964 B a 1 403 235 B). **Cliente de Supabase sin Auth, Realtime ni Functions** (`apps/web/src/lib/supabase.ts`): usar `@supabase/postgrest-js` (y `@supabase/storage-js` para las fotos) en lugar de `@supabase/supabase-js`. Los módulos que sobran suman unas tres cuartas partes del chunk de 47,1 KiB (Brotli) según su tamaño antes de minificar; el ahorro exacto está por medir. Ese chunk se descarga en cada entrada con sesión (perfil y colección) y compite por la red con la lista del inventario.
 3. **Retrasar Sentry hasta que la página esté quieta** (`apps/web/src/observability/reporter.ts`): hoy el SDK (28,9 KiB con Brotli) se pide tras el primer pintado, en paralelo con `App` y con la colección. Pedirlo tras el evento `load` o en un momento ocioso libera la red de la primera pantalla; los errores anteriores ya se guardan en memoria. Ahorro en tiempo no medido.
-4. **Revisar el peso de Clerk en `App`**: la localización es-MX (84 KB antes de minificar) y TanStack Query (63 KB, que arrastra @clerk/shared) van en el chunk que necesita cualquier pantalla. Opciones a valorar: comprobar si versiones nuevas de `@clerk/react` lo separan, o cargar la localización solo en las pantallas de acceso si Clerk lo permite. Sin medir.
+4. **Revisar el peso de Clerk en `App`** (la localización, en parte hecho en el #287: ver «Recortes del #287»): la localización es-MX (84 KB antes de minificar) y TanStack Query (63 KB, que arrastra @clerk/shared) van en el chunk que necesita cualquier pantalla. Opciones a valorar: comprobar si versiones nuevas de `@clerk/react` lo separan, o cargar la localización solo en las pantallas de acceso si Clerk lo permite. Sin medir.
 5. **Inventario en su propio chunk** (`apps/web/src/App.tsx`, `CollectionPage` con `lazy`). Medido de forma temporal (solo tamaños): `App` baja de 64 886 B a 54 456 B con Brotli (−10,4 KiB) y aparece un chunk `CollectionPage` de 10 798 B que se pide al abrir `/coleccion`. Ayuda al inicio, que ya está en 0,90 s, y añade una petición encadenada al inventario, que es la pantalla en riesgo. **No se recomienda** salvo que se precargue tras el primer pintado.
 
 Lo que se revisó y no hace falta tocar ahora:
 
 - **Precarga de fuentes**: en el inicio el LCP es texto con `font-display: swap` y no espera a las fuentes (LCP = FCP = 0,90 s). Precargarlas competiría con el JavaScript por la red. Las cuatro van precacheadas para usarlas sin conexión.
 - **Carga diferida de rutas**: ya está hecha (`App`, registro, detalle, edición, backoffice, muestra y diagnóstico van en chunks propios).
-- **Tamaños de imagen**: el marcador «Sin foto» es un SVG en línea de 620 B y los iconos y favicons suman 16 126 B (15,7 KiB); solo el favicon y el icono de 192 px se piden al abrir.
+- **Tamaños de imagen**: el marcador «Sin foto» es un SVG en línea de 620 B y los iconos y favicons suman 14 525 B (14,2 KiB; 24 nov 2026, tras quitar el enmascarable duplicado en el #287); solo el favicon y el icono de 192 px se piden al abrir.
 
 ## Issues por abrir
 
-Redactados aquí; no se han abierto todavía.
+Redactados aquí el 21 nov 2026. Estado a 24 nov 2026: el 1 se abrió como #169 y está cerrado (ver «Inventario con Clerk y Supabase reales (#169)»); el 2 no hizo falta abrirlo: se aplicó el 21 nov 2026 con `script-defer` (commit `a4cbfcd`), y desde el #278 la app registra el service worker después del primer pintado, sin `registerSW.js` en el HTML (`injectRegister: false` en `apps/web/vite.config.ts`); el 3 es el #286, abierto; y el 4 se hizo en el #204.
 
 **1. Rendimiento: medir el inventario con Clerk y Supabase reales y bajarlo de 3 s** (prioridad alta, área calidad, ejecuta: ambos)
 

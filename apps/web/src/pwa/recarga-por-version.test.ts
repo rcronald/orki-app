@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  ESPERA_SALIDA_MS,
   esFalloDeCargaDeChunk,
+  esperarSalida,
   MARCA_DE_RECARGA,
   recargaEnCurso,
   recargarPorVersion,
@@ -24,6 +26,9 @@ function almacenEnMemoria(inicial: Record<string, string> = {}) {
     setItem: (clave: string, valor: string) => {
       datos.set(clave, valor)
     },
+    removeItem: (clave: string) => {
+      datos.delete(clave)
+    },
     datos,
   }
 }
@@ -38,7 +43,8 @@ function dependencias(
     ahora: () => 1_000_000,
     recargar: vi.fn(),
     saliendo: () => false,
-    programar: vi.fn(),
+    // La espera a ver si la página se va (#308) pasa en el acto.
+    programar: (tarea: () => void) => tarea(),
     ...cambios,
   } as DependenciasDeRecarga & { recargar: ReturnType<typeof vi.fn> }
 }
@@ -125,6 +131,9 @@ describe('recargarPorVersion', () => {
       setItem: () => {
         throw new Error('SecurityError')
       },
+      removeItem: () => {
+        throw new Error('SecurityError')
+      },
     }
     expect(
       recargarPorVersion(CHROME, dependencias({ almacen: () => null })),
@@ -193,6 +202,78 @@ describe('con la página yéndose (Safari cancela los import() al navegar)', () 
 
     objetivo.dispatchEvent(new Event('pageshow'))
     expect(seEstaYendo()).toBe(false)
+  })
+})
+
+describe('con la página yéndose después del fallo (Safari al volver atrás, #308)', () => {
+  it('espera ESPERA_SALIDA_MS antes de recargar', () => {
+    let tarea: (() => void) | undefined
+    const programar = vi.fn((t: () => void) => {
+      tarea = t
+    })
+    const deps = dependencias({ programar })
+
+    expect(recargarPorVersion(CHROME, deps)).toBe(true)
+    expect(programar).toHaveBeenCalledWith(
+      expect.any(Function),
+      ESPERA_SALIDA_MS,
+    )
+    expect(deps.recargar).not.toHaveBeenCalled()
+    expect(recargaEnCurso()).toBe(true)
+
+    tarea?.()
+    expect(deps.recargar).toHaveBeenCalledTimes(1)
+  })
+
+  it('si en la espera llega beforeunload, no recarga ni deja marca', () => {
+    const almacen = almacenEnMemoria()
+    let saliendo = false
+    const tareas: { tarea: () => void; ms: number }[] = []
+    const deps = dependencias({
+      almacen: () => almacen,
+      saliendo: () => saliendo,
+      programar: (tarea, ms) => {
+        tareas.push({ tarea, ms })
+      },
+    })
+
+    expect(
+      recargarPorVersion(
+        new TypeError('Importing a module script failed.'),
+        deps,
+      ),
+    ).toBe(true)
+    // Hasta decidir, sessionStorage queda como estaba: la página a la que se
+    // va lo comparte.
+    expect([...almacen.datos.keys()]).toEqual([])
+    saliendo = true
+    tareas.shift()?.tarea()
+
+    expect(deps.recargar).not.toHaveBeenCalled()
+    expect(almacen.datos.has(MARCA_DE_RECARGA)).toBe(false)
+    // Si la navegación no llega a ocurrir, recarga igual pasado SALIDA_MS.
+    expect(tareas.map((t) => t.ms)).toEqual([SALIDA_MS])
+    tareas.shift()?.tarea()
+    expect(deps.recargar).toHaveBeenCalledTimes(1)
+    expect(almacen.datos.get(MARCA_DE_RECARGA)).toBe('1000000')
+  })
+
+  it('esperarSalida dice, pasada la espera, si la página se va', async () => {
+    let saliendo = false
+    let tarea: (() => void) | undefined
+    const programar = vi.fn((t: () => void) => {
+      tarea = t
+    })
+    const respuesta = esperarSalida({ saliendo: () => saliendo, programar })
+    expect(programar).toHaveBeenCalledWith(
+      expect.any(Function),
+      ESPERA_SALIDA_MS,
+    )
+
+    saliendo = true
+    tarea?.()
+
+    await expect(respuesta).resolves.toBe(true)
   })
 })
 

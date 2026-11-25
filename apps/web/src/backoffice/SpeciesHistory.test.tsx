@@ -439,7 +439,11 @@ describe('Historial en el detalle de la especie', () => {
     const user = userEvent.setup()
     render(<View />)
     const [search] = await screen.findAllByRole('searchbox')
-    await user.type(search, 'Phalaenopsis amabilis')
+    // Pegado: letra a letra, cada pulsación vuelve a pintar la tabla entera
+    // y, con el equipo cargado, era la fase más lenta (#311). Escribir en el
+    // buscador de la tabla lo prueba CatalogAdminPage.test.tsx.
+    await user.click(search)
+    await user.paste('Phalaenopsis amabilis')
     await user.click(
       await screen.findByRole(
         'button',
@@ -457,7 +461,9 @@ describe('Historial en el detalle de la especie', () => {
     expect(history).toHaveTextContent('Fusión de especies')
     expect(history).toHaveTextContent('Carga del catálogo')
     expect(history).toHaveTextContent('por carga «carga-col26.10»')
-    await expectNoAxeViolations()
+    // axe, solo en el detalle (#311): la página entera con el detalle abierto
+    // la revisa CatalogAdminEditing.test.tsx («edición: avisa…»).
+    await expectNoAxeViolations(panel)
 
     await user.click(
       within(panel).getByRole('button', { name: 'Editar la especie' }),
@@ -493,6 +499,6 @@ describe('Historial en el detalle de la especie', () => {
         ).getAllByRole('listitem')[0],
       ).toHaveTextContent('Nombre quitado: «moth orchid»'),
     )
-    await expectNoAxeViolations()
+    await expectNoAxeViolations(panel)
   })
 })

@@ -17,6 +17,8 @@ import { ORIGEN_SUPABASE, SupabaseSimulado } from './supabase-simulado.ts'
 //   responde con un 200 y se anotan los errores que la app le envía. Cualquier
 //   otra salida se corta y la prueba falla al terminar, igual que si la app
 //   pidió a Supabase algo que el simulado no conoce o informó un error.
+// - CSP obligatoria (#282): el servidor la sirve con las cabeceras de Vercel
+//   y cualquier violación hace fallar la prueba al terminar.
 
 export const PAUTAS_AA = [
   'wcag2a',
@@ -39,6 +41,11 @@ export interface Sesion {
   nombre?: string | null
   /** URL de la foto de la cuenta (del mismo origen); sin ella, sin foto. */
   foto?: string | null
+  /**
+   * signOut() del Clerk simulado sin la espera de la red: avisa de que ya no
+   * hay sesión antes de que el enrutador pinte el destino.
+   */
+  salidaInmediata?: boolean
 }
 
 interface Opciones {
@@ -47,6 +54,12 @@ interface Opciones {
 
 interface Fixtures {
   supabase: SupabaseSimulado
+  /**
+   * Violaciones de la CSP vistas en la prueba (directiva, lo bloqueado y la
+   * página). Si al terminar queda alguna, la prueba falla; una prueba que
+   * provoca una a propósito la comprueba y la quita.
+   */
+  violacionesCsp: string[]
   /** Revisa la pantalla con axe (WCAG 2.2 A y AA) y falla si hay incumplimientos. */
   revisarAccesibilidad: (pantalla: string) => Promise<void>
 }
@@ -84,7 +97,16 @@ export const test = base.extend<Opciones & Fixtures>({
     await use(new SupabaseSimulado())
   },
 
-  context: async ({ context, baseURL, sesion, supabase }, use, testInfo) => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright exige desestructurar el primer argumento
+  violacionesCsp: async ({}, use) => {
+    await use([])
+  },
+
+  context: async (
+    { context, baseURL, sesion, supabase, violacionesCsp },
+    use,
+    testInfo,
+  ) => {
     const origenDeLaApp = new URL(baseURL ?? 'http://127.0.0.1').origin
     const salidas: string[] = []
     const erroresInformados: string[] = []
@@ -118,6 +140,31 @@ export const test = base.extend<Opciones & Fixtures>({
       supabase.responder(route),
     )
 
+    // CSP (#282): el servidor de las pruebas la sirve como obligatoria
+    // (scripts/cabeceras/de-las-pruebas.mjs). Cada violación se anota con la
+    // directiva y lo bloqueado, y la prueba falla al terminar.
+    await context.exposeBinding(
+      '__orkiViolacionCsp',
+      (_fuente, texto: string) => {
+        violacionesCsp.push(texto)
+      },
+    )
+    await context.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', (evento) => {
+        const avisar = (
+          window as unknown as {
+            __orkiViolacionCsp?: (texto: string) => Promise<void>
+          }
+        ).__orkiViolacionCsp
+        void avisar?.(
+          `${evento.effectiveDirective} bloqueó ${evento.blockedURI || '(en línea)'} en ${location.pathname}` +
+            (evento.sourceFile
+              ? ` (${evento.sourceFile}:${String(evento.lineNumber)})`
+              : ''),
+        )
+      })
+    })
+
     await context.addInitScript(
       ([clave, valor]) => {
         // Solo la primera vez: al recargar, manda lo que haya dejado la app.
@@ -132,6 +179,7 @@ export const test = base.extend<Opciones & Fixtures>({
           rol: sesion.rol ?? null,
           ...(sesion.nombre !== undefined && { nombre: sesion.nombre }),
           ...(sesion.foto != null && { foto: sesion.foto }),
+          ...(sesion.salidaInmediata === true && { salidaInmediata: true }),
         }),
       ] as const,
     )
@@ -145,9 +193,18 @@ export const test = base.extend<Opciones & Fixtures>({
         (s) => `Petición a Supabase sin simular: ${s}`,
       ),
       ...erroresInformados.map((e) => `La app informó un error a Sentry: ${e}`),
+      ...violacionesCsp.map((v) => `Violación de la CSP: ${v}`),
     ]
     if (problemas.length > 0 && testInfo.status === testInfo.expectedStatus) {
       throw new Error(problemas.join('\n'))
+    }
+    // Si la prueba ya falló, una violación de la CSP suele ser la causa
+    // (lo bloqueado no carga): se adjunta para verla en el informe.
+    if (violacionesCsp.length > 0) {
+      await testInfo.attach('violaciones-de-la-csp', {
+        body: violacionesCsp.join('\n'),
+        contentType: 'text/plain',
+      })
     }
   },
 

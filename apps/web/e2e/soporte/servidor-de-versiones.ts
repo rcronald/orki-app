@@ -55,7 +55,20 @@ export interface ServidorDeVersiones {
   desplegar: (version: Version) => void
   /** Rutas de assets/ y workbox- pedidas que no existían (404). */
   noEncontrados: string[]
+  /**
+   * Deja sin responder la próxima petición cuya ruta cumpla `patron` hasta
+   * soltar(): una descarga a medias en el servidor, que el navegador puede
+   * cancelar de verdad (una retenida con page.route no siempre la cancela).
+   * `pedida` se resuelve cuando llega la petición.
+   */
+  retener: (patron: RegExp) => { pedida: Promise<void>; soltar: () => void }
   cerrar: () => Promise<void>
+}
+
+interface Retencion {
+  patron: RegExp
+  avisar: () => void
+  soltada: Promise<void>
 }
 
 export async function servirVersiones(
@@ -63,12 +76,20 @@ export async function servirVersiones(
 ): Promise<ServidorDeVersiones> {
   let carpeta: string = VERSIONES[inicial]
   const noEncontrados: string[] = []
+  const retenciones: Retencion[] = []
 
   const servidor = createServer((peticion, respuesta) => {
     void (async () => {
       const ruta = decodeURIComponent(
         new URL(peticion.url ?? '/', 'http://localhost').pathname,
       )
+      const retencion = retenciones.findIndex((r) => r.patron.test(ruta))
+      if (retencion !== -1) {
+        const [{ avisar, soltada }] = retenciones.splice(retencion, 1)
+        avisar()
+        await soltada
+        if (respuesta.destroyed) return
+      }
       let archivo = path.join(carpeta, path.normalize(ruta))
       if (!archivo.startsWith(carpeta)) {
         respuesta.writeHead(400).end()
@@ -105,6 +126,18 @@ export async function servirVersiones(
       carpeta = VERSIONES[version]
     },
     noEncontrados,
+    retener: (patron) => {
+      let avisar = () => {}
+      let soltar = () => {}
+      const pedida = new Promise<void>((resolver) => {
+        avisar = resolver
+      })
+      const soltada = new Promise<void>((resolver) => {
+        soltar = resolver
+      })
+      retenciones.push({ patron, avisar, soltada })
+      return { pedida, soltar }
+    },
     cerrar: () =>
       new Promise((resolver) => {
         servidor.closeAllConnections()

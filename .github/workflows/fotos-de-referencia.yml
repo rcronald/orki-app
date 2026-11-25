@@ -104,12 +104,12 @@ jobs:
           exit 1
 
       - name: Obtener el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Configurar Node desde .nvmrc
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
@@ -142,7 +142,7 @@ jobs:
       # para todas las ejecuciones del día. Como una entrada de la caché de Actions no se puede
       # sobrescribir, cada ejecución guarda la suya y la siguiente restaura la más reciente.
       - name: Restaurar la caché de iNaturalist
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/inaturalist
           key: fotos-inaturalist-${{ github.run_id }}-${{ github.run_attempt }}
@@ -152,7 +152,7 @@ jobs:
       # uv toma su versión de required-version en pyproject.toml e instala el Python de
       # .python-version, como el job de Python del CI. La caché depende de uv.lock.
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           working-directory: scripts/catalog-import
           cache-dependency-glob: uv.lock
@@ -225,7 +225,7 @@ jobs:
       # Se guarda también si la carga falló o se cortó por tiempo: es lo que permite reanudarla.
       - name: Guardar la caché de iNaturalist
         if: ${{ always() && steps.carga.outcome != 'skipped' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/inaturalist
           key: fotos-inaturalist-${{ github.run_id }}-${{ github.run_attempt }}
@@ -309,7 +309,7 @@ jobs:
 
       - name: Subir el reporte
         if: ${{ always() && steps.carga.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reporte-fotos-referencia-${{ inputs.ambiente }}-${{ inputs.modo }}-${{ github.run_id }}
           path: ${{ runner.temp }}/reporte/

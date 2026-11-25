@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import { getSupabase, sessionTokenFailure } from '../lib/supabase.ts'
 import type { OrkiSupabaseClient } from '../lib/supabase.ts'
 import {
@@ -22,7 +23,7 @@ import {
 //   petición saliera con el token de otra cuenta (cambio de usuario a mitad de
 //   camino), devolvería vacío en lugar de las plantas de la otra cuenta.
 // - Paginación: la API devuelve como mucho 1 000 filas por petición (max-rows
-//   del proyecto). supabase-js no pagina solo: range(from, to) solo añade
+//   del proyecto). postgrest-js no pagina solo: range(from, to) solo añade
 //   offset y limit a la URL. Aquí se pagina por clave (keyset) sobre id: cada
 //   página pide las filas con id mayor que el último recibido, en orden de id.
 //   Frente a offset, una planta creada o borrada desde otro dispositivo
@@ -32,7 +33,7 @@ import {
 //   alguien lo baja, una página llegaría corta y la lectura pararía antes.
 // - Orden estable: por id. El orden que ve el usuario lo ponen las funciones
 //   de selectors.ts en el dispositivo.
-// - Reintentos: los de supabase-js para lecturas (1, 2 y 4 s ante un fallo de
+// - Reintentos: los de postgrest-js para lecturas (1, 2 y 4 s ante un fallo de
 //   red, un 503 o un 520, o si falta el token de sesión). Con mala señal
 //   ayudan; sin conexión, el error tarda unos 7 s en llegar.
 
@@ -57,12 +58,9 @@ export function createSupabaseCollectionSource({
       try {
         supabase = await getClient()
       } catch (error) {
-        // El chunk de supabase-js no llegó (sin conexión y sin la caché del
+        // El chunk del cliente de Supabase no llegó (sin conexión y sin la caché del
         // service worker) o la app no se inicializó.
-        throw new CollectionLoadError(
-          navigator.onLine === false ? 'offline' : 'failed',
-          { cause: error },
-        )
+        throw new CollectionLoadError(offlineOr('failed'), { cause: error })
       }
       signal.throwIfAborted()
 

@@ -35,15 +35,27 @@ import {
 // dónde, que solo las ve su dueño (tampoco el equipo del catálogo), que la
 // bitácora no se guarda en el dispositivo, que no va en el CSV y cómo se
 // borran (el registro, la planta o la cuenta).
+// Con el #284 se añadieron las fotos de una planta ya registrada que no
+// llegaron a subirse (qué, para qué, cuándo se borran y que caducan a los
+// siete días). Publicado al fusionar el #309, el 24 de noviembre de 2026.
+// Con el #291 se añadieron el identificador de cada planta (CAT-012) y lo que
+// se guarda de cada foto (orden, fecha, nota y floración), y el diálogo de
+// eliminar la cuenta pasó a enumerar lo mismo, bitácora incluida.
+// Con el #293 se añadió el plazo de los eventos de uso (13 meses), que cumple
+// cada día el workflow «Retención de eventos» con
+// public.purge_expired_product_events(); pendiente de aprobar por el
+// responsable.
 // PrivacyPage.test.tsx comprueba que no falta ninguna frase del texto
-// aprobado.
+// aprobado, y user-data-columns.test.tsx, que este texto y el diálogo citan
+// cada columna que rellena el usuario en plants, plant_photos y
+// plant_log_entries.
 //
 // Va en su propio chunk (carga diferida desde App.tsx), sin importar Clerk.
 // El enlace de volver lo pone TextPage según de dónde se vino.
 
 /** Fecha de la última actualización del texto, en el formato que se muestra. */
-const PRIVACY_LAST_UPDATED = '23 de noviembre de 2026'
-const PRIVACY_LAST_UPDATED_ISO = '2026-11-23'
+const PRIVACY_LAST_UPDATED = '24 de noviembre de 2026'
+const PRIVACY_LAST_UPDATED_ISO = '2026-11-24'
 
 function sections(state: unknown): TextPageSection[] {
   return [
@@ -66,7 +78,8 @@ function sections(state: unknown): TextPageSection[] {
               nombre, el género, el tipo, la fecha de adquisición, el origen y,
               si los añades, la ubicación, el apodo, el color de la flor y su
               estado (activa, perdida o regalada). También las notas que
-              escribas sobre ella.
+              escribas sobre ella y su identificador (como CAT-012), que
+              orqui.app le asigna al registrarla y no cambia.
             </li>
             <li>
               <strong>La bitácora de tus plantas:</strong> los registros que
@@ -79,7 +92,9 @@ function sections(state: unknown): TextPageSection[] {
               <strong>Las fotos de tus plantas:</strong> antes de subirlas, la
               app las reduce en tu dispositivo y les quita los metadatos que
               guarda la cámara, incluida la ubicación. Se guardan la foto y una
-              miniatura. Las fotos de la bitácora se preparan igual.
+              miniatura, el orden en que las colocas y, si los añades, la fecha
+              de la foto, una nota sobre ella y si la planta estaba en
+              floración. Las fotos de la bitácora se preparan igual.
             </li>
             <li>
               <strong>Mediciones de uso y errores:</strong> lo explicamos en la
@@ -116,6 +131,7 @@ function sections(state: unknown): TextPageSection[] {
             una orquídea tome menos de un minuto y que saber si ya la tienes
             tome menos de cinco segundos.
           </p>
+          <p>Los eventos de uso se borran a los 13 meses.</p>
           <p>
             Si la app falla, envía el error a Sentry para que podamos
             corregirlo. El informe lleva el mensaje del error, en qué parte del
@@ -247,9 +263,18 @@ function sections(state: unknown): TextPageSection[] {
               avisar al servicio de acceso.
             </li>
             <li>
-              El borrador de la planta que estás registrando, con su foto si la
-              elegiste, para no perderlo si se recarga la página. Se borra al
-              guardarla o al descartarla, y caduca a las 24 horas.
+              Los borradores de las plantas que estás registrando (hasta dos),
+              con sus fotos si las elegiste, para no perderlos si se recarga la
+              página o te quedas sin conexión. Cada uno se borra al registrarla
+              o al descartarlo, y caduca a las 24 horas de su último cambio.
+            </li>
+            <li>
+              Las fotos de una planta ya registrada que no llegaron a subirse
+              (por ejemplo, si saliste de la pantalla, recargaste la página o te
+              quedaste sin conexión mientras subían), para que puedas subirlas
+              desde su ficha. Se borran al subirlas o al descartarlas, si se
+              entra con otra cuenta en este dispositivo y al eliminar tu cuenta,
+              y caducan a los siete días.
             </li>
             <li>Cómo prefieres ver el inventario (lista o cuadrícula).</li>
             <li>
@@ -289,8 +314,8 @@ function sections(state: unknown): TextPageSection[] {
             bitácora, sus fotos (también las de la bitácora), tu perfil, tus
             eventos de uso y tu cuenta de acceso. También lo que orqui.app
             guarda en ese dispositivo: la copia de tu inventario, las
-            miniaturas, los eventos pendientes de enviar, tu identificador, el
-            borrador y tus preferencias. No se puede deshacer.
+            miniaturas, los eventos pendientes de enviar, tu identificador, los
+            borradores y tus preferencias. No se puede deshacer.
           </p>
           <p>
             No se borran los informes de errores que ya se enviaron a Sentry

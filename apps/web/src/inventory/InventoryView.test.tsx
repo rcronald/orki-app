@@ -151,6 +151,13 @@ const cardNames = () =>
 const searchbox = () =>
   screen.getByRole('searchbox', { name: 'Buscar en mi colección' })
 
+/**
+ * «Ordenar» de la barra del buscador. Hay otro en el panel de filtros, el del
+ * celular; en jsdom no hay CSS y se ven los dos.
+ */
+const sortSelect = () =>
+  within(screen.getByRole('search')).getByRole('combobox', { name: 'Ordenar' })
+
 /** Abre el panel «Filtros» (ahí está «Agrupar por género»). */
 async function openFilters(user: ReturnType<typeof userEvent.setup>) {
   const toggle = screen.getByRole('button', { name: /^Filtros/ })
@@ -181,9 +188,94 @@ describe('InventoryView', () => {
     ])
   })
 
+  describe('ordenar (#292)', () => {
+    it('«Más recientes» por defecto; por nombre y por fecha de adquisición', async () => {
+      const user = userEvent.setup()
+      const bought = (plant: CollectionPlant, acquiredOn: string) => ({
+        ...plant,
+        acquiredOn,
+      })
+      renderInventory([
+        bought(amabilis, '2026-06-01'),
+        bought(schilleriana, '2025-01-10'),
+        bought(maxima, '2026-08-15'),
+        bought(memoria, '2024-03-02'),
+        bought(pending, '2026-06-01'),
+      ])
+      expect(sortSelect()).toHaveValue('newest')
+      expect(
+        within(sortSelect())
+          .getAllByRole('option')
+          .map((option) => option.textContent),
+      ).toEqual(['Más recientes', 'Nombre (A–Z)', 'Fecha de adquisición'])
+
+      await user.selectOptions(sortSelect(), 'Nombre (A–Z)')
+      // Sin el «×»: el híbrido va con la R.
+      expect(cardNames()).toEqual([
+        'Cattleya maxima',
+        'la naranja del mercado',
+        'Phalaenopsis amabilis',
+        'Phalaenopsis schilleriana',
+        '× Rhyncholaeliocattleya Memoria Anna Balmores',
+      ])
+
+      await user.selectOptions(sortSelect(), 'Fecha de adquisición')
+      // El mismo día: la dada de alta más tarde primero.
+      expect(cardNames()).toEqual([
+        'Cattleya maxima',
+        'Phalaenopsis amabilis',
+        'la naranja del mercado',
+        'Phalaenopsis schilleriana',
+        '× Rhyncholaeliocattleya Memoria Anna Balmores',
+      ])
+    })
+
+    it('se recuerda con la vista y vuelve al montar la pantalla', async () => {
+      const user = userEvent.setup()
+      const { unmount } = renderInventory(COLLECTION)
+      await user.selectOptions(sortSelect(), 'Nombre (A–Z)')
+      expect(
+        JSON.parse(window.localStorage.getItem(PREFERENCES_KEY) ?? ''),
+      ).toEqual({ view: 'grid', grouped: false, sort: 'name' })
+
+      unmount()
+      renderInventory(COLLECTION)
+      expect(sortSelect()).toHaveValue('name')
+      expect(cardNames()[0]).toBe('Cattleya maxima')
+    })
+
+    it('el del panel de filtros (el del celular) es el mismo orden', async () => {
+      const user = userEvent.setup()
+      renderInventory(COLLECTION)
+      const panel = await openFilters(user)
+      const inPanel = within(panel).getByRole('combobox', { name: 'Ordenar' })
+      expect(inPanel.closest('.min-\\[721px\\]\\:hidden')).not.toBeNull()
+      expect(sortSelect().closest('.publico-estrecho\\:hidden')).not.toBeNull()
+
+      await user.selectOptions(inPanel, 'Nombre (A–Z)')
+      expect(sortSelect()).toHaveValue('name')
+      expect(cardNames()[0]).toBe('Cattleya maxima')
+    })
+
+    it('una preferencia de orden que no se entiende se ignora', () => {
+      window.localStorage.setItem(
+        PREFERENCES_KEY,
+        JSON.stringify({ view: 'list', grouped: false, sort: 'precio' }),
+      )
+      renderInventory(COLLECTION)
+      expect(sortSelect()).toHaveValue('newest')
+      expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+    })
+  })
+
   it('agrupa por género con su contador y en orden alfabético', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
+    // Dentro de cada género, el orden elegido (#292): aquí, por nombre.
+    await user.selectOptions(sortSelect(), 'Nombre (A–Z)')
 
     const panel = await openFilters(user)
     const toggle = within(panel).getByRole('button', {
@@ -197,14 +289,14 @@ describe('InventoryView', () => {
     // El contador se lee con el género: "Cattleya, 2 orquídeas".
     const headings = screen.getAllByRole('heading', { level: 2 })
     expect(headings).toEqual([
-      screen.getByRole('heading', { name: 'Cattleya, 2 orquídeas' }),
-      screen.getByRole('heading', { name: 'Phalaenopsis, 2 orquídeas' }),
+      screen.getByRole('heading', { name: 'Cattleya, 2 ejemplares' }),
+      screen.getByRole('heading', { name: 'Phalaenopsis, 2 ejemplares' }),
       screen.getByRole('heading', {
-        name: '× Rhyncholaeliocattleya, 1 orquídea',
+        name: '× Rhyncholaeliocattleya, 1 ejemplar',
       }),
     ])
     const cattleya = screen.getByRole('region', {
-      name: 'Cattleya, 2 orquídeas',
+      name: 'Cattleya, 2 ejemplares',
     })
     expect(
       within(cattleya)
@@ -339,11 +431,14 @@ describe('InventoryView', () => {
     expect(place?.querySelector('svg')).not.toBeNull()
     expect(withLocation.querySelector('.orki-card__common')).toBeNull()
 
-    // Sin apodo ni ubicación: solo el nombre. Ya no se repite el género.
+    // Sin apodo ni ubicación: el nombre y el identificador (#292). Ya no se
+    // repite el género.
     const plain = screen.getByRole('article', { name: 'Cattleya maxima' })
     expect(plain.querySelector('.orki-card__common')).toBeNull()
     expect(plain.querySelector('.orki-card__place')).toBeNull()
-    expect(plain.querySelector('.orki-card__meta')).toBeNull()
+    expect(plain.querySelector('.orki-card__meta')).toHaveTextContent(
+      `Identificador ${maxima.code ?? ''}.`,
+    )
 
     // El nombre es el enlace al detalle y cubre la tarjeta.
     const link = within(plain).getByRole('link', { name: 'Cattleya maxima' })
@@ -364,7 +459,11 @@ describe('InventoryView', () => {
     )
     expect(isRow(screen.getAllByRole('article')[0])).toBe(false)
     const grid = screen.getAllByRole('article')[0]?.closest('ul')
-    expect(grid).toHaveClass('grid-cols-2', 'md:grid-cols-3')
+    expect(grid).toHaveClass(
+      'grid-cols-2',
+      'md:max-[1199px]:grid-cols-3',
+      'min-[1200px]:grid-cols-4',
+    )
   })
 
   it('cambia entre cuadrícula y lista y lo recuerda al volver', async () => {
@@ -386,7 +485,7 @@ describe('InventoryView', () => {
     )
     expect(
       JSON.parse(window.localStorage.getItem(PREFERENCES_KEY) ?? ''),
-    ).toEqual({ view: 'list', grouped: true })
+    ).toEqual({ view: 'list', grouped: true, sort: 'newest' })
 
     // Como al recargar: la pantalla se vuelve a montar y lee la preferencia.
     unmount()
@@ -460,7 +559,7 @@ describe('InventoryView', () => {
     expect(screen.queryByRole('link', { name: /Registrar/ })).toBeNull()
   })
 
-  it('el orden del tabulador va del buscador a «Filtros», la vista y los géneros', async () => {
+  it('el orden del tabulador va del buscador a «Filtros», «Ordenar», la vista y los géneros', async () => {
     const user = userEvent.setup()
     renderInventory(COLLECTION)
 
@@ -468,6 +567,8 @@ describe('InventoryView', () => {
     expect(searchbox()).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Filtros' })).toHaveFocus()
+    await user.tab()
+    expect(sortSelect()).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('button', { name: 'Cuadrícula' })).toHaveFocus()
     await user.tab()
@@ -528,7 +629,7 @@ describe('InventoryView', () => {
       within(panel).getByRole('button', { name: 'Agrupar por género' }),
     )
     expect(
-      screen.getByRole('region', { name: 'Cattleya, 100 orquídeas' }),
+      screen.getByRole('region', { name: 'Cattleya, 100 ejemplares' }),
     ).toBeInTheDocument()
     expect(screen.getAllByRole('article')).toHaveLength(300)
   })
@@ -562,7 +663,7 @@ describe('InventoryView: buscador', () => {
     await user.type(searchbox(), text)
     expect(cardNames()).toEqual([expected])
     // Bajo el buscador, cuántas coinciden de las activas.
-    expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
+    expect(status()).toHaveTextContent('1 de 6 ejemplares coincide.')
   })
 
   it('anuncia cuántas coinciden sin sacar el foco del campo', async () => {
@@ -571,10 +672,10 @@ describe('InventoryView: buscador', () => {
 
     expect(status()).toBeEmptyDOMElement()
     await user.type(searchbox(), 'phal')
-    expect(status()).toHaveTextContent('2 de 6 orquídeas coinciden.')
+    expect(status()).toHaveTextContent('2 de 6 ejemplares coinciden.')
     expect(searchbox()).toHaveFocus()
     await user.type(searchbox(), 'zzz')
-    expect(status()).toHaveTextContent('Ninguna de tus 6 orquídeas coincide.')
+    expect(status()).toHaveTextContent('Ninguno de tus 6 ejemplares coincide.')
     expect(searchbox()).toHaveFocus()
   })
 
@@ -617,7 +718,7 @@ describe('InventoryView: buscador', () => {
     expect(searchbox()).toHaveAttribute('placeholder')
     // El contador de coincidencias describe el campo.
     expect(searchbox()).toHaveAccessibleDescription(
-      '2 de 6 orquídeas coinciden.',
+      '2 de 6 ejemplares coinciden.',
     )
     // Sin el panel «¿Ya la tengo?» integrado: esa consulta tiene su pantalla.
     expect(screen.queryByText(/Sí, la tienes|Aún no la tienes/)).toBeNull()
@@ -685,7 +786,7 @@ describe('InventoryView: buscador', () => {
 
       await user.type(searchbox(), text)
       expect(cardNames()).toEqual(['Phalaenopsis amabilis'])
-      expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
+      expect(status()).toHaveTextContent('1 de 6 ejemplares coincide.')
     })
 
     it('sin extras, como antes; al llegar, la lista los usa', () => {

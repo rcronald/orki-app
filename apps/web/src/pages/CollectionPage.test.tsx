@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   Link,
@@ -146,10 +146,7 @@ function renderAt(
 }
 
 async function resolveLast(plants: readonly CollectionPlant[] = PLANTS) {
-  await act(async () => {
-    source.last().resolve(plants)
-    await Promise.resolve()
-  })
+  await source.respond(plants)
 }
 
 const searchbox = () =>
@@ -226,7 +223,7 @@ describe('CollectionPage', () => {
       expect(screen.getAllByRole('article')).toHaveLength(1)
       expect(meta()).toHaveTextContent('3 ejemplares · 2 géneros')
       expect(searchbox()).toHaveAccessibleDescription(
-        '1 de 3 orquídeas coincide.',
+        '1 de 3 ejemplares coincide.',
       )
     })
 
@@ -362,10 +359,7 @@ describe('CollectionPage', () => {
     const user = userEvent.setup()
     renderAt('/coleccion')
 
-    await act(async () => {
-      source.last().reject(new CollectionLoadError('offline'))
-      await Promise.resolve()
-    })
+    await source.fail(new CollectionLoadError('offline'))
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Sin conexión')
     await expectNoAxeViolations()
@@ -387,7 +381,7 @@ describe('CollectionPage', () => {
 
     expect(screen.getAllByRole('article')).toHaveLength(1)
     expect(searchbox()).toHaveAccessibleDescription(
-      '1 de 3 orquídeas coincide.',
+      '1 de 3 ejemplares coincide.',
     )
     // El género se ve elegido en su fila; no cuenta en «Filtros».
     expect(genusChip('Cattleya')).toHaveAttribute('aria-pressed', 'true')
@@ -469,13 +463,7 @@ describe('CollectionPage', () => {
       onSaved: () => {},
     })
     renderAt('/coleccion', [], cached)
-    await act(async () => {
-      for (let index = 0; index < 5; index += 1) await Promise.resolve()
-    })
-    await act(async () => {
-      source.last().reject(new CollectionLoadError('offline'))
-      await Promise.resolve()
-    })
+    await source.fail(new CollectionLoadError('offline'))
     expect(screen.getAllByRole('article')).toHaveLength(1)
 
     const resultsFor = async (text: string) => {
@@ -504,13 +492,7 @@ describe('CollectionPage', () => {
     })
     const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
     renderAt('/coleccion', [], cached)
-    await act(async () => {
-      for (let index = 0; index < 5; index += 1) await Promise.resolve()
-    })
-    await act(async () => {
-      source.last().reject(new CollectionLoadError('offline'))
-      await Promise.resolve()
-    })
+    await source.fail(new CollectionLoadError('offline'))
 
     const notice = screen.getByText('Sin conexión', { exact: true })
     expect(notice.parentElement).toHaveTextContent(/Última actualización/)

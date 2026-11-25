@@ -1,24 +1,33 @@
+import type { PlantSort } from '../collection/selectors.ts'
 import type { CollectionErrorReason } from '../collection/source.ts'
 import type { PlantStatus, PlantValidation } from '../lib/database.ts'
 
 // Textos de la pantalla de inventario: los que llevan número, en singular o
 // plural, y los de error según el motivo que da la capa de datos.
 
-// Calificativo de cada estado tras "orquídea": las activas no lo llevan, como
-// en la cabecera de siempre ("12 orquídeas").
+// Los recuentos dicen «ejemplar» (glosario, #290: docs/app/textos.md); lo
+// demás de la pantalla, «orquídea». Calificativo de cada estado, en masculino
+// tras «ejemplar» y en femenino tras «orquídea»: las activas no lo llevan,
+// como en la cabecera ("12 ejemplares").
 const STATUS_SUFFIX: Record<PlantStatus, [singular: string, plural: string]> = {
   active: ['', ''],
-  lost: [' perdida', ' perdidas'],
-  gifted: [' regalada', ' regaladas'],
+  lost: [' perdido', ' perdidos'],
+  gifted: [' regalado', ' regalados'],
 }
 
-/** "1 orquídea", "12 orquídeas", "3 orquídeas perdidas". */
+const STATUS_SUFFIX_FEMININE: Record<PlantStatus, string> = {
+  active: '',
+  lost: ' perdidas',
+  gifted: ' regaladas',
+}
+
+/** "1 ejemplar", "12 ejemplares", "3 ejemplares perdidos". */
 export function plantCountText(
   count: number,
   status: PlantStatus = 'active',
 ): string {
   const [singular, plural] = STATUS_SUFFIX[status]
-  return count === 1 ? `1 orquídea${singular}` : `${count} orquídeas${plural}`
+  return count === 1 ? `1 ejemplar${singular}` : `${count} ejemplares${plural}`
 }
 
 export function genusCountText(count: number): string {
@@ -26,7 +35,7 @@ export function genusCountText(count: number): string {
 }
 
 export function specimenCountText(count: number): string {
-  return count === 1 ? '1 ejemplar' : `${count} ejemplares`
+  return plantCountText(count)
 }
 
 /**
@@ -48,10 +57,11 @@ export function matchCountText(
   status: PlantStatus = 'active',
   narrowed = true,
 ): string {
-  if (total === 0) return `No tienes orquídeas${STATUS_SUFFIX[status][1]}.`
+  if (total === 0)
+    return `No tienes orquídeas${STATUS_SUFFIX_FEMININE[status]}.`
   if (!narrowed) return `${plantCountText(total, status)}.`
   if (matches === 0)
-    return `Ninguna de tus ${plantCountText(total, status)} coincide.`
+    return `Ninguno de tus ${plantCountText(total, status)} coincide.`
   const of = `${matches} de ${plantCountText(total, status)}`
   return matches === 1 ? `${of} coincide.` : `${of} coinciden.`
 }
@@ -79,9 +89,24 @@ export const COLLECTION_ACTIONS_TEXT = {
 /** Buscador único de «Mi colección» (#208). */
 export const SEARCH_TEXT = {
   label: 'Buscar en mi colección',
-  placeholder: 'Nombre, género, apodo u origen',
+  /**
+   * Corto para que quepa entero a 360 px (#292): el de antes, «Nombre,
+   * género, apodo u origen», se cortaba. El género, el apodo y el origen se
+   * siguen buscando; lo nuevo es el identificador y la ubicación.
+   */
+  placeholder: 'Nombre, código o ubicación',
   /** El mismo texto que el botón de «sin coincidencias». */
   clear: 'Limpiar la búsqueda',
+} as const
+
+/** «Ordenar» de «Mi colección» (#292). */
+export const SORT_TEXT = {
+  label: 'Ordenar',
+  options: {
+    newest: 'Más recientes',
+    name: 'Nombre (A–Z)',
+    acquired: 'Fecha de adquisición',
+  } satisfies Record<PlantSort, string>,
 } as const
 
 export const FILTERS_TEXT = {
@@ -106,13 +131,13 @@ export const FILTERS_TEXT = {
     `Quitar el filtro ${group}: ${label}`,
 } as const
 
-/** Exportación del inventario a CSV (#17). */
+/** Exportación de la colección a CSV (#17). */
 export const EXPORT_TEXT = {
-  title: 'Exportar tu inventario',
-  hint: 'Un archivo CSV con todas tus plantas, también las perdidas y regaladas, sin importar los filtros. Se abre en Excel o Google Sheets.',
+  title: 'Exportar tu colección',
+  hint: 'Un archivo CSV con todas tus orquídeas, también las perdidas y regaladas, sin importar los filtros. Se abre en Excel o Google Sheets.',
   action: 'Exportar a CSV',
   done: (fileName: string, count: number) =>
-    `Listo: ${fileName}, con ${count === 1 ? '1 planta' : `${count} plantas`}.`,
+    `Listo: ${fileName}, con ${specimenCountText(count)}.`,
   failed: 'No se pudo crear el archivo. Vuelve a intentarlo.',
 } as const
 

@@ -70,7 +70,7 @@ test.describe('con el service worker', () => {
   test.beforeEach(({ browserName }) => {
     test.skip(
       browserName !== 'chromium',
-      'Playwright solo intercepta la red de una página con service worker en Chromium (README, «Qué se prueba y qué se simula»).',
+      'Playwright solo intercepta la red de una página con service worker en Chromium (docs/pruebas.md, «Qué se prueba y qué se simula»).',
     )
   })
 
@@ -251,6 +251,66 @@ test.describe('sin service worker', () => {
       ),
     ).toBeNull()
   })
+
+  // Al volver atrás en el historial a otro documento, WebKit cancela los
+  // import() en curso y los rechaza unos milisegundos antes de beforeunload
+  // (#308; al pulsar un enlace es al revés). Aquí el que está a medias es el
+  // registro del service worker, que se pide al montar la app. En una
+  // pantalla de trabajo (el registro de la cuenta) el rechazo llegaba a
+  // Sentry; en otra (los créditos), la red de seguridad del #278 se ponía a
+  // recargar y dejaba su marca a la página de antes. La persona no veía nada:
+  // la página se iba igual. Sin etiqueta: es justo lo que cambia con el motor.
+  for (const { ruta, titulo } of [
+    { ruta: '/registro', titulo: /Crear cuenta/ },
+    { ruta: '/creditos', titulo: /Créditos/ },
+  ]) {
+    test(`volver atrás desde ${ruta} con el registro del service worker a medias no recarga ni lo informa`, async ({
+      page,
+      servidor,
+    }) => {
+      const privacidad = page.getByRole('heading', {
+        level: 1,
+        name: /privacidad/i,
+      })
+      const registroDelSw = /\/assets\/virtual_pwa-register-[^/]+\.js$/
+      // Con el SDK de Sentry ya en marcha (deja window.orkiErrorDePrueba):
+      // antes, un error se guarda en el búfer y se pierde con la página.
+      const sentryListo = () =>
+        page.waitForFunction(
+          () =>
+            typeof (window as { orkiErrorDePrueba?: unknown })
+              .orkiErrorDePrueba === 'function',
+        )
+      // Se retiene también el de la página de antes: si llegara, WebKit lo
+      // reutilizaría de su caché en memoria y el de la otra no saldría a la
+      // red. Ir a la otra página lo cancela, antes de beforeunload, sin
+      // consecuencias (la prueba de arriba).
+      const deAntes = servidor.retener(registroDelSw)
+      const retenido = servidor.retener(registroDelSw)
+      await page.goto('/privacidad')
+      await expect(privacidad).toBeVisible()
+      await deAntes.pedida
+      await sentryListo()
+
+      await page.goto(ruta, { waitUntil: 'commit' })
+      await expect(page).toHaveTitle(titulo)
+      await retenido.pedida
+      await sentryListo()
+
+      // El registro del service worker está a medias al volver atrás.
+      await page.goBack({ waitUntil: 'commit' })
+      deAntes.soltar()
+      retenido.soltar()
+      await expect(privacidad).toBeVisible()
+      await expect(page).toHaveURL(/\/privacidad$/)
+      // Ni recarga ni marca: la red de seguridad sigue entera.
+      expect(
+        await page.evaluate(() =>
+          sessionStorage.getItem('orki:recarga-por-version'),
+        ),
+      ).toBeNull()
+    })
+  }
 
   test(
     'una ruta diferida que ya no existe recarga una vez con la versión nueva',
