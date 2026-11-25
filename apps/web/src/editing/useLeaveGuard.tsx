@@ -43,7 +43,7 @@ import { EDIT_LEAVE_TEXT } from './texts.ts'
 // Mientras se guarda (`busy`, #279) no se puede salir por ninguna de las
 // cuatro vías: el guardado en curso puede estar creando la fila de una foto
 // nueva, y salir a mitad dejaría el guardado partido. Un enlace, «atrás» o
-// «Volver a la ficha» abren un aviso que solo dice que se espere (sin «Salir
+// «Volver a la planta» abren un aviso que solo dice que se espere (sin «Salir
 // sin guardar»), y la pestaña pide el aviso nativo. El aviso se cierra solo
 // al terminar el guardado: si sale bien, la pantalla vuelve a la ficha; si
 // falla, se queda con el error.

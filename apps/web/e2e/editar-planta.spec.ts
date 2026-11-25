@@ -484,9 +484,9 @@ test.describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', ()
     },
     { nombre: '«atrás»', salir: async (page) => void (await page.goBack()) },
     {
-      nombre: '«Volver a la ficha»',
+      nombre: '«Volver a la planta»',
       salir: (page) =>
-        page.getByRole('link', { name: 'Volver a la ficha' }).click(),
+        page.getByRole('link', { name: 'Volver a la planta' }).click(),
     },
   ]
   for (const via of vias) {

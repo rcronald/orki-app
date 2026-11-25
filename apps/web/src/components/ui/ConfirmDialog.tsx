@@ -81,7 +81,11 @@ export function ConfirmDialog({
           {children}
         </div>
       )}
-      <div className="flex flex-wrap-reverse justify-end gap-space-3">
+      {/* El mismo orden en todos los diálogos (#290): en el celular, uno
+          sobre otro y a todo el ancho, la confirmación arriba; desde 640 px,
+          en fila con la confirmación a la derecha. Antes, con wrap-reverse,
+          dependía del largo del texto. */}
+      <div className="flex flex-col-reverse gap-space-3 sm:flex-row sm:justify-end">
         <Button
           ref={cancelRef}
           aria-disabled={busy || undefined}

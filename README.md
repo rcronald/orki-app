@@ -222,6 +222,8 @@ La app, pantalla a pantalla:
 - [Cuenta, privacidad y créditos](docs/app/cuenta-y-privacidad.md).
 - [Marca y design system](docs/app/design-system.md)
   y la guía de [piezas de interfaz](docs/piezas-de-interfaz.md).
+- [Glosario de la interfaz](docs/app/textos.md):
+  qué palabra va en cada pantalla.
 - [Variables de entorno](docs/app/variables-de-entorno.md).
 - [Sin conexión: investigación y decisiones](docs/sin-conexion.md).
 

@@ -71,7 +71,7 @@ const PLANTS = [
 ]
 
 const section = () =>
-  screen.getByRole('region', { name: 'Exportar tu inventario' })
+  screen.getByRole('region', { name: 'Exportar tu colección' })
 
 describe('InventoryView: exportar a CSV', () => {
   it('descarga todas las plantas, también las de baja, sin importar los filtros ni la búsqueda', async () => {
@@ -102,12 +102,12 @@ describe('InventoryView: exportar a CSV', () => {
     expect(clicked).toHaveLength(1)
     expect(clicked[0]?.href).toBe(BLOB_URL)
     expect(clicked[0]?.download).toMatch(
-      /^orqui-app-inventario-\d{4}-\d{2}-\d{2}\.csv$/,
+      /^orqui-app-coleccion-\d{4}-\d{2}-\d{2}\.csv$/,
     )
     // El enlace temporal no se queda en la página.
     expect(document.querySelector(`a[href="${BLOB_URL}"]`)).toBeNull()
     expect(within(section()).getByRole('status')).toHaveTextContent(
-      /^Listo: orqui-app-inventario-.*\.csv, con 3 plantas\.$/,
+      /^Listo: orqui-app-coleccion-.*\.csv, con 3 ejemplares\.$/,
     )
     await expectNoAxeViolations()
   })
@@ -120,7 +120,7 @@ describe('InventoryView: exportar a CSV', () => {
     expect(action).toHaveClass('orki-link')
     expect(action.querySelector('svg')).not.toBeNull()
     expect(action).toHaveAccessibleDescription(
-      /todas tus plantas, también las perdidas y regaladas/,
+      /todas tus orquídeas, también las perdidas y regaladas/,
     )
     // Después de la lista, al final de la pantalla.
     const lastCard = screen.getAllByRole('article').at(-1)

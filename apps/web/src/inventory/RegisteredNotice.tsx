@@ -70,7 +70,7 @@ export function RegisteredNotice({ plant, onDismiss }: RegisteredNoticeProps) {
                 to={plantDetailPath(plant.id)}
                 className="orki-btn orki-btn--secondary"
               >
-                Ver ficha
+                Ver la planta
                 <Icon name="arrow-right" />
               </Link>
               <Link

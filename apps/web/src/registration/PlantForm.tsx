@@ -1314,7 +1314,7 @@ function PlantFormBody(props: PlantFormBodyProps) {
           knownPlants={knownPlants}
           after={text.duplicateAfter}
         />
-        {/* «Así es esta especie» (#234): al elegirla. */}
+        {/* «Así es su especie» (#234): al elegirla. */}
         {values.species !== null && services.loadReferencePhoto && (
           <SpeciesPreview
             speciesId={values.species.id}

@@ -35,7 +35,7 @@ function touchDevice(): boolean {
  * ¿Es un dispositivo táctil? Puntero principal grueso o pantalla táctil
  * (maxTouchPoints). La galería del registro (#221) ofrece «Tomar foto» solo
  * aquí: un navegador no dice si hay cámara sin pedir permiso, y en el
- * escritorio capture se ignora y abriría el mismo selector que «Elegir fotos».
+ * escritorio capture se ignora y abriría el mismo selector que «Añadir fotos».
  */
 export function useTouchDevice(): boolean {
   return useSyncExternalStore(subscribePointer, touchDevice, () => false)

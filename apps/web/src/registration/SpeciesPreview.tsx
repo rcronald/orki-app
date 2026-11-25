@@ -8,7 +8,7 @@ import { PLANT_FORM_TEXT } from './texts.ts'
 export type { LoadReferencePhoto } from '../lib/useReferencePhoto.ts'
 
 /**
- * «Así es esta especie» (#234): bajo el nombre del registro, al elegir una
+ * «Así es su especie» (#234): bajo el nombre del registro, al elegir una
  * especie del catálogo, su foto de referencia en pequeño con el crédito, para
  * confirmar que es la correcta. Una consulta por especie elegida
  * (useReferencePhoto la recuerda en memoria) y ninguna sin conexión. Sin

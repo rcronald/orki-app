@@ -32,6 +32,12 @@ interface OfflineNoticeProps {
   id?: string
   /** Reloj, para las pruebas y la página de muestra. */
   now?: Date
+  /**
+   * Otra explicación para la pantalla que lo usa: la de siempre habla de
+   * buscar, filtrar, editar y dar de baja, lo de «Mi colección» («¿Ya la
+   * tengo?» pone la suya, #290).
+   */
+  text?: Record<OfflineNoticeReason, string>
 }
 
 /**
@@ -46,13 +52,14 @@ export function OfflineNotice({
   savedAt,
   id,
   now,
+  text = BODY,
 }: OfflineNoticeProps) {
   return (
     // Sin icono: el sistema no tiene uno de "sin conexión" (icons.ts).
     <div className="rounded-lg bg-neutral-50 p-space-4 text-neutral-900">
       <div id={id} className="flex min-w-[0] flex-col gap-space-1">
         <p className="font-semibold">{TITLE[reason]}</p>
-        <p className="text-md">{BODY[reason]}</p>
+        <p className="text-md">{text[reason]}</p>
         <p className="text-sm text-neutral-700">
           {lastUpdateText(savedAt, now)}
         </p>

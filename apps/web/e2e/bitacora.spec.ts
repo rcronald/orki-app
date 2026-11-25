@@ -206,10 +206,10 @@ for (const { ancho, alto } of [
           dialogo(page).getByRole('button', { name: 'Cerrar' }),
         ).toBeVisible()
       } else {
-        // Pantalla completa, con «Volver a la ficha» arriba.
+        // Pantalla completa, con «Volver a la planta» arriba.
         expect(panel).toMatchObject({ x: 0, y: 0, ancho, alto })
         await expect(
-          dialogo(page).getByRole('button', { name: 'Volver a la ficha' }),
+          dialogo(page).getByRole('button', { name: 'Volver a la planta' }),
         ).toBeVisible()
       }
       await sinDesplazamientoHorizontal(page)

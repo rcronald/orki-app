@@ -175,7 +175,7 @@ function AccountProfile() {
 }
 
 /**
- * «Exportar inventario a CSV» con la colección del usuario: la misma
+ * «Exportar tu colección a CSV» con la colección del usuario: la misma
  * exportación de «Mi colección» (useInventoryExport). Sin conexión usa la
  * copia local. Mientras carga, o si la lectura falla sin datos, la fila queda
  * deshabilitada con el motivo (y, tras un fallo, se ofrece volver a cargar).

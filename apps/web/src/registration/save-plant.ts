@@ -67,7 +67,7 @@ export const PLANT_UPDATE_ERROR_TEXT: Record<PlantSaveFailure, string> = {
   invalid:
     'La base de datos no aceptó los cambios. Revisa los datos y vuelve a intentarlo.',
   'not-found':
-    'Esta orquídea ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
+    'Esta planta ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
   failed:
     'No se pudieron guardar los cambios por un error del servidor. Vuelve a intentarlo en unos momentos.',
 }

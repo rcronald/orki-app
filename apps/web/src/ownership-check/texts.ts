@@ -7,9 +7,29 @@ export const CHECK_TEXT = {
   intro: 'Comprueba si una orquídea ya está en tu colección.',
   back: 'Volver a Mi colección',
   fieldLabel: 'Nombre de la orquídea',
-  placeholder: 'Nombre, sinónimo, nombre común o género',
+  /**
+   * Corto para que quepa entero a 360 px (#290): el de antes, «Nombre,
+   * sinónimo, nombre común o género», se cortaba. Se siguen buscando los
+   * nombres comunes.
+   */
+  placeholder: 'Nombre, sinónimo o género',
   clear: 'Borrar la consulta',
   loading: 'Cargando tu colección para responder…',
+  /** Con la colección vacía y el campo vacío (#290). */
+  empty:
+    'Tu colección aún está vacía: cuando registres orquídeas, aquí sabrás si ya tienes una.',
+  /**
+   * El indicador sin conexión en esta pantalla (#290): el de «Mi colección»
+   * habla de filtrar, editar y dar de baja, que aquí no hay.
+   */
+  offlineNotice: {
+    offline:
+      'Respondemos con la copia guardada en este dispositivo. Para registrar una orquídea necesitas conexión.',
+    unverified:
+      'No se pudo confirmar tu sesión, así que respondemos con la copia guardada en este dispositivo. Para registrar una orquídea hace falta confirmarla con conexión.',
+    unreachable:
+      'Respondemos con la copia guardada en este dispositivo. Se actualizará sola cuando vuelva la conexión.',
+  },
   yes: 'Sí, la tienes',
   similar: 'Tienes parecidas',
   had: 'No, pero la tuviste',

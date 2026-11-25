@@ -96,6 +96,31 @@ for (const ancho of [360, 1440]) {
 test.describe('solo a 360 px', () => {
   test.use({ viewport: { width: 360, height: 900 } })
 
+  // Placeholders que caben enteros (#290), con la fuente de cada motor, y la
+  // línea de la colección vacía. Las medidas se redondean.
+  test('con la colección vacía: el placeholder cabe y una línea lo explica', async ({
+    page,
+    supabase,
+  }) => {
+    supabase.datos.plantas.length = 0
+    await page.goto('/ya-la-tengo')
+    await expect(
+      page.getByText('Tu colección aún está vacía', { exact: false }),
+    ).toBeVisible()
+    // El placeholder como valor, sin eventos: si cabe, el campo no se
+    // desplaza (scrollWidth y clientWidth ya son enteros).
+    const medida = await campo(page).evaluate((input: HTMLInputElement) => {
+      input.value = input.placeholder
+      const resultado = {
+        texto: input.scrollWidth,
+        hueco: input.clientWidth,
+      }
+      input.value = ''
+      return resultado
+    })
+    expect(medida.texto).toBeLessThanOrEqual(medida.hueco)
+  })
+
   test(
     'sin coincidencias: «Aún no la tienes» y registrarla con ese nombre',
     { tag: '@logica' },

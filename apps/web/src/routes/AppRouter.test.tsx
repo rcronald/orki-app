@@ -312,7 +312,7 @@ describe('rutas con sesión', () => {
     setFakeClerk({ signedIn: true })
     renderAt('/coleccion')
     await user.click(await screen.findByRole('button', { name: 'Tu cuenta' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Mi cuenta' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Tu cuenta' }))
     expect(await findHeading('Tu cuenta')).toBeInTheDocument()
     expect(currentLocation()).toBe('/cuenta')
     await expectNoAxeViolations()
@@ -378,7 +378,7 @@ describe('administración del catálogo', () => {
       await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
       expect(
         screen.getAllByRole('menuitem').map((item) => item.textContent),
-      ).toEqual(['Mi cuenta', 'Cerrar sesión'])
+      ).toEqual(['Tu cuenta', 'Cerrar sesión'])
       await expectNoAxeViolations()
     },
   )
@@ -392,7 +392,7 @@ describe('administración del catálogo', () => {
     await user.click(screen.getByRole('button', { name: 'Tu cuenta' }))
     expect(
       screen.getAllByRole('menuitem').map((item) => item.textContent),
-    ).toEqual(['Mi cuenta', 'Administración', 'Cerrar sesión'])
+    ).toEqual(['Tu cuenta', 'Administración', 'Cerrar sesión'])
     await user.click(screen.getByRole('menuitem', { name: 'Administración' }))
 
     expect(await findHeading('Administración del catálogo')).toBeInTheDocument()

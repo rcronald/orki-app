@@ -555,7 +555,7 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
       name: 'Se están guardando los cambios',
     })
     expect(busy).toHaveAccessibleDescription(
-      'Espera a que termine: si sales a mitad, el guardado puede quedar incompleto. Al terminar volverás a la ficha.',
+      'Espera a que termine: si sales a mitad, el guardado puede quedar incompleto. Al terminar volverás a la planta.',
     )
     expect(
       within(busy).getByRole('button', { name: 'Entendido' }),
@@ -747,7 +747,7 @@ describe('guardado a prueba de salidas, reintentos y huérfanos (#279)', () => {
     await user.click(submit())
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(
-      'Esta orquídea ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
+      'Esta planta ya no está en tu colección: puede que se haya eliminado desde otro dispositivo.',
     )
     expect(
       within(alert).queryByRole('button', { name: 'Reintentar' }),

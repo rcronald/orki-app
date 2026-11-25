@@ -158,13 +158,13 @@ test('buscar por identificador y por ubicación', async ({
       page.getByRole('article', { name: 'Phalaenopsis amabilis' }),
     ).toBeVisible()
   }
-  await expect(page.getByText('1 de 5 orquídeas coincide.')).toBeVisible()
+  await expect(page.getByText('1 de 5 ejemplares coincide.')).toBeVisible()
   await revisarAccesibilidad('inventario, búsqueda por identificador')
 
   // Un número suelto no busca en los identificadores.
   await buscador(page).fill('001')
   await expect(
-    page.getByText('Ninguna de tus 5 orquídeas coincide.'),
+    page.getByText('Ninguno de tus 5 ejemplares coincide.'),
   ).toBeVisible()
 
   // Por ubicación.

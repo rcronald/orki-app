@@ -58,7 +58,7 @@ export const DETAIL_TEXT = {
     `Dada de baja: ${status.toLocaleLowerCase('es')}. No cuenta en tu colección activa; la ves con el filtro de estado. Puedes reactivarla en «Gestionar planta».`,
   retireTitle: 'Dar de baja esta planta',
   retireDescription:
-    'La planta se conserva con sus datos y su foto, pero deja de contar en tu colección activa. La verás con el filtro de estado y podrás reactivarla cuando quieras.',
+    'La planta se conserva con sus datos y sus fotos, pero deja de contar en tu colección activa. La verás con el filtro de estado y podrás reactivarla cuando quieras.',
   retireReason: 'Motivo',
   retireLost: 'Se perdió',
   retireGifted: 'La regalé',
@@ -75,7 +75,7 @@ export const DETAIL_TEXT = {
   deleteBusy: 'Eliminando…',
   deleted: 'Eliminaste de tu colección',
   deletedPhotosLeft:
-    'Su foto no se pudo borrar ahora; se limpiará más adelante.',
+    'Sus fotos no se pudieron borrar ahora; se limpiarán más adelante.',
 } as const
 
 /** Notas de la planta en la ficha (#265), editables en el sitio. */
@@ -134,7 +134,7 @@ export const GALLERY_TEXT = {
   noPhoto: 'Sin foto',
   /** Bajo la foto de referencia de su especie, sin fotos propias (#234). */
   referenceNote:
-    'Aún no tienes fotos de esta planta. Esta es una foto de referencia de su especie, no de tu ejemplar.',
+    'Aún no tienes fotos de esta planta. Esta es una foto de referencia de su especie, no de tu planta.',
   offline:
     'Sin conexión: cambiar la fecha, la nota o el orden necesita conexión.',
   unverified:

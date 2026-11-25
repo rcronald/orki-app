@@ -196,7 +196,7 @@ async function searchGenera(
 
 const loadQuickGenera = () => Promise.resolve(QUICK_GENERA)
 
-/** «Así es esta especie» (#234): todas las especies, con la foto de muestra. */
+/** «Así es su especie» (#234): todas las especies, con la foto de muestra. */
 const loadReferencePhoto = (): Promise<ReferencePicture> =>
   Promise.resolve({
     medium: { src: samplePhoto, width: 400, height: 300 },

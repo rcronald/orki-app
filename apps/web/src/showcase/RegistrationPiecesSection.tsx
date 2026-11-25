@@ -75,7 +75,7 @@ export function RegistrationPiecesSection() {
     >
       <Example
         title="Galería de fotos (PhotoGallery), parcial"
-        description="Título, contador, cuadrícula de tres columnas, «Principal» en la primera y quitar en la esquina (objetivo de 44 px). Quita fotos o añade con «Elegir fotos»: al quitar, el foco pasa a la que ocupa su lugar."
+        description="Título, contador, cuadrícula de tres columnas, «Principal» en la primera y quitar en la esquina (objetivo de 44 px). Quita fotos o añade con «Añadir fotos»: al quitar, el foco pasa a la que ocupa su lugar."
       >
         <LiveGallery />
       </Example>

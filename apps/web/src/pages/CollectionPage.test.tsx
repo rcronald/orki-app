@@ -223,7 +223,7 @@ describe('CollectionPage', () => {
       expect(screen.getAllByRole('article')).toHaveLength(1)
       expect(meta()).toHaveTextContent('3 ejemplares · 2 géneros')
       expect(searchbox()).toHaveAccessibleDescription(
-        '1 de 3 orquídeas coincide.',
+        '1 de 3 ejemplares coincide.',
       )
     })
 
@@ -381,7 +381,7 @@ describe('CollectionPage', () => {
 
     expect(screen.getAllByRole('article')).toHaveLength(1)
     expect(searchbox()).toHaveAccessibleDescription(
-      '1 de 3 orquídeas coincide.',
+      '1 de 3 ejemplares coincide.',
     )
     // El género se ve elegido en su fila; no cuenta en «Filtros».
     expect(genusChip('Cattleya')).toHaveAttribute('aria-pressed', 'true')

@@ -27,10 +27,10 @@ const FOTOS = [
 const galeria = (page: Page) =>
   page.getByRole('region', { name: 'Fotos (opcional)' })
 
-/** Elige fotos con «Elegir fotos» y espera a que estén preparadas. */
+/** Elige fotos con «Añadir fotos» y espera a que estén preparadas. */
 async function elegirFotos(page: Page, archivos: string[]) {
   const selector = page.waitForEvent('filechooser')
-  await galeria(page).getByRole('button', { name: 'Elegir fotos' }).click()
+  await galeria(page).getByRole('button', { name: 'Añadir fotos' }).click()
   const eleccion = await selector
   expect(eleccion.isMultiple()).toBe(true)
   await eleccion.setFiles(archivos)
@@ -160,7 +160,7 @@ test('registrar un nombre por validar con seis fotos, recargando a mitad', async
     })
     .click()
   await expect(
-    page.getByText(/quedará en tu inventario como «Nombre por validar»/),
+    page.getByText(/quedará en tu colección como «Nombre por validar»/),
   ).toBeVisible()
   // Junto a la galería, un solo mensaje: la recomendación, quién podrá ver
   // las fotos y el enlace a Privacidad (#210), como descripción.
@@ -207,7 +207,7 @@ test('registrar un nombre por validar con seis fotos, recargando a mitad', async
   await expect(galeria(page).locator('.orki-gallery__count')).toContainText(
     '6 de 6',
   )
-  const elegir = galeria(page).getByRole('button', { name: 'Elegir fotos' })
+  const elegir = galeria(page).getByRole('button', { name: 'Añadir fotos' })
   await expect(elegir).toHaveAttribute('aria-disabled', 'true')
   await expect(elegir).toHaveAccessibleDescription(
     'Ya tienes 6 fotos. Quita una para añadir otra.',
@@ -269,13 +269,13 @@ test('en celular, el aviso de registro no se aplasta con un nombre largo', async
   await expect(page).toHaveURL(/\/coleccion$/)
   const aviso = page.getByRole('status').filter({ hasText: 'Registraste' })
   await expect(aviso).toContainText(`Registraste ${largo} en tu colección.`)
-  // El texto ocupa el ancho del aviso y las acciones («Ver ficha», #296, y
+  // El texto ocupa el ancho del aviso y las acciones («Ver la planta», #296, y
   // «Registrar otra») van debajo, no al lado; cada una de 44 px de alto y sin
   // salirse del aviso.
   const texto = await aviso.locator('p').boundingBox()
   const caja = await aviso.locator('> div').boundingBox()
   expect(texto?.width).toBeGreaterThanOrEqual(240)
-  for (const nombre of ['Ver ficha', 'Registrar otra']) {
+  for (const nombre of ['Ver la planta', 'Registrar otra']) {
     const accion = await aviso.getByRole('link', { name: nombre }).boundingBox()
     expect(accion?.y).toBeGreaterThanOrEqual(
       (texto?.y ?? 0) + (texto?.height ?? 0),
@@ -295,11 +295,11 @@ test('en celular, el aviso de registro no se aplasta con un nombre largo', async
     ),
   ).toBe(true)
 
-  // «Ver ficha» abre el ejemplar recién creado.
+  // «Ver la planta» abre el ejemplar recién creado.
   const nueva = supabase
     .plantasDe(USUARIO)
     .find((planta) => planta.entered_name === largo)
-  await aviso.getByRole('link', { name: 'Ver ficha' }).click()
+  await aviso.getByRole('link', { name: 'Ver la planta' }).click()
   await expect(page).toHaveURL(
     new RegExp(`/coleccion/${nueva?.id ?? 'falta'}$`),
   )

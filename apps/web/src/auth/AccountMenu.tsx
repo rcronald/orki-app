@@ -38,7 +38,7 @@ export function AccountMenu() {
   const imageUrl = confirmed && user.hasImage ? user.imageUrl : null
 
   const items: MenuItem[] = [
-    { kind: 'link', label: 'Mi cuenta', icon: 'user', to: PATHS.account },
+    { kind: 'link', label: 'Tu cuenta', icon: 'user', to: PATHS.account },
   ]
   if (isAdmin) {
     items.push({

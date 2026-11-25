@@ -29,7 +29,7 @@ export const SPECIES_SOURCE_LABEL: Record<SpeciesSource, string> = {
   col: 'Catalogue of Life',
   gbif: 'GBIF',
   curated: 'Lista curada de orqui.app',
-  user_proposal: 'Propuesta de un usuario, validada por el administrador',
+  user_proposal: 'Propuesta de un usuario, validada por el equipo del catálogo',
 }
 
 /** "1 ejemplar con ese nombre, pendiente de validar", en plural si son más. */
@@ -95,7 +95,7 @@ export const CATALOG_TEXT = {
   curatedSource:
     'Los híbridos de vivero salen de una lista curada por el responsable de orqui.app, con los nombres con los que se venden.',
   proposalSource:
-    'La propuso una persona al registrar su planta y la validó el administrador del catálogo.',
+    'La propuso una persona al registrar su planta y la validó el equipo del catálogo.',
   credits: 'Créditos y fuentes',
   retry: 'Reintentar',
   failedTitle: 'No se pudo cargar el catálogo',

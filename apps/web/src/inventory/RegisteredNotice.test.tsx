@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAxeViolations } from '../test/axe.ts'
 import { RegisteredNotice } from './RegisteredNotice.tsx'
 
-// El aviso tras registrar una planta (#85, #261): con «Ver ficha» del
+// El aviso tras registrar una planta (#85, #261): con «Ver la planta» del
 // ejemplar recién creado (#296) y «Registrar otra».
 
 beforeEach(() => {
@@ -32,9 +32,9 @@ function renderNotice(onDismiss = vi.fn()) {
 }
 
 describe('RegisteredNotice', () => {
-  it('«Ver ficha» lleva al ejemplar recién creado y «Registrar otra» se conserva', async () => {
+  it('«Ver la planta» lleva al ejemplar recién creado y «Registrar otra» se conserva', async () => {
     renderNotice()
-    const view = await screen.findByRole('link', { name: 'Ver ficha' })
+    const view = await screen.findByRole('link', { name: 'Ver la planta' })
     expect(view).toHaveAttribute('href', '/coleccion/planta%201')
     expect(
       screen.getByRole('link', { name: 'Registrar otra' }),

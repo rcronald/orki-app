@@ -118,7 +118,7 @@ test('búsqueda en la colección', { tag: '@logica' }, async ({ page }) => {
 
   await buscador(page).fill('vivero los andes')
   await expect(page.getByRole('search').getByRole('status')).toHaveText(
-    '2 de 5 orquídeas coinciden.',
+    '2 de 5 ejemplares coinciden.',
   )
   await expect(tarjetas(page)).toHaveCount(2)
   await expect(
@@ -260,7 +260,7 @@ test('filtros', { tag: '@logica' }, async ({ page, revisarAccesibilidad }) => {
     .click()
   await panel.getByRole('button', { name: 'Agrupar por género' }).click()
   await expect(
-    page.getByRole('heading', { name: /^Cattleya ?, 1 orquídea$/, level: 2 }),
+    page.getByRole('heading', { name: /^Cattleya ?, 1 ejemplar$/, level: 2 }),
   ).toBeVisible()
 })
 

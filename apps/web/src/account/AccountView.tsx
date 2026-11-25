@@ -34,7 +34,7 @@ export interface AccountViewProps {
   /** Contenido del panel «Perfil» (ProfileSummary con «Editar perfil»). */
   profile?: ReactNode
   /**
-   * Fila «Exportar inventario a CSV» (un ActionRow) del panel «Datos y
+   * Fila «Exportar tu colección a CSV» (un ActionRow) del panel «Datos y
    * privacidad», con lo que haga falta debajo (el resultado en una región de
    * estado). Sin ella, el panel solo lleva el aviso de privacidad.
    */

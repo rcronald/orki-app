@@ -250,10 +250,10 @@ describe('neutralizeFormula y csvCell', () => {
 describe('exportFileName', () => {
   it('lleva la fecha local del dispositivo', () => {
     expect(exportFileName(new Date(2026, 10, 21, 23, 30))).toBe(
-      'orqui-app-inventario-2026-11-21.csv',
+      'orqui-app-coleccion-2026-11-21.csv',
     )
     expect(exportFileName(new Date(2026, 0, 5))).toBe(
-      'orqui-app-inventario-2026-01-05.csv',
+      'orqui-app-coleccion-2026-01-05.csv',
     )
   })
 })

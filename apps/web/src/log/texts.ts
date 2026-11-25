@@ -51,7 +51,7 @@ export const LOG_TEXT = {
 export const LOG_FORM_TEXT = {
   title: 'Nuevo registro de bitácora',
   close: 'Cerrar',
-  back: 'Volver a la ficha',
+  back: 'Volver a la planta',
   type: 'Tipo de actividad',
   typeRequired: 'Elige el tipo de actividad.',
   entryTitle: 'Título',

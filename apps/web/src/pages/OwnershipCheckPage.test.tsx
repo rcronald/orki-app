@@ -19,6 +19,7 @@ import {
   type CollectionSource,
 } from '../collection/source.ts'
 import { FROM_INVENTORY } from '../detail/navigation.ts'
+import { CHECK_TEXT } from '../ownership-check/texts.ts'
 import { NavigationFocusProvider } from '../routes/NavigationFocusProvider.tsx'
 import { recordProductEvent } from '../telemetry/product-events.ts'
 import { expectNoAxeViolations } from '../test/axe.ts'
@@ -189,6 +190,16 @@ describe('OwnershipCheckPage', () => {
 
     await ask('amabilis')
     await expectNoAxeViolations()
+  })
+
+  it('con la colección vacía lo dice en una línea; al escribir, responde', async () => {
+    renderAt()
+    await resolveLast([])
+    expect(answer()).toHaveTextContent(CHECK_TEXT.empty)
+
+    await ask('amabilis')
+    expect(answer()).toHaveTextContent('Aún no la tienes')
+    expect(answer()).not.toHaveTextContent(CHECK_TEXT.empty)
   })
 
   it('al llegar navegando desde la colección, el foco también va al campo', async () => {
@@ -411,6 +422,9 @@ describe('OwnershipCheckPage', () => {
       const notice = screen.getAllByRole('status')[0]
       expect(notice).toHaveTextContent('Sin conexión')
       expect(notice).toHaveTextContent(/Última actualización: 20 de noviembre/)
+      // El texto de esta pantalla, no el de «Mi colección» (#290).
+      expect(notice).toHaveTextContent(CHECK_TEXT.offlineNotice.offline)
+      expect(notice).not.toHaveTextContent(/filtrar|dar de baja/)
 
       await ask('Vanda coerulea')
       expect(answer()).toHaveTextContent('Aún no la tienes')

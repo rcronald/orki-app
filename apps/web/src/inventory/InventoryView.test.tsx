@@ -289,14 +289,14 @@ describe('InventoryView', () => {
     // El contador se lee con el género: "Cattleya, 2 orquídeas".
     const headings = screen.getAllByRole('heading', { level: 2 })
     expect(headings).toEqual([
-      screen.getByRole('heading', { name: 'Cattleya, 2 orquídeas' }),
-      screen.getByRole('heading', { name: 'Phalaenopsis, 2 orquídeas' }),
+      screen.getByRole('heading', { name: 'Cattleya, 2 ejemplares' }),
+      screen.getByRole('heading', { name: 'Phalaenopsis, 2 ejemplares' }),
       screen.getByRole('heading', {
-        name: '× Rhyncholaeliocattleya, 1 orquídea',
+        name: '× Rhyncholaeliocattleya, 1 ejemplar',
       }),
     ])
     const cattleya = screen.getByRole('region', {
-      name: 'Cattleya, 2 orquídeas',
+      name: 'Cattleya, 2 ejemplares',
     })
     expect(
       within(cattleya)
@@ -629,7 +629,7 @@ describe('InventoryView', () => {
       within(panel).getByRole('button', { name: 'Agrupar por género' }),
     )
     expect(
-      screen.getByRole('region', { name: 'Cattleya, 100 orquídeas' }),
+      screen.getByRole('region', { name: 'Cattleya, 100 ejemplares' }),
     ).toBeInTheDocument()
     expect(screen.getAllByRole('article')).toHaveLength(300)
   })
@@ -663,7 +663,7 @@ describe('InventoryView: buscador', () => {
     await user.type(searchbox(), text)
     expect(cardNames()).toEqual([expected])
     // Bajo el buscador, cuántas coinciden de las activas.
-    expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
+    expect(status()).toHaveTextContent('1 de 6 ejemplares coincide.')
   })
 
   it('anuncia cuántas coinciden sin sacar el foco del campo', async () => {
@@ -672,10 +672,10 @@ describe('InventoryView: buscador', () => {
 
     expect(status()).toBeEmptyDOMElement()
     await user.type(searchbox(), 'phal')
-    expect(status()).toHaveTextContent('2 de 6 orquídeas coinciden.')
+    expect(status()).toHaveTextContent('2 de 6 ejemplares coinciden.')
     expect(searchbox()).toHaveFocus()
     await user.type(searchbox(), 'zzz')
-    expect(status()).toHaveTextContent('Ninguna de tus 6 orquídeas coincide.')
+    expect(status()).toHaveTextContent('Ninguno de tus 6 ejemplares coincide.')
     expect(searchbox()).toHaveFocus()
   })
 
@@ -718,7 +718,7 @@ describe('InventoryView: buscador', () => {
     expect(searchbox()).toHaveAttribute('placeholder')
     // El contador de coincidencias describe el campo.
     expect(searchbox()).toHaveAccessibleDescription(
-      '2 de 6 orquídeas coinciden.',
+      '2 de 6 ejemplares coinciden.',
     )
     // Sin el panel «¿Ya la tengo?» integrado: esa consulta tiene su pantalla.
     expect(screen.queryByText(/Sí, la tienes|Aún no la tienes/)).toBeNull()
@@ -786,7 +786,7 @@ describe('InventoryView: buscador', () => {
 
       await user.type(searchbox(), text)
       expect(cardNames()).toEqual(['Phalaenopsis amabilis'])
-      expect(status()).toHaveTextContent('1 de 6 orquídeas coincide.')
+      expect(status()).toHaveTextContent('1 de 6 ejemplares coincide.')
     })
 
     it('sin extras, como antes; al llegar, la lista los usa', () => {
