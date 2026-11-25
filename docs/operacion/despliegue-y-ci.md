@@ -63,3 +63,17 @@ El proyecto sigue GitHub Flow:
 ## Integración continua
 
 El workflow `.github/workflows/ci.yml` se ejecuta en cada pull request y en cada push a `main`. El job **Lint, formato, typecheck, pruebas y build** instala las dependencias con `npm ci` usando la versión de Node de `.nvmrc` y la caché de npm, y después ejecuta `lint`, `format:check`, `enlaces`, `typecheck`, `test`, `test:scripts` y `build`, en ese orden, y al final el presupuesto de tamaño (`build:medicion` y `presupuesto`, ver [Medición de la carga y presupuesto de tamaño](../medicion-de-carga.md)) y, sobre ese mismo build, las cabeceras de seguridad (`cabeceras`, ver [Comprobación automática](cabeceras-de-seguridad.md#comprobación-automática)). Si cualquiera de esos pasos falla, el job falla. El job **Pruebas de base de datos** ejecuta `npm run db:test`, `npm run db:concurrencia` y `npm run db:types:check` sobre un Postgres 17 desechable (ver [Pruebas de la base de datos](base-de-datos.md#pruebas-de-la-base-de-datos) y [Tipos de TypeScript del esquema](base-de-datos.md#tipos-de-typescript-del-esquema)). El job **Importación del catálogo (Python)** ejecuta el lint y el formato con ruff, valida la lista curada de híbridos y pasa las pruebas con pytest, con su propio Postgres 17 desechable (ver [su README](../../scripts/catalog-import/README.md)). Las **Pruebas de extremo a extremo** son cuatro jobs, uno por perfil (chromium, firefox, webkit y celular), que prueban los flujos principales en un navegador real (ver [Pruebas de extremo a extremo](../pruebas.md#pruebas-de-extremo-a-extremo)); todavía no son obligatorios. Cuando se suben nuevos commits a un pull request, la ejecución anterior de ese mismo pull request se cancela.
+
+## Acciones fijadas y Dependabot
+
+Cada acción de los workflows va fijada a un SHA de commit, con la versión en un comentario (`actions/checkout@3d3c… # v7.0.1`), no a una etiqueta (#294). Una etiqueta la puede mover quien controle el repositorio de la acción, y varios jobs reciben secretos de producción. `scripts/acciones-fijadas.test.mjs` (dentro de `npm run test:scripts`) falla si alguna `uses:` no cumple.
+
+Para añadir una acción o cambiar su versión a mano, busca el commit de la etiqueta y copia el SHA:
+
+```sh
+git ls-remote https://github.com/actions/checkout 'refs/tags/v7*'
+```
+
+Si la etiqueta es anotada, el SHA que vale es el de la línea que termina en `^{}`.
+
+`.github/dependabot.yml` abre cada lunes pull requests agrupados para las acciones (actualiza el SHA y el comentario), para npm (versiones menores y parches juntos; las mayores, una por una) y para el importador del catálogo (uv). Pasan por el CI como cualquier otro. `npm audit` da avisos moderados de `glob` y `minimatch` por `workbox-build`, que solo se usan en el build (`npm audit --omit=dev` da cero): no uses `npm audit fix --force`, que baja de versión `vite-plugin-pwa`.
