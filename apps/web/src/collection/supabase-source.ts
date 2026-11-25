@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import { getSupabase, sessionTokenFailure } from '../lib/supabase.ts'
 import type { OrkiSupabaseClient } from '../lib/supabase.ts'
 import {
@@ -59,10 +60,7 @@ export function createSupabaseCollectionSource({
       } catch (error) {
         // El chunk del cliente de Supabase no llegó (sin conexión y sin la caché del
         // service worker) o la app no se inicializó.
-        throw new CollectionLoadError(
-          navigator.onLine === false ? 'offline' : 'failed',
-          { cause: error },
-        )
+        throw new CollectionLoadError(offlineOr('failed'), { cause: error })
       }
       signal.throwIfAborted()
 

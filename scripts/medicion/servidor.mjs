@@ -68,12 +68,16 @@ function comprimir(contenido) {
 
 /**
  * Arranca el servidor sobre `carpeta`. Devuelve su URL y cómo cerrarlo.
+ * `cabecerasExtra(ruta)` da cabeceras que se añaden a la respuesta de esa ruta.
  *
  * Comprime todo antes de escuchar: Brotli al máximo tarda en los chunks
  * grandes, y hacerlo en la primera petición retrasaría solo la primera
  * ejecución de Lighthouse (en producción, Vercel ya lo tiene comprimido).
  */
-export async function servirCarpeta(carpeta, { puerto = 0 } = {}) {
+export async function servirCarpeta(
+  carpeta,
+  { puerto = 0, cabecerasExtra = () => ({}) } = {},
+) {
   const raiz = path.resolve(carpeta)
   const cache = new Map()
   for (const entrada of await readdir(raiz, {
@@ -97,6 +101,11 @@ export async function servirCarpeta(carpeta, { puerto = 0 } = {}) {
     const extension = path.extname(archivo)
     let cuerpo = await readFile(archivo)
     const cabeceras = {
+      // Las de seguridad que pida quien sirve (las pruebas de extremo a
+      // extremo, #282), según la ruta pedida, como el middleware de Vercel.
+      ...cabecerasExtra(
+        new URL(peticion.url ?? '/', 'http://localhost').pathname,
+      ),
       'Content-Type': TIPOS[extension] ?? 'application/octet-stream',
       // Como en Vercel para el HTML; da igual para la primera visita, que es
       // la que mide Lighthouse (empieza siempre con la caché vacía).

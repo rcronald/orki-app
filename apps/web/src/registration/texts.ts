@@ -77,6 +77,9 @@ export const PLANT_FORM_TEXT = {
   photosTitle: 'Fotos',
   photoInBloom: 'La foto principal es en floración',
   photosPreparing: 'Preparando las fotos…',
+  /** Estado de una foto cuya subida se canceló o falló. */
+  photoCancelled: 'Cancelada',
+  photoNotUploaded: 'No se subió',
   /** Anuncio al elegir fotos (role="status"). */
   photosAdding: (count: number) =>
     count === 1 ? 'Preparando la foto…' : `Preparando ${photoCount(count)}…`,

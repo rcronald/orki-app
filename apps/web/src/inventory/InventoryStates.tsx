@@ -50,16 +50,6 @@ export function LoadingList({ view }: { view: InventoryView }) {
   )
 }
 
-/** Marcador de los contadores mientras cargan, con su misma altura. */
-export function LoadingSummary() {
-  return (
-    <div
-      aria-hidden="true"
-      className="h-space-5 w-1/2 max-w-xs rounded-sm bg-neutral-50 motion-safe:animate-pulse"
-    />
-  )
-}
-
 /**
  * No se pudo leer la colección y no hay datos que mostrar: el motivo, en
  * español, y "Reintentar". Con la sesión terminada, además, volver a entrar.

@@ -11,6 +11,7 @@ import type { CollectionApi } from '../collection/useCollection.ts'
 import { useCollection } from '../collection/useCollection.ts'
 import {
   useCollectionCopy,
+  useOwnershipExtras,
   useExtrasState,
   useRetryExtras,
 } from '../collection/useCollectionCopy.ts'
@@ -41,8 +42,6 @@ import { useHaveItSearchEvents } from '../telemetry/useHaveItSearchEvents.ts'
 
 /** Ejemplares que se listan bajo la respuesta, con enlace a su detalle. */
 const LISTED_MATCHES = 5
-
-const NO_EXTRAS = {}
 
 const EMPTY_REGION = 'empty:mt-[calc(var(--space-4)*-1)]'
 
@@ -87,7 +86,7 @@ export default function OwnershipCheckPage() {
   const collection = useCollection()
   const { plants } = collection
   const copy = useCollectionCopy()
-  const extras = copy?.extras ?? NO_EXTRAS
+  const extras = useOwnershipExtras()
   const extrasState = useExtrasState(plants)
   const retryExtras = useRetryExtras()
   const readOnly = useReadOnly()

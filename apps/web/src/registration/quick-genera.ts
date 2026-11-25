@@ -1,3 +1,4 @@
+import { isBrowserOffline, offlineOr } from '../lib/connection.ts'
 import { CatalogSearchError } from '../lib/catalogSearch.ts'
 import {
   getSupabase,
@@ -25,13 +26,11 @@ let cached: Promise<readonly FormGenus[]> | null = null
 async function fetchQuickAccessGenera(
   getClient: () => Promise<OrkiSupabaseClient>,
 ): Promise<readonly FormGenus[]> {
-  const offline = () =>
-    typeof navigator !== 'undefined' && navigator.onLine === false
   let supabase: OrkiSupabaseClient
   try {
     supabase = await getClient()
   } catch (error) {
-    throw new CatalogSearchError(offline() ? 'offline' : 'failed', {
+    throw new CatalogSearchError(offlineOr('failed'), {
       cause: error,
     })
   }
@@ -43,7 +42,8 @@ async function fetchQuickAccessGenera(
     .limit(QUICK_ACCESS_LIMIT)
   if (error) {
     const isOffline =
-      sessionTokenFailure(error) === 'offline' || (status === 0 && offline())
+      sessionTokenFailure(error) === 'offline' ||
+      (status === 0 && isBrowserOffline())
     throw new CatalogSearchError(isOffline ? 'offline' : 'failed', {
       cause: error,
     })

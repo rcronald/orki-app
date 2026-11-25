@@ -1,3 +1,4 @@
+import { offlineOr } from '../lib/connection.ts'
 import {
   COLLECTION_PLANT_SELECT,
   toCollectionPlant,
@@ -199,10 +200,7 @@ export async function insertPlant(
   try {
     supabase = await getClient()
   } catch (error) {
-    throw new PlantSaveError(
-      navigator.onLine === false ? 'offline' : 'failed',
-      { cause: error },
-    )
+    throw new PlantSaveError(offlineOr('failed'), { cause: error })
   }
 
   const { data, error, status } = await supabase
@@ -247,7 +245,7 @@ export async function updatePlant(
   try {
     supabase = await getClient()
   } catch (error) {
-    const reason = navigator.onLine === false ? 'offline' : 'failed'
+    const reason = offlineOr('failed')
     throw new PlantSaveError(reason, {
       cause: error,
       message: PLANT_UPDATE_ERROR_TEXT[reason],

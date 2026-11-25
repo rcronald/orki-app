@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { isBrowserOffline } from './connection.ts'
 
 // Si el navegador dice tener conexión, actualizado con los eventos online y
 // offline. navigator.onLine es fiable cuando dice que no hay red; cuando dice
@@ -15,7 +16,7 @@ function subscribe(onChange: () => void): () => void {
 }
 
 function getSnapshot(): boolean {
-  return typeof navigator === 'undefined' || navigator.onLine !== false
+  return !isBrowserOffline()
 }
 
 /** true salvo que el navegador sepa que no hay conexión. */
